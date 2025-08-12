@@ -5,7 +5,7 @@ interface
 uses
   System.SysUtils, System.Rtti, System.Classes, System.Generics.Collections,
   System.TypInfo, System.JSON,
-  Vcl.Graphics, Vcl.StdCtrls, Vcl.Controls, Vcl.Forms, Vcl.Dialogs,
+  Vcl.Graphics, Vcl.StdCtrls, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.ExtCtrls,
 
   JRPC.Classes,
   MCP.Attributes,
@@ -14,9 +14,9 @@ uses
   Neon.Core.Nullables,
   Neon.Core.Attributes,
   Neon.Core.Persistence,
-  Neon.Core.Persistence.JSON.Schema,
   Neon.Core.Serializers.RTL,
-  Neon.Core.Persistence.JSON, Vcl.ExtCtrls;
+  Neon.Core.Persistence.JSON,
+  Neon.Core.Persistence.JSON.Schema;
 
 type
   TForm1 = class(TForm)
@@ -52,7 +52,7 @@ type
     ): Integer;
 
 
-    [McpTool] function TestFunc(): string;
+    [McpTool('Test Function')] function TestFunc(): string;
   end;
 
 var

@@ -7,7 +7,7 @@ uses
 
 type
   MCPToolAttribute = class(TCustomAttribute)
-
+    constructor Create(const ADescription: string);
   end;
 
   MCPParamAttribute = class(TCustomAttribute)
@@ -19,6 +19,13 @@ implementation
 { MCPParamAttribute }
 
 constructor MCPParamAttribute.Create(const AName, ADescription: string; ARequired: Boolean);
+begin
+
+end;
+
+{ MCPToolAttribute }
+
+constructor MCPToolAttribute.Create(const ADescription: string);
 begin
 
 end;

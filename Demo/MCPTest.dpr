@@ -3,8 +3,8 @@ program MCPTest;
 uses
   Vcl.Forms,
   MCP.Form.Main in 'MCP.Form.Main.pas' {Form1},
-  JRPC.Classes in 'JRPC.Classes.pas',
-  MCP.Core.Tools in 'MCP.Core.Tools.pas';
+  JRPC.Classes in '..\Source\JRPC.Classes.pas',
+  MCP.Core.Tools in '..\Source\MCP.Core.Tools.pas';
 
 {$R *.res}
 

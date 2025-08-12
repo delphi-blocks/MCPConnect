@@ -1,28 +1,29 @@
-unit MCP.Core.Tools;
+unit MCP.Tools;
 
 interface
 
 uses
   System.SysUtils,
-  System.Generics.Collections,
+  System.Rtti,
   System.JSON,
   System.Types,
+  System.Generics.Collections,
   Neon.Core.Attributes,
   Neon.Core.Nullables;
 
 type
-  TMeta = record
+  TMeta = class
 
   end;
 
   /// <summary>
   /// A JSON Schema object defining the expected parameters for the tool.
   /// </summary>
-  TToolInputSchema = record
+  TToolInputSchema = class
     /// <summary>
     /// Definitions of types used in the schema.
     /// </summary>
-    [NeonProperty('$defs'), NeonInclude(IncludeIf.NotEmpty)] Defs: TDictionary<string, TJsonValue>;
+    [NeonProperty('$defs'), NeonInclude(IncludeIf.NotEmpty)] Defs: TDictionary<string, TValue>;
 
     /// <summary>
     /// The type of the schema (e.g., "object").
@@ -32,18 +33,21 @@ type
     /// <summary>
     /// A map of property names to their schema definitions.
     /// </summary>
-    [NeonProperty('properties'), NeonInclude(IncludeIf.NotEmpty)] Properties: TDictionary<string, TJsonValue>;
+    [NeonProperty('properties'), NeonInclude(IncludeIf.NotEmpty)] Properties: TDictionary<string, TValue>;
 
     /// <summary>
     /// A list of required property names.
     /// </summary>
     [NeonProperty('required'), NeonInclude(IncludeIf.NotEmpty)] Required: TArray<string>;
+  public
+    constructor Create;
+    destructor Destroy; override;
   end;
 
   /// <summary>
   /// Optional properties describing tool behavior
   /// </summary>
-  TToolAnnotation = record
+  TToolAnnotation = class
     /// <summary>
     /// Human-readable title for the tool
     /// </summary>
@@ -73,7 +77,7 @@ type
   /// <summary>
   /// Tool represents the definition for a tool the client can call.
   /// </summary>
-  TTool = record
+  TTool = class
     /// <summary>
     /// Meta is a metadata object that is reserved by MCP for storing additional information
     /// </summary>
@@ -108,8 +112,49 @@ type
     /// Optional properties describing tool behavior
     /// </summary>
     [NeonProperty('annotations')] Annotations: TToolAnnotation;
+  public
+    constructor Create;
+    destructor Destroy; override;
   end;
 
 implementation
+
+{ TToolInputSchema }
+
+constructor TToolInputSchema.Create;
+begin
+  Defs := TDictionary<string, TValue>.Create;
+  Properties := TDictionary<string, TValue>.Create;
+end;
+
+destructor TToolInputSchema.Destroy;
+begin
+  Properties.Free;
+  Defs.Free;
+
+  inherited;
+end;
+
+{ TTool }
+
+constructor TTool.Create;
+begin
+  Meta := TMeta.Create;
+  InputSchema := TToolInputSchema.Create;
+  Annotations := TToolAnnotation.Create;
+  RawInputSchema := TJSONObject.Create;
+  RawOutputSchema := TJSONObject.Create;
+end;
+
+destructor TTool.Destroy;
+begin
+  Meta.Free;
+  InputSchema.Free;
+  Annotations.Free;
+  RawInputSchema.Free;
+  RawOutputSchema.Free;
+
+  inherited;
+end;
 
 end.

@@ -133,7 +133,8 @@
             <FormType>dfm</FormType>
         </DCCReference>
         <DCCReference Include="..\Source\JRPC.Classes.pas"/>
-        <DCCReference Include="..\Source\MCP.Core.Tools.pas"/>
+        <DCCReference Include="..\Source\MCP.Tools.pas"/>
+        <DCCReference Include="..\Source\MCP.Attributes.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

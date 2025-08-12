@@ -105,6 +105,8 @@ object Form1: TForm1
     Align = alBottom
     Caption = 'Panel1'
     TabOrder = 8
+    ExplicitTop = 111
+    ExplicitWidth = 1264
     object mmoLog: TMemo
       Left = 1
       Top = 1
@@ -120,7 +122,6 @@ object Form1: TForm1
       ScrollBars = ssBoth
       TabOrder = 0
       WordWrap = False
-      ExplicitHeight = 497
     end
     object mmoSnippets: TMemo
       Left = 601
@@ -237,6 +238,7 @@ object Form1: TForm1
       ParentFont = False
       ScrollBars = ssVertical
       TabOrder = 1
+      ExplicitWidth = 662
     end
   end
 end

@@ -8,6 +8,7 @@ uses
   Vcl.Graphics, Vcl.StdCtrls, Vcl.Controls, Vcl.Forms, Vcl.Dialogs,
 
   JRPC.Classes,
+  MCP.Attributes
 
   Neon.Core.Nullables,
   Neon.Core.Attributes,
@@ -17,14 +18,6 @@ uses
   Neon.Core.Persistence.JSON, Vcl.ExtCtrls;
 
 type
-  MCPToolAttribute = class(TCustomAttribute)
-
-  end;
-
-  MCPParamAttribute = class(TCustomAttribute)
-    constructor Create(const AName, ADescription: string; ARequired: Boolean = True);
-  end;
-
   TForm1 = class(TForm)
     btnEnvelope: TButton;
     mmoLog: TMemo;
@@ -53,7 +46,7 @@ type
     procedure FilterTools;
     function GetNeonConfig: INeonConfiguration;
   public
-    [McpTool] function TestParam(
+    [McpTool('description')] function TestParam(
       [McpParam('nome', 'Test Parameter for Tool', true)] AParam: Integer = 0
     ): Integer;
 
@@ -178,13 +171,6 @@ end;
 function TForm1.TestFunc: string;
 begin
   Result := 'Hello World';
-end;
-
-{ MCPParamAttribute }
-
-constructor MCPParamAttribute.Create(const AName, ADescription: string; ARequired: Boolean);
-begin
-
 end;
 
 end.

@@ -4,7 +4,8 @@ uses
   Vcl.Forms,
   MCP.Form.Main in 'MCP.Form.Main.pas' {Form1},
   JRPC.Classes in '..\Source\JRPC.Classes.pas',
-  MCP.Core.Tools in '..\Source\MCP.Core.Tools.pas';
+  MCP.Tools in '..\Source\MCP.Tools.pas',
+  MCP.Attributes in '..\Source\MCP.Attributes.pas';
 
 {$R *.res}
 

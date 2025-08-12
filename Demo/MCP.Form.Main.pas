@@ -8,7 +8,8 @@ uses
   Vcl.Graphics, Vcl.StdCtrls, Vcl.Controls, Vcl.Forms, Vcl.Dialogs,
 
   JRPC.Classes,
-  MCP.Attributes
+  MCP.Attributes,
+  MCP.Tools,
 
   Neon.Core.Nullables,
   Neon.Core.Attributes,

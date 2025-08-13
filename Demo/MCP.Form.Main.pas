@@ -10,6 +10,7 @@ uses
   JRPC.Classes,
   MCP.Attributes,
   MCP.Tools,
+  MCP.Invoker,
 
   Neon.Core.Nullables,
   Neon.Core.Attributes,
@@ -41,18 +42,19 @@ type
     procedure btnResponseDesClick(Sender: TObject);
     procedure btnEnvelopeClick(Sender: TObject);
     procedure btnIdClick(Sender: TObject);
+    procedure btnRttiClick(Sender: TObject);
   private
     ctx: TRttiContext;
     tools: TArray<TRttiMethod>;
     procedure FilterTools;
     function GetNeonConfig: INeonConfiguration;
   public
-    [McpTool('description')] function TestParam(
-      [McpParam('nome', 'Test Parameter for Tool', true)] AParam: Integer = 0
+    [McpTool('double', 'description')] function TestParam(
+      [McpParam('value', 'Test Parameter for Tool', true)] AParam: Integer = 0
     ): Integer;
 
 
-    [McpTool('Test Function')] function TestFunc(): string;
+    [McpTool('hello', 'Test Function')] function TestFunc(): string;
   end;
 
 var
@@ -126,6 +128,34 @@ begin
     mmoLog.Lines.Add('Error detected: ' + r.Error.Message)
   else
     mmoLog.Lines.Add('Result (as JSON) is a: ' + r.Result.AsObject.ClassName);
+end;
+
+procedure TForm1.btnRttiClick(Sender: TObject);
+var
+  LRequest: TJRPCRequest;
+  LResponse: TJRPCResponse;
+  LMethodInvoker: IMCPInvokable;
+begin
+  // Build the test request
+  LRequest := TJRPCRequest.Create;
+  LRequest.Id := 1;
+  LRequest.Method := 'double';
+  //LRequest.AddPositionParam(12);
+  LRequest.AddNamedParam('value', 12);
+
+  // Build the response object
+  LResponse := TJRPCResponse.Create;
+  LResponse.Id := 1;
+
+  LMethodInvoker := TMCPObjectInvoker.Create(Self);
+  LMethodInvoker.Invoke(LRequest, LResponse);
+
+  // Show response
+  var s := TNeon.ObjectToJSONString(LResponse, GetNeonConfig);
+  mmoLog.Lines.Add(s);
+
+  LRequest.Free;
+  LResponse.Free;
 end;
 
 procedure TForm1.btnEnvelopeClick(Sender: TObject);

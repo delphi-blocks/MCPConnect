@@ -12,7 +12,6 @@ uses
   Neon.Core.Persistence;
 
 type
-
   TJRPCID = record
   private
     [NeonInclude]
@@ -134,9 +133,7 @@ type
     function Deserialize(AValue: TJSONValue; const AData: TValue; ANeonObject: TNeonRttiObject; AContext: IDeserializerContext): TValue; override;
   end;
 
-
 implementation
-
 
 { TJRPCEnvelope }
 

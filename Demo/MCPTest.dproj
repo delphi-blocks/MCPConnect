@@ -135,6 +135,7 @@
         <DCCReference Include="..\Source\JRPC.Classes.pas"/>
         <DCCReference Include="..\Source\MCP.Tools.pas"/>
         <DCCReference Include="..\Source\MCP.Attributes.pas"/>
+        <DCCReference Include="..\Source\MCP.Invoker.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

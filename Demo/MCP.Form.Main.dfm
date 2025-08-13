@@ -87,6 +87,7 @@ object Form1: TForm1
     Height = 25
     Caption = 'Call Rtti'
     TabOrder = 6
+    OnClick = btnRttiClick
   end
   object btnResponseDes: TButton
     Left = 274
@@ -105,8 +106,6 @@ object Form1: TForm1
     Align = alBottom
     Caption = 'Panel1'
     TabOrder = 8
-    ExplicitTop = 111
-    ExplicitWidth = 1264
     object mmoLog: TMemo
       Left = 1
       Top = 1
@@ -238,7 +237,6 @@ object Form1: TForm1
       ParentFont = False
       ScrollBars = ssVertical
       TabOrder = 1
-      ExplicitWidth = 662
     end
   end
 end

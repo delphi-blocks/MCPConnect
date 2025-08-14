@@ -106,6 +106,8 @@ object Form1: TForm1
     Align = alBottom
     Caption = 'Panel1'
     TabOrder = 8
+    ExplicitTop = 111
+    ExplicitWidth = 1264
     object mmoLog: TMemo
       Left = 1
       Top = 1
@@ -237,6 +239,16 @@ object Form1: TForm1
       ParentFont = False
       ScrollBars = ssVertical
       TabOrder = 1
+      ExplicitWidth = 662
     end
+  end
+  object btnToolSerialize: TButton
+    Left = 648
+    Top = 24
+    Width = 121
+    Height = 25
+    Caption = 'Tool Serialization'
+    TabOrder = 9
+    OnClick = btnToolSerializeClick
   end
 end

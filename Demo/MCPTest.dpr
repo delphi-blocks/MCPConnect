@@ -6,7 +6,8 @@ uses
   JRPC.Classes in '..\Source\JRPC.Classes.pas',
   MCP.Tools in '..\Source\MCP.Tools.pas',
   MCP.Attributes in '..\Source\MCP.Attributes.pas',
-  MCP.Invoker in '..\Source\MCP.Invoker.pas';
+  MCP.Invoker in '..\Source\MCP.Invoker.pas',
+  MCP.Tools.Schema in '..\Source\MCP.Tools.Schema.pas';
 
 {$R *.res}
 

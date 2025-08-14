@@ -12,10 +12,6 @@ uses
   Neon.Core.Nullables;
 
 type
-  TMeta = class
-
-  end;
-
   /// <summary>
   /// A JSON Schema object defining the expected parameters for the tool.
   /// </summary>
@@ -81,7 +77,7 @@ type
     /// <summary>
     /// Meta is a metadata object that is reserved by MCP for storing additional information
     /// </summary>
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TMeta;
+    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TDictionary<string, TValue>;
 
     /// <summary>
     /// The name of the tool
@@ -111,7 +107,7 @@ type
     /// <summary>
     /// Optional properties describing tool behavior
     /// </summary>
-    [NeonProperty('annotations')] Annotations: TToolAnnotation;
+    [NeonProperty('annotations'), NeonInclude(IncludeIf.NotEmpty)] Annotations: TToolAnnotation;
   public
     constructor Create;
     destructor Destroy; override;
@@ -129,8 +125,8 @@ end;
 
 destructor TToolInputSchema.Destroy;
 begin
-  Properties.Free;
   Defs.Free;
+  Properties.Free;
 
   inherited;
 end;
@@ -139,7 +135,7 @@ end;
 
 constructor TTool.Create;
 begin
-  Meta := TMeta.Create;
+  Meta := TDictionary<string, TValue>.Create;
   InputSchema := TToolInputSchema.Create;
   Annotations := TToolAnnotation.Create;
   RawInputSchema := TJSONObject.Create;

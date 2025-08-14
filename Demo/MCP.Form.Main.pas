@@ -8,10 +8,13 @@ uses
   Vcl.Graphics, Vcl.StdCtrls, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.ExtCtrls,
 
   JRPC.Classes,
+
   MCP.Attributes,
   MCP.Tools,
+  MCP.Tools.Schema,
   MCP.Invoker,
 
+  Neon.Core.Types,
   Neon.Core.Nullables,
   Neon.Core.Attributes,
   Neon.Core.Persistence,
@@ -34,6 +37,7 @@ type
     mmoSnippets: TMemo;
     lblLog: TLabel;
     lblSnippets: TLabel;
+    btnToolSerialize: TButton;
     procedure FormCreate(Sender: TObject);
     procedure btnRequestClick(Sender: TObject);
     procedure btnRequestDesClick(Sender: TObject);
@@ -43,14 +47,17 @@ type
     procedure btnEnvelopeClick(Sender: TObject);
     procedure btnIdClick(Sender: TObject);
     procedure btnRttiClick(Sender: TObject);
+    procedure btnToolSerializeClick(Sender: TObject);
   private
     ctx: TRttiContext;
     tools: TArray<TRttiMethod>;
     procedure FilterTools;
     function GetNeonConfig: INeonConfiguration;
+    function GetNeonConfig2: INeonConfiguration;
   public
-    [McpTool('double', 'description')] function TestParam(
-      [McpParam('value', 'Test Parameter for Tool', true)] AParam: Integer = 0
+    [McpTool('double_or_nothing', 'Doubles or zeroes the param value')] function TestParam(
+      [McpParam('value1', 'Test Parameter 1 for MCP', true)] AParam1: Integer;
+      [McpParam('value2', 'Test Parameter 2 for MCP', true)] AParam2: Boolean
     ): Integer;
 
 
@@ -175,6 +182,21 @@ begin
   mmoLog.Lines.Add(s);
 end;
 
+procedure TForm1.btnToolSerializeClick(Sender: TObject);
+begin
+  var typ := ctx.GetType(Self.ClassType);
+  var m := typ.GetMethod('TestParam');
+
+  var schema := TMCPSchemaGenerator.MethodToJSONSchema(m);
+  {
+  var j := TNeon.ObjectToJSON(t, GetNeonConfig2) as TJSONObject;
+
+  j.RemovePair('inputSchema');
+  j.AddPair('inputSchema', schema);
+  }
+  mmoLog.Lines.Add(TNeon.Print(schema, true));
+end;
+
 procedure TForm1.FilterTools;
 begin
   var typ := ctx.GetType(Self.ClassType);
@@ -194,9 +216,18 @@ begin
     .RegisterSerializer(TJResponseSerializer);
 end;
 
-function TForm1.TestParam(AParam: Integer): Integer;
+function TForm1.GetNeonConfig2: INeonConfiguration;
 begin
-  Result := AParam * 2;
+  Result := TNeonConfiguration.Default
+    .SetMembers([TNeonMembers.Fields])
+    .RegisterSerializer(TTValueSerializer)
+end;
+
+function TForm1.TestParam([McpParam('value1', 'Test Parameter 1 for MCP',
+    true)] AParam1: Integer; [McpParam('value2', 'Test Parameter 2 for MCP',
+    true)] AParam2: Boolean): Integer;
+begin
+  Result := AParam1 * 2;
 end;
 
 function TForm1.TestFunc: string;

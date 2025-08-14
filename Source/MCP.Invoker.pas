@@ -10,6 +10,7 @@ uses
   Neon.Core.Nullables,
   Neon.Core.Attributes,
   Neon.Core.Persistence,
+  Neon.Core.Persistence.JSON,
 
   JRPC.Classes;
 
@@ -35,6 +36,10 @@ type
   IMCPInvokable = interface
   ['{246F6538-B87C-4164-B81C-74F0ABDD2FCD}']
     procedure Invoke(ARequest: TJRPCRequest; AResponse: TJRPCResponse);
+    function GetNeonConfig: INeonConfiguration;
+    procedure SetNeonConfig(AConfig: INeonConfiguration);
+
+    property NeonConfig: INeonConfiguration read GetNeonConfig write SetNeonConfig;
   end;
 
   /// <summary>
@@ -45,6 +50,7 @@ type
   private
     FInstance: TObject;
     FMethod: TRttiMethod;
+    FNeonConfig: INeonConfiguration;
   protected
     function GetParamName(LParam: TRttiParameter): string;
     function RequestToRttiParams(ARequest: TJRPCRequest): TArray<TValue>;
@@ -52,6 +58,8 @@ type
   public
     { IJRPCInvokable }
     procedure Invoke(ARequest: TJRPCRequest; AResponse: TJRPCResponse);
+    function GetNeonConfig: INeonConfiguration;
+    procedure SetNeonConfig(AConfig: INeonConfiguration);
 
     constructor Create(AInstance: TObject; AMethod: TRttiMethod);
   end;
@@ -65,10 +73,13 @@ type
   private
     FInstance: TObject;
     FRttiType: TRttiType;
+    FNeonConfig: INeonConfiguration;
     function FindMethod(ARequest: TJRPCRequest): TRttiMethod;
   public
     { IJRPCInvokable }
     procedure Invoke(ARequest: TJRPCRequest; AResponse: TJRPCResponse);
+    function GetNeonConfig: INeonConfiguration;
+    procedure SetNeonConfig(AConfig: INeonConfiguration);
 
     constructor Create(AInstance: TObject);
   end;
@@ -87,28 +98,76 @@ uses
 
 { TMCPMethodInvoker }
 
+// Check the compatibility of the JSONValue with the function parameters
+procedure CheckCompatibility(AParam: TRttiParameter; AValue: TJSONValue);
+begin
+  if AValue is TJSONNumber then
+  begin
+    if not (AParam.ParamType.TypeKind in [tkInteger, tkFloat, tkInt64]) then
+      raise EMCPInvokerError.Create(JRPC_ERROR_INVALID_PARAMS, Format('Invalid parameter for number [%s]', [AParam.Name]));
+  end
+  else if AValue is TJSONString then
+  begin
+    if not (AParam.ParamType.TypeKind in [tkString, tkWChar, tkLString, tkWString, tkUString]) then
+      raise EMCPInvokerError.Create(JRPC_ERROR_INVALID_PARAMS, Format('Invalid parameter for string [%s]', [AParam.Name]));
+  end
+  else if AValue is TJSONObject then
+  begin
+    if not (AParam.ParamType.TypeKind in [tkClass, tkRecord, tkInterface]) then
+      raise EMCPInvokerError.Create(JRPC_ERROR_INVALID_PARAMS, Format('Invalid parameter for object [%s]', [AParam.Name]));
+  end
+  else if AValue is TJSONArray then
+  begin
+    if not (AParam.ParamType.TypeKind in [tkArray, tkDynArray]) then
+      raise EMCPInvokerError.Create(JRPC_ERROR_INVALID_PARAMS, Format('Invalid parameter for array [%s]', [AParam.Name]));
+  end
+  else
+    raise EMCPInvokerError.Create(JRPC_ERROR_INVALID_PARAMS, Format('Invalid parameter [%s]', [AParam.Name]));
+end;
+
+
 function TMCPMethodInvoker.RequestToRttiParams(
   ARequest: TJRPCRequest): TArray<TValue>;
+
+  function CastJSONValue(AParam: TRttiParameter; AValue: TJSONValue): TValue;
+  begin
+    CheckCompatibility(AParam, AValue);
+    if AParam.ParamType.IsInstance then
+      Result := TNeon.JSONToObject(AParam.ParamType, AValue, GetNeonConfig)
+    else
+      Result := TNeon.JSONToValue(AParam.ParamType, AValue, GetNeonConfig);
+  end;
+
+  function CastParamValue(AParam: TRttiParameter; AValue: TValue): TValue;
+  begin
+    if AValue.IsObject and (AValue.AsObject is TJSONValue) then
+    begin
+      Result := CastJSONValue(AParam, TJSONValue(AValue.AsObject));
+    end
+    else
+      Result := AValue.Cast(AParam.ParamType.Handle);
+  end;
+
 var
+  LParam: TRttiParameter;
   LParamIndex: Integer;
+  LParamValue: TValue;
 begin
-  // TODO: check parameters number and type
   SetLength(Result, ARequest.Params.Count);
-  case ARequest.Params.ParamsType of
-    TJRPCParamsType.ByPos:
-    begin
-      for LParamIndex := 0 to ARequest.Params.Count - 1 do
-        Result[LParamIndex] := ARequest.Params.ByPos[LParamIndex];
+
+  LParamIndex := 0;
+  for LParam in FMethod.GetParameters do
+  begin
+    case ARequest.Params.ParamsType of
+      TJRPCParamsType.ByPos: LParamValue := ARequest.Params.ByPos[LParamIndex];
+      TJRPCParamsType.ByName: LParamValue := ARequest.Params.ByName[GetParamName(LParam)];
+      else
+        raise EMCPInvokerError.Create(JRPC_ERROR_INTERNAL_ERROR, 'Unknown params type');
     end;
-    TJRPCParamsType.ByName:
-    begin
-      LParamIndex := 0;
-      for var LParam in FMethod.GetParameters do
-      begin
-        Result[LParamIndex] := ARequest.Params.ByName[GetParamName(LParam)];
-        Inc(LParamIndex);
-      end;
-    end;
+
+    Result[LParamIndex] := CastParamValue(LParam, LParamValue);
+
+    Inc(LParamIndex);
   end;
 end;
 
@@ -118,11 +177,22 @@ begin
   Result := AResult;
 end;
 
+procedure TMCPMethodInvoker.SetNeonConfig(AConfig: INeonConfiguration);
+begin
+  FNeonConfig := AConfig;
+end;
+
 constructor TMCPMethodInvoker.Create(AInstance: TObject; AMethod: TRttiMethod);
 begin
   inherited Create;
   FInstance := AInstance;
   FMethod := AMethod;
+  FNeonConfig := TNeonConfiguration.Default;
+end;
+
+function TMCPMethodInvoker.GetNeonConfig: INeonConfiguration;
+begin
+  Result := FNeonConfig;
 end;
 
 function TMCPMethodInvoker.GetParamName(LParam: TRttiParameter): string;
@@ -145,6 +215,7 @@ begin
   LArgs := RequestToRttiParams(ARequest);
   try
     LResult := FMethod.Invoke(FInstance, LArgs);
+    AResponse.Id := ARequest.Id;
     AResponse.Result := RttiResultToResponse(LResult);
   except
     on E: EMCPInvokerError do
@@ -169,6 +240,7 @@ begin
   inherited Create;
   FInstance := AInstance;
   FRttiType := TRttiUtils.GetType(AInstance);
+  FNeonConfig := TNeonConfiguration.Default;
 end;
 
 function TMCPObjectInvoker.FindMethod(ARequest: TJRPCRequest): TRttiMethod;
@@ -191,6 +263,11 @@ begin
   end;
 end;
 
+function TMCPObjectInvoker.GetNeonConfig: INeonConfiguration;
+begin
+  Result := FNeonConfig;
+end;
+
 procedure TMCPObjectInvoker.Invoke(ARequest: TJRPCRequest;
   AResponse: TJRPCResponse);
 var
@@ -206,7 +283,13 @@ begin
   end;
 
   LMethodInvoker := TMCPMethodInvoker.Create(FInstance, LMethod);
+  LMethodInvoker.NeonConfig := FNeonConfig;
   LMethodInvoker.Invoke(ARequest, AResponse);
+end;
+
+procedure TMCPObjectInvoker.SetNeonConfig(AConfig: INeonConfiguration);
+begin
+  FNeonConfig := AConfig;
 end;
 
 { EMCPInvokerError }

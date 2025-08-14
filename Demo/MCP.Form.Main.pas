@@ -23,6 +23,14 @@ uses
   Neon.Core.Persistence.JSON.Schema;
 
 type
+  TPerson = class
+  private
+    FName: string;
+  public
+    property Name: string read FName write FName;
+    constructor Create(const AName: string);
+  end;
+
   TForm1 = class(TForm)
     btnEnvelope: TButton;
     mmoLog: TMemo;
@@ -38,6 +46,7 @@ type
     lblLog: TLabel;
     lblSnippets: TLabel;
     btnToolSerialize: TButton;
+    BtnInvokeFromRequest: TButton;
     procedure FormCreate(Sender: TObject);
     procedure btnRequestClick(Sender: TObject);
     procedure btnRequestDesClick(Sender: TObject);
@@ -48,6 +57,7 @@ type
     procedure btnIdClick(Sender: TObject);
     procedure btnRttiClick(Sender: TObject);
     procedure btnToolSerializeClick(Sender: TObject);
+    procedure BtnInvokeFromRequestClick(Sender: TObject);
   private
     ctx: TRttiContext;
     tools: TArray<TRttiMethod>;
@@ -60,8 +70,20 @@ type
       [McpParam('value2', 'Test Parameter 2 for MCP', true)] AParam2: Boolean
     ): Integer;
 
-
     [McpTool('hello', 'Test Function')] function TestFunc(): string;
+
+    [McpTool('double', 'Test Function')] function DoubleValue(
+      [McpParam('value', 'Test Parameter', true)] AValue: Integer
+    ): Integer;
+
+    [McpTool('subtract', 'Test Function')]
+    function Sub(
+      [McpParam('minuend', 'minuend', true)] a: Integer;
+      [McpParam('subtrahend', 'subtrahend', true)] b: Integer): Integer;
+
+    [McpTool('getname', 'Test Function')]
+    function GetPersonName(
+      [McpParam('person', 'The person object', true)] p: TPerson): string;
   end;
 
 var
@@ -182,6 +204,30 @@ begin
   mmoLog.Lines.Add(s);
 end;
 
+procedure TForm1.BtnInvokeFromRequestClick(Sender: TObject);
+begin
+  var LRequest := TNeon.JSONToObject<TJRPCRequest>(mmoLog.Lines.Text, GetNeonConfig);
+  try
+    mmoLog.Lines.Add('------ SERIALIZED REQUEST ------');
+    mmoLog.Lines.Add( TNeon.ObjectToJSONString(LRequest, GetNeonConfig) );
+    var LResponse := TJRPCResponse.Create;
+    try
+      var LMethodInvoker: IMCPInvokable := TMCPObjectInvoker.Create(Self);
+      LMethodInvoker.NeonConfig := TNeonConfiguration.Camel;
+      LMethodInvoker.Invoke(LRequest, LResponse);
+
+      mmoLog.Lines.Add('------ SERIALIZED RESPONSE ------');
+      var LStringResponse := TNeon.ObjectToJSONString(LResponse, GetNeonConfig);
+      mmoLog.Lines.Add(LStringResponse);
+
+    finally
+      LResponse.Free;
+    end;
+  finally
+    LRequest.Free;
+  end;
+end;
+
 procedure TForm1.btnToolSerializeClick(Sender: TObject);
 begin
   var typ := ctx.GetType(Self.ClassType);
@@ -195,6 +241,11 @@ begin
   j.AddPair('inputSchema', schema);
   }
   mmoLog.Lines.Add(TNeon.Print(schema, true));
+end;
+
+function TForm1.DoubleValue(AValue: Integer): Integer;
+begin
+  Result := AValue * 2;
 end;
 
 procedure TForm1.FilterTools;
@@ -223,6 +274,16 @@ begin
     .RegisterSerializer(TTValueSerializer)
 end;
 
+function TForm1.GetPersonName(p: TPerson): string;
+begin
+  Result := p.Name;
+end;
+
+function TForm1.Sub(a, b: Integer): Integer;
+begin
+  Result := a - b;
+end;
+
 function TForm1.TestParam([McpParam('value1', 'Test Parameter 1 for MCP',
     true)] AParam1: Integer; [McpParam('value2', 'Test Parameter 2 for MCP',
     true)] AParam2: Boolean): Integer;
@@ -233,6 +294,14 @@ end;
 function TForm1.TestFunc: string;
 begin
   Result := 'Hello World';
+end;
+
+{ TPerson }
+
+constructor TPerson.Create(const AName: string);
+begin
+  inherited Create;
+  FName := AName;
 end;
 
 end.

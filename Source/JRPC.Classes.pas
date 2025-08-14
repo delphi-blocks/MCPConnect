@@ -340,7 +340,7 @@ begin
   begin
     LArray := AValue as TJSONArray;
     for LItem in LArray do
-      LParams.AddParam(LItem);
+      LParams.AddParam(LItem.Clone);
   end;
 
   // Is a dictionary
@@ -348,7 +348,7 @@ begin
   begin
     LObject := AValue as TJSONObject;
     for LPair in LObject do
-      LParams.AddParam(LPair.JsonString.Value, LPair.JsonValue);
+      LParams.AddParam(LPair.JsonString.Value, LPair.JsonValue.Clone);
   end;
 
   Result := TValue.From<TJRPCParams>(LParams);

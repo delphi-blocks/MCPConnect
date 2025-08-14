@@ -83,7 +83,7 @@ object Form1: TForm1
   object btnRtti: TButton
     Left = 432
     Top = 8
-    Width = 75
+    Width = 137
     Height = 25
     Caption = 'Call Rtti'
     TabOrder = 6
@@ -106,8 +106,6 @@ object Form1: TForm1
     Align = alBottom
     Caption = 'Panel1'
     TabOrder = 8
-    ExplicitTop = 111
-    ExplicitWidth = 1264
     object mmoLog: TMemo
       Left = 1
       Top = 1
@@ -150,13 +148,22 @@ object Form1: TForm1
         '42], "id": 2}'
         '<-- {"jsonrpc": "2.0", "result": -19, "id": 2}'
         ''
+        '--> {"jsonrpc": "2.0", "method": "getname", "params": [{"name": '
+        '"luca"}], "id": 2}'
+        ''
+        ''
         'RPC call with named parameters:'
-        '--> {"jsonrpc": "2.0", "method": "subtract", "params": '
+        '--> {"jsonrpc": "2.0", "method": "subtract", "params":'
         '{"subtrahend": 23, "minuend": 42}, "id": 3}'
         '<-- {"jsonrpc": "2.0", "result": 19, "id": 3}'
-        '--> {"jsonrpc": "2.0", "method": "subtract", "params": '
+        '--> {"jsonrpc": "2.0", "method": "subtract", "params":'
         '{"minuend": 42, "subtrahend": 23}, "id": 4}'
         '<-- {"jsonrpc": "2.0", "result": 19, "id": 4}'
+        ''
+        
+          '--> {"jsonrpc": "2.0", "method": "getname", "params": {"person":' +
+          ' '
+        '{"name": "luca"}}, "id": 2}'
         ''
         'a Notification:'
         '--> {"jsonrpc": "2.0", "method": "update", "params": '
@@ -239,7 +246,6 @@ object Form1: TForm1
       ParentFont = False
       ScrollBars = ssVertical
       TabOrder = 1
-      ExplicitWidth = 662
     end
   end
   object btnToolSerialize: TButton
@@ -250,5 +256,14 @@ object Form1: TForm1
     Caption = 'Tool Serialization'
     TabOrder = 9
     OnClick = btnToolSerializeClick
+  end
+  object BtnInvokeFromRequest: TButton
+    Left = 432
+    Top = 39
+    Width = 137
+    Height = 25
+    Caption = 'Invoke from request'
+    TabOrder = 10
+    OnClick = BtnInvokeFromRequestClick
   end
 end

@@ -37,23 +37,32 @@ type
     property Id: TJRPCID read FId write FId;
   end;
 
+  TJRPCParamList = class(TObjectList<TJSONValue>)
+  public
+    function ToJson: TJSONArray;
+  end;
+
+  TJRPCParamDictionary = class(TObjectDictionary<string, TJSONValue>)
+  public
+    function ToJson: TJSONObject;
+  end;
 
   TJRPCParamsType = (ByPos, ByName, Null);
   TJRPCParams = class
   private
-    FByName: TDictionary<string, TValue>;
-    FByPos: TArray<TValue>;
+    FByName: TJRPCParamDictionary;
+    FByPos: TJRPCParamList;
     function GetCount: Integer;
   public
     constructor Create;
     destructor Destroy; override;
 
-    procedure AddParam(const AValue: TValue); overload;
-    procedure AddParam(const AName: string; const AValue: TValue); overload;
+    procedure AddParam(const AValue: TJSONValue); overload;
+    procedure AddParam(const AName: string; const AValue: TJSONValue); overload;
     function ParamsType: TJRPCParamsType;
 
-    property ByPos: TArray<TValue> read FByPos write FByPos;
-    property ByName: TDictionary<string, TValue> read FByName write FByName;
+    property ByPos: TJRPCParamList read FByPos write FByPos;
+    property ByName: TJRPCParamDictionary read FByName write FByName;
     property Count: Integer read GetCount;
   end;
 
@@ -81,8 +90,15 @@ type
     constructor Create;
     destructor Destroy; override;
 
-    procedure AddPositionParam(const AValue: TValue);
-    procedure AddNamedParam(const AName: string; const AValue: TValue);
+    procedure AddPositionParam(const AValue: TJSONValue); overload;
+    procedure AddPositionParam(AValue: Integer); overload;
+    procedure AddPositionParam(AValue: Double); overload;
+    procedure AddPositionParam(const AValue: string); overload;
+
+    procedure AddNamedParam(const AName: string; const AValue: TJSONValue); overload;
+    procedure AddNamedParam(const AName: string; AValue: Integer); overload;
+    procedure AddNamedParam(const AName: string; AValue: Double); overload;
+    procedure AddNamedParam(const AName, AValue: string); overload;
 
     [NeonProperty('method')]
     property Method: string read FMethod write FMethod;
@@ -144,6 +160,16 @@ end;
 
 { TJRPCRequest }
 
+procedure TJRPCRequest.AddNamedParam(const AName: string; AValue: Integer);
+begin
+  AddNamedParam(AName, TJSONNumber.Create(AValue));
+end;
+
+procedure TJRPCRequest.AddPositionParam(AValue: Integer);
+begin
+  AddPositionParam(TJSONNumber.Create(AValue));
+end;
+
 constructor TJRPCRequest.Create;
 begin
   inherited;
@@ -157,21 +183,41 @@ begin
   inherited;
 end;
 
-procedure TJRPCRequest.AddPositionParam(const AValue: TValue);
+procedure TJRPCRequest.AddPositionParam(const AValue: TJSONValue);
 begin
   FParams.AddParam(AValue);
 end;
 
-procedure TJRPCRequest.AddNamedParam(const AName: string; const AValue: TValue);
+procedure TJRPCRequest.AddNamedParam(const AName: string; const AValue: TJSONValue);
 begin
   FParams.AddParam(AName, AValue);
 end;
 
+procedure TJRPCRequest.AddNamedParam(const AName, AValue: string);
+begin
+  AddNamedParam(AName, TJSONString.Create(AValue));
+end;
+
+procedure TJRPCRequest.AddNamedParam(const AName: string; AValue: Double);
+begin
+  AddNamedParam(AName, TJSONNumber.Create(AValue));
+end;
+
+procedure TJRPCRequest.AddPositionParam(AValue: Double);
+begin
+  AddPositionParam(TJSONNumber.Create(AValue));
+end;
+
+procedure TJRPCRequest.AddPositionParam(const AValue: string);
+begin
+  AddPositionParam(TJSONString.Create(AValue));
+end;
+
 { TJRPCParams }
 
-procedure TJRPCParams.AddParam(const AName: string; const AValue: TValue);
+procedure TJRPCParams.AddParam(const AName: string; const AValue: TJSONValue);
 begin
-  if Length(ByPos) > 0 then
+  if ByPos.Count > 0 then
     raise Exception.Create('Only position params are allowed');
 
   ByName.Add(AName, AValue);
@@ -179,13 +225,14 @@ end;
 
 constructor TJRPCParams.Create;
 begin
-  FByName := TDictionary<string, TValue>.Create;
+  FByName := TJRPCParamDictionary.Create([doOwnsValues]);
+  FByPos := TJRPCParamList.Create(True);
 end;
 
 destructor TJRPCParams.Destroy;
 begin
   FByName.Free;
-
+  FByPos.Free;
   inherited;
 end;
 
@@ -193,36 +240,36 @@ function TJRPCParams.GetCount: Integer;
 begin
   Result := 0;
 
-  if (Length(FByPos) = 0) and (FByName.Count = 0)  then
+  if (FByPos.Count = 0) and (FByName.Count = 0)  then
     Exit(0);
 
-  if (Length(FByPos) = 0)  then
+  if (FByPos.Count = 0)  then
     Exit(FByName.Count);
 
   if (FByName.Count = 0)  then
-    Exit(Length(FByPos));
+    Exit(FByPos.Count);
 end;
 
 function TJRPCParams.ParamsType: TJRPCParamsType;
 begin
   Result := TJRPCParamsType.Null;
 
-  if (Length(FByPos) = 0) and (FByName.Count = 0)  then
+  if (FByPos.Count = 0) and (FByName.Count = 0)  then
     Exit(TJRPCParamsType.Null);
 
-  if (Length(FByPos) = 0)  then
+  if (FByPos.Count = 0)  then
     Exit(TJRPCParamsType.ByName);
 
   if (FByName.Count = 0)  then
     Exit(TJRPCParamsType.ByPos);
 end;
 
-procedure TJRPCParams.AddParam(const AValue: TValue);
+procedure TJRPCParams.AddParam(const AValue: TJSONValue);
 begin
   if ByName.Count > 0 then
     raise Exception.Create('Only named params are allowed');
 
-  ByPos := ByPos + [AValue];
+  ByPos.Add(AValue);
 end;
 
 { TJRPCID }
@@ -317,8 +364,8 @@ begin
   LParams := AValue.AsObject as TJRPCParams;
 
   case LParams.ParamsType of
-    ByPos:  Result := AContext.WriteDataMember(TValue.From<TArray<TValue>>(LParams.ByPos));
-    ByName: Result := AContext.WriteDataMember(LParams.ByName);
+    ByPos:  Result := LParams.ByPos.ToJson;
+    ByName: Result := LParams.ByName.ToJson;
     Null:   Result := TJSONObject.Create;
   end;
 
@@ -340,7 +387,7 @@ begin
   begin
     LArray := AValue as TJSONArray;
     for LItem in LArray do
-      LParams.AddParam(LItem.Clone);
+      LParams.AddParam(LItem.Clone as TJSONValue);
   end;
 
   // Is a dictionary
@@ -348,7 +395,7 @@ begin
   begin
     LObject := AValue as TJSONObject;
     for LPair in LObject do
-      LParams.AddParam(LPair.JsonString.Value, LPair.JsonValue.Clone);
+      LParams.AddParam(LPair.JsonString.Value, LPair.JsonValue.Clone as TJSONValue);
   end;
 
   Result := TValue.From<TJRPCParams>(LParams);
@@ -379,6 +426,42 @@ begin
 
   if FError.Code.IsNull or FError.Message.IsNull then
     Result := False;
+end;
+
+{ TJRPCParamList }
+
+function TJRPCParamList.ToJson: TJSONArray;
+var
+  LValue: TJSONValue;
+begin
+  Result := TJSONArray.Create;
+  try
+    for LValue in Self do
+    begin
+      Result.AddElement(LValue.Clone as TJSONValue);
+    end;
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+{ TJRPCParamDictionary }
+
+function TJRPCParamDictionary.ToJson: TJSONObject;
+var
+  LValue: TPair<string, TJSONValue>;
+begin
+  Result := TJSONObject.Create;
+  try
+    for LValue in Self do
+    begin
+      Result.AddPair(LValue.Key, LValue.Value.Clone as TJSONValue);
+    end;
+  except
+    Result.Free;
+    raise;
+  end;
 end;
 
 end.

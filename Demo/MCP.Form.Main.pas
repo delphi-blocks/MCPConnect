@@ -104,33 +104,44 @@ end;
 procedure TForm1.btnRequestClick(Sender: TObject);
 begin
   var r := TJRPCRequest.Create;
-  r.Id := 1;
-  r.Method := 'TestParam';
-  r.AddPositionParam(12);
-  r.AddPositionParam(23);
+  try
+    r.Id := 1;
+    r.Method := 'TestParam';
+    r.AddPositionParam(12);
+    r.AddPositionParam(23);
 
-  var s := TNeon.ObjectToJSONString(r, GetNeonConfig);
-  mmoLog.Lines.Add(s);
+    var s := TNeon.ObjectToJSONString(r, GetNeonConfig);
+    mmoLog.Lines.Add(s);
+  finally
+    r.Free;
+  end;
 end;
 
 procedure TForm1.btnRequestDesClick(Sender: TObject);
 begin
   var r := TNeon.JSONToObject<TJRPCRequest>(mmoLog.Lines.Text, GetNeonConfig);
-
-  mmoLog.Lines.Add('method name: ' + r.Method);
-  mmoLog.Lines.Add('param count: ' + r.Params.Count.ToString);
+  try
+    mmoLog.Lines.Add('method name: ' + r.Method);
+    mmoLog.Lines.Add('param count: ' + r.Params.Count.ToString);
+  finally
+    r.Free;
+  end;
 end;
 
 procedure TForm1.btnRequestNamedClick(Sender: TObject);
 begin
   var r := TJRPCRequest.Create;
-  r.Id := 1;
-  r.Method := 'sum';
-  r.AddNamedParam('first', 12);
-  r.AddNamedParam('second', 'Paolo Rossi');
+  try
+    r.Id := 1;
+    r.Method := 'sum';
+    r.AddNamedParam('first', 12);
+    r.AddNamedParam('second', 'Paolo Rossi');
 
-  var s := TNeon.ObjectToJSONString(r, GetNeonConfig);
-  mmoLog.Lines.Add(s);
+    var s := TNeon.ObjectToJSONString(r, GetNeonConfig);
+    mmoLog.Lines.Add(s);
+  finally
+    r.Free;
+  end;
 end;
 
 procedure TForm1.btnResponseClick(Sender: TObject);

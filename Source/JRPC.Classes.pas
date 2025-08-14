@@ -9,13 +9,14 @@ uses
   Neon.Core.Utils,
   Neon.Core.Nullables,
   Neon.Core.Attributes,
-  Neon.Core.Persistence;
+  Neon.Core.Persistence,
+  Neon.Core.Persistence.JSON,
+  Neon.Core.Serializers.RTL;
 
 type
   TJRPCID = record
   private
-    [NeonInclude]
-    id: TValue;
+    [NeonInclude] id: TValue;
   public
     class operator Implicit(ASource: Integer): TJRPCID;
     class operator Implicit(ASource: string): TJRPCID;
@@ -24,9 +25,10 @@ type
   TJRPCEnvelope = class
   public const
 	  JSONRPC_VERSION = '2.0';
-  private
+  protected
     FId: TJRPCID;
     FJsonRpc: string;
+    function GetNeonConfig: INeonConfiguration;
   public
     constructor Create;
 
@@ -95,10 +97,14 @@ type
     procedure AddPositionParam(AValue: Double); overload;
     procedure AddPositionParam(const AValue: string); overload;
 
+
     procedure AddNamedParam(const AName: string; const AValue: TJSONValue); overload;
     procedure AddNamedParam(const AName: string; AValue: Integer); overload;
     procedure AddNamedParam(const AName: string; AValue: Double); overload;
     procedure AddNamedParam(const AName, AValue: string); overload;
+
+    procedure AddPosParam(const AValue: TValue);
+    procedure AddNamParam(const AName: string; const AValue: TValue);
 
     [NeonProperty('method')]
     property Method: string read FMethod write FMethod;
@@ -116,6 +122,7 @@ type
     destructor Destroy; override;
 
     function IsError: Boolean;
+    procedure SetResult(AValue: TValue);
 
     [NeonProperty('error')]
     property Error: TJRPCError read FError write FError;
@@ -158,6 +165,14 @@ begin
   FJsonRpc := JSONRPC_VERSION;
 end;
 
+function TJRPCEnvelope.GetNeonConfig: INeonConfiguration;
+begin
+  Result := TNeonConfiguration.Default
+    .RegisterSerializer(TTValueSerializer)
+    .RegisterSerializer(TJParamsSerializer)
+    .RegisterSerializer(TJResponseSerializer);
+end;
+
 { TJRPCRequest }
 
 procedure TJRPCRequest.AddNamedParam(const AName: string; AValue: Integer);
@@ -198,6 +213,15 @@ begin
   AddNamedParam(AName, TJSONString.Create(AValue));
 end;
 
+procedure TJRPCRequest.AddNamParam(const AName: string; const AValue: TValue);
+var
+  LParamJSON: TJSONValue;
+begin
+  LParamJSON := TNeon.ValueToJSON(AValue, GetNeonConfig);
+  if Assigned(LParamJSON) then
+    FParams.AddParam(AName, LParamJSON);
+end;
+
 procedure TJRPCRequest.AddNamedParam(const AName: string; AValue: Double);
 begin
   AddNamedParam(AName, TJSONNumber.Create(AValue));
@@ -211,6 +235,15 @@ end;
 procedure TJRPCRequest.AddPositionParam(const AValue: string);
 begin
   AddPositionParam(TJSONString.Create(AValue));
+end;
+
+procedure TJRPCRequest.AddPosParam(const AValue: TValue);
+var
+  LParamJSON: TJSONValue;
+begin
+  LParamJSON := TNeon.ValueToJSON(AValue, GetNeonConfig);
+  if Assigned(LParamJSON) then
+    FParams.AddParam(LParamJSON);
 end;
 
 { TJRPCParams }
@@ -426,6 +459,11 @@ begin
 
   if FError.Code.IsNull or FError.Message.IsNull then
     Result := False;
+end;
+
+procedure TJRPCResponse.SetResult(AValue: TValue);
+begin
+
 end;
 
 { TJRPCParamList }

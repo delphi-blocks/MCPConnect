@@ -3,7 +3,7 @@ unit MCP.Invoker;
 interface
 
 uses
-  System.SysUtils, System.Rtti, System.Classes,
+  System.SysUtils, System.Rtti, System.Classes, System.Generics.Collections,
   System.TypInfo, System.JSON,
 
   Neon.Core.Utils,
@@ -82,6 +82,49 @@ type
     procedure SetNeonConfig(AConfig: INeonConfiguration);
 
     constructor Create(AInstance: TObject);
+  end;
+
+  // With this anonymous method, you can define custom disposal actions
+  TDisposeAction = reference to procedure;
+
+  /// <summary> 
+  ///   IMCPGarbageCollector defines an interface for managing and disposing
+  ///   of objects or values that require explicit cleanup. It allows adding
+  ///   values with optional custom disposal actions, and provides a method
+  ///   to collect and dispose all tracked garbage.
+  /// </summary>
+  IMCPGarbageCollector = interface
+    ['{407C168F-A81C-4E41-96B2-BFEA94C58B0D}']
+    procedure Add(const AValue: TValue); overload;
+    procedure Add(const AValue: TValue; AAction: TDisposeAction); overload;
+    procedure CollectGarbage();
+  end;
+
+  /// <summary> 
+  /// TMCPGarbageCollector implements IMCPGarbageCollector and provides a
+  /// mechanism to track and dispose of objects or values. It supports
+  /// custom disposal actions and recursive cleanup of arrays and class
+  /// instances. Garbage is collected either on demand or automatically
+  /// on destruction.
+  /// NOTICE: When the garbage collector is destroyed, it will automatically
+  /// collect and dispose all tracked garbage. If you get the instance through
+  /// the *CreateInstance* method, then it will be destroyed automatically
+  /// when it goes out of scope.
+  /// </summary>
+  TMCPGarbageCollector = class(TInterfacedObject, IMCPGarbageCollector)
+  private
+    FGarbage: TDictionary<TValue, TDisposeAction>;
+    procedure CollectGarbageValue(const AValue: TValue);
+    procedure CollectSingleGarbage(AGarbage: TPair<TValue, TDisposeAction>);
+  public
+    class function CreateInstance: IMCPGarbageCollector; static;
+  public
+    constructor Create; virtual;
+    destructor Destroy; override;
+
+    procedure Add(const AValue: TValue); overload;
+    procedure Add(const AValue: TValue; AAction: TDisposeAction); overload;
+    procedure CollectGarbage();
   end;
 
 const
@@ -300,6 +343,78 @@ begin
   inherited Create(AMessage);
   FCode := ACode;
   FData := AData;
+end;
+
+{ TMCPGarbageCollector }
+
+procedure TMCPGarbageCollector.Add(const AValue: TValue);
+begin
+  Add(AValue, nil);
+end;
+
+procedure TMCPGarbageCollector.Add(const AValue: TValue;
+  AAction: TDisposeAction);
+begin
+  if FGarbage.ContainsKey(AValue) then
+    Exit;
+  FGarbage.Add(AValue, AAction);
+end;
+
+procedure TMCPGarbageCollector.CollectGarbage;
+var
+  LGarbage: TPair<TValue, TDisposeAction>;
+begin
+  for LGarbage in FGarbage do
+    CollectSingleGarbage(LGarbage);
+  FGarbage.Clear;
+end;
+
+procedure TMCPGarbageCollector.CollectGarbageValue(const AValue: TValue);
+var
+  LIndex: Integer;
+begin
+  case AValue.Kind of
+    tkClass:
+    begin
+      if (AValue.AsObject <> nil) then
+        //if not TRttiUtils.HasAttribute<SingletonAttribute>(AValue.AsObject.ClassType) then
+        AValue.AsObject.Free;
+    end;
+
+    tkArray,
+    tkDynArray:
+    begin
+      for LIndex := 0 to AValue.GetArrayLength - 1 do
+        CollectGarbageValue(AValue.GetArrayElement(LIndex));
+    end;
+  end;
+end;
+
+procedure TMCPGarbageCollector.CollectSingleGarbage(
+  AGarbage: TPair<TValue, TDisposeAction>);
+begin
+  if Assigned(AGarbage.Value) then
+    AGarbage.Value()
+  else
+    CollectGarbageValue(AGarbage.Key);
+end;
+
+constructor TMCPGarbageCollector.Create;
+begin
+  inherited;
+  FGarbage := TDictionary<TValue, TDisposeAction>.Create;
+end;
+
+class function TMCPGarbageCollector.CreateInstance: IMCPGarbageCollector;
+begin
+  Result := TMCPGarbageCollector.Create;
+end;
+
+destructor TMCPGarbageCollector.Destroy;
+begin
+  CollectGarbage;
+  FGarbage.Free;
+  inherited;
 end;
 
 end.

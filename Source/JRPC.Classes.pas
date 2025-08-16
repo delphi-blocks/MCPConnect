@@ -20,6 +20,8 @@ type
   public
     class operator Implicit(ASource: Integer): TJRPCID;
     class operator Implicit(ASource: string): TJRPCID;
+    class operator Implicit(ASource: TJRPCID): string;
+    class operator Implicit(ASource: TJRPCID): Integer;
   end;
 
   TJRPCEnvelope = class
@@ -315,6 +317,16 @@ end;
 class operator TJRPCID.Implicit(ASource: string): TJRPCID;
 begin
   Result.id := ASource;
+end;
+
+class operator TJRPCID.Implicit(ASource: TJRPCID): Integer;
+begin
+  Result := ASource.id.AsInteger;
+end;
+
+class operator TJRPCID.Implicit(ASource: TJRPCID): string;
+begin
+  Result := ASource.id.AsString;
 end;
 
 { TJResponseSerializer }

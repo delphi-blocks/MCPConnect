@@ -84,6 +84,10 @@ type
     [McpTool('getname', 'Test Function')]
     function GetPersonName(
       [McpParam('person', 'The person object', true)] p: TPerson): string;
+
+    [McpTool('createperson', 'Test Function')]
+    function CreatePerson(
+      [McpParam('name', 'The person object', true)] const AName: string): TPerson;
   end;
 
 var
@@ -104,17 +108,13 @@ end;
 procedure TForm1.btnRequestClick(Sender: TObject);
 begin
   var r := TJRPCRequest.Create;
-  try
-    r.Id := 1;
-    r.Method := 'TestParam';
-    r.AddPositionParam(12);
-    r.AddPositionParam(23);
+  r.Id := 1;
+  r.Method := 'TestParam';
+  r.AddPositionParam(12);
+  r.AddPositionParam(23);
 
-    var s := TNeon.ObjectToJSONString(r, GetNeonConfig);
-    mmoLog.Lines.Add(s);
-  finally
-    r.Free;
-  end;
+  var s := TNeon.ObjectToJSONString(r, GetNeonConfig);
+  mmoLog.Lines.Add(s);
 end;
 
 procedure TForm1.btnRequestDesClick(Sender: TObject);
@@ -217,26 +217,23 @@ end;
 
 procedure TForm1.BtnInvokeFromRequestClick(Sender: TObject);
 begin
+  var GC := TMCPGarbageCollector.CreateInstance;
+
   var LRequest := TNeon.JSONToObject<TJRPCRequest>(mmoLog.Lines.Text, GetNeonConfig);
-  try
-    mmoLog.Lines.Add('------ SERIALIZED REQUEST ------');
-    mmoLog.Lines.Add( TNeon.ObjectToJSONString(LRequest, GetNeonConfig) );
-    var LResponse := TJRPCResponse.Create;
-    try
-      var LMethodInvoker: IMCPInvokable := TMCPObjectInvoker.Create(Self);
-      LMethodInvoker.NeonConfig := TNeonConfiguration.Camel;
-      LMethodInvoker.Invoke(LRequest, LResponse);
+  GC.Add(LRequest);
+  mmoLog.Lines.Add('------ SERIALIZED REQUEST ------');
+  mmoLog.Lines.Add( TNeon.ObjectToJSONString(LRequest, GetNeonConfig) );
 
-      mmoLog.Lines.Add('------ SERIALIZED RESPONSE ------');
-      var LStringResponse := TNeon.ObjectToJSONString(LResponse, GetNeonConfig);
-      mmoLog.Lines.Add(LStringResponse);
+  var LResponse := TJRPCResponse.Create;
+  GC.Add(LResponse);
+  var LMethodInvoker: IMCPInvokable := TMCPObjectInvoker.Create(Self);
+  LMethodInvoker.NeonConfig := TNeonConfiguration.Camel;
+  LMethodInvoker.Invoke(LRequest, LResponse);
 
-    finally
-      LResponse.Free;
-    end;
-  finally
-    LRequest.Free;
-  end;
+  mmoLog.Lines.Add('------ SERIALIZED RESPONSE ------');
+  var LStringResponse := TNeon.ObjectToJSONString(LResponse, GetNeonConfig);
+  mmoLog.Lines.Add(LStringResponse);
+
 end;
 
 procedure TForm1.btnToolSerializeClick(Sender: TObject);
@@ -252,6 +249,11 @@ begin
   j.AddPair('inputSchema', schema);
   }
   mmoLog.Lines.Add(TNeon.Print(schema, true));
+end;
+
+function TForm1.CreatePerson(const AName: string): TPerson;
+begin
+  Result := TPerson.Create(AName);
 end;
 
 function TForm1.DoubleValue(AValue: Integer): Integer;

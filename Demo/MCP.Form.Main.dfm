@@ -151,6 +151,10 @@ object Form1: TForm1
         '--> {"jsonrpc": "2.0", "method": "getname", "params": [{"name": '
         '"luca"}], "id": 2}'
         ''
+        
+          '{"jsonrpc": "2.0", "method": "createperson", "params": ["luca"],' +
+          ' '
+        '"id": 2}'
         ''
         'RPC call with named parameters:'
         '--> {"jsonrpc": "2.0", "method": "subtract", "params":'
@@ -160,9 +164,8 @@ object Form1: TForm1
         '{"minuend": 42, "subtrahend": 23}, "id": 4}'
         '<-- {"jsonrpc": "2.0", "result": 19, "id": 4}'
         ''
-        
-          '--> {"jsonrpc": "2.0", "method": "getname", "params": {"person":' +
-          ' '
+        '--> {"jsonrpc": "2.0", "method": "getname", "params": '
+        '{"person": '
         '{"name": "luca"}}, "id": 2}'
         ''
         'a Notification:'

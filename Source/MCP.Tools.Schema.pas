@@ -156,13 +156,15 @@ type
     /// <summary>
     ///   Writer for a method's params
     /// </summary>
-    procedure WriteParams(AMethod: TRttiMethod; AResult: TJSONObject);
+    procedure WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
 
     /// <summary>
     ///   Writer for Integer types <br />
     /// </summary>
     ///
     function WriteMethod(AMethod: TRttiMethod): TJSONObject;
+    function WriteMethods(AType: TRttiType): TJSONArray;
+
 
 
     function IsNullable(AType: TRttiType; out ANullable: INeonTypeInfoNullable): Boolean;
@@ -195,8 +197,20 @@ type
     /// <summary>
     ///   Serialize any Delphi type into a JSONValue, the Delphi type must be passed as a TRttiType
     /// </summary>
-    class function MethodToJSONSchema(AMethod: TRttiMethod): TJSONObject; overload;
-    class function MethodToJSONSchema(AMethod: TRttiMethod; AConfig: INeonConfiguration): TJSONObject; overload;
+    class function MethodToTool(AMethod: TRttiMethod): TJSONObject; overload;
+    class function MethodToTool(AMethod: TRttiMethod; AConfig: INeonConfiguration): TJSONObject; overload;
+
+    /// <summary>
+    ///   Serialize any Delphi type into a JSONValue, the Delphi type must be passed as a TRttiType
+    /// </summary>
+    class function TypeToTools(AType: TRttiType): TJSONValue; overload;
+    class function TypeToTools(AType: TRttiType; AConfig: INeonConfiguration): TJSONValue; overload;
+
+    /// <summary>
+    ///   Serialize any Delphi type into a JSONValue, the Delphi type must be passed as a TRttiType
+    /// </summary>
+    class function ClassToTools(AClass: TClass): TJSONValue; overload;
+    class function ClassToTools(AClass: TClass; AConfig: INeonConfiguration): TJSONValue; overload;
 
   end;
 
@@ -238,6 +252,16 @@ begin
   Result := TypeToJSONSchema(TRttiUtils.Context.GetType(AClass), AConfig);
 end;
 
+class function TMCPSchemaGenerator.ClassToTools(AClass: TClass; AConfig: INeonConfiguration): TJSONValue;
+begin
+
+end;
+
+class function TMCPSchemaGenerator.ClassToTools(AClass: TClass): TJSONValue;
+begin
+  Result := TypeToTools(TRttiUtils.Context.GetType(AClass), TNeonConfiguration.Default);
+end;
+
 constructor TMCPSchemaGenerator.Create(const AConfig: INeonConfiguration);
 begin
   inherited Create(AConfig);
@@ -268,7 +292,7 @@ begin
   Result := Assigned(AStream);
 end;
 
-class function TMCPSchemaGenerator.MethodToJSONSchema(AMethod: TRttiMethod; AConfig: INeonConfiguration): TJSONObject;
+class function TMCPSchemaGenerator.MethodToTool(AMethod: TRttiMethod; AConfig: INeonConfiguration): TJSONObject;
 var
   LGenerator: TMCPSchemaGenerator;
 begin
@@ -280,9 +304,10 @@ begin
   end;
 end;
 
-class function TMCPSchemaGenerator.MethodToJSONSchema(AMethod: TRttiMethod): TJSONObject;
+class function TMCPSchemaGenerator.MethodToTool(AMethod: TRttiMethod):
+    TJSONObject;
 begin
-  Result := MethodToJSONSchema(AMethod, TNeonConfiguration.Default);
+  Result := MethodToTool(AMethod, TNeonConfiguration.Default);
 end;
 
 class function TMCPSchemaGenerator.TypeToJSONSchema(AType: TRttiType; AConfig: INeonConfiguration): TJSONObject;
@@ -295,6 +320,23 @@ begin
   finally
     LGenerator.Free;
   end;
+end;
+
+class function TMCPSchemaGenerator.TypeToTools(AType: TRttiType; AConfig: INeonConfiguration): TJSONValue;
+var
+  LGenerator: TMCPSchemaGenerator;
+begin
+  LGenerator := TMCPSchemaGenerator.Create(AConfig);
+  try
+    Result := LGenerator.WriteMethods(AType);
+  finally
+    LGenerator.Free;
+  end;
+end;
+
+class function TMCPSchemaGenerator.TypeToTools(AType: TRttiType): TJSONValue;
+begin
+  Result := TypeToTools(AType, TNeonConfiguration.Default);
 end;
 
 class function TMCPSchemaGenerator.TypeToJSONSchema(AType: TRttiType): TJSONObject;
@@ -553,18 +595,23 @@ var
   LToolName, LToolDesc: string;
   LProps, LSchema: TJSONObject;
   LAttr: MCPToolAttribute;
+  LRequired: TJSONArray;
 begin
   LProps := TJSONObject.Create;
+  LRequired := TJSONArray.Create;
   try
-    WriteParams(AMethod, LProps);
+    WriteParams(AMethod, LProps, LRequired);
   except
     LProps.Free;
+    LRequired.Free;
     raise;
   end;
 
   LSchema := TJSONObject.Create
     .AddPair('type', 'object')
-    .AddPair('properties', LProps);
+    .AddPair('properties', LProps)
+    .AddPair('additionalProperties', False)
+    .AddPair('$schema', 'http://json-schema.org/draft-07/schema#');
 
   LToolName := AMethod.Name;
   LToolDesc := AMethod.Name;
@@ -583,6 +630,25 @@ begin
     .AddPair('name', LToolName)
     .AddPair('description', LToolDesc)
     .AddPair('inputSchema', LSchema);
+
+  if LRequired.Count > 0 then
+    Result.AddPair('required', LRequired);
+end;
+
+function TMCPSchemaGenerator.WriteMethods(AType: TRttiType): TJSONArray;
+begin
+  var methods := AType.GetMethods;
+  var tool: TJSONObject;
+
+  Result := TJSONArray.Create;
+
+  for var m in methods do
+    if Assigned(m.GetAttribute(MCPToolAttribute)) then
+    begin
+      tool := WriteMethod(m);
+      Result.AddElement(tool);
+    end;
+
 end;
 
 function TMCPSchemaGenerator.WriteNullable(AType: TRttiType; ANeonObject: TNeonRttiObject; ANullable: INeonTypeInfoNullable): TJSONObject;
@@ -606,21 +672,22 @@ begin
     .AddPair('properties', LProperties);
 end;
 
-procedure TMCPSchemaGenerator.WriteParams(AMethod: TRttiMethod; AResult: TJSONObject);
+procedure TMCPSchemaGenerator.WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
 var
   LJSONObj: TJSONObject;
   LParam: TRttiParameter;
+  LAttr: MCPParamAttribute;
 begin
   for LParam in AMethod.GetParameters do
   begin
+    LAttr := FindAttribute<MCPParamAttribute>(LParam.GetAttributes);
+      if not Assigned(LAttr) then
+        raise Exception.Create('Non annotated params are not permitted');
     try
       LJSONObj := WriteDataMember(LParam.ParamType);
-      var att := FindAttribute<MCPParamAttribute>(LParam.GetAttributes);
-      if Assigned(att) then
-      begin
-        LJSONObj.AddPair('description', TJSONString.Create(att.Description));
-        AResult.AddPair(att.Name, LJSONObj);
-      end;
+      LJSONObj.AddPair('description', TJSONString.Create(LAttr.Description));
+      AProps.AddPair(LAttr.Name, LJSONObj);
+      ARequired.Add(LAttr.Name);
     except
       LogError(Format('Error converting param [%s] of method [%s]',
         [LParam.Name, AMethod.Name]));

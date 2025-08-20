@@ -10,8 +10,7 @@ uses
   Neon.Core.Nullables,
   Neon.Core.Attributes,
   Neon.Core.Persistence,
-  Neon.Core.Persistence.JSON,
-  Neon.Core.Serializers.RTL;
+  Neon.Core.Persistence.JSON;
 
 type
   TJRPCID = record
@@ -20,8 +19,9 @@ type
   public
     class operator Implicit(ASource: Integer): TJRPCID;
     class operator Implicit(ASource: string): TJRPCID;
-    class operator Implicit(ASource: TJRPCID): string;
-    class operator Implicit(ASource: TJRPCID): Integer;
+
+    class operator Implicit(const ASource: TJRPCID): Integer;
+    class operator Implicit(const ASource: TJRPCID): string;
   end;
 
   TJRPCEnvelope = class
@@ -94,19 +94,9 @@ type
     constructor Create;
     destructor Destroy; override;
 
-    procedure AddPositionParam(const AValue: TJSONValue); overload;
-    procedure AddPositionParam(AValue: Integer); overload;
-    procedure AddPositionParam(AValue: Double); overload;
-    procedure AddPositionParam(const AValue: string); overload;
 
-
-    procedure AddNamedParam(const AName: string; const AValue: TJSONValue); overload;
-    procedure AddNamedParam(const AName: string; AValue: Integer); overload;
-    procedure AddNamedParam(const AName: string; AValue: Double); overload;
-    procedure AddNamedParam(const AName, AValue: string); overload;
-
-    procedure AddPosParam(const AValue: TValue);
-    procedure AddNamParam(const AName: string; const AValue: TValue);
+    procedure AddPositionParam(const AValue: TValue);
+    procedure AddNamedParam(const AName: string; const AValue: TValue);
 
     [NeonProperty('method')]
     property Method: string read FMethod write FMethod;
@@ -158,6 +148,20 @@ type
     function Deserialize(AValue: TJSONValue; const AData: TValue; ANeonObject: TNeonRttiObject; AContext: IDeserializerContext): TValue; override;
   end;
 
+  /// <summary>
+  ///   Custom serializer for the TValue record.
+  /// </summary>
+  TJValueSerializer = class(TCustomSerializer)
+  protected
+    class function GetTargetInfo: PTypeInfo; override;
+    class function CanHandle(AType: PTypeInfo): Boolean; override;
+  public
+    function Serialize(const AValue: TValue; ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue; override;
+    function Deserialize(AValue: TJSONValue; const AData: TValue; ANeonObject: TNeonRttiObject; AContext: IDeserializerContext): TValue; override;
+  end;
+
+
+
 implementation
 
 { TJRPCEnvelope }
@@ -170,21 +174,9 @@ end;
 function TJRPCEnvelope.GetNeonConfig: INeonConfiguration;
 begin
   Result := TNeonConfiguration.Default
-    .RegisterSerializer(TTValueSerializer)
+    .RegisterSerializer(TJValueSerializer)
     .RegisterSerializer(TJParamsSerializer)
     .RegisterSerializer(TJResponseSerializer);
-end;
-
-{ TJRPCRequest }
-
-procedure TJRPCRequest.AddNamedParam(const AName: string; AValue: Integer);
-begin
-  AddNamedParam(AName, TJSONNumber.Create(AValue));
-end;
-
-procedure TJRPCRequest.AddPositionParam(AValue: Integer);
-begin
-  AddPositionParam(TJSONNumber.Create(AValue));
 end;
 
 constructor TJRPCRequest.Create;
@@ -200,22 +192,7 @@ begin
   inherited;
 end;
 
-procedure TJRPCRequest.AddPositionParam(const AValue: TJSONValue);
-begin
-  FParams.AddParam(AValue);
-end;
-
-procedure TJRPCRequest.AddNamedParam(const AName: string; const AValue: TJSONValue);
-begin
-  FParams.AddParam(AName, AValue);
-end;
-
-procedure TJRPCRequest.AddNamedParam(const AName, AValue: string);
-begin
-  AddNamedParam(AName, TJSONString.Create(AValue));
-end;
-
-procedure TJRPCRequest.AddNamParam(const AName: string; const AValue: TValue);
+procedure TJRPCRequest.AddNamedParam(const AName: string; const AValue: TValue);
 var
   LParamJSON: TJSONValue;
 begin
@@ -224,22 +201,7 @@ begin
     FParams.AddParam(AName, LParamJSON);
 end;
 
-procedure TJRPCRequest.AddNamedParam(const AName: string; AValue: Double);
-begin
-  AddNamedParam(AName, TJSONNumber.Create(AValue));
-end;
-
-procedure TJRPCRequest.AddPositionParam(AValue: Double);
-begin
-  AddPositionParam(TJSONNumber.Create(AValue));
-end;
-
-procedure TJRPCRequest.AddPositionParam(const AValue: string);
-begin
-  AddPositionParam(TJSONString.Create(AValue));
-end;
-
-procedure TJRPCRequest.AddPosParam(const AValue: TValue);
+procedure TJRPCRequest.AddPositionParam(const AValue: TValue);
 var
   LParamJSON: TJSONValue;
 begin
@@ -319,14 +281,20 @@ begin
   Result.id := ASource;
 end;
 
-class operator TJRPCID.Implicit(ASource: TJRPCID): Integer;
+class operator TJRPCID.Implicit(const ASource: TJRPCID): string;
 begin
-  Result := ASource.id.AsInteger;
+  if ASource.Id.IsType<Integer> then
+    raise Exception.Create('The Id is an integer');
+
+  Result := ASource.Id.AsString;
 end;
 
-class operator TJRPCID.Implicit(ASource: TJRPCID): string;
+class operator TJRPCID.Implicit(const ASource: TJRPCID): Integer;
 begin
-  Result := ASource.id.AsString;
+  if ASource.Id.IsType<string> then
+    raise Exception.Create('The Id is a string');
+
+  Result := ASource.Id.AsInteger;
 end;
 
 { TJResponseSerializer }
@@ -512,6 +480,73 @@ begin
     Result.Free;
     raise;
   end;
+end;
+
+{ TJValueSerializer }
+
+class function TJValueSerializer.CanHandle(AType: PTypeInfo): Boolean;
+begin
+  Result := AType = GetTargetInfo;
+end;
+
+function TJValueSerializer.Deserialize(AValue: TJSONValue; const AData: TValue;
+  ANeonObject: TNeonRttiObject; AContext: IDeserializerContext): TValue;
+var
+  LType: TRttiType;
+  LValue: TValue;
+begin
+  LValue := TValue.Empty;
+
+  if AValue is TJSONNumber then
+  begin
+    if (AValue as TJSONNumber).Value.Contains('.') then
+      LType := TRttiUtils.Context.GetType(TypeInfo(Integer))
+    else
+      LType := TRttiUtils.Context.GetType(TypeInfo(Double));
+
+    LValue := AContext.ReadDataMember(AValue, LType, AData, False);
+  end
+  else if AValue is TJSONString then
+  begin
+    LType := TRttiUtils.Context.GetType(TypeInfo(string));
+    LValue := AContext.ReadDataMember(AValue, LType, AData, False);
+  end
+  else if TJSONUtils.IsBool(AValue) then
+  begin
+    LType := TRttiUtils.Context.GetType(TypeInfo(Boolean));
+    LValue := AContext.ReadDataMember(AValue, LType, AData, False);
+  end;
+
+  Result := LValue;
+end;
+
+class function TJValueSerializer.GetTargetInfo: PTypeInfo;
+begin
+  Result := TypeInfo(TValue);
+end;
+
+function TJValueSerializer.Serialize(const AValue: TValue;
+  ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue;
+var
+  LDataType: TRttiType;
+begin
+  Result := nil;
+
+  if AValue.TypeInfo = TypeInfo(TValue) then
+  begin
+    var vv := AValue.AsType<TValue>;
+    if not Assigned(TRttiUtils.Context.GetType(vv.TypeInfo)) then
+      Exit(nil);
+
+    Result := AContext.WriteDataMember(AValue.AsType<TValue>, False)
+  end;
+
+  {
+  if AValue.Kind = tkRecord then
+    Result := AContext.WriteDataMember(AValue.AsType<TValue>, False)
+  else
+    Result := nil;
+  }
 end;
 
 end.

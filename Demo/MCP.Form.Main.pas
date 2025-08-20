@@ -47,6 +47,8 @@ type
     lblSnippets: TLabel;
     btnToolSerialize: TButton;
     BtnInvokeFromRequest: TButton;
+    Button1: TButton;
+    btnTools: TButton;
     procedure FormCreate(Sender: TObject);
     procedure btnRequestClick(Sender: TObject);
     procedure btnRequestDesClick(Sender: TObject);
@@ -58,6 +60,8 @@ type
     procedure btnRttiClick(Sender: TObject);
     procedure btnToolSerializeClick(Sender: TObject);
     procedure BtnInvokeFromRequestClick(Sender: TObject);
+    procedure btnToolsClick(Sender: TObject);
+    procedure Button1Click(Sender: TObject);
   private
     ctx: TRttiContext;
     tools: TArray<TRttiMethod>;
@@ -208,11 +212,22 @@ begin
 end;
 
 procedure TForm1.btnIdClick(Sender: TObject);
+var
+  s: string;
 begin
-  var a: TJRPCID; // := 12;
 
-  var s := TNeon.ValueToJSONString(TValue.From<TJRPCID>(a), GetNeonConfig);
+  var a: TJRPCID; // := 12;
+  //a.Init;
+  s := TNeon.ValueToJSONString(TValue.From<TJRPCID>(a), GetNeonConfig);
   mmoLog.Lines.Add(s);
+
+
+  var v: TValue;
+  v := 123;
+  var v2 := v;
+  s := TNeon.ValueToJSONString(TValue.From<TValue>(v), GetNeonConfig);
+  mmoLog.Lines.Add(s);
+
 end;
 
 procedure TForm1.BtnInvokeFromRequestClick(Sender: TObject);
@@ -236,12 +251,19 @@ begin
 
 end;
 
+procedure TForm1.btnToolsClick(Sender: TObject);
+begin
+  var tools := TMCPSchemaGenerator.ClassToTools(Self.ClassType);
+
+  mmoLog.Lines.Add(TNeon.Print(tools, true));
+end;
+
 procedure TForm1.btnToolSerializeClick(Sender: TObject);
 begin
   var typ := ctx.GetType(Self.ClassType);
   var m := typ.GetMethod('TestParam');
 
-  var schema := TMCPSchemaGenerator.MethodToJSONSchema(m);
+  var schema := TMCPSchemaGenerator.MethodToTool(m);
   {
   var j := TNeon.ObjectToJSON(t, GetNeonConfig2) as TJSONObject;
 
@@ -249,6 +271,21 @@ begin
   j.AddPair('inputSchema', schema);
   }
   mmoLog.Lines.Add(TNeon.Print(schema, true));
+end;
+
+procedure TForm1.Button1Click(Sender: TObject);
+begin
+  var i1, i2, i3: TJRPCID;
+
+  i1 := 12;
+
+  i2 := i1;
+
+  var x: Integer := i1;
+  var y: Integer := i2;
+
+  mmoLog.Lines.Add(x.ToString);
+  mmoLog.Lines.Add(y.ToString);
 end;
 
 function TForm1.CreatePerson(const AName: string): TPerson;

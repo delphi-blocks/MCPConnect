@@ -106,6 +106,8 @@ object Form1: TForm1
     Align = alBottom
     Caption = 'Panel1'
     TabOrder = 8
+    ExplicitTop = 111
+    ExplicitWidth = 1264
     object mmoLog: TMemo
       Left = 1
       Top = 1
@@ -151,9 +153,8 @@ object Form1: TForm1
         '--> {"jsonrpc": "2.0", "method": "getname", "params": [{"name": '
         '"luca"}], "id": 2}'
         ''
-        
-          '{"jsonrpc": "2.0", "method": "createperson", "params": ["luca"],' +
-          ' '
+        '{"jsonrpc": "2.0", "method": "createperson", "params": '
+        '["luca"], '
         '"id": 2}'
         ''
         'RPC call with named parameters:'
@@ -249,6 +250,7 @@ object Form1: TForm1
       ParentFont = False
       ScrollBars = ssVertical
       TabOrder = 1
+      ExplicitWidth = 662
     end
   end
   object btnToolSerialize: TButton
@@ -268,5 +270,23 @@ object Form1: TForm1
     Caption = 'Invoke from request'
     TabOrder = 10
     OnClick = BtnInvokeFromRequestClick
+  end
+  object Button1: TButton
+    Left = 936
+    Top = 56
+    Width = 75
+    Height = 25
+    Caption = 'Button1'
+    TabOrder = 11
+    OnClick = Button1Click
+  end
+  object btnTools: TButton
+    Left = 648
+    Top = 55
+    Width = 121
+    Height = 25
+    Caption = 'btnTools'
+    TabOrder = 12
+    OnClick = btnToolsClick
   end
 end

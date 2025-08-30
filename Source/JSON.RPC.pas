@@ -1,4 +1,4 @@
-unit JRPC.Classes;
+unit JSON.RPC;
 
 interface
 
@@ -527,8 +527,6 @@ end;
 
 function TJValueSerializer.Serialize(const AValue: TValue;
   ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue;
-var
-  LDataType: TRttiType;
 begin
   Result := nil;
 

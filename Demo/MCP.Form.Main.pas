@@ -7,12 +7,13 @@ uses
   System.TypInfo, System.JSON,
   Vcl.Graphics, Vcl.StdCtrls, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.ExtCtrls,
 
-  JRPC.Classes,
+  JSON.RPC,
 
   MCP.Attributes,
   MCP.Tools,
   MCP.Tools.Schema,
   MCP.Invoker,
+  Attribute.Tags,
 
   Neon.Core.Types,
   Neon.Core.Nullables,
@@ -26,9 +27,20 @@ type
   TPerson = class
   private
     FName: string;
+    FAge: Integer;
+    FDeveloper: Boolean;
   public
-    property Name: string read FName write FName;
     constructor Create(const AName: string);
+
+    [NeonProperty('nome')]
+    [JsonSchema('description=Name of the person,required=true,readOnly')]
+    property Name: string read FName write FName;
+
+    [JsonSchema('description=This is the age of the person,min=0')]
+    property Age: Integer read FAge write FAge;
+
+    [JsonSchema('description=True if the person is a developer')]
+    property Developer: Boolean read FDeveloper write FDeveloper;
   end;
 
   TForm1 = class(TForm)
@@ -49,6 +61,7 @@ type
     BtnInvokeFromRequest: TButton;
     Button1: TButton;
     btnTools: TButton;
+    btnTags: TButton;
     procedure FormCreate(Sender: TObject);
     procedure btnRequestClick(Sender: TObject);
     procedure btnRequestDesClick(Sender: TObject);
@@ -60,6 +73,7 @@ type
     procedure btnRttiClick(Sender: TObject);
     procedure btnToolSerializeClick(Sender: TObject);
     procedure BtnInvokeFromRequestClick(Sender: TObject);
+    procedure btnTagsClick(Sender: TObject);
     procedure btnToolsClick(Sender: TObject);
     procedure Button1Click(Sender: TObject);
   private
@@ -67,31 +81,41 @@ type
     tools: TArray<TRttiMethod>;
     procedure FilterTools;
     function GetNeonConfig: INeonConfiguration;
-    function GetNeonConfig2: INeonConfiguration;
   public
+
     [McpTool('double_or_nothing', 'Doubles or zeroes the param value')] function TestParam(
-      [McpParam('value1', 'Test Parameter 1 for MCP', true)] AParam1: Integer;
-      [McpParam('value2', 'Test Parameter 2 for MCP', true)] AParam2: Boolean
+      [McpParam('value1', 'Test Parameter 1 for MCP')] AParam1: Int64;
+      [McpParam('value2', 'Test Parameter 2 for MCP')] AParam2: Boolean
     ): Integer;
 
-    [McpTool('hello', 'Test Function')] function TestFunc(): string;
+    [McpTool('hello', 'Says: Hello World!')] function TestFunc(): string;
 
     [McpTool('double', 'Test Function')] function DoubleValue(
-      [McpParam('value', 'Test Parameter', true)] AValue: Integer
+      [McpParam('value', 'Test Parameter')] AValue: Integer
     ): Integer;
 
-    [McpTool('subtract', 'Test Function')]
+    [McpTool('subtract', 'Subtracts "b" from "a"', 'readOnly,idempotent')]
     function Sub(
-      [McpParam('minuend', 'minuend', true)] a: Integer;
-      [McpParam('subtrahend', 'subtrahend', true)] b: Integer): Integer;
+      [McpParam('minuend', 'minuend', 'required')] a: Integer;
+      [McpParam('subtrahend', 'subtrahend')] b: Integer
+    ): Integer;
 
-    [McpTool('getname', 'Test Function')]
+    [McpTool('getname', 'Retrieves the name of the person', 'required,min=12')]
     function GetPersonName(
-      [McpParam('person', 'The person object', true)] p: TPerson): string;
+      [McpParam('person', 'The person object')] p: TPerson
+    ): string;
 
-    [McpTool('createperson', 'Test Function')]
+    [McpTool('createperson', 'Test function returning a "person" object')]
     function CreatePerson(
-      [McpParam('name', 'The person object', true)] const AName: string): TPerson;
+      [McpParam('name', 'The person object')] const AName: string
+    ): TPerson;
+
+    [McpSchema('name=testing123,description=testing the new Attribute format')]
+    function TestTags(
+      [McpSchema('name', 'Name of the person',  'required,regex=![\n]')] const Name: string;
+      [McpSchema('name=age,description=Age of the person,required,min=0')] Age: Integer;
+      [McpSchema('name=active,description=If true the magic happens,required')] Active: Boolean
+    ): TDateTime;
   end;
 
 var
@@ -251,11 +275,34 @@ begin
 
 end;
 
+procedure TForm1.btnTagsClick(Sender: TObject);
+begin
+  var tags := TAttributeTags.Create();
+  tags.Parse('title=Come stai??,description=sto bene,readOnly=true,12');
+
+  for var tag in tags.TagMap do
+  begin
+    mmoLog.Lines.add('Name: ' + tag.Key);
+    mmoLog.Lines.add('Value: ' + tag.Value);
+    mmoLog.Lines.add('----------------');
+  end;
+
+  var b: Boolean := Tags.GetValueAs<Boolean>('readOnly');
+
+  if b then
+    mmoLog.Lines.add('It is True!!');
+
+
+  tags.free;
+end;
+
 procedure TForm1.btnToolsClick(Sender: TObject);
 begin
   var tools := TMCPSchemaGenerator.ClassToTools(Self.ClassType);
 
   mmoLog.Lines.Add(TNeon.Print(tools, true));
+
+  tools.Free;
 end;
 
 procedure TForm1.btnToolSerializeClick(Sender: TObject);
@@ -271,6 +318,8 @@ begin
   j.AddPair('inputSchema', schema);
   }
   mmoLog.Lines.Add(TNeon.Print(schema, true));
+
+  schema.Free;
 end;
 
 procedure TForm1.Button1Click(Sender: TObject);
@@ -317,13 +366,6 @@ begin
     .RegisterSerializer(TJResponseSerializer);
 end;
 
-function TForm1.GetNeonConfig2: INeonConfiguration;
-begin
-  Result := TNeonConfiguration.Default
-    .SetMembers([TNeonMembers.Fields])
-    .RegisterSerializer(TTValueSerializer)
-end;
-
 function TForm1.GetPersonName(p: TPerson): string;
 begin
   Result := p.Name;
@@ -334,23 +376,25 @@ begin
   Result := a - b;
 end;
 
-function TForm1.TestParam([McpParam('value1', 'Test Parameter 1 for MCP',
-    true)] AParam1: Integer; [McpParam('value2', 'Test Parameter 2 for MCP',
-    true)] AParam2: Boolean): Integer;
+function TForm1.TestParam(AParam1: Int64; AParam2: Boolean): Integer;
 begin
   Result := AParam1 * 2;
 end;
 
+function TForm1.TestTags(const Name: string; Age: Integer; Active: Boolean): TDateTime;
+begin
+  Result := Now();
+end;
+
 function TForm1.TestFunc: string;
 begin
-  Result := 'Hello World';
+  Result := 'Hello World!';
 end;
 
 { TPerson }
 
 constructor TPerson.Create(const AName: string);
 begin
-  inherited Create;
   FName := AName;
 end;
 

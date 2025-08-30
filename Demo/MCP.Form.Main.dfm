@@ -289,4 +289,13 @@ object Form1: TForm1
     TabOrder = 12
     OnClick = btnToolsClick
   end
+  object btnTags: TButton
+    Left = 1104
+    Top = 40
+    Width = 75
+    Height = 25
+    Caption = 'btnTags'
+    TabOrder = 13
+    OnClick = btnTagsClick
+  end
 end

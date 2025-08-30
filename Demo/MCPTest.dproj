@@ -132,11 +132,12 @@
             <Form>Form1</Form>
             <FormType>dfm</FormType>
         </DCCReference>
-        <DCCReference Include="..\Source\JRPC.Classes.pas"/>
         <DCCReference Include="..\Source\MCP.Tools.pas"/>
         <DCCReference Include="..\Source\MCP.Attributes.pas"/>
         <DCCReference Include="..\Source\MCP.Invoker.pas"/>
         <DCCReference Include="..\Source\MCP.Tools.Schema.pas"/>
+        <DCCReference Include="..\Source\Attribute.Tags.pas"/>
+        <DCCReference Include="..\Source\JSON.RPC.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

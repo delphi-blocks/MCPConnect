@@ -3,52 +3,59 @@ unit MCP.Attributes;
 interface
 
 uses
-  System.SysUtils;
+  System.SysUtils, Attribute.Tags;
 
 type
-  MCPToolAttribute = class(TCustomAttribute)
+  McpAttribute = class(TCustomAttribute)
   private
     FName: string;
     FDescription: string;
+    FAdditionalTags: string;
+    FAdditional: string;
+    FTags: TAttributeTags;
+    function GetTags: TAttributeTags;
   public
     property Name: string read FName;
     property Description: string read FDescription;
+    property AdditionalTags: string read FAdditional write FAdditional;
 
-    constructor Create(const AName, ADescription: string);
+    property Tags: TAttributeTags read GetTags write FTags;
+
+    constructor Create(const AName, ADescription: string; const AAdditionalTags: string = '');
+    destructor Destroy; override;
   end;
 
-  MCPParamAttribute = class(TCustomAttribute)
-  private
-    FName: string;
-    FDescription: string;
-    FRequired: Boolean;
-  public
-    property Name: string read FName;
-    property Description: string read FDescription;
-    property Required: Boolean read FRequired;
+  MCPToolAttribute = class(McpAttribute);
 
-    constructor Create(const AName, ADescription: string; ARequired: Boolean = True);
-  end;
+  //MCPToolNoteAttribute = class(TCustomAttribute);
+
+  MCPParamAttribute = class(McpAttribute);
 
 implementation
 
-{ MCPParamAttribute }
+{ McpAttribute }
 
-constructor MCPParamAttribute.Create(const AName, ADescription: string; ARequired: Boolean);
+constructor McpAttribute.Create(const AName, ADescription, AAdditionalTags: string);
 begin
-  inherited Create;
   FName := AName;
   FDescription := ADescription;
-  FRequired := ARequired;
+  FAdditionalTags := AAdditionalTags;
+
+  FTags := TAttributeTags.Create();
 end;
 
-{ MCPToolAttribute }
-
-constructor MCPToolAttribute.Create(const AName, ADescription: string);
+destructor McpAttribute.Destroy;
 begin
-  inherited Create;
-  FName := AName;
-  FDescription := ADescription;
+  FTags.Free;
+  inherited;
+end;
+
+function McpAttribute.GetTags: TAttributeTags;
+begin
+  if (FTags.Count = 0) and not FAdditionalTags.IsEmpty then
+    FTags.Parse(FAdditionalTags);
+
+  Result := FTags;
 end;
 
 end.

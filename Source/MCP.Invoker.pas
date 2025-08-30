@@ -12,7 +12,7 @@ uses
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
 
-  JRPC.Classes;
+  JSON.RPC;
 
 type
   /// <summary>

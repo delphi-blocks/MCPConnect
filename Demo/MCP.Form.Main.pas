@@ -10,11 +10,11 @@ uses
   JSON.RPC,
 
   MCP.Attributes,
+  MCP.Types,
   MCP.Tools,
-  MCP.Tools.Schema,
   MCP.Invoker,
-  Attribute.Tags,
 
+  Neon.Core.Tags,
   Neon.Core.Types,
   Neon.Core.Nullables,
   Neon.Core.Attributes,
@@ -24,6 +24,7 @@ uses
   Neon.Core.Persistence.JSON.Schema;
 
 type
+  [Test.Abc()]
   TPerson = class
   private
     FName: string;
@@ -62,6 +63,7 @@ type
     Button1: TButton;
     btnTools: TButton;
     btnTags: TButton;
+    btnInitialize: TButton;
     procedure FormCreate(Sender: TObject);
     procedure btnRequestClick(Sender: TObject);
     procedure btnRequestDesClick(Sender: TObject);
@@ -70,6 +72,7 @@ type
     procedure btnResponseDesClick(Sender: TObject);
     procedure btnEnvelopeClick(Sender: TObject);
     procedure btnIdClick(Sender: TObject);
+    procedure btnInitializeClick(Sender: TObject);
     procedure btnRttiClick(Sender: TObject);
     procedure btnToolSerializeClick(Sender: TObject);
     procedure BtnInvokeFromRequestClick(Sender: TObject);
@@ -254,6 +257,20 @@ begin
 
 end;
 
+procedure TForm1.btnInitializeClick(Sender: TObject);
+begin
+  var res := TInitializeResult.Create;
+
+  res.ProtocolVersion := '1.0';
+  res.Capabilities.Prompts.ListChanged := True;
+  res.ServerInfo.Name := 'Server MCP';
+  res.ServerInfo.Version := '0.9';
+
+  mmoLog.Lines.Add(res.ToJSON(True));
+
+  res.Free;
+end;
+
 procedure TForm1.BtnInvokeFromRequestClick(Sender: TObject);
 begin
   var GC := TMCPGarbageCollector.CreateInstance;
@@ -298,9 +315,9 @@ end;
 
 procedure TForm1.btnToolsClick(Sender: TObject);
 begin
-  var tools := TMCPSchemaGenerator.ClassToTools(Self.ClassType);
+  var tools := TMCPSchemaGenerator.ListTools(Self.ClassType);
 
-  mmoLog.Lines.Add(TNeon.Print(tools, true));
+  mmoLog.Lines.Add(tools.ToJSON(True));
 
   tools.Free;
 end;
@@ -317,7 +334,9 @@ begin
   j.RemovePair('inputSchema');
   j.AddPair('inputSchema', schema);
   }
-  mmoLog.Lines.Add(TNeon.Print(schema, true));
+  //mmoLog.Lines.Add(TNeon.Print(schema, true));
+
+  mmoLog.Lines.Add(schema.ToJSON(True));
 
   schema.Free;
 end;

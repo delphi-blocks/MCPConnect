@@ -254,11 +254,11 @@ object Form1: TForm1
     end
   end
   object btnToolSerialize: TButton
-    Left = 648
-    Top = 24
+    Left = 744
+    Top = 8
     Width = 121
     Height = 25
-    Caption = 'Tool Serialization'
+    Caption = 'Single Tool'
     TabOrder = 9
     OnClick = btnToolSerializeClick
   end
@@ -281,11 +281,11 @@ object Form1: TForm1
     OnClick = Button1Click
   end
   object btnTools: TButton
-    Left = 648
-    Top = 55
+    Left = 744
+    Top = 39
     Width = 121
     Height = 25
-    Caption = 'btnTools'
+    Caption = 'Tools List'
     TabOrder = 12
     OnClick = btnToolsClick
   end
@@ -297,5 +297,14 @@ object Form1: TForm1
     Caption = 'btnTags'
     TabOrder = 13
     OnClick = btnTagsClick
+  end
+  object btnInitialize: TButton
+    Left = 744
+    Top = 70
+    Width = 121
+    Height = 25
+    Caption = 'Initialize Result'
+    TabOrder = 14
+    OnClick = btnInitializeClick
   end
 end

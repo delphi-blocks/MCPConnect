@@ -3,7 +3,7 @@ unit MCP.Attributes;
 interface
 
 uses
-  System.SysUtils, Attribute.Tags;
+  System.SysUtils, Neon.Core.Tags;
 
 type
   McpAttribute = class(TCustomAttribute)
@@ -26,10 +26,14 @@ type
   end;
 
   MCPToolAttribute = class(McpAttribute);
+  MCPParamAttribute = class(McpAttribute);
+
+  MCPResourceAttribute = class(McpAttribute);
+  MCPResourceTemplateAttribute = class(McpAttribute);
+
+  MCPPromptAttribute = class(McpAttribute);
 
   //MCPToolNoteAttribute = class(TCustomAttribute);
-
-  MCPParamAttribute = class(McpAttribute);
 
 implementation
 

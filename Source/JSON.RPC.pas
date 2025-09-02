@@ -94,7 +94,6 @@ type
     constructor Create;
     destructor Destroy; override;
 
-
     procedure AddPositionParam(const AValue: TValue);
     procedure AddNamedParam(const AName: string; const AValue: TValue);
 

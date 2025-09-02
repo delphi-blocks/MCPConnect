@@ -6,9 +6,8 @@ uses
   MCP.Tools in '..\Source\MCP.Tools.pas',
   MCP.Attributes in '..\Source\MCP.Attributes.pas',
   MCP.Invoker in '..\Source\MCP.Invoker.pas',
-  MCP.Tools.Schema in '..\Source\MCP.Tools.Schema.pas',
-  Attribute.Tags in '..\Source\Attribute.Tags.pas',
-  JSON.RPC in '..\Source\JSON.RPC.pas';
+  JSON.RPC in '..\Source\JSON.RPC.pas',
+  MCP.Types in '..\Source\MCP.Types.pas';
 
 {$R *.res}
 

@@ -169,8 +169,7 @@ begin
 end;
 
 
-function TMCPMethodInvoker.RequestToRttiParams(
-  ARequest: TJRPCRequest): TArray<TValue>;
+function TMCPMethodInvoker.RequestToRttiParams(ARequest: TJRPCRequest): TArray<TValue>;
 
   function CastJSONValue(AParam: TRttiParameter; AValue: TJSONValue): TValue;
   begin
@@ -184,9 +183,7 @@ function TMCPMethodInvoker.RequestToRttiParams(
   function CastParamValue(AParam: TRttiParameter; AValue: TValue): TValue;
   begin
     if AValue.IsObject and (AValue.AsObject is TJSONValue) then
-    begin
-      Result := CastJSONValue(AParam, TJSONValue(AValue.AsObject));
-    end
+      Result := CastJSONValue(AParam, TJSONValue(AValue.AsObject))
     else
       Result := AValue.Cast(AParam.ParamType.Handle);
   end;
@@ -195,21 +192,31 @@ var
   LParam: TRttiParameter;
   LParamIndex: Integer;
   LParamValue: TValue;
+  LParamJSON: TJSONValue;
 begin
-  SetLength(Result, ARequest.Params.Count);
+  SetLength(Result, ARequest.ParamsCount);
 
   LParamIndex := 0;
   for LParam in FMethod.GetParameters do
   begin
-    case ARequest.Params.ParamsType of
-      TJRPCParamsType.ByPos: LParamValue := ARequest.Params.ByPos[LParamIndex];
-      TJRPCParamsType.ByName: LParamValue := ARequest.Params.ByName[GetParamName(LParam)];
-      else
-        raise EMCPInvokerError.Create(JRPC_ERROR_INTERNAL_ERROR, 'Unknown params type');
+    case ARequest.ParamsType of
+      TJRPCParamsType.ByPos:
+      begin
+        LParamJSON := (ARequest.Params as TJSONArray).Get(LParamIndex);
+        //LParamValue := ARequest.Params.ByPos[LParamIndex];
+      end;
+
+      TJRPCParamsType.ByName:
+      begin
+        LParamJSON := (ARequest.Params as TJSONObject).GetValue(GetParamName(LParam));
+        //LParamValue := ARequest.Params.ByName[GetParamName(LParam)];
+      end;
+    else
+      raise EMCPInvokerError.Create(JRPC_ERROR_INTERNAL_ERROR, 'Unknown params type');
     end;
 
-    Result[LParamIndex] := CastParamValue(LParam, LParamValue);
-
+    //Result[LParamIndex] := CastParamValue(LParam, LParamValue);
+    Result[LParamIndex] := CastJSONValue(LParam, LParamJSON);
     Inc(LParamIndex);
   end;
 end;

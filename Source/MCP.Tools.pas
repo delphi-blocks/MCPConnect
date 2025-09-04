@@ -18,14 +18,21 @@ uses
   Neon.Core.Serializers.RTL,
   Neon.Core.Utils,
 
+  MCP.Types,
   MCP.Attributes;
 
 type
-  TMeta = class(TDictionary<string, TValue>)
-
+  /// <summary>
+  /// Parameters for CallToolRequest
+  /// </summary>
+  TCallToolParams = class
+    [NeonProperty('name')] Name: string;
+    [NeonProperty('arguments'), NeonInclude(IncludeIf.NotEmpty)] Arguments: TJSONMap;
+    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TMeta;
+  public
+    constructor Create;
+    destructor Destroy; override;
   end;
-
-
 
   /// <summary>
   /// Optional properties describing tool behavior
@@ -56,13 +63,6 @@ type
     /// </summary>
     [NeonProperty('openWorldHint')] OpenWorldHint: Nullable<Boolean>;
   end;
-
-  TToolSchema = class
-    &Type: string;
-    [NeonProperty('properties')] Properties: TDictionary<string, TJSONObject>;
-    [NeonProperty('required'), NeonInclude(IncludeIf.NotEmpty)] Required: TArray<string>;
-  end;
-
 
   /// <summary>
   /// Tool represents the definition for a tool the client can call.
@@ -108,14 +108,14 @@ type
   TTools = class(TObjectList<TTool>)
   end;
 
-  TListTools = class
+  TListToolsResult = class
+  public
     /// <summary>
     /// Meta is a metadata object that is reserved by MCP for storing additional information
     /// </summary>
     [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TMeta;
 
-    [NeonProperty('tools')]
-    Tools: TTools;
+    [NeonProperty('tools')] Tools: TTools;
 
     /// <summary>
     /// An opaque token representing the pagination position after the last returned result. If present, there may be more results available
@@ -127,7 +127,6 @@ type
 
     function ToJSON(APrettyPrint: Boolean = False): string;
   end;
-
 
   TCallToolResult = class
     /// <summary>
@@ -171,8 +170,6 @@ type
 
     function WriteMethodsOld(AType: TRttiType): TJSONArray;
     procedure WriteMethods(AType: TRttiType; AList: TTools);
-
-    class function GetNeonConfig: INeonConfiguration;
   public
     /// <summary>
     ///   Serialize a Delphi method as a MCP tool
@@ -184,8 +181,8 @@ type
     ///   Loops through the methods of a class/record and populate a structure
     ///   in response to the tools/list from a LLM client
     /// </summary>
-    class function ListTools(AType: TRttiType): TListTools; overload;
-    class function ListTools(AClass: TClass): TListTools; overload;
+    class function ListTools(AType: TRttiType): TListToolsResult; overload;
+    class function ListTools(AClass: TClass): TListToolsResult; overload;
   end;
 
 
@@ -224,42 +221,35 @@ end;
 
 function TTool.ToJSON(APrettyPrint: Boolean): string;
 begin
-  Result := TNeon.ObjectToJSONString(Self, TMCPSchemaGenerator.GetNeonConfig.SetPrettyPrint(APrettyPrint));
+  Result := TNeon.ObjectToJSONString(Self, GetNeonConfig.SetPrettyPrint(APrettyPrint));
 end;
 
-{ TListTools }
+{ TListToolsResult }
 
-constructor TListTools.Create;
+constructor TListToolsResult.Create;
 begin
   Meta := TMeta.Create;
   Tools := TTools.Create(True);
 end;
 
-destructor TListTools.Destroy;
+destructor TListToolsResult.Destroy;
 begin
   Tools.Free;
   Meta.Free;
+
   inherited;
 end;
 
-function TListTools.ToJSON(APrettyPrint: Boolean = False): string;
+function TListToolsResult.ToJSON(APrettyPrint: Boolean = False): string;
 begin
-  Result := TNeon.ObjectToJSONString(Self, TMCPSchemaGenerator.GetNeonConfig.SetPrettyPrint(APrettyPrint));
+  Result := TNeon.ObjectToJSONString(Self, GetNeonConfig.SetPrettyPrint(APrettyPrint));
 end;
 
-class function TMCPSchemaGenerator.GetNeonConfig: INeonConfiguration;
-begin
-  Result := TNeonConfiguration.Camel
-    .SetMembers([TNeonMembers.Fields]);
-
-  Result.GetSerializers.RegisterSerializer(TJSONValueSerializer);
-end;
-
-class function TMCPSchemaGenerator.ListTools(AType: TRttiType): TListTools;
+class function TMCPSchemaGenerator.ListTools(AType: TRttiType): TListToolsResult;
 var
   LGenerator: TMCPSchemaGenerator;
 begin
-  Result := TListTools.Create;
+  Result := TListToolsResult.Create;
   try
     LGenerator := TMCPSchemaGenerator.Create();
     try
@@ -273,7 +263,7 @@ begin
   end;
 end;
 
-class function TMCPSchemaGenerator.ListTools(AClass: TClass): TListTools;
+class function TMCPSchemaGenerator.ListTools(AClass: TClass): TListToolsResult;
 begin
   Result := ListTools(TRttiUtils.Context.GetType(AClass));
 end;
@@ -463,6 +453,22 @@ begin
     AProps.AddPair(LAttr.Name, LJSONObj);
     ARequired.Add(LAttr.Name);
   end;
+end;
+
+{ TCallToolParams }
+
+constructor TCallToolParams.Create;
+begin
+  Arguments := TJSONMap.Create;
+  Meta := TMeta.Create;
+end;
+
+destructor TCallToolParams.Destroy;
+begin
+  Meta.Free;
+  Arguments.Free;
+
+  inherited;
 end;
 
 end.

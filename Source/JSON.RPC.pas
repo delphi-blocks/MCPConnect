@@ -10,9 +10,20 @@ uses
   Neon.Core.Nullables,
   Neon.Core.Attributes,
   Neon.Core.Persistence,
-  Neon.Core.Persistence.JSON;
+  Neon.Core.Persistence.JSON,
+  Neon.Core.Serializers.RTL;
+
+const
+  // Standard JSON-RPC error codes
+	PARSE_ERROR      = -32700;
+	INVALID_REQUEST  = -32600;
+	METHOD_NOT_FOUND = -32601;
+	INVALID_PARAMS   = -32602;
+	INTERNAL_ERROR   = -32603;
 
 type
+  EJSONRPCException = class(Exception);
+
   TJRPCID = record
   private
     [NeonInclude] id: TValue;
@@ -89,10 +100,17 @@ type
   TJRPCRequest = class(TJRPCEnvelope)
   private
     FMethod: string;
-    FParams: TJRPCParams;
+    FParams: TJSONValue;
+    function GetParamsJSON: TJSONValue;
+
+    function GetPositionParams: TJSONArray;
+    function GetNamedParams: TJSONObject;
   public
     constructor Create;
     destructor Destroy; override;
+
+    function ParamsType: TJRPCParamsType;
+    function ParamsCount: Integer;
 
     procedure AddPositionParam(const AValue: TValue);
     procedure AddNamedParam(const AName: string; const AValue: TValue);
@@ -101,7 +119,7 @@ type
     property Method: string read FMethod write FMethod;
 
     [NeonProperty('params')]
-    property Params: TJRPCParams read FParams write FParams;
+    property Params: TJSONValue read FParams write FParams;
   end;
 
   TJRPCResponse = class(TJRPCEnvelope)
@@ -124,9 +142,9 @@ type
 
 
   /// <summary>
-  ///   Custom serializer for the TJParams class.
+  ///   Custom serializer for the TJRPCRequest class.
   /// </summary>
-  TJParamsSerializer = class(TCustomSerializer)
+  TJRequestSerializer = class(TCustomSerializer)
   protected
     class function GetTargetInfo: PTypeInfo; override;
     class function CanHandle(AType: PTypeInfo): Boolean; override;
@@ -136,7 +154,7 @@ type
   end;
 
   /// <summary>
-  ///   Custom serializer for the TJResponse class.
+  ///   Custom serializer for the TJRPCResponse class.
   /// </summary>
   TJResponseSerializer = class(TCustomSerializer)
   protected
@@ -159,9 +177,20 @@ type
     function Deserialize(AValue: TJSONValue; const AData: TValue; ANeonObject: TNeonRttiObject; AContext: IDeserializerContext): TValue; override;
   end;
 
-
+function JRPCNeonConfig: INeonConfiguration;
 
 implementation
+
+
+function JRPCNeonConfig: INeonConfiguration;
+begin
+  Result := TNeonConfiguration.Default
+    .RegisterSerializer(TJSONValueSerializer)
+    .RegisterSerializer(TJValueSerializer)
+    .RegisterSerializer(TJRequestSerializer)
+    .RegisterSerializer(TJResponseSerializer);
+end;
+
 
 { TJRPCEnvelope }
 
@@ -173,40 +202,114 @@ end;
 function TJRPCEnvelope.GetNeonConfig: INeonConfiguration;
 begin
   Result := TNeonConfiguration.Default
+    .RegisterSerializer(TJSONValueSerializer)
     .RegisterSerializer(TJValueSerializer)
-    .RegisterSerializer(TJParamsSerializer)
+    //.RegisterSerializer(TJParamsSerializer)
+    .RegisterSerializer(TJValueSerializer)
     .RegisterSerializer(TJResponseSerializer);
 end;
 
 constructor TJRPCRequest.Create;
 begin
   inherited;
-  FParams := TJRPCParams.Create;
+  FParams := TJSONNull.Create;
 end;
 
 destructor TJRPCRequest.Destroy;
 begin
   FParams.Free;
-
   inherited;
+end;
+
+function TJRPCRequest.GetNamedParams: TJSONObject;
+begin
+  if FParams is TJSONArray then
+    raise EJSONRPCException.Create('Only named params are allowed');
+
+  if FParams is TJSONObject then
+    Exit(FParams as TJSONObject);
+
+  if FParams is TJSONNull then
+  begin
+    FParams.Free;
+    Result := TJSONObject.Create;
+    FParams := Result;
+  end;
+end;
+
+function TJRPCRequest.GetPositionParams: TJSONArray;
+begin
+  if FParams is TJSONObject then
+    raise EJSONRPCException.Create('Only position params are allowed');
+
+  if FParams is TJSONArray then
+    Exit(FParams as TJSONArray);
+
+  if FParams is TJSONNull then
+  begin
+    FParams.Free;
+    Result := TJSONArray.Create;
+    FParams := Result;
+  end;
+end;
+
+function TJRPCRequest.GetParamsJSON: TJSONValue;
+begin
+{
+  FParams.Free;
+  case FParams.ParamsType of
+    ByPos:  FParams := FParams.ByPos.ToJson;
+    ByName: FParams := FParams.ByName.ToJson;
+    Null:   FParams := TJSONObject.Create;
+  end;
+  Result := FParams;
+}
+end;
+
+function TJRPCRequest.ParamsCount: Integer;
+begin
+  Result := 0;
+
+  if FParams is TJSONNull then
+    Exit(0);
+
+  if FParams is TJSONArray then
+    Exit((FParams as TJSONArray).Count);
+
+  if FParams is TJSONObject then
+    Exit((FParams as TJSONObject).Count);
+end;
+
+function TJRPCRequest.ParamsType: TJRPCParamsType;
+begin
+  Result := TJRPCParamsType.Null;
+
+  if FParams is TJSONNull then
+    Exit(TJRPCParamsType.Null);
+
+  if FParams is TJSONArray then
+    Exit(TJRPCParamsType.ByPos);
+
+  if FParams is TJSONObject then
+    Exit(TJRPCParamsType.ByName);
 end;
 
 procedure TJRPCRequest.AddNamedParam(const AName: string; const AValue: TValue);
 var
-  LParamJSON: TJSONValue;
+  LParam: TJSONValue;
 begin
-  LParamJSON := TNeon.ValueToJSON(AValue, GetNeonConfig);
-  if Assigned(LParamJSON) then
-    FParams.AddParam(AName, LParamJSON);
+  LParam := TNeon.ValueToJSON(AValue, GetNeonConfig);
+  if Assigned(LParam) then
+    GetNamedParams.AddPair(AName, LParam);
 end;
 
 procedure TJRPCRequest.AddPositionParam(const AValue: TValue);
 var
-  LParamJSON: TJSONValue;
+  LParam: TJSONValue;
 begin
-  LParamJSON := TNeon.ValueToJSON(AValue, GetNeonConfig);
-  if Assigned(LParamJSON) then
-    FParams.AddParam(LParamJSON);
+  LParam := TNeon.ValueToJSON(AValue, JRPCNeonConfig);
+  if Assigned(LParam) then
+    GetPositionParams.AddElement(LParam);
 end;
 
 { TJRPCParams }
@@ -355,64 +458,6 @@ begin
   Result := AContext.WriteDataMember(AValue, False);
 end;
 
-{ TJParamsSerializer }
-
-class function TJParamsSerializer.CanHandle(AType: PTypeInfo): Boolean;
-begin
-  Result := TypeInfoIs(AType);
-end;
-
-class function TJParamsSerializer.GetTargetInfo: PTypeInfo;
-begin
-  Result := TJRPCParams.ClassInfo;
-end;
-
-function TJParamsSerializer.Serialize(const AValue: TValue;
-  ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue;
-var
-  LParams: TJRPCParams;
-begin
-  Result := nil;
-  LParams := AValue.AsObject as TJRPCParams;
-
-  case LParams.ParamsType of
-    ByPos:  Result := LParams.ByPos.ToJson;
-    ByName: Result := LParams.ByName.ToJson;
-    Null:   Result := TJSONObject.Create;
-  end;
-
-end;
-
-function TJParamsSerializer.Deserialize(AValue: TJSONValue; const AData: TValue;
-  ANeonObject: TNeonRttiObject; AContext: IDeserializerContext): TValue;
-var
-  LParams: TJRPCParams;
-  LArray: TJSONArray;
-  LItem: TJSONValue;
-
-  LObject: TJSONObject;
-  LPair: TJSONPair;
-begin
-  LParams := AData.AsType<TJRPCParams>;
-
-  if AValue is TJSONArray then
-  begin
-    LArray := AValue as TJSONArray;
-    for LItem in LArray do
-      LParams.AddParam(LItem.Clone as TJSONValue);
-  end;
-
-  // Is a dictionary
-  if AValue is TJSONObject then
-  begin
-    LObject := AValue as TJSONObject;
-    for LPair in LObject do
-      LParams.AddParam(LPair.JsonString.Value, LPair.JsonValue.Clone as TJSONValue);
-  end;
-
-  Result := TValue.From<TJRPCParams>(LParams);
-end;
-
 
 { TJRPCResponse }
 
@@ -544,6 +589,52 @@ begin
   else
     Result := nil;
   }
+end;
+
+{ TJRequestSerializer }
+
+class function TJRequestSerializer.CanHandle(AType: PTypeInfo): Boolean;
+begin
+  Result := TypeInfoIs(AType);
+end;
+
+function TJRequestSerializer.Deserialize(AValue: TJSONValue;
+  const AData: TValue; ANeonObject: TNeonRttiObject;
+  AContext: IDeserializerContext): TValue;
+var
+  LReq: TJRPCRequest;
+  LParams: TJSONValue;
+begin
+  LReq := AData.AsType<TJRPCRequest>;
+
+  LParams := AValue.GetValue<TJSONValue>('params');
+
+  // Position parameters
+  if LParams is TJSONArray then
+  begin
+    LReq.Params.Free;
+    LReq.Params := LParams.Clone as TJSONArray;
+  end;
+
+  // Named parameters
+  if LParams is TJSONObject then
+  begin
+    LReq.Params.Free;
+    LReq.Params := LParams.Clone as TJSONObject;
+  end;
+
+  Result := TValue.From<TJRPCRequest>(LReq);
+end;
+
+class function TJRequestSerializer.GetTargetInfo: PTypeInfo;
+begin
+  Result := TJRPCRequest.ClassInfo;
+end;
+
+function TJRequestSerializer.Serialize(const AValue: TValue;
+  ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue;
+begin
+  Result := AContext.WriteDataMember(AValue, False);
 end;
 
 end.

@@ -1,0 +1,274 @@
+unit MCP.Resources;
+
+interface
+
+{$SCOPEDENUMS ON}
+
+uses
+  System.SysUtils, System.Generics.Collections, System.JSON, System.Rtti,
+
+  Neon.Core.Types,
+  Neon.Core.Attributes,
+  Neon.Core.Nullables,
+  Neon.Core.Persistence,
+  Neon.Core.Persistence.JSON,
+  Neon.Core.Serializers.RTL,
+
+  MCP.Types;
+
+type
+  /// <summary>
+  /// A placeholder for the Go 'http.Header' type.
+  /// </summary>
+  THTTPHeader = TPair<string, string>;
+
+  /// <summary>
+  /// Represents a paginated request.
+  /// </summary>
+  TPaginatedRequest = record
+  end;
+
+  /// <summary>
+  /// Represents a paginated result.
+  /// </summary>
+  TPaginatedResult = record
+  end;
+
+  /// <summary>
+  /// Represents a base result.
+  /// </summary>
+  TResult = record
+  end;
+
+  TNotificationParams = record
+    // This parameter name is reserved by MCP to allow clients and
+    // servers to attach additional metadata to their notifications.
+    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TMeta;
+
+    // Additional fields can be added to this map
+    [NeonIgnore] AdditionalFields: TJSONObject;
+  end;
+
+  TAnnotation = record
+    // Describes who the intended customer of this object or data is.
+    //
+    // It can include multiple entries to indicate content useful for multiple
+    // audiences (e.g., `["user", "assistant"]`).
+    [NeonProperty('audience'), NeonInclude(IncludeIf.NotEmpty)]Audience: TArray<string>;
+
+    // Describes how important this data is for operating the server.
+    //
+    // A value of 1 means "most important," and indicates that the data is
+    // effectively required, while 0 means "least important," and indicates that
+    // the data is entirely optional.
+    [NeonProperty('priority')] Priority: Nullable<Currency>;
+  end;
+
+  /// <summary>
+  /// Represents a known resource that the server is capable of reading.
+  /// </summary>
+  TResource = record
+  public
+    [NeonProperty('annotation')] Annotated: TAnnotation;
+    /// <summary>
+    /// Metadata object reserved by MCP for storing additional information.
+    /// </summary>
+    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TMeta;
+    /// <summary>
+    /// The URI of this resource.
+    /// </summary>
+    [NeonProperty('uri')] URI: string;
+    /// <summary>
+    /// A human-readable name for this resource.
+    /// </summary>
+    /// <remarks>This can be used by clients to populate UI elements.</remarks>
+    [NeonProperty('name')] Name: string;
+    /// <summary>
+    /// A description of what this resource represents.
+    /// </summary>
+    /// <remarks>This can be used by clients to improve the LLM's understanding of available resources. It can be thought of like a 'hint' to the model.</remarks>
+    [NeonProperty('description')] Description: NullString;
+    /// <summary>
+    /// The MIME type of this resource, if known.
+    /// </summary>
+    [NeonProperty('mimeType')] MIMEType: NullString;
+  end;
+
+  /// <summary>
+  /// Represents a template description for resources available on the server.
+  /// </summary>
+  TResourceTemplate = record
+  public
+    [NeonProperty('annotations'), NeonInclude(IncludeIf.NotEmpty)] Annotation: TAnnotation;
+    /// <summary>
+    /// Metadata object reserved by MCP for storing additional information.
+    /// </summary>
+    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TMeta;
+    /// <summary>
+    /// A URI template (according to RFC 6570) that can be used to construct resource URIs.
+    /// </summary>
+    [NeonProperty('uriTemplate')] URITemplate: NullString;
+    /// <summary>
+    /// A human-readable name for the type of resource this template refers to.
+    /// </summary>
+    /// <remarks>This can be used by clients to populate UI elements.</remarks>
+    [NeonProperty('name')] Name: string;
+    /// <summary>
+    /// A description of what this template is for.
+    /// </summary>
+    /// <remarks>This can be used by clients to improve the LLM's understanding of available resources. It can be thought of like a 'hint' to the model.</remarks>
+    [NeonProperty('description')] Description: NullString;
+    /// <summary>
+    /// The MIME type for all resources that match this template.
+    /// </summary>
+    /// <remarks>This should only be included if all resources matching this template have the same type.</remarks>
+    [NeonProperty('mimeType')] MIMEType: NullString;
+  end;
+
+  /// <summary>
+  /// Sent from the client to request a list of resources the server has.
+  /// </summary>
+  TListResourcesRequest = record
+  public
+    [NeonProperty('PaginatedRequest')] PaginatedRequest: TPaginatedRequest;
+    [NeonIgnore] Header: THTTPHeader;
+  end;
+
+  /// <summary>
+  /// The server's response to a resources/list request from the client.
+  /// </summary>
+  TListResourcesResult = record
+  public
+    [NeonProperty('PaginatedResult')] PaginatedResult: TPaginatedResult;
+    /// <summary>
+    /// A list of available resources.
+    /// </summary>
+    [NeonProperty('resources')] Resources: TArray<TResource>;
+  end;
+
+  /// <summary>
+  /// Sent from the client to request a list of resource templates the server has.
+  /// </summary>
+  TListResourceTemplatesRequest = record
+  public
+    [NeonProperty('PaginatedRequest')] PaginatedRequest: TPaginatedRequest;
+    [NeonIgnore] Header: THTTPHeader;
+  end;
+
+  /// <summary>
+  /// The server's response to a resources/templates/list request from the client.
+  /// </summary>
+  [NeonProperty('ListResourceTemplatesResult')]
+  TListResourceTemplatesResult = record
+  public
+    [NeonProperty('PaginatedResult')] PaginatedResult: TPaginatedResult;
+    /// <summary>
+    /// A list of available resource templates.
+    /// </summary>
+    [NeonProperty('resourceTemplates')] ResourceTemplates: TArray<TResourceTemplate>;
+  end;
+
+  /// <summary>
+  /// Represents the parameters for a resources/read request.
+  /// </summary>
+  TReadResourceParams = record
+  public
+    /// <summary>
+    /// The URI of the resource to read.
+    /// </summary>
+    /// <remarks>The URI can use any protocol; it is up to the server how to interpret it.</remarks>
+    [NeonProperty('uri')] URI: string;
+    /// <summary>
+    /// Arguments to pass to the resource handler.
+    /// </summary>
+    [NeonProperty('arguments')] [NeonInclude(IncludeIf.NotEmpty)] Arguments: TJSONObject;
+  end;
+
+  /// <summary>
+  /// The server's response to a resources/read request from the client.
+  /// </summary>
+  TReadResourceResult = record
+  public
+    [NeonProperty('Result')] Result: TResult;
+    /// <summary>
+    /// The contents of the resource. Can be either a TTextResourceContents or TBlobResourceContents.
+    /// </summary>
+    [NeonProperty('contents')] Contents: TJSONObject;
+  end;
+
+  /// <summary>
+  /// Represents the parameters for a resources/subscribe request.
+  /// </summary>
+  TSubscribeParams = record
+  public
+    /// <summary>
+    /// The URI of the resource to subscribe to.
+    /// </summary>
+    /// <remarks>The URI can use any protocol; it is up to the server how to interpret it.</remarks>
+    [NeonProperty('uri')] URI: string;
+  end;
+
+  /// <summary>
+  /// Represents the parameters for a resources/unsubscribe request.
+  /// </summary>
+  TUnsubscribeParams = record
+  public
+    /// <summary>
+    /// The URI of the resource to unsubscribe from.
+    /// </summary>
+    [NeonProperty('uri')] URI: string;
+  end;
+
+  /// <summary>
+  /// Represents the parameters for a resources/updated notification.
+  /// </summary>
+  TResourceUpdatedNotificationParams = record
+  public
+    /// <summary>
+    /// The URI of the resource that has been updated.
+    /// </summary>
+    /// <remarks>This might be a sub-resource of the one that the client actually subscribed to.</remarks>
+    [NeonProperty('uri')] URI: string;
+  end;
+
+  TResourceContents = class
+    /// <summary>
+    /// Metadata object reserved for additional information.
+    /// </summary>
+    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TMeta;
+    /// <summary>
+    /// The URI of this resource.
+    /// </summary>
+    [NeonProperty('uri')] URI: string;
+    /// <summary>
+    /// The MIME type of this resource, if known.
+    /// </summary>
+    [NeonProperty('mimeType')] MIMEType: NullString;
+  end;
+
+  /// <summary>
+  /// Represents a text-based resource.
+  /// </summary>
+  TTextResourceContents = class(TResourceContents)
+  public
+    /// <summary>
+    /// The text of the item.
+    /// </summary>
+    /// <remarks>This must only be set if the item can actually be represented as text (not binary data).</remarks>
+    [NeonProperty('text')] Text: string;
+  end;
+
+  /// <summary>
+  /// Represents a binary-based resource.
+  /// </summary>
+  TBlobResourceContents = class(TResourceContents)
+  public
+    /// <summary>
+    /// A base64-encoded string representing the binary data of the item.
+    /// </summary>
+    [NeonProperty('blob')] Blob: string;
+  end;
+
+implementation
+
+end.

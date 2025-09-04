@@ -12,6 +12,9 @@ uses
   MCP.Attributes,
   MCP.Types,
   MCP.Tools,
+  MCP.Resources,
+  MCP.Prompts,
+
   MCP.Invoker,
 
   Neon.Core.Tags,
@@ -64,6 +67,7 @@ type
     btnTools: TButton;
     btnTags: TButton;
     btnInitialize: TButton;
+    Button2: TButton;
     procedure FormCreate(Sender: TObject);
     procedure btnRequestClick(Sender: TObject);
     procedure btnRequestDesClick(Sender: TObject);
@@ -79,6 +83,7 @@ type
     procedure btnTagsClick(Sender: TObject);
     procedure btnToolsClick(Sender: TObject);
     procedure Button1Click(Sender: TObject);
+    procedure Button2Click(Sender: TObject);
   private
     ctx: TRttiContext;
     tools: TArray<TRttiMethod>;
@@ -144,16 +149,16 @@ begin
   r.AddPositionParam(12);
   r.AddPositionParam(23);
 
-  var s := TNeon.ObjectToJSONString(r, GetNeonConfig);
+  var s := TNeon.ObjectToJSONString(r, JRPCNeonConfig);
   mmoLog.Lines.Add(s);
 end;
 
 procedure TForm1.btnRequestDesClick(Sender: TObject);
 begin
-  var r := TNeon.JSONToObject<TJRPCRequest>(mmoLog.Lines.Text, GetNeonConfig);
+  var r := TNeon.JSONToObject<TJRPCRequest>(mmoLog.Lines.Text, JRPCNeonConfig);
   try
     mmoLog.Lines.Add('method name: ' + r.Method);
-    mmoLog.Lines.Add('param count: ' + r.Params.Count.ToString);
+    mmoLog.Lines.Add('param count: ' + r.ParamsCount.ToString);
   finally
     r.Free;
   end;
@@ -168,7 +173,7 @@ begin
     r.AddNamedParam('first', 12);
     r.AddNamedParam('second', 'Paolo Rossi');
 
-    var s := TNeon.ObjectToJSONString(r, GetNeonConfig);
+    var s := TNeon.ObjectToJSONString(r, JRPCNeonConfig);
     mmoLog.Lines.Add(s);
   finally
     r.Free;
@@ -187,13 +192,13 @@ begin
   l.Add('Rossi');
   r.Result := l;
 
-  var s := TNeon.ObjectToJSONString(r, GetNeonConfig);
+  var s := TNeon.ObjectToJSONString(r, JRPCNeonConfig);
   mmoLog.Lines.Add(s);
 end;
 
 procedure TForm1.btnResponseDesClick(Sender: TObject);
 begin
-  var r := TNeon.JSONToObject<TJRPCResponse>(mmoLog.Lines.Text, GetNeonConfig);
+  var r := TNeon.JSONToObject<TJRPCResponse>(mmoLog.Lines.Text, JRPCNeonConfig);
 
   if r.IsError then
     mmoLog.Lines.Add('Error detected: ' + r.Error.Message)
@@ -275,10 +280,10 @@ procedure TForm1.BtnInvokeFromRequestClick(Sender: TObject);
 begin
   var GC := TMCPGarbageCollector.CreateInstance;
 
-  var LRequest := TNeon.JSONToObject<TJRPCRequest>(mmoLog.Lines.Text, GetNeonConfig);
+  var LRequest := TNeon.JSONToObject<TJRPCRequest>(mmoLog.Lines.Text, JRPCNeonConfig);
   GC.Add(LRequest);
   mmoLog.Lines.Add('------ SERIALIZED REQUEST ------');
-  mmoLog.Lines.Add( TNeon.ObjectToJSONString(LRequest, GetNeonConfig) );
+  mmoLog.Lines.Add( TNeon.ObjectToJSONString(LRequest, JRPCNeonConfig) );
 
   var LResponse := TJRPCResponse.Create;
   GC.Add(LResponse);
@@ -287,7 +292,7 @@ begin
   LMethodInvoker.Invoke(LRequest, LResponse);
 
   mmoLog.Lines.Add('------ SERIALIZED RESPONSE ------');
-  var LStringResponse := TNeon.ObjectToJSONString(LResponse, GetNeonConfig);
+  var LStringResponse := TNeon.ObjectToJSONString(LResponse, JRPCNeonConfig);
   mmoLog.Lines.Add(LStringResponse);
 
 end;
@@ -356,6 +361,18 @@ begin
   mmoLog.Lines.Add(y.ToString);
 end;
 
+procedure TForm1.Button2Click(Sender: TObject);
+begin
+  var c := TCallToolParams.Create;
+
+  c.Name := 'Param';
+  c.Arguments.Add('arg1', TNeon.ValueToJSON(12));
+
+  var s := TNeon.ObjectToJSONString(c, MCP.Types.GetNeonConfig);
+  mmoLog.Lines.Add(s);
+  c.free;
+end;
+
 function TForm1.CreatePerson(const AName: string): TPerson;
 begin
   Result := TPerson.Create(AName);
@@ -381,7 +398,7 @@ function TForm1.GetNeonConfig: INeonConfiguration;
 begin
   Result := TNeonConfiguration.Default
     .RegisterSerializer(TTValueSerializer)
-    .RegisterSerializer(TJParamsSerializer)
+    .RegisterSerializer(TJRequestSerializer)
     .RegisterSerializer(TJResponseSerializer);
 end;
 

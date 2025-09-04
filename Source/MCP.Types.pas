@@ -59,6 +59,41 @@ const
 
 
 type
+  TAnyMap = class(TDictionary<string, TValue>);
+
+  TAnyMapOwned = class(TDictionary<string, TValue>)
+  public
+    destructor Destroy; override;
+  end;
+
+  TJSONMap = class(TObjectDictionary<string, TJSONValue>)
+  public
+    constructor Create;
+  end;
+
+  TJSONObjectMap = class(TObjectDictionary<string, TJSONObject>)
+  public
+    constructor Create;
+  end;
+
+  TMeta = TJSONMap;
+
+  TRequestParams = class
+    /// <summary>
+    /// Meta is a metadata object that is reserved by MCP for storing additional information
+    /// </summary>
+    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TMeta;
+  public
+    constructor Create;
+    destructor Destroy; override;
+  end;
+
+  TPaginatedParams = record
+    // An opaque token representing the current pagination position.
+    // If provided, the server should return results starting after this cursor.
+    [NeonProperty('cursor')] Cursor: NullString;
+  end;
+
 
   /// <summary>
   /// TImplementation describes the name and version of an MCP implementation.
@@ -207,16 +242,6 @@ type
   end;
 
   /// <summary>
-  /// TInitializeRequest is sent from the client to the server when it first
-  /// connects, asking it to begin initialization.
-  /// </summary>
-  TInitializeRequest = class
-    // Parent "Request" type is not defined in the source, assuming it contains no serialized fields.
-    [NeonProperty('params')] Params: TInitializeParams;
-    // Header is not serialized as per the original Go code's `json:"-"` tag.
-  end;
-
-  /// <summary>
   /// TInitializeResult is sent after receiving an initialize request from the
   /// client.
   /// </summary>
@@ -320,6 +345,48 @@ begin
   Logging.Free;
   &Experimental.Free;
   inherited;
+end;
+
+{ TRequestParams }
+
+constructor TRequestParams.Create;
+begin
+  Meta := TMeta.Create;
+end;
+
+destructor TRequestParams.Destroy;
+begin
+  Meta.Free;
+  inherited;
+end;
+
+{ TJSONMap }
+
+constructor TJSONMap.Create;
+begin
+  inherited Create([doOwnsValues]);
+end;
+
+{ TAnyMapOwned }
+
+destructor TAnyMapOwned.Destroy;
+var
+  LPair: TPair<string, TValue>;
+begin
+  for LPair in Self do
+  begin
+    if LPair.Value.IsObject then
+      LPair.Value.AsObject.Free;
+  end;
+
+  inherited;
+end;
+
+{ TJSONObjectMap }
+
+constructor TJSONObjectMap.Create;
+begin
+  inherited Create([doOwnsValues]);
 end;
 
 end.

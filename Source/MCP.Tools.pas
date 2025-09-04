@@ -221,7 +221,7 @@ end;
 
 function TTool.ToJSON(APrettyPrint: Boolean): string;
 begin
-  Result := TNeon.ObjectToJSONString(Self, GetNeonConfig.SetPrettyPrint(APrettyPrint));
+  Result := TNeon.ObjectToJSONString(Self, MCPNeonConfig.SetPrettyPrint(APrettyPrint));
 end;
 
 { TListToolsResult }
@@ -242,7 +242,7 @@ end;
 
 function TListToolsResult.ToJSON(APrettyPrint: Boolean = False): string;
 begin
-  Result := TNeon.ObjectToJSONString(Self, GetNeonConfig.SetPrettyPrint(APrettyPrint));
+  Result := TNeon.ObjectToJSONString(Self, MCPNeonConfig.SetPrettyPrint(APrettyPrint));
 end;
 
 class function TMCPSchemaGenerator.ListTools(AType: TRttiType): TListToolsResult;
@@ -447,7 +447,7 @@ begin
       if not Assigned(LAttr) then
         raise Exception.Create('Non-annotated params are not permitted');
 
-    LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LParam.ParamType, GetNeonConfig);
+    LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LParam.ParamType, MCPNeonConfig);
 
     LJSONObj.AddPair('description', TJSONString.Create(LAttr.Description));
     AProps.AddPair(LAttr.Name, LJSONObj);

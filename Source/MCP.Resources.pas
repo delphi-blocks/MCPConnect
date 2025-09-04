@@ -18,11 +18,6 @@ uses
 
 type
   /// <summary>
-  /// A placeholder for the Go 'http.Header' type.
-  /// </summary>
-  THTTPHeader = TPair<string, string>;
-
-  /// <summary>
   /// Represents a paginated request.
   /// </summary>
   TPaginatedRequest = record
@@ -131,7 +126,6 @@ type
   TListResourcesRequest = record
   public
     [NeonProperty('PaginatedRequest')] PaginatedRequest: TPaginatedRequest;
-    [NeonIgnore] Header: THTTPHeader;
   end;
 
   /// <summary>
@@ -152,7 +146,6 @@ type
   TListResourceTemplatesRequest = record
   public
     [NeonProperty('PaginatedRequest')] PaginatedRequest: TPaginatedRequest;
-    [NeonIgnore] Header: THTTPHeader;
   end;
 
   /// <summary>

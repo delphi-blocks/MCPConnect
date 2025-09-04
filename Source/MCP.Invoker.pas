@@ -127,13 +127,6 @@ type
     procedure CollectGarbage();
   end;
 
-const
-  JRPC_ERROR_PARSE_ERROR =      -32700; // Invalid JSON was received by the server.
-  JRPC_ERROR_INVALID_REQUEST =  -32600; // The JSON sent is not a valid Request object.
-  JRPC_ERROR_METHOD_NOT_FOUND = -32601; // The method does not exist / is not available.
-  JRPC_ERROR_INVALID_PARAMS =   -32602; // Invalid method parameter(s).
-  JRPC_ERROR_INTERNAL_ERROR =   -32603; // Internal error.	Internal JSON-RPC error.
-
 implementation
 
 uses
@@ -147,25 +140,25 @@ begin
   if AValue is TJSONNumber then
   begin
     if not (AParam.ParamType.TypeKind in [tkInteger, tkFloat, tkInt64]) then
-      raise EMCPInvokerError.Create(JRPC_ERROR_INVALID_PARAMS, Format('Invalid parameter for number [%s]', [AParam.Name]));
+      raise EMCPInvokerError.Create(JRPC_INVALID_PARAMS, Format('Invalid parameter for number [%s]', [AParam.Name]));
   end
   else if AValue is TJSONString then
   begin
     if not (AParam.ParamType.TypeKind in [tkString, tkWChar, tkLString, tkWString, tkUString]) then
-      raise EMCPInvokerError.Create(JRPC_ERROR_INVALID_PARAMS, Format('Invalid parameter for string [%s]', [AParam.Name]));
+      raise EMCPInvokerError.Create(JRPC_INVALID_PARAMS, Format('Invalid parameter for string [%s]', [AParam.Name]));
   end
   else if AValue is TJSONObject then
   begin
     if not (AParam.ParamType.TypeKind in [tkClass, tkRecord, tkInterface]) then
-      raise EMCPInvokerError.Create(JRPC_ERROR_INVALID_PARAMS, Format('Invalid parameter for object [%s]', [AParam.Name]));
+      raise EMCPInvokerError.Create(JRPC_INVALID_PARAMS, Format('Invalid parameter for object [%s]', [AParam.Name]));
   end
   else if AValue is TJSONArray then
   begin
     if not (AParam.ParamType.TypeKind in [tkArray, tkDynArray]) then
-      raise EMCPInvokerError.Create(JRPC_ERROR_INVALID_PARAMS, Format('Invalid parameter for array [%s]', [AParam.Name]));
+      raise EMCPInvokerError.Create(JRPC_INVALID_PARAMS, Format('Invalid parameter for array [%s]', [AParam.Name]));
   end
   else
-    raise EMCPInvokerError.Create(JRPC_ERROR_INVALID_PARAMS, Format('Invalid parameter [%s]', [AParam.Name]));
+    raise EMCPInvokerError.Create(JRPC_INVALID_PARAMS, Format('Invalid parameter [%s]', [AParam.Name]));
 end;
 
 
@@ -191,7 +184,7 @@ function TMCPMethodInvoker.RequestToRttiParams(ARequest: TJRPCRequest): TArray<T
 var
   LParam: TRttiParameter;
   LParamIndex: Integer;
-  LParamValue: TValue;
+  //LParamValue: TValue;
   LParamJSON: TJSONValue;
 begin
   SetLength(Result, ARequest.ParamsCount);
@@ -212,7 +205,7 @@ begin
         //LParamValue := ARequest.Params.ByName[GetParamName(LParam)];
       end;
     else
-      raise EMCPInvokerError.Create(JRPC_ERROR_INTERNAL_ERROR, 'Unknown params type');
+      raise EMCPInvokerError.Create(JRPC_INTERNAL_ERROR, 'Unknown params type');
     end;
 
     //Result[LParamIndex] := CastParamValue(LParam, LParamValue);
@@ -277,7 +270,7 @@ begin
     end;
     on E: Exception do
     begin
-      AResponse.Error.Code := JRPC_ERROR_INTERNAL_ERROR;
+      AResponse.Error.Code := JRPC_INTERNAL_ERROR;
       AResponse.Error.Message := E.Message;
     end;
   end;
@@ -327,7 +320,7 @@ begin
   LMethod := FindMethod(ARequest);
   if not Assigned(LMethod) then
   begin
-    AResponse.Error.Code := JRPC_ERROR_METHOD_NOT_FOUND;
+    AResponse.Error.Code := JRPC_METHOD_NOT_FOUND;
     AResponse.Error.Message := Format('Method [%s] non found', [ARequest.Method]);
     Exit;
   end;

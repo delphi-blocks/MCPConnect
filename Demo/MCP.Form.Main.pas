@@ -24,7 +24,8 @@ uses
   Neon.Core.Persistence,
   Neon.Core.Serializers.RTL,
   Neon.Core.Persistence.JSON,
-  Neon.Core.Persistence.JSON.Schema;
+  Neon.Core.Persistence.JSON.Schema, System.Actions, Vcl.ActnList,
+  Vcl.CategoryButtons, Vcl.ToolWin, Vcl.ComCtrls, System.ImageList, Vcl.ImgList;
 
 type
   [Test.Abc()]
@@ -47,43 +48,48 @@ type
     property Developer: Boolean read FDeveloper write FDeveloper;
   end;
 
-  TForm1 = class(TForm)
-    btnEnvelope: TButton;
+  TfrmMain = class(TForm)
     mmoLog: TMemo;
-    btnId: TButton;
-    btnResponse: TButton;
-    btnRequestDes: TButton;
-    btnRequestNamed: TButton;
-    btnRtti: TButton;
-    btnResponseDes: TButton;
-    btnRequest: TButton;
     Panel1: TPanel;
     mmoSnippets: TMemo;
-    lblLog: TLabel;
-    lblSnippets: TLabel;
-    btnToolSerialize: TButton;
-    BtnInvokeFromRequest: TButton;
-    Button1: TButton;
-    btnTools: TButton;
-    btnTags: TButton;
-    btnInitialize: TButton;
-    Button2: TButton;
+    CategoryButtons1: TCategoryButtons;
+    actListMain: TActionList;
+    actJRPCEnvelope: TAction;
+    actJRPCID: TAction;
+    actRequestPos: TAction;
+    actRequestNamed: TAction;
+    actRequestDes: TAction;
+    actResponse: TAction;
+    actResponseDes: TAction;
+    actToolSingle: TAction;
+    actToolList: TAction;
+    actInitializeRequest: TAction;
+    actInitializeResult: TAction;
+    actStructTags: TAction;
+    actCallToolParams: TAction;
+    actRttiCall: TAction;
+    actInvokeRequest: TAction;
+    tlbMain: TToolBar;
+    actClearLog: TAction;
+    btnClearLog: TToolButton;
+    ilMain: TImageList;
     procedure FormCreate(Sender: TObject);
-    procedure btnRequestClick(Sender: TObject);
-    procedure btnRequestDesClick(Sender: TObject);
-    procedure btnRequestNamedClick(Sender: TObject);
-    procedure btnResponseClick(Sender: TObject);
-    procedure btnResponseDesClick(Sender: TObject);
-    procedure btnEnvelopeClick(Sender: TObject);
-    procedure btnIdClick(Sender: TObject);
-    procedure btnInitializeClick(Sender: TObject);
-    procedure btnRttiClick(Sender: TObject);
-    procedure btnToolSerializeClick(Sender: TObject);
-    procedure BtnInvokeFromRequestClick(Sender: TObject);
-    procedure btnTagsClick(Sender: TObject);
-    procedure btnToolsClick(Sender: TObject);
-    procedure Button1Click(Sender: TObject);
-    procedure Button2Click(Sender: TObject);
+    procedure actRequestPosExecute(Sender: TObject);
+    procedure actRequestDesExecute(Sender: TObject);
+    procedure actRequestNamedExecute(Sender: TObject);
+    procedure actResponseExecute(Sender: TObject);
+    procedure actResponseDesExecute(Sender: TObject);
+    procedure actJRPCEnvelopeExecute(Sender: TObject);
+    procedure actJRPCIDExecute(Sender: TObject);
+    procedure InitializeResultExecute(Sender: TObject);
+    procedure actInitializeRequestExecute(Sender: TObject);
+    procedure actRttiCallExecute(Sender: TObject);
+    procedure actToolSingleExecute(Sender: TObject);
+    procedure actInvokeRequestExecute(Sender: TObject);
+    procedure actStructTagsExecute(Sender: TObject);
+    procedure actToolListExecute(Sender: TObject);
+    procedure actCallToolParamsExecute(Sender: TObject);
+    procedure actClearLogExecute(Sender: TObject);
   private
     ctx: TRttiContext;
     tools: TArray<TRttiMethod>;
@@ -127,13 +133,13 @@ type
   end;
 
 var
-  Form1: TForm1;
+  frmMain: TfrmMain;
 
 implementation
 
 {$R *.dfm}
 
-procedure TForm1.FormCreate(Sender: TObject);
+procedure TfrmMain.FormCreate(Sender: TObject);
 begin
   ctx := TRttiContext.Create;
   FilterTools;
@@ -141,7 +147,7 @@ end;
 
 { TForm1 }
 
-procedure TForm1.btnRequestClick(Sender: TObject);
+procedure TfrmMain.actRequestPosExecute(Sender: TObject);
 begin
   var r := TJRPCRequest.Create;
   r.Id := 1;
@@ -149,11 +155,12 @@ begin
   r.AddPositionParam(12);
   r.AddPositionParam(23);
 
-  var s := TNeon.ObjectToJSONString(r, JRPCNeonConfig);
-  mmoLog.Lines.Add(s);
+  mmoLog.Lines.Add(r.ToJson);
+
+  r.free;
 end;
 
-procedure TForm1.btnRequestDesClick(Sender: TObject);
+procedure TfrmMain.actRequestDesExecute(Sender: TObject);
 begin
   var r := TNeon.JSONToObject<TJRPCRequest>(mmoLog.Lines.Text, JRPCNeonConfig);
   try
@@ -164,7 +171,7 @@ begin
   end;
 end;
 
-procedure TForm1.btnRequestNamedClick(Sender: TObject);
+procedure TfrmMain.actRequestNamedExecute(Sender: TObject);
 begin
   var r := TJRPCRequest.Create;
   try
@@ -180,7 +187,7 @@ begin
   end;
 end;
 
-procedure TForm1.btnResponseClick(Sender: TObject);
+procedure TfrmMain.actResponseExecute(Sender: TObject);
 begin
   var r := TJRPCResponse.Create;
   r.Id := 1;
@@ -196,7 +203,7 @@ begin
   mmoLog.Lines.Add(s);
 end;
 
-procedure TForm1.btnResponseDesClick(Sender: TObject);
+procedure TfrmMain.actResponseDesExecute(Sender: TObject);
 begin
   var r := TNeon.JSONToObject<TJRPCResponse>(mmoLog.Lines.Text, JRPCNeonConfig);
 
@@ -206,7 +213,7 @@ begin
     mmoLog.Lines.Add('Result (as JSON) is a: ' + r.Result.AsObject.ClassName);
 end;
 
-procedure TForm1.btnRttiClick(Sender: TObject);
+procedure TfrmMain.actRttiCallExecute(Sender: TObject);
 var
   LRequest: TJRPCRequest;
   LResponse: TJRPCResponse;
@@ -234,7 +241,7 @@ begin
   LResponse.Free;
 end;
 
-procedure TForm1.btnEnvelopeClick(Sender: TObject);
+procedure TfrmMain.actJRPCEnvelopeExecute(Sender: TObject);
 begin
   var env := TJRPCEnvelope.Create;
   //env.ID := 'paolo';
@@ -243,7 +250,7 @@ begin
   mmoLog.Lines.Add(s);
 end;
 
-procedure TForm1.btnIdClick(Sender: TObject);
+procedure TfrmMain.actJRPCIDExecute(Sender: TObject);
 var
   s: string;
 begin
@@ -262,7 +269,7 @@ begin
 
 end;
 
-procedure TForm1.btnInitializeClick(Sender: TObject);
+procedure TfrmMain.InitializeResultExecute(Sender: TObject);
 begin
   var res := TInitializeResult.Create;
 
@@ -276,7 +283,28 @@ begin
   res.Free;
 end;
 
-procedure TForm1.BtnInvokeFromRequestClick(Sender: TObject);
+procedure TfrmMain.actInitializeRequestExecute(Sender: TObject);
+begin
+  var pars := TInitializeParams.Create;
+  pars.ProtocolVersion := '2025-06-18';
+  pars.ClientInfo.Name := 'Delphi MCPLib';
+  pars.ClientInfo.Version := '0.8';
+  pars.Capabilities.Roots.ListChanged := True;
+
+  var j := TNeon.ObjectToJSON(pars, MCPNeonConfig);
+  mmoLog.Lines.Add(j.ToJson);
+
+  var req := TJRPCRequest.Create;
+  req.Method := MethodInitialize;
+  req.SetParams(j);
+
+  pars.Free;
+  mmoLog.Lines.Add(req.ToJson);
+
+  req.free;
+end;
+
+procedure TfrmMain.actInvokeRequestExecute(Sender: TObject);
 begin
   var GC := TMCPGarbageCollector.CreateInstance;
 
@@ -297,7 +325,7 @@ begin
 
 end;
 
-procedure TForm1.btnTagsClick(Sender: TObject);
+procedure TfrmMain.actStructTagsExecute(Sender: TObject);
 begin
   var tags := TAttributeTags.Create();
   tags.Parse('title=Come stai??,description=sto bene,readOnly=true,12');
@@ -318,7 +346,7 @@ begin
   tags.free;
 end;
 
-procedure TForm1.btnToolsClick(Sender: TObject);
+procedure TfrmMain.actToolListExecute(Sender: TObject);
 begin
   var tools := TMCPSchemaGenerator.ListTools(Self.ClassType);
 
@@ -327,7 +355,7 @@ begin
   tools.Free;
 end;
 
-procedure TForm1.btnToolSerializeClick(Sender: TObject);
+procedure TfrmMain.actToolSingleExecute(Sender: TObject);
 begin
   var typ := ctx.GetType(Self.ClassType);
   var m := typ.GetMethod('TestParam');
@@ -346,44 +374,34 @@ begin
   schema.Free;
 end;
 
-procedure TForm1.Button1Click(Sender: TObject);
-begin
-  var i1, i2, i3: TJRPCID;
-
-  i1 := 12;
-
-  i2 := i1;
-
-  var x: Integer := i1;
-  var y: Integer := i2;
-
-  mmoLog.Lines.Add(x.ToString);
-  mmoLog.Lines.Add(y.ToString);
-end;
-
-procedure TForm1.Button2Click(Sender: TObject);
+procedure TfrmMain.actCallToolParamsExecute(Sender: TObject);
 begin
   var c := TCallToolParams.Create;
 
   c.Name := 'Param';
   c.Arguments.Add('arg1', TNeon.ValueToJSON(12));
 
-  var s := TNeon.ObjectToJSONString(c, MCP.Types.GetNeonConfig);
+  var s := TNeon.ObjectToJSONString(c, MCPNeonConfig);
   mmoLog.Lines.Add(s);
   c.free;
 end;
 
-function TForm1.CreatePerson(const AName: string): TPerson;
+procedure TfrmMain.actClearLogExecute(Sender: TObject);
+begin
+  mmoLog.Clear;
+end;
+
+function TfrmMain.CreatePerson(const AName: string): TPerson;
 begin
   Result := TPerson.Create(AName);
 end;
 
-function TForm1.DoubleValue(AValue: Integer): Integer;
+function TfrmMain.DoubleValue(AValue: Integer): Integer;
 begin
   Result := AValue * 2;
 end;
 
-procedure TForm1.FilterTools;
+procedure TfrmMain.FilterTools;
 begin
   var typ := ctx.GetType(Self.ClassType);
 
@@ -394,7 +412,7 @@ begin
       tools := tools + [m];
 end;
 
-function TForm1.GetNeonConfig: INeonConfiguration;
+function TfrmMain.GetNeonConfig: INeonConfiguration;
 begin
   Result := TNeonConfiguration.Default
     .RegisterSerializer(TTValueSerializer)
@@ -402,27 +420,27 @@ begin
     .RegisterSerializer(TJResponseSerializer);
 end;
 
-function TForm1.GetPersonName(p: TPerson): string;
+function TfrmMain.GetPersonName(p: TPerson): string;
 begin
   Result := p.Name;
 end;
 
-function TForm1.Sub(a, b: Integer): Integer;
+function TfrmMain.Sub(a, b: Integer): Integer;
 begin
   Result := a - b;
 end;
 
-function TForm1.TestParam(AParam1: Int64; AParam2: Boolean): Integer;
+function TfrmMain.TestParam(AParam1: Int64; AParam2: Boolean): Integer;
 begin
   Result := AParam1 * 2;
 end;
 
-function TForm1.TestTags(const Name: string; Age: Integer; Active: Boolean): TDateTime;
+function TfrmMain.TestTags(const Name: string; Age: Integer; Active: Boolean): TDateTime;
 begin
   Result := Now();
 end;
 
-function TForm1.TestFunc: string;
+function TfrmMain.TestFunc: string;
 begin
   Result := 'Hello World!';
 end;

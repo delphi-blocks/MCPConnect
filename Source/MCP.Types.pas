@@ -98,7 +98,7 @@ type
   /// <summary>
   /// TImplementation describes the name and version of an MCP implementation.
   /// </summary>
-  TImplementation = record
+  TImplementation = class
     /// <summary>
     /// Name is the name of the implementation.
     /// </summary>
@@ -224,7 +224,7 @@ type
   /// <summary>
   /// TInitializeParams is sent from the client to the server when it first connects.
   /// </summary>
-  TInitializeParams = record
+  TInitializeParams = class
     /// <summary>
     /// The latest version of the Model Context Protocol that the client supports.
     /// </summary>
@@ -239,6 +239,10 @@ type
     /// Client implementation information.
     /// </summary>
     [NeonProperty('clientInfo')] ClientInfo: TImplementation;
+
+  public
+    constructor Create;
+    destructor Destroy; override;
   end;
 
   /// <summary>
@@ -282,13 +286,13 @@ type
     // Parent "Notification" type is not defined in the source, assuming it contains no serialized fields.
   end;
 
-function GetNeonConfig: INeonConfiguration;
+function MCPNeonConfig: INeonConfiguration;
 
 
 implementation
 
 
-function GetNeonConfig: INeonConfiguration;
+function MCPNeonConfig: INeonConfiguration;
 begin
   Result := TNeonConfiguration.Camel
     .SetMembers([TNeonMembers.Fields]);
@@ -312,7 +316,7 @@ end;
 
 function TInitializeResult.ToJSON(APrettyPrint: Boolean): string;
 begin
-  Result := TNeon.ObjectToJSONString(Self, GetNeonConfig.SetPrettyPrint(APrettyPrint));
+  Result := TNeon.ObjectToJSONString(Self, MCPNeonConfig.SetPrettyPrint(APrettyPrint));
 end;
 
 { TClientCapabilities }
@@ -387,6 +391,21 @@ end;
 constructor TJSONObjectMap.Create;
 begin
   inherited Create([doOwnsValues]);
+end;
+
+{ TInitializeParams }
+
+constructor TInitializeParams.Create;
+begin
+  Capabilities := TClientCapabilities.Create;
+  ClientInfo := TImplementation.Create;
+end;
+
+destructor TInitializeParams.Destroy;
+begin
+  Capabilities.Free;
+  ClientInfo.Free;
+  inherited;
 end;
 
 end.

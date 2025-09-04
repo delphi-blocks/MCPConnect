@@ -15,11 +15,11 @@ uses
 
 const
   // Standard JSON-RPC error codes
-	PARSE_ERROR      = -32700;
-	INVALID_REQUEST  = -32600;
-	METHOD_NOT_FOUND = -32601;
-	INVALID_PARAMS   = -32602;
-	INTERNAL_ERROR   = -32603;
+	JRPC_PARSE_ERROR      = -32700; // Invalid JSON was received by the server.
+	JRPC_INVALID_REQUEST  = -32600; // The JSON sent is not a valid Request object.
+	JRPC_METHOD_NOT_FOUND = -32601; // The method does not exist / is not available.
+	JRPC_INVALID_PARAMS   = -32602; // Invalid method parameter(s).
+	JRPC_INTERNAL_ERROR   = -32603; // Internal error.	Internal JSON-RPC error.
 
 type
   EJSONRPCException = class(Exception);
@@ -114,6 +114,9 @@ type
 
     procedure AddPositionParam(const AValue: TValue);
     procedure AddNamedParam(const AName: string; const AValue: TValue);
+    procedure SetParams(AValue: TJSONValue);
+
+    function ToJson: string;
 
     [NeonProperty('method')]
     property Method: string read FMethod write FMethod;
@@ -310,6 +313,20 @@ begin
   LParam := TNeon.ValueToJSON(AValue, JRPCNeonConfig);
   if Assigned(LParam) then
     GetPositionParams.AddElement(LParam);
+end;
+
+procedure TJRPCRequest.SetParams(AValue: TJSONValue);
+begin
+  if AValue is TJSONObject then
+  begin
+    FParams.Free;
+    FParams := AValue;
+  end;
+end;
+
+function TJRPCRequest.ToJson: string;
+begin
+  Result := TNeon.ObjectToJSONString(Self, JRPCNeonConfig);
 end;
 
 { TJRPCParams }

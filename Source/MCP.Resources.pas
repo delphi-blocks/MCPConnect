@@ -38,7 +38,7 @@ type
   TNotificationParams = record
     // This parameter name is reserved by MCP to allow clients and
     // servers to attach additional metadata to their notifications.
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TMeta;
+    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
 
     // Additional fields can be added to this map
     [NeonIgnore] AdditionalFields: TJSONObject;
@@ -68,7 +68,7 @@ type
     /// <summary>
     /// Metadata object reserved by MCP for storing additional information.
     /// </summary>
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TMeta;
+    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
     /// <summary>
     /// The URI of this resource.
     /// </summary>
@@ -98,7 +98,7 @@ type
     /// <summary>
     /// Metadata object reserved by MCP for storing additional information.
     /// </summary>
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TMeta;
+    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
     /// <summary>
     /// A URI template (according to RFC 6570) that can be used to construct resource URIs.
     /// </summary>
@@ -228,7 +228,7 @@ type
     /// <summary>
     /// Metadata object reserved for additional information.
     /// </summary>
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TMeta;
+    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
     /// <summary>
     /// The URI of this resource.
     /// </summary>

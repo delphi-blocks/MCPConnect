@@ -20,7 +20,8 @@ object frmMain: TfrmMain
     Align = alClient
     Caption = 'Panel1'
     TabOrder = 0
-    ExplicitLeft = 185
+    ExplicitWidth = 1085
+    ExplicitHeight = 594
     object splMemo: TSplitter
       Left = 601
       Top = 39
@@ -46,9 +47,7 @@ object frmMain: TfrmMain
       ScrollBars = ssBoth
       TabOrder = 0
       WordWrap = False
-      ExplicitLeft = 6
-      ExplicitTop = 161
-      ExplicitHeight = 609
+      ExplicitHeight = 554
     end
     object mmoSnippets: TMemo
       Left = 604
@@ -178,9 +177,8 @@ object frmMain: TfrmMain
       ScrollBars = ssBoth
       TabOrder = 1
       WordWrap = False
-      ExplicitLeft = 705
-      ExplicitWidth = 489
-      ExplicitHeight = 578
+      ExplicitWidth = 480
+      ExplicitHeight = 554
     end
     object tlbMain: TToolBar
       Left = 1
@@ -198,6 +196,7 @@ object frmMain: TfrmMain
       AllowTextButtons = True
       ShowHint = True
       TabOrder = 2
+      ExplicitWidth = 1083
       object btnClearLog: TToolButton
         Left = 0
         Top = 0
@@ -287,9 +286,7 @@ object frmMain: TfrmMain
     RegularButtonColor = clWhite
     SelectedButtonColor = 15132390
     TabOrder = 1
-    ExplicitLeft = 30
-    ExplicitTop = 240
-    ExplicitHeight = 417
+    ExplicitHeight = 594
   end
   object Button1: TButton
     Left = 32
@@ -298,7 +295,6 @@ object frmMain: TfrmMain
     Height = 25
     Caption = 'Button1'
     TabOrder = 2
-    OnClick = Button1Click
   end
   object actListMain: TActionList
     Images = ilMain
@@ -397,7 +393,7 @@ object frmMain: TfrmMain
     Left = 27
     Top = 496
     Bitmap = {
-      494C010102001400040020002000FFFFFFFFFF00FFFFFFFFFFFFFFFF424D3600
+      494C010102001400040020002000FFFFFFFFFF10FFFFFFFFFFFFFFFF424D3600
       0000000000003600000028000000800000002000000001002000000000000040
       0000000000000000000000000000000000000000000000000000000000000000
       0000000000000000000000000000000000000000000000000000000000000000
@@ -929,6 +925,7 @@ object frmMain: TfrmMain
       E0000007C000007F0000000000000000F000000FC00000FF0000000000000000
       F800001FE00001FF0000000000000000FC00003FF00003FF0000000000000000
       FF0000FFF00007FF0000000000000000FFE007FFF0000FFF0000000000000000
-      FFFFFFFFFFFFFFFF0000000000000000}
+      FFFFFFFFFFFFFFFF000000000000000000000000000000000000000000000000
+      000000000000}
   end
 end

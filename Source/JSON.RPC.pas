@@ -127,19 +127,19 @@ type
   TJRPCResponse = class(TJRPCEnvelope)
   protected
     FError: TJRPCError;
-    FResult: TValue;
+    FResult: TJSONValue;
   public
     constructor Create;
     destructor Destroy; override;
 
     function IsError: Boolean;
-    procedure SetResult(AValue: TValue);
+    procedure SetResult(AValue: TJSONValue);
 
     [NeonProperty('error')]
     property Error: TJRPCError read FError write FError;
 
     [NeonProperty('result')]
-    property Result: TValue read FResult write FResult;
+    property Result: TJSONValue read FResult write SetResult;
   end;
 
 
@@ -186,7 +186,7 @@ implementation
 
 function JRPCNeonConfig: INeonConfiguration;
 begin
-  Result := TNeonConfiguration.Default
+  Result := TNeonConfiguration.Camel
     .RegisterSerializer(TJSONValueSerializer)
     .RegisterSerializer(TJValueSerializer)
     .RegisterSerializer(TJRequestSerializer)
@@ -466,14 +466,14 @@ end;
 constructor TJRPCResponse.Create;
 begin
   inherited;
-
+  FResult := TJSONNull.Create;
   FError := TJRPCError.Create;
 end;
 
 destructor TJRPCResponse.Destroy;
 begin
   FError.Free;
-
+  FResult.Free;
   inherited;
 end;
 
@@ -487,9 +487,13 @@ begin
     Result := False;
 end;
 
-procedure TJRPCResponse.SetResult(AValue: TValue);
+procedure TJRPCResponse.SetResult(AValue: TJSONValue);
 begin
-
+  if Assigned(FResult) and (FResult <> AValue) then
+  begin
+    FreeAndNil(FResult);
+    FResult := AValue;
+  end;
 end;
 
 { TJRPCParamList }

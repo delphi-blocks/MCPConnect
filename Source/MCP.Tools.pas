@@ -27,8 +27,8 @@ type
   /// </summary>
   TCallToolParams = class
     [NeonProperty('name')] Name: string;
-    [NeonProperty('arguments'), NeonInclude(IncludeIf.NotEmpty)] Arguments: TJSONMap;
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TMeta;
+    [NeonProperty('arguments'), NeonInclude(IncludeIf.NotEmpty)] Arguments: TJSONObject;
+    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
   public
     constructor Create;
     destructor Destroy; override;
@@ -71,7 +71,7 @@ type
     /// <summary>
     /// Meta is a metadata object that is reserved by MCP for storing additional information
     /// </summary>
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TMeta;
+    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
 
     /// <summary>
     /// The name of the tool
@@ -113,7 +113,7 @@ type
     /// <summary>
     /// Meta is a metadata object that is reserved by MCP for storing additional information
     /// </summary>
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TMeta;
+    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
 
     [NeonProperty('tools')] Tools: TTools;
 
@@ -132,7 +132,7 @@ type
     /// <summary>
     /// Meta is a metadata object that is reserved by MCP for storing additional information
     /// </summary>
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TMeta;
+    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
 
 
 	  [NeonProperty('content')] Content: TJSONObject; // Can be TextContent, ImageContent, AudioContent, or EmbeddedResource
@@ -194,7 +194,7 @@ implementation
 
 constructor TTool.Create;
 begin
-  Meta := TMeta.Create;
+  Meta := TJSONObject.Create;
   InputSchema := TJSONObject.Create;
   Annotations := TToolAnnotation.Create;
   OutputSchema := TJSONObject.Create;
@@ -228,7 +228,7 @@ end;
 
 constructor TListToolsResult.Create;
 begin
-  Meta := TMeta.Create;
+  Meta := TJSONObject.Create;
   Tools := TTools.Create(True);
 end;
 
@@ -457,8 +457,8 @@ end;
 
 constructor TCallToolParams.Create;
 begin
-  Arguments := TJSONMap.Create;
-  Meta := TMeta.Create;
+  Arguments := TJSONObject.Create;
+  Meta := TJSONObject.Create;
 end;
 
 destructor TCallToolParams.Destroy;

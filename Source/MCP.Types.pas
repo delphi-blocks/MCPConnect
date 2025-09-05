@@ -66,23 +66,11 @@ type
     destructor Destroy; override;
   end;
 
-  TJSONMap = class(TObjectDictionary<string, TJSONValue>)
-  public
-    constructor Create;
-  end;
-
-  TJSONObjectMap = class(TObjectDictionary<string, TJSONObject>)
-  public
-    constructor Create;
-  end;
-
-  TMeta = TJSONMap;
-
   TRequestParams = class
     /// <summary>
     /// Meta is a metadata object that is reserved by MCP for storing additional information
     /// </summary>
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TMeta;
+    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
   public
     constructor Create;
     destructor Destroy; override;
@@ -355,20 +343,13 @@ end;
 
 constructor TRequestParams.Create;
 begin
-  Meta := TMeta.Create;
+  Meta := TJSONObject.Create;
 end;
 
 destructor TRequestParams.Destroy;
 begin
   Meta.Free;
   inherited;
-end;
-
-{ TJSONMap }
-
-constructor TJSONMap.Create;
-begin
-  inherited Create([doOwnsValues]);
 end;
 
 { TAnyMapOwned }
@@ -384,13 +365,6 @@ begin
   end;
 
   inherited;
-end;
-
-{ TJSONObjectMap }
-
-constructor TJSONObjectMap.Create;
-begin
-  inherited Create([doOwnsValues]);
 end;
 
 { TInitializeParams }

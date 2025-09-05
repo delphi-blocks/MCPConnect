@@ -54,7 +54,7 @@ type
   protected
     function GetParamName(LParam: TRttiParameter): string;
     function RequestToRttiParams(ARequest: TJRPCRequest): TArray<TValue>;
-    function RttiResultToResponse(AResult: TValue): TValue;
+    function RttiResultToResponse(AResult: TValue): TJSONValue;
   public
     { IJRPCInvokable }
     procedure Invoke(ARequest: TJRPCRequest; AResponse: TJRPCResponse);
@@ -214,10 +214,10 @@ begin
   end;
 end;
 
-function TMCPMethodInvoker.RttiResultToResponse(AResult: TValue): TValue;
+function TMCPMethodInvoker.RttiResultToResponse(AResult: TValue): TJSONValue;
 begin
   // TODO: check result type
-  Result := AResult;
+  Result := TNeon.ValueToJSON(AResult);
 end;
 
 procedure TMCPMethodInvoker.SetNeonConfig(AConfig: INeonConfiguration);

@@ -455,8 +455,6 @@ begin
   end;
 end;
 
-{ TCallToolParams }
-
 constructor TCallToolParams.Create;
 begin
   Arguments := TJSONMap.Create;

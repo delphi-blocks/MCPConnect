@@ -98,10 +98,9 @@ type
   end;
 
   TJRPCRequest = class(TJRPCEnvelope)
-  private
+  protected
     FMethod: string;
     FParams: TJSONValue;
-    function GetParamsJSON: TJSONValue;
 
     function GetPositionParams: TJSONArray;
     function GetNamedParams: TJSONObject;
@@ -126,7 +125,7 @@ type
   end;
 
   TJRPCResponse = class(TJRPCEnvelope)
-  private
+  protected
     FError: TJRPCError;
     FResult: TValue;
   public
@@ -207,7 +206,6 @@ begin
   Result := TNeonConfiguration.Default
     .RegisterSerializer(TJSONValueSerializer)
     .RegisterSerializer(TJValueSerializer)
-    //.RegisterSerializer(TJParamsSerializer)
     .RegisterSerializer(TJValueSerializer)
     .RegisterSerializer(TJResponseSerializer);
 end;
@@ -254,19 +252,6 @@ begin
     Result := TJSONArray.Create;
     FParams := Result;
   end;
-end;
-
-function TJRPCRequest.GetParamsJSON: TJSONValue;
-begin
-{
-  FParams.Free;
-  case FParams.ParamsType of
-    ByPos:  FParams := FParams.ByPos.ToJson;
-    ByName: FParams := FParams.ByName.ToJson;
-    Null:   FParams := TJSONObject.Create;
-  end;
-  Result := FParams;
-}
 end;
 
 function TJRPCRequest.ParamsCount: Integer;
@@ -619,10 +604,20 @@ function TJRequestSerializer.Deserialize(AValue: TJSONValue;
   const AData: TValue; ANeonObject: TNeonRttiObject;
   AContext: IDeserializerContext): TValue;
 var
+  LId: TJSONValue;
   LReq: TJRPCRequest;
   LParams: TJSONValue;
 begin
   LReq := AData.AsType<TJRPCRequest>;
+
+  LReq.Method := AValue.GetValue<string>('method');
+  LReq.JsonRpc := AValue.GetValue<string>('jsonrpc');
+  LId := AValue.GetValue<TJSONValue>('id');
+
+  if LId is TJSONString then
+    LReq.Id := LId.Value
+  else
+    LReq.Id := LId.AsType<Integer>;
 
   LParams := AValue.GetValue<TJSONValue>('params');
 

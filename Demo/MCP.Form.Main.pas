@@ -73,6 +73,9 @@ type
     actClearLog: TAction;
     btnClearLog: TToolButton;
     ilMain: TImageList;
+    splMemo: TSplitter;
+    Action1: TAction;
+    Button1: TButton;
     procedure FormCreate(Sender: TObject);
     procedure actRequestPosExecute(Sender: TObject);
     procedure actRequestDesExecute(Sender: TObject);
@@ -90,6 +93,7 @@ type
     procedure actToolListExecute(Sender: TObject);
     procedure actCallToolParamsExecute(Sender: TObject);
     procedure actClearLogExecute(Sender: TObject);
+    procedure Button1Click(Sender: TObject);
   private
     ctx: TRttiContext;
     tools: TArray<TRttiMethod>;
@@ -328,7 +332,7 @@ end;
 procedure TfrmMain.actStructTagsExecute(Sender: TObject);
 begin
   var tags := TAttributeTags.Create();
-  tags.Parse('title=Come stai??,description=sto bene,readOnly=true,12');
+  tags.Parse('title=Come stai??,description=sto bene,readOnly,age=12');
 
   for var tag in tags.TagMap do
   begin
@@ -378,17 +382,54 @@ procedure TfrmMain.actCallToolParamsExecute(Sender: TObject);
 begin
   var c := TCallToolParams.Create;
 
-  c.Name := 'Param';
+  c.Name := 'Somma';
   c.Arguments.Add('arg1', TNeon.ValueToJSON(12));
+  c.Arguments.Add('arg2', TNeon.ValueToJSON(Now()));
+
 
   var s := TNeon.ObjectToJSONString(c, MCPNeonConfig);
   mmoLog.Lines.Add(s);
   c.free;
+
+  mmoLog.Lines.Add('------------------');
+
+  c :=  TNeon.JSONToObject<TCallToolParams>(s, MCPNeonConfig);
+  mmoLog.Lines.Add('Method: ' + c.Name);
+  for var arg in c.Arguments do
+  begin
+    mmoLog.Lines.Add('Argument Name: ' + arg.key);
+    mmoLog.Lines.Add('Argument Value: ' + arg.Value.ToJSON);
+    mmoLog.Lines.Add('--');
+  end;
+
+
+
+
+
 end;
 
 procedure TfrmMain.actClearLogExecute(Sender: TObject);
 begin
   mmoLog.Clear;
+end;
+
+procedure TfrmMain.Button1Click(Sender: TObject);
+begin
+  var map := TJSONMap.Create;
+
+  map.Add('first', TJSONString.Create('firstvalue'));
+  map.Add('second', TJSONNumber.Create(12));
+
+  var s := TNeon.ObjectToJSONString(map, MCPNeonConfig);
+
+  mmoLog.Lines.Add(s);
+
+  map.Free;
+  //Exit;
+
+  map := TNeon.JSONToObject<TJSONMap>(s, MCPNeonConfig);
+
+  mmoLog.Lines.Add(map['first'].ToJSON);
 end;
 
 function TfrmMain.CreatePerson(const AName: string): TPerson;

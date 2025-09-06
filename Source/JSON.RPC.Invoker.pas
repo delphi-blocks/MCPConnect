@@ -1,4 +1,4 @@
-unit MCP.Invoker;
+unit JSON.RPC.Invoker;
 
 interface
 
@@ -19,7 +19,7 @@ type
   ///   This exception is raised when an error occurs during the invocation of a JRPC method.
   ///   It provide the standard information required by the JSON-RPC specification.
   /// </summary>
-  EMCPInvokerError = class(Exception)
+  EJRPCInvokerError = class(Exception)
   private
     FCode: Integer;
     FData: string;
@@ -33,7 +33,7 @@ type
   /// <summary>
   ///   This interface define a standard method to handle JRPC call
   /// </summary>
-  IMCPInvokable = interface
+  IJRPCInvokable = interface
   ['{246F6538-B87C-4164-B81C-74F0ABDD2FCD}']
     procedure Invoke(ARequest: TJRPCRequest; AResponse: TJRPCResponse);
     function GetNeonConfig: INeonConfiguration;
@@ -46,7 +46,7 @@ type
   ///   This class is responsible for invoking a method on a given instance.
   ///   The user has to provide the instance and the method to be invoked.
   /// </summary>
-  TMCPMethodInvoker = class(TInterfacedObject, IMCPInvokable)
+  TJRPCMethodInvoker = class(TInterfacedObject, IJRPCInvokable)
   private
     FInstance: TObject;
     FMethod: TRttiMethod;
@@ -67,14 +67,16 @@ type
   /// <summary>
   ///   This class invoke a specific method on a given instance.
   ///   The method to be invoked is reached through RTTI
-  ///   using the MCP specific attributes.
+  ///   using the JRPC specific attributes.
   /// </summary>
-  TMCPObjectInvoker = class(TInterfacedObject, IMCPInvokable)
+  TJRPCObjectInvoker = class(TInterfacedObject, IJRPCInvokable)
   private
     FInstance: TObject;
     FRttiType: TRttiType;
     FNeonConfig: INeonConfiguration;
+    FSeparator: string;
     function FindMethod(ARequest: TJRPCRequest): TRttiMethod;
+    function GetRequestMethodName(ARequest: TJRPCRequest): string;
   public
     { IJRPCInvokable }
     procedure Invoke(ARequest: TJRPCRequest; AResponse: TJRPCResponse);
@@ -88,12 +90,12 @@ type
   TDisposeAction = reference to procedure;
 
   /// <summary> 
-  ///   IMCPGarbageCollector defines an interface for managing and disposing
+  ///   IJRPCGarbageCollector defines an interface for managing and disposing
   ///   of objects or values that require explicit cleanup. It allows adding
   ///   values with optional custom disposal actions, and provides a method
   ///   to collect and dispose all tracked garbage.
   /// </summary>
-  IMCPGarbageCollector = interface
+  IJRPCGarbageCollector = interface
     ['{407C168F-A81C-4E41-96B2-BFEA94C58B0D}']
     procedure Add(const AValue: TValue); overload;
     procedure Add(const AValue: TValue; AAction: TDisposeAction); overload;
@@ -101,7 +103,7 @@ type
   end;
 
   /// <summary> 
-  /// TMCPGarbageCollector implements IMCPGarbageCollector and provides a
+  /// TJRPCGarbageCollector implements IJRPCGarbageCollector and provides a
   /// mechanism to track and dispose of objects or values. It supports
   /// custom disposal actions and recursive cleanup of arrays and class
   /// instances. Garbage is collected either on demand or automatically
@@ -111,13 +113,13 @@ type
   /// the *CreateInstance* method, then it will be destroyed automatically
   /// when it goes out of scope.
   /// </summary>
-  TMCPGarbageCollector = class(TInterfacedObject, IMCPGarbageCollector)
+  TJRPCGarbageCollector = class(TInterfacedObject, IJRPCGarbageCollector)
   private
     FGarbage: TDictionary<TValue, TDisposeAction>;
     procedure CollectGarbageValue(const AValue: TValue);
     procedure CollectSingleGarbage(AGarbage: TPair<TValue, TDisposeAction>);
   public
-    class function CreateInstance: IMCPGarbageCollector; static;
+    class function CreateInstance: IJRPCGarbageCollector; static;
   public
     constructor Create; virtual;
     destructor Destroy; override;
@@ -129,10 +131,7 @@ type
 
 implementation
 
-uses
-  MCP.Attributes;
-
-{ TMCPMethodInvoker }
+{ TJRPCMethodInvoker }
 
 // Check the compatibility of the JSONValue with the function parameters
 procedure CheckCompatibility(AParam: TRttiParameter; AValue: TJSONValue);
@@ -140,32 +139,68 @@ begin
   if AValue is TJSONNumber then
   begin
     if not (AParam.ParamType.TypeKind in [tkInteger, tkFloat, tkInt64]) then
-      raise EMCPInvokerError.Create(JRPC_INVALID_PARAMS, Format('Invalid parameter for number [%s]', [AParam.Name]));
+      raise EJRPCInvokerError.Create(JRPC_INVALID_PARAMS, Format('Invalid parameter for number [%s]', [AParam.Name]));
   end
   else if AValue is TJSONString then
   begin
     if not (AParam.ParamType.TypeKind in [tkString, tkWChar, tkLString, tkWString, tkUString]) then
-      raise EMCPInvokerError.Create(JRPC_INVALID_PARAMS, Format('Invalid parameter for string [%s]', [AParam.Name]));
+      raise EJRPCInvokerError.Create(JRPC_INVALID_PARAMS, Format('Invalid parameter for string [%s]', [AParam.Name]));
   end
   else if AValue is TJSONObject then
   begin
     if not (AParam.ParamType.TypeKind in [tkClass, tkRecord, tkInterface]) then
-      raise EMCPInvokerError.Create(JRPC_INVALID_PARAMS, Format('Invalid parameter for object [%s]', [AParam.Name]));
+      raise EJRPCInvokerError.Create(JRPC_INVALID_PARAMS, Format('Invalid parameter for object [%s]', [AParam.Name]));
   end
   else if AValue is TJSONArray then
   begin
     if not (AParam.ParamType.TypeKind in [tkArray, tkDynArray]) then
-      raise EMCPInvokerError.Create(JRPC_INVALID_PARAMS, Format('Invalid parameter for array [%s]', [AParam.Name]));
+      raise EJRPCInvokerError.Create(JRPC_INVALID_PARAMS, Format('Invalid parameter for array [%s]', [AParam.Name]));
   end
   else
-    raise EMCPInvokerError.Create(JRPC_INVALID_PARAMS, Format('Invalid parameter [%s]', [AParam.Name]));
+    raise EJRPCInvokerError.Create(JRPC_INVALID_PARAMS, Format('Invalid parameter [%s]', [AParam.Name]));
+end;
+
+function CreateNewValue(AType: TRttiType): TValue;
+var
+  LAllocatedMem: Pointer;
+begin
+  case AType.TypeKind of
+    tkInteger: Result := TValue.From<Integer>(0);
+    tkInt64:   Result := TValue.From<Int64>(0);
+    tkChar:    Result := TValue.From<UTF8Char>(#0);
+    tkWChar:   Result := TValue.From<Char>(#0);
+    tkFloat:   Result := TValue.From<Double>(0);
+    tkString:  Result := TValue.From<UTF8String>('');
+    tkWString: Result := TValue.From<string>('');
+    tkLString: Result := TValue.From<UTF8String>('');
+    tkUString: Result := TValue.From<string>('');
+    tkClass:   Result := nil;
+    tkRecord:
+    begin
+      LAllocatedMem := AllocMem(AType.TypeSize);
+      try
+        TValue.Make(LAllocatedMem, AType.Handle, Result);
+      finally
+        FreeMem(LAllocatedMem);
+      end;
+    end;
+  else
+    raise EJRPCInvokerError.CreateFmt('Error creating type: %s', [AType.Name]);
+  end;
 end;
 
 
-function TMCPMethodInvoker.RequestToRttiParams(ARequest: TJRPCRequest): TArray<TValue>;
+
+function TJRPCMethodInvoker.RequestToRttiParams(ARequest: TJRPCRequest): TArray<TValue>;
 
   function CastJSONValue(AParam: TRttiParameter; AValue: TJSONValue): TValue;
   begin
+    if not Assigned(AValue) then
+    begin
+      Result := CreateNewValue(AParam.ParamType);
+      Exit;
+    end;
+
     CheckCompatibility(AParam, AValue);
     if AParam.ParamType.IsInstance then
       Result := TNeon.JSONToObject(AParam.ParamType, AValue, GetNeonConfig)
@@ -187,7 +222,7 @@ var
   //LParamValue: TValue;
   LParamJSON: TJSONValue;
 begin
-  SetLength(Result, ARequest.ParamsCount);
+  Result := [];
 
   LParamIndex := 0;
   for LParam in FMethod.GetParameters do
@@ -195,7 +230,7 @@ begin
     case ARequest.ParamsType of
       TJRPCParamsType.ByPos:
       begin
-        LParamJSON := (ARequest.Params as TJSONArray).Get(LParamIndex);
+        LParamJSON := (ARequest.Params as TJSONArray).Items[LParamIndex];
         //LParamValue := ARequest.Params.ByPos[LParamIndex];
       end;
 
@@ -205,27 +240,25 @@ begin
         //LParamValue := ARequest.Params.ByName[GetParamName(LParam)];
       end;
     else
-      raise EMCPInvokerError.Create(JRPC_INTERNAL_ERROR, 'Unknown params type');
+      raise EJRPCInvokerError.Create(JRPC_INTERNAL_ERROR, 'Unknown params type');
     end;
 
-    //Result[LParamIndex] := CastParamValue(LParam, LParamValue);
-    Result[LParamIndex] := CastJSONValue(LParam, LParamJSON);
+    Result := Result + [CastJSONValue(LParam, LParamJSON)];
     Inc(LParamIndex);
   end;
 end;
 
-function TMCPMethodInvoker.RttiResultToResponse(AResult: TValue): TJSONValue;
+function TJRPCMethodInvoker.RttiResultToResponse(AResult: TValue): TJSONValue;
 begin
-  // TODO: check result type
-  Result := TNeon.ValueToJSON(AResult);
+  Result := TNeon.ValueToJSON(AResult, FNeonConfig);
 end;
 
-procedure TMCPMethodInvoker.SetNeonConfig(AConfig: INeonConfiguration);
+procedure TJRPCMethodInvoker.SetNeonConfig(AConfig: INeonConfiguration);
 begin
   FNeonConfig := AConfig;
 end;
 
-constructor TMCPMethodInvoker.Create(AInstance: TObject; AMethod: TRttiMethod);
+constructor TJRPCMethodInvoker.Create(AInstance: TObject; AMethod: TRttiMethod);
 begin
   inherited Create;
   FInstance := AInstance;
@@ -233,23 +266,23 @@ begin
   FNeonConfig := TNeonConfiguration.Default;
 end;
 
-function TMCPMethodInvoker.GetNeonConfig: INeonConfiguration;
+function TJRPCMethodInvoker.GetNeonConfig: INeonConfiguration;
 begin
   Result := FNeonConfig;
 end;
 
-function TMCPMethodInvoker.GetParamName(LParam: TRttiParameter): string;
+function TJRPCMethodInvoker.GetParamName(LParam: TRttiParameter): string;
 var
-  LParamAttrib: MCPParamAttribute;
+  LParamAttrib: JRPCAttribute;
 begin
-  LParamAttrib := TRttiUtils.FindAttribute<MCPParamAttribute>(LParam);
+  LParamAttrib := TRttiUtils.FindAttribute<JRPCAttribute>(LParam);
   if Assigned(LParamAttrib) then
     Result := LParamAttrib.Name
   else
     Result := LParam.Name;
 end;
 
-procedure TMCPMethodInvoker.Invoke(ARequest: TJRPCRequest;
+procedure TJRPCMethodInvoker.Invoke(ARequest: TJRPCRequest;
   AResponse: TJRPCResponse);
 var
   LArgs: TArray<TValue>;
@@ -258,10 +291,15 @@ begin
   LArgs := RequestToRttiParams(ARequest);
   try
     LResult := FMethod.Invoke(FInstance, LArgs);
-    AResponse.Id := ARequest.Id;
-    AResponse.Result := RttiResultToResponse(LResult);
+    try
+      AResponse.Id := ARequest.Id;
+      AResponse.Result := RttiResultToResponse(LResult);
+    finally
+      if LResult.IsObject then
+        LResult.AsObject.Free;
+    end;
   except
-    on E: EMCPInvokerError do
+    on E: EJRPCInvokerError do
     begin
       AResponse.Error.Code := E.Code;
       AResponse.Error.Message := E.Message;
@@ -276,46 +314,56 @@ begin
   end;
 end;
 
-{ TMCPObjectInvoker }
+{ TJRPCObjectInvoker }
 
-constructor TMCPObjectInvoker.Create(AInstance: TObject);
+constructor TJRPCObjectInvoker.Create(AInstance: TObject);
 begin
   inherited Create;
+  FSeparator := '/';
   FInstance := AInstance;
   FRttiType := TRttiUtils.GetType(AInstance);
   FNeonConfig := TNeonConfiguration.Default;
+
+  TRttiUtils.HasAttribute<JRPCAttribute>(FRttiType,
+    procedure (LAttrib: JRPCAttribute)
+    begin
+      if LAttrib.Tags.Exists('separator') then
+        FSeparator := LAttrib.Tags.GetValueAs<string>('separator');
+    end);
 end;
 
-function TMCPObjectInvoker.FindMethod(ARequest: TJRPCRequest): TRttiMethod;
+function TJRPCObjectInvoker.FindMethod(ARequest: TJRPCRequest): TRttiMethod;
 var
   LMethod: TRttiMethod;
-  LToolAttrib: MCPToolAttribute;
+  LJRPCAttrib: JRPCAttribute;
   LMethodName: string;
+  LRequestMethodName: string;
 begin
   Result := nil;
+  LRequestMethodName := GetRequestMethodName(ARequest);
   for LMethod in FRttiType.GetMethods do
   begin
-    LToolAttrib := TRttiUtils.FindAttribute<MCPToolAttribute>(LMethod);
-    if Assigned(LToolAttrib) then
-      LMethodName := LToolAttrib.Name
+    LJRPCAttrib := TRttiUtils.FindAttribute<JRPCAttribute>(LMethod);
+    if Assigned(LJRPCAttrib) then
+      LMethodName := LJRPCAttrib.Name
     else
       LMethodName := LMethod.Name;
 
-    if ARequest.Method = LMethodName then
+    if LRequestMethodName = LMethodName then
       Exit(LMethod);
   end;
 end;
 
-function TMCPObjectInvoker.GetNeonConfig: INeonConfiguration;
+function TJRPCObjectInvoker.GetNeonConfig: INeonConfiguration;
 begin
   Result := FNeonConfig;
 end;
 
-procedure TMCPObjectInvoker.Invoke(ARequest: TJRPCRequest;
+procedure TJRPCObjectInvoker.Invoke(ARequest: TJRPCRequest;
   AResponse: TJRPCResponse);
 var
   LMethod: TRttiMethod;
-  LMethodInvoker: IMCPInvokable;
+  LMethodInvoker: IJRPCInvokable;
 begin
   LMethod := FindMethod(ARequest);
   if not Assigned(LMethod) then
@@ -325,19 +373,30 @@ begin
     Exit;
   end;
 
-  LMethodInvoker := TMCPMethodInvoker.Create(FInstance, LMethod);
+  LMethodInvoker := TJRPCMethodInvoker.Create(FInstance, LMethod);
   LMethodInvoker.NeonConfig := FNeonConfig;
   LMethodInvoker.Invoke(ARequest, AResponse);
 end;
 
-procedure TMCPObjectInvoker.SetNeonConfig(AConfig: INeonConfiguration);
+function TJRPCObjectInvoker.GetRequestMethodName(ARequest: TJRPCRequest): string;
+var
+  LSeparatorIndex: Integer;
+begin
+  LSeparatorIndex := Pos(FSeparator, ARequest.Method);
+  if LSeparatorIndex > 0 then
+    Result := Copy(ARequest.Method, LSeparatorIndex + 1, Length(ARequest.Method))
+  else
+    Result := ARequest.Method;
+end;
+
+procedure TJRPCObjectInvoker.SetNeonConfig(AConfig: INeonConfiguration);
 begin
   FNeonConfig := AConfig;
 end;
 
-{ EMCPInvokerError }
+{ EJRPCInvokerError }
 
-constructor EMCPInvokerError.Create(ACode: Integer; const AMessage,
+constructor EJRPCInvokerError.Create(ACode: Integer; const AMessage,
   AData: string);
 begin
   inherited Create(AMessage);
@@ -345,14 +404,14 @@ begin
   FData := AData;
 end;
 
-{ TMCPGarbageCollector }
+{ TJRPCGarbageCollector }
 
-procedure TMCPGarbageCollector.Add(const AValue: TValue);
+procedure TJRPCGarbageCollector.Add(const AValue: TValue);
 begin
   Add(AValue, nil);
 end;
 
-procedure TMCPGarbageCollector.Add(const AValue: TValue;
+procedure TJRPCGarbageCollector.Add(const AValue: TValue;
   AAction: TDisposeAction);
 begin
   if FGarbage.ContainsKey(AValue) then
@@ -360,7 +419,7 @@ begin
   FGarbage.Add(AValue, AAction);
 end;
 
-procedure TMCPGarbageCollector.CollectGarbage;
+procedure TJRPCGarbageCollector.CollectGarbage;
 var
   LGarbage: TPair<TValue, TDisposeAction>;
 begin
@@ -369,7 +428,7 @@ begin
   FGarbage.Clear;
 end;
 
-procedure TMCPGarbageCollector.CollectGarbageValue(const AValue: TValue);
+procedure TJRPCGarbageCollector.CollectGarbageValue(const AValue: TValue);
 var
   LIndex: Integer;
 begin
@@ -390,7 +449,7 @@ begin
   end;
 end;
 
-procedure TMCPGarbageCollector.CollectSingleGarbage(
+procedure TJRPCGarbageCollector.CollectSingleGarbage(
   AGarbage: TPair<TValue, TDisposeAction>);
 begin
   if Assigned(AGarbage.Value) then
@@ -399,18 +458,18 @@ begin
     CollectGarbageValue(AGarbage.Key);
 end;
 
-constructor TMCPGarbageCollector.Create;
+constructor TJRPCGarbageCollector.Create;
 begin
   inherited;
   FGarbage := TDictionary<TValue, TDisposeAction>.Create;
 end;
 
-class function TMCPGarbageCollector.CreateInstance: IMCPGarbageCollector;
+class function TJRPCGarbageCollector.CreateInstance: IJRPCGarbageCollector;
 begin
-  Result := TMCPGarbageCollector.Create;
+  Result := TJRPCGarbageCollector.Create;
 end;
 
-destructor TMCPGarbageCollector.Destroy;
+destructor TJRPCGarbageCollector.Destroy;
 begin
   CollectGarbage;
   FGarbage.Free;

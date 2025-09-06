@@ -1,0 +1,27 @@
+meta {
+  name: JRPC - SUM
+  type: http
+  seq: 2
+}
+
+post {
+  url: http://localhost:8080/jrpc
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 42,
+    "method": "math/sum",
+    "params": {
+      "a": 1,
+      "b": 5
+    }
+  }
+}
+
+settings {
+  encodeUrl: true
+}

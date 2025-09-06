@@ -7,6 +7,7 @@ uses
   System.TypInfo, System.JSON,
 
   Neon.Core.Utils,
+  Neon.Core.Tags,
   Neon.Core.Nullables,
   Neon.Core.Attributes,
   Neon.Core.Persistence,
@@ -23,6 +24,27 @@ const
 
 type
   EJSONRPCException = class(Exception);
+
+  JRPCAttribute = class(TCustomAttribute)
+  private
+    FName: string;
+    FAdditionalTags: string;
+    FAdditional: string;
+    FTags: TAttributeTags;
+    function GetTags: TAttributeTags;
+  public
+    property Name: string read FName;
+    property AdditionalTags: string read FAdditional write FAdditional;
+
+    property Tags: TAttributeTags read GetTags write FTags;
+
+    constructor Create(const AName: string; const AAdditionalTags: string = '');
+    destructor Destroy; override;
+  end;
+
+  JRPCPathAttribute = class(JRPCAttribute);
+  JRPCMethodAttribute = class(JRPCAttribute);
+  JRPCParamAttribute = class(JRPCAttribute);
 
   TJRPCID = record
   private
@@ -177,6 +199,59 @@ type
   public
     function Serialize(const AValue: TValue; ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue; override;
     function Deserialize(AValue: TJSONValue; const AData: TValue; ANeonObject: TNeonRttiObject; AContext: IDeserializerContext): TValue; override;
+  end;
+
+  TJRPCConstructorProxy = class
+  private
+    FConstructorFunc: TFunc<TObject>;
+    FTypeTClass: TClass;
+    FNeonConfig: INeonConfiguration;
+  public
+    constructor Create(AClass: TClass; const AConstructorFunc: TFunc<TObject>; ANeonConfig: INeonConfiguration);
+
+    property TypeTClass: TClass read FTypeTClass;
+    property NeonConfig: INeonConfiguration read FNeonConfig;
+    property ConstructorFunc: TFunc<TObject> read FConstructorFunc write FConstructorFunc;
+    function Clone: TJRPCConstructorProxy;
+  end;
+
+  TJRPCRegistry = class(TObjectDictionary<string, TJRPCConstructorProxy>)
+  private
+    class var FInstance: TJRPCRegistry;
+  protected
+    class function GetInstance: TJRPCRegistry; static; inline;
+  private
+    FSeparator: string;
+    FNeonConfig: INeonConfiguration;
+    function GetClassName(AClass: TClass): string;
+    procedure AddClass(AClass: TClass; AProxy: TJRPCConstructorProxy);
+    procedure RemoveClass(AClass: TClass);
+  public
+    constructor Create; virtual;
+    function RegisterClass(AClass: TClass): TJRPCConstructorProxy; overload;
+    function RegisterClass(AClass: TClass; ANeonConfig: INeonConfiguration): TJRPCConstructorProxy; overload;
+    function RegisterClass<T: class>: TJRPCConstructorProxy; overload;
+    function RegisterClass<T: class>(ANeonConfig: INeonConfiguration): TJRPCConstructorProxy; overload;
+    function RegisterClass<T: class>(const AConstructorFunc: TFunc<TObject>): TJRPCConstructorProxy; overload;
+    function RegisterClass<T: class>(const AConstructorFunc: TFunc<TObject>; ANeonConfig: INeonConfiguration): TJRPCConstructorProxy; overload;
+
+    function ClassExists(AClass: TClass): Boolean; overload;
+    function ClassExists<T: class>: Boolean; overload;
+
+    procedure UnregisterClass(AClass: TClass);
+
+    function GetClassInstance(const AName: string; out Value: TObject): Boolean;
+    function GetConstructorProxy(const AName: string; out Value: TJRPCConstructorProxy): Boolean;
+
+    property Separator: string read FSeparator write FSeparator;
+
+    // This config will be used for the serialization and deserialization
+    // of input parameters and result
+    property NeonConfig: INeonConfiguration read FNeonConfig write FNeonConfig;
+
+    class property Instance: TJRPCRegistry read GetInstance;
+    class constructor Create;
+    class destructor Destroy;
   end;
 
 function JRPCNeonConfig: INeonConfiguration;
@@ -623,20 +698,21 @@ begin
   else
     LReq.Id := LId.AsType<Integer>;
 
-  LParams := AValue.GetValue<TJSONValue>('params');
-
-  // Position parameters
-  if LParams is TJSONArray then
+  if AValue.TryGetValue<TJSONValue>('params', LParams) then
   begin
-    LReq.Params.Free;
-    LReq.Params := LParams.Clone as TJSONArray;
-  end;
+    // Position parameters
+    if LParams is TJSONArray then
+    begin
+      LReq.Params.Free;
+      LReq.Params := LParams.Clone as TJSONArray;
+    end;
 
-  // Named parameters
-  if LParams is TJSONObject then
-  begin
-    LReq.Params.Free;
-    LReq.Params := LParams.Clone as TJSONObject;
+    // Named parameters
+    if LParams is TJSONObject then
+    begin
+      LReq.Params.Free;
+      LReq.Params := LParams.Clone as TJSONObject;
+    end;
   end;
 
   Result := TValue.From<TJRPCRequest>(LReq);
@@ -651,6 +727,185 @@ function TJRequestSerializer.Serialize(const AValue: TValue;
   ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue;
 begin
   Result := AContext.WriteDataMember(AValue, False);
+end;
+
+{ JRPCAttribute }
+
+constructor JRPCAttribute.Create(const AName, AAdditionalTags: string);
+begin
+  FName := AName;
+  FAdditionalTags := AAdditionalTags;
+
+  FTags := TAttributeTags.Create();
+end;
+
+destructor JRPCAttribute.Destroy;
+begin
+  FTags.Free;
+  inherited;
+end;
+
+function JRPCAttribute.GetTags: TAttributeTags;
+begin
+  if (FTags.Count = 0) and not FAdditionalTags.IsEmpty then
+    FTags.Parse(FAdditionalTags);
+
+  Result := FTags;
+end;
+
+{ TJRPCRegistry }
+
+procedure TJRPCRegistry.AddClass(AClass: TClass; AProxy: TJRPCConstructorProxy);
+begin
+  Self.Add(GetClassName(AClass), AProxy);
+end;
+
+function TJRPCRegistry.ClassExists(AClass: TClass): Boolean;
+var
+  LItem: TJRPCConstructorProxy;
+begin
+  Result := TryGetValue(GetClassName(AClass), LItem);
+end;
+
+function TJRPCRegistry.ClassExists<T>: Boolean;
+begin
+  Result := ClassExists(TClass(T));
+end;
+
+class constructor TJRPCRegistry.Create;
+begin
+  FInstance := nil;
+end;
+
+constructor TJRPCRegistry.Create;
+begin
+  inherited Create([doOwnsValues]);
+  FSeparator := '/';
+  FNeonConfig := TNeonConfiguration.Camel;
+end;
+
+function TJRPCRegistry.GetClassInstance(const AName: string;
+  out Value: TObject): Boolean;
+var
+  LConstructorProxy: TJRPCConstructorProxy;
+begin
+  if GetConstructorProxy(AName, LConstructorProxy) then
+    Value := LConstructorProxy.ConstructorFunc();
+end;
+
+function TJRPCRegistry.GetClassName(AClass: TClass): string;
+var
+  LJRPCAttribute: JRPCAttribute;
+begin
+  LJRPCAttribute := TRttiUtils.FindAttribute<JRPCAttribute>(TRttiUtils.Context.GetType(AClass));
+  if Assigned(LJRPCAttribute) then
+  begin
+    Result := LJRPCAttribute.Name;
+    if LJRPCAttribute.GetTags.Exists('separator') then
+      FSeparator := LJRPCAttribute.GetTags.GetValueAs<string>('separator');
+  end
+  else
+    Result := AClass.QualifiedClassName;
+end;
+
+function TJRPCRegistry.GetConstructorProxy(const AName: string;
+  out Value: TJRPCConstructorProxy): Boolean;
+var
+  LClassName: string;
+  LSeparatorIndex: Integer;
+begin
+  LSeparatorIndex := Pos(FSeparator, AName);
+  if LSeparatorIndex > 0 then
+    LClassName := Copy(AName, 0, LSeparatorIndex - 1)
+  else
+    LClassName := AName;
+
+  Value := nil;
+  Result := Self.TryGetValue(LClassName, Value);
+end;
+
+class function TJRPCRegistry.GetInstance: TJRPCRegistry;
+begin
+  if not Assigned(FInstance) then
+    FInstance := TJRPCRegistry.Create;
+  Result := FInstance;
+end;
+
+function TJRPCRegistry.RegisterClass(AClass: TClass): TJRPCConstructorProxy;
+begin
+  Result := TJRPCConstructorProxy.Create(AClass, nil, FNeonConfig);
+  Self.AddClass(AClass, Result);
+end;
+
+function TJRPCRegistry.RegisterClass<T>: TJRPCConstructorProxy;
+begin
+  Result := RegisterClass<T>(nil, FNeonConfig);
+end;
+
+function TJRPCRegistry.RegisterClass(AClass: TClass;
+  ANeonConfig: INeonConfiguration): TJRPCConstructorProxy;
+begin
+  Result := TJRPCConstructorProxy.Create(AClass, nil, ANeonConfig);
+  Self.AddClass(AClass, Result);
+end;
+
+function TJRPCRegistry.RegisterClass<T>(
+  ANeonConfig: INeonConfiguration): TJRPCConstructorProxy;
+begin
+  Result := RegisterClass<T>(nil, ANeonConfig);
+end;
+
+function TJRPCRegistry.RegisterClass<T>(const AConstructorFunc: TFunc<TObject>;
+  ANeonConfig: INeonConfiguration): TJRPCConstructorProxy;
+begin
+  Result := TJRPCConstructorProxy.Create(TClass(T), AConstructorFunc, ANeonConfig);
+  AddClass(TClass(T), Result);
+end;
+
+function TJRPCRegistry.RegisterClass<T>(
+  const AConstructorFunc: TFunc<TObject>): TJRPCConstructorProxy;
+begin
+  Result := TJRPCConstructorProxy.Create(TClass(T), AConstructorFunc, FNeonConfig);
+  AddClass(TClass(T), Result);
+end;
+
+procedure TJRPCRegistry.RemoveClass(AClass: TClass);
+begin
+  Self.Remove(GetClassName(AClass));
+end;
+
+procedure TJRPCRegistry.UnregisterClass(AClass: TClass);
+begin
+  Self.RemoveClass(AClass);
+end;
+
+class destructor TJRPCRegistry.Destroy;
+begin
+  FInstance.Free;
+end;
+
+{ TJRPCConstructorProxy }
+
+function TJRPCConstructorProxy.Clone: TJRPCConstructorProxy;
+begin
+  Result := TJRPCConstructorProxy.Create(FTypeTClass, FConstructorFunc, FNeonConfig);
+end;
+
+constructor TJRPCConstructorProxy.Create(AClass: TClass;
+  const AConstructorFunc: TFunc<TObject>; ANeonConfig: INeonConfiguration);
+begin
+  inherited Create;
+  FConstructorFunc := AConstructorFunc;
+  FTypeTClass := AClass;
+  FNeonConfig := ANeonConfig;
+
+  // Default constructor function
+  if not Assigned(FConstructorFunc) then
+    FConstructorFunc :=
+      function: TObject
+      begin
+        Result := TRttiUtils.CreateInstance(FTypeTClass);
+      end;
 end;
 
 end.

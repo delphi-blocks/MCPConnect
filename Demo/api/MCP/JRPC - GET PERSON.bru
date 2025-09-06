@@ -1,0 +1,23 @@
+meta {
+  name: JRPC - GET PERSON
+  type: http
+  seq: 5
+}
+
+post {
+  url: http://localhost:8080/jrpc
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 42,
+    "method": "object/person"
+  }
+}
+
+settings {
+  encodeUrl: true
+}

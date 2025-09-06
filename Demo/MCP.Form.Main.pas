@@ -7,7 +7,8 @@ uses
   System.TypInfo, System.JSON,
   Vcl.Graphics, Vcl.StdCtrls, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.ExtCtrls,
 
-  JSON.RPC,
+  JSON.RPC, System.ImageList, Vcl.ImgList, System.Actions, Vcl.ActnList,
+  Vcl.CategoryButtons, Vcl.ComCtrls, Vcl.ToolWin,
 
   MCP.Attributes,
   MCP.Types,
@@ -15,7 +16,7 @@ uses
   MCP.Resources,
   MCP.Prompts,
 
-  MCP.Invoker,
+  JSON.RPC.Invoker,
 
   Neon.Core.Tags,
   Neon.Core.Types,
@@ -24,8 +25,7 @@ uses
   Neon.Core.Persistence,
   Neon.Core.Serializers.RTL,
   Neon.Core.Persistence.JSON,
-  Neon.Core.Persistence.JSON.Schema, System.Actions, Vcl.ActnList,
-  Vcl.CategoryButtons, Vcl.ToolWin, Vcl.ComCtrls, System.ImageList, Vcl.ImgList;
+  Neon.Core.Persistence.JSON.Schema;
 
 type
   [Test.Abc()]
@@ -221,7 +221,7 @@ procedure TfrmMain.actRttiCallExecute(Sender: TObject);
 var
   LRequest: TJRPCRequest;
   LResponse: TJRPCResponse;
-  LMethodInvoker: IMCPInvokable;
+  LMethodInvoker: IJRPCInvokable;
 begin
   // Build the test request
   LRequest := TJRPCRequest.Create;
@@ -234,7 +234,7 @@ begin
   LResponse := TJRPCResponse.Create;
   LResponse.Id := 1;
 
-  LMethodInvoker := TMCPObjectInvoker.Create(Self);
+  LMethodInvoker := TJRPCObjectInvoker.Create(Self);
   LMethodInvoker.Invoke(LRequest, LResponse);
 
   // Show response
@@ -310,7 +310,7 @@ end;
 
 procedure TfrmMain.actInvokeRequestExecute(Sender: TObject);
 begin
-  var GC := TMCPGarbageCollector.CreateInstance;
+  var GC := TJRPCGarbageCollector.CreateInstance;
 
   var LRequest := TNeon.JSONToObject<TJRPCRequest>(mmoLog.Lines.Text, JRPCNeonConfig);
   GC.Add(LRequest);
@@ -319,7 +319,7 @@ begin
 
   var LResponse := TJRPCResponse.Create;
   GC.Add(LResponse);
-  var LMethodInvoker: IMCPInvokable := TMCPObjectInvoker.Create(Self);
+  var LMethodInvoker: IJRPCInvokable := TJRPCObjectInvoker.Create(Self);
   LMethodInvoker.NeonConfig := TNeonConfiguration.Camel;
   LMethodInvoker.Invoke(LRequest, LResponse);
 

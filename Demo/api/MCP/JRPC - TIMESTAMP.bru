@@ -1,0 +1,23 @@
+meta {
+  name: JRPC - TIMESTAMP
+  type: http
+  seq: 4
+}
+
+post {
+  url: http://localhost:8080/jrpc
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 42,
+    "method": "math/timestamp"
+  }
+}
+
+settings {
+  encodeUrl: true
+}

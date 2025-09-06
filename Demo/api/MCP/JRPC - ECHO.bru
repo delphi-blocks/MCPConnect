@@ -1,0 +1,24 @@
+meta {
+  name: JRPC - ECHO
+  type: http
+  seq: 3
+}
+
+post {
+  url: http://localhost:8080/jrpc
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 42,
+    "method": "math/echo",
+    "params": {"value": "ciao"}
+  }
+}
+
+settings {
+  encodeUrl: true
+}

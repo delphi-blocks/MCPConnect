@@ -89,15 +89,17 @@ end;
 
 { TMCPToolApi }
 
-function TMCPToolApi.Call(const AName: string; AArguments: TJSONObject;
-  Meta: TJSONObject): TCallToolResult;
+function TMCPToolApi.Call(const AName: string; AArguments: TJSONObject; Meta: TJSONObject): TCallToolResult;
 begin
+  var t := TTextContent.Create;
+  t.Text := 'This is the result => ';
+  t.&Type := 'text';
+
   Result := TCallToolResult.Create;
-  Result.Content := TJSONObject.Create;
-  Result.StructuredContent := TJSONObject.Create;
-  Result.Content.AddPair('mcp_method', AName);
+  Result.SetContent(t);
+
   for var LPair in AArguments do
-    Result.Content.AddPair(LPair.JsonString.Value, LPair.JsonValue.ToString);
+    t.Text := t.Text + LPair.JsonString.Value + ':' + LPair.JsonValue.ToString;
 end;
 
 initialization

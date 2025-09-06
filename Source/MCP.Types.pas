@@ -292,6 +292,94 @@ type
     // Parent "Notification" type is not defined in the source, assuming it contains no serialized fields.
   end;
 
+  { ************ Contents ************ }
+
+  TBaseContent = class
+  public
+    [NeonProperty('annotations')] Annotations: TAnnotations;
+    [NeonProperty('_meta')] [NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
+    [NeonProperty('type')] &Type: string;
+  public
+    constructor Create;
+    destructor Destroy; override;
+  end;
+
+  TTextContent = class(TBaseContent)
+  public
+    [NeonProperty('text')] Text: string;
+  end;
+
+  TImageContent = class(TBaseContent)
+  public
+    [NeonProperty('data')] Data: string;
+    [NeonProperty('mimeType')] MIMEType: string;
+  end;
+
+  TAudioContent = class(TBaseContent)
+  public
+    [NeonProperty('data')] Data: string;
+    [NeonProperty('mimeType')] MIMEType: string;
+  end;
+
+  TResourceContents = class
+    /// <summary>
+    /// Metadata object reserved for additional information.
+    /// </summary>
+    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
+    /// <summary>
+    /// The URI of this resource.
+    /// </summary>
+    [NeonProperty('uri')] URI: string;
+    /// <summary>
+    /// The MIME type of this resource, if known.
+    /// </summary>
+    [NeonProperty('mimeType')] MIMEType: NullString;
+  public
+    constructor Create;
+    destructor Destroy; override;
+  end;
+
+  /// <summary>
+  /// Represents a text-based resource.
+  /// </summary>
+  TTextResourceContents = class(TResourceContents)
+  public
+    /// <summary>
+    /// The text of the item.
+    /// </summary>
+    /// <remarks>This must only be set if the item can actually be represented as text (not binary data).</remarks>
+    [NeonProperty('text')] Text: string;
+  end;
+
+  /// <summary>
+  /// Represents a binary-based resource.
+  /// </summary>
+  TBlobResourceContents = class(TResourceContents)
+  public
+    /// <summary>
+    /// A base64-encoded string representing the binary data of the item.
+    /// </summary>
+    [NeonProperty('blob')] Blob: string;
+  end;
+
+  TResourceLink = class(TBaseContent)
+  public
+    [NeonProperty('uri')] URI: string;
+    [NeonProperty('name')] Name: string;
+    [NeonProperty('description')] Description: string;
+    [NeonProperty('mimeType')] MIMEType: string;
+  end;
+
+  TEmbeddedResource = class(TBaseContent)
+  public
+    [NeonProperty('resource')] Resource: TResourceContents;
+  public
+    constructor Create;
+    destructor Destroy; override;
+  end;
+
+
+
 function MCPNeonConfig: INeonConfiguration;
 
 
@@ -397,6 +485,48 @@ destructor TInitializeParams.Destroy;
 begin
   Capabilities.Free;
   ClientInfo.Free;
+  inherited;
+end;
+
+{ TBaseContent }
+
+constructor TBaseContent.Create;
+begin
+  Annotations := TAnnotations.Create;
+  Meta := TJSONObject.Create;
+end;
+
+destructor TBaseContent.Destroy;
+begin
+  Meta.Free;
+  Annotations.Free;
+
+  inherited;
+end;
+
+{ TResourceContents }
+
+constructor TResourceContents.Create;
+begin
+  Meta := TJSONObject.Create;
+end;
+
+destructor TResourceContents.Destroy;
+begin
+  Meta.Free;
+  inherited;
+end;
+
+{ TEmbeddedResource }
+
+constructor TEmbeddedResource.Create;
+begin
+  Resource := TResourceContents.Create;
+end;
+
+destructor TEmbeddedResource.Destroy;
+begin
+  Resource.Free;
   inherited;
 end;
 

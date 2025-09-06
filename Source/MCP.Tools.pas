@@ -128,55 +128,44 @@ type
     function ToJSON(APrettyPrint: Boolean = False): string;
   end;
 
-  TBaseContent = class
-  public
-    [NeonProperty('annotations')] Annotations: TAnnotations;
-    [NeonProperty('_meta')] [NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
-    [NeonProperty('type')] &Type: string;
-  end;
-
-  TTextContent = class(TBaseContent)
-  public
-    [NeonProperty('text')] Text: string;
-  end;
-
-  TImageContent = class(TBaseContent)
-  public
-    [NeonProperty('data')] Data: string;
-    [NeonProperty('mimeType')] MIMEType: string;
-  end;
-
-  TAudioContent = class(TBaseContent)
-  public
-    [NeonProperty('data')] Data: string;
-    [NeonProperty('mimeType')] MIMEType: string;
-  end;
-
+  /// <summary>
+  ///   Can be TextContent, ImageContent, AudioContent, ResourceLink, or
+  ///   EmbeddedResource
+  /// </summary>
   TCallToolResult = class
+  private
+  public
+
     /// <summary>
     /// Meta is a metadata object that is reserved by MCP for storing additional information
     /// </summary>
     [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
 
-
-	  [NeonProperty('content')] Content: TJSONObject; // Can be TextContent, ImageContent, AudioContent, or EmbeddedResource
+   /// <summary>
+   ///   Can be TextContent, ImageContent, AudioContent, ResourceLink, or
+   ///   EmbeddedResource
+   /// </summary>
+	  [NeonProperty('content')] Content: TBaseContent;
 
     /// <summary>
-    /// Structured content returned as a JSON object in the structuredContent field of a result.
-    /// For backwards compatibility, a tool that returns structured content SHOULD also return
-    /// functionally equivalent unstructured content.
+    ///   Structured content returned as a JSON object in the structuredContent
+    ///   field of a result. For backwards compatibility, a tool that returns
+    ///   structured content SHOULD also return functionally equivalent
+    ///   unstructured content.
     /// </summary>
     [NeonIgnore] StructuredContent: TJSONObject;
 
     /// <summary>
-    /// Whether the tool call ended in an error.
-    /// If not set, this is assumed to be false (the call was successful).
+    ///   Whether the tool call ended in an error. If not set, this is assumed
+    ///   to be false (the call was successful).
     /// </summary>
     [NeonIgnore] IsError: Nullable<Boolean>;
 
   public
     constructor Create;
     destructor Destroy; override;
+
+    procedure SetContent(AContent: TBaseContent);
   end;
 
 type
@@ -502,7 +491,7 @@ end;
 constructor TCallToolResult.Create;
 begin
   Meta := TJSONObject.Create;
-  Content := TJSONObject.Create;
+  Content := TBaseContent.Create;
   StructuredContent := TJSONObject.Create;
 end;
 
@@ -512,6 +501,15 @@ begin
   Content.Free;
   StructuredContent.Free;
   inherited;
+end;
+
+procedure TCallToolResult.SetContent(AContent: TBaseContent);
+begin
+  if (AContent <> nil) and (AContent <> Content) then
+  begin
+    Content.Free;
+    Content := AContent;
+  end;
 end;
 
 end.

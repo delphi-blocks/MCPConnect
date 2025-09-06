@@ -224,60 +224,6 @@ type
     [NeonProperty('uri')] URI: string;
   end;
 
-  TResourceContents = class
-    /// <summary>
-    /// Metadata object reserved for additional information.
-    /// </summary>
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
-    /// <summary>
-    /// The URI of this resource.
-    /// </summary>
-    [NeonProperty('uri')] URI: string;
-    /// <summary>
-    /// The MIME type of this resource, if known.
-    /// </summary>
-    [NeonProperty('mimeType')] MIMEType: NullString;
-  end;
-
-  /// <summary>
-  /// Represents a text-based resource.
-  /// </summary>
-  TTextResourceContents = class(TResourceContents)
-  public
-    /// <summary>
-    /// The text of the item.
-    /// </summary>
-    /// <remarks>This must only be set if the item can actually be represented as text (not binary data).</remarks>
-    [NeonProperty('text')] Text: string;
-  end;
-
-  /// <summary>
-  /// Represents a binary-based resource.
-  /// </summary>
-  TBlobResourceContents = class(TResourceContents)
-  public
-    /// <summary>
-    /// A base64-encoded string representing the binary data of the item.
-    /// </summary>
-    [NeonProperty('blob')] Blob: string;
-  end;
-
-  TResourceLink = record
-  public
-    [NeonProperty('type')] &Type: string;
-    [NeonProperty('uri')] URI: string;
-    [NeonProperty('name')] Name: string;
-    [NeonProperty('description')] Description: string;
-    [NeonProperty('mimeType')] MIMEType: string;
-  end;
-
-  TEmbeddedResource = record
-  public
-    [NeonProperty('_meta')] [NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
-    [NeonProperty('type')] &Type: string;
-    [NeonProperty('resource')] Resource: TResourceContents;
-  end;
-
 implementation
 
 end.

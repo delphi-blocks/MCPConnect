@@ -281,14 +281,6 @@ object frmMain: TfrmMain
     SelectedButtonColor = 15132390
     TabOrder = 1
   end
-  object Button1: TButton
-    Left = 32
-    Top = 456
-    Width = 75
-    Height = 25
-    Caption = 'Button1'
-    TabOrder = 2
-  end
   object actListMain: TActionList
     Images = ilMain
     Left = 80

@@ -67,6 +67,9 @@ type
   public
     constructor Create;
 
+    function ToJson: string; virtual;
+    procedure FromJson(const AJSON: string); virtual;
+
     [NeonProperty('jsonrpc')]
     property JsonRpc: string read FJsonRpc write FJsonRpc;
 
@@ -126,6 +129,7 @@ type
 
     function GetPositionParams: TJSONArray;
     function GetNamedParams: TJSONObject;
+    procedure SetParams(AValue: TJSONValue);
   public
     constructor Create;
     destructor Destroy; override;
@@ -135,33 +139,35 @@ type
 
     procedure AddPositionParam(const AValue: TValue);
     procedure AddNamedParam(const AName: string; const AValue: TValue);
-    procedure SetParams(AValue: TJSONValue);
-
-    function ToJson: string;
 
     [NeonProperty('method')]
     property Method: string read FMethod write FMethod;
 
     [NeonProperty('params')]
-    property Params: TJSONValue read FParams write FParams;
+    property Params: TJSONValue read FParams write SetParams;
+  public
+    class function CreateFromJson(const AJSON: string): TJRPCRequest;
   end;
 
+  // Class representing a JSON-RPC response
   TJRPCResponse = class(TJRPCEnvelope)
   protected
     FError: TJRPCError;
     FResult: TJSONValue;
+    procedure SetResult(AValue: TJSONValue);
   public
     constructor Create;
     destructor Destroy; override;
 
     function IsError: Boolean;
-    procedure SetResult(AValue: TJSONValue);
 
     [NeonProperty('error')]
     property Error: TJRPCError read FError write FError;
 
     [NeonProperty('result')]
     property Result: TJSONValue read FResult write SetResult;
+  public
+    class function CreateFromJson(const AJSON: string): TJRPCResponse;
   end;
 
 
@@ -276,6 +282,11 @@ begin
   FJsonRpc := JSONRPC_VERSION;
 end;
 
+procedure TJRPCEnvelope.FromJson(const AJSON: string);
+begin
+  TNeon.JSONToObject(Self, AJSON, JRPCNeonConfig);
+end;
+
 function TJRPCEnvelope.GetNeonConfig: INeonConfiguration;
 begin
   Result := TNeonConfiguration.Default
@@ -285,10 +296,25 @@ begin
     .RegisterSerializer(TJResponseSerializer);
 end;
 
+function TJRPCEnvelope.ToJson: string;
+begin
+  Result := TNeon.ObjectToJSONString(Self, JRPCNeonConfig);
+end;
+
 constructor TJRPCRequest.Create;
 begin
   inherited;
   FParams := TJSONNull.Create;
+end;
+
+class function TJRPCRequest.CreateFromJson(const AJSON: string): TJRPCRequest;
+begin
+  Result := Self.Create;
+  try
+    Result.FromJson(AJSON);
+  except
+    Result.Free;
+  end;
 end;
 
 destructor TJRPCRequest.Destroy;
@@ -377,16 +403,11 @@ end;
 
 procedure TJRPCRequest.SetParams(AValue: TJSONValue);
 begin
-  if AValue is TJSONObject then
+  if Assigned(FParams) and (FParams <> AValue) then
   begin
     FParams.Free;
     FParams := AValue;
   end;
-end;
-
-function TJRPCRequest.ToJson: string;
-begin
-  Result := TNeon.ObjectToJSONString(Self, JRPCNeonConfig);
 end;
 
 { TJRPCParams }
@@ -552,6 +573,16 @@ begin
   inherited;
 end;
 
+class function TJRPCResponse.CreateFromJson(const AJSON: string): TJRPCResponse;
+begin
+  Result := Self.Create;
+  try
+    Result.FromJson(AJSON);
+  except
+    Result.Free;
+  end;
+end;
+
 { TJRPCResponse }
 
 function TJRPCResponse.IsError: Boolean;
@@ -566,7 +597,7 @@ procedure TJRPCResponse.SetResult(AValue: TJSONValue);
 begin
   if Assigned(FResult) and (FResult <> AValue) then
   begin
-    FreeAndNil(FResult);
+    FResult.Free;
     FResult := AValue;
   end;
 end;
@@ -663,13 +694,6 @@ begin
 
     Result := AContext.WriteDataMember(AValue.AsType<TValue>, False)
   end;
-
-  {
-  if AValue.Kind = tkRecord then
-    Result := AContext.WriteDataMember(AValue.AsType<TValue>, False)
-  else
-    Result := nil;
-  }
 end;
 
 { TJRequestSerializer }
@@ -683,7 +707,7 @@ function TJRequestSerializer.Deserialize(AValue: TJSONValue;
   const AData: TValue; ANeonObject: TNeonRttiObject;
   AContext: IDeserializerContext): TValue;
 var
-  LId: TJSONValue;
+  LIdValue: TJSONValue;
   LReq: TJRPCRequest;
   LParams: TJSONValue;
 begin
@@ -691,29 +715,20 @@ begin
 
   LReq.Method := AValue.GetValue<string>('method');
   LReq.JsonRpc := AValue.GetValue<string>('jsonrpc');
-  LId := AValue.GetValue<TJSONValue>('id');
-
-  if LId is TJSONString then
-    LReq.Id := LId.Value
+  LIdValue := AValue.GetValue<TJSONValue>('id');
+  if LIdValue is TJSONNumber then
+    LReq.Id := LIdValue.AsType<Integer>
   else
-    LReq.Id := LId.AsType<Integer>;
+    LReq.Id := LIdValue.Value;
+  LParams := AValue.GetValue<TJSONValue>('params');
 
-  if AValue.TryGetValue<TJSONValue>('params', LParams) then
-  begin
-    // Position parameters
-    if LParams is TJSONArray then
-    begin
-      LReq.Params.Free;
-      LReq.Params := LParams.Clone as TJSONArray;
-    end;
+  // Position parameters
+  if LParams is TJSONArray then
+    LReq.Params := LParams.Clone as TJSONArray;
 
-    // Named parameters
-    if LParams is TJSONObject then
-    begin
-      LReq.Params.Free;
-      LReq.Params := LParams.Clone as TJSONObject;
-    end;
-  end;
+  // Named parameters
+  if LParams is TJSONObject then
+    LReq.Params := LParams.Clone as TJSONObject;
 
   Result := TValue.From<TJRPCRequest>(LReq);
 end;

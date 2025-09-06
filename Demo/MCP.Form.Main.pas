@@ -75,7 +75,6 @@ type
     ilMain: TImageList;
     splMemo: TSplitter;
     Action1: TAction;
-    Button1: TButton;
     procedure FormCreate(Sender: TObject);
     procedure actRequestPosExecute(Sender: TObject);
     procedure actRequestDesExecute(Sender: TObject);
@@ -165,7 +164,7 @@ end;
 
 procedure TfrmMain.actRequestDesExecute(Sender: TObject);
 begin
-  var r := TNeon.JSONToObject<TJRPCRequest>(mmoLog.Lines.Text, JRPCNeonConfig);
+  var r :=  TJRPCRequest.CreateFromJson(mmoLog.Lines.Text);
   try
     mmoLog.Lines.Add('method name: ' + r.Method);
     mmoLog.Lines.Add('param count: ' + r.ParamsCount.ToString);
@@ -183,8 +182,7 @@ begin
     r.AddNamedParam('first', 12);
     r.AddNamedParam('second', 'Paolo Rossi');
 
-    var s := TNeon.ObjectToJSONString(r, JRPCNeonConfig);
-    mmoLog.Lines.Add(s);
+    mmoLog.Lines.Add(r.ToJson);
   finally
     r.Free;
   end;
@@ -192,29 +190,31 @@ end;
 
 procedure TfrmMain.actResponseExecute(Sender: TObject);
 begin
-  var r := TJRPCResponse.Create;
-  r.Id := 1;
+  var res := TJRPCResponse.Create;
+  res.Id := 1;
   //r.Error.Code := 123;
   //r.Error.Message := 'Call Error';
 
-  var l := TStringList.Create;
-  l.Add('Paolo');
-  l.Add('Rossi');
-  r.Result := TNeon.ObjectToJSON(l);
-  l.free;
+  var list := TStringList.Create;
+  list.Add('Paolo');
+  list.Add('Rossi');
+  res.Result := TNeon.ObjectToJSON(list);
+  list.free;
 
-  var s := TNeon.ObjectToJSONString(r, JRPCNeonConfig);
-  mmoLog.Lines.Add(s);
+  mmoLog.Lines.Add(res.ToJson);
+  res.Free;
 end;
 
 procedure TfrmMain.actResponseDesExecute(Sender: TObject);
 begin
-  var r := TNeon.JSONToObject<TJRPCResponse>(mmoLog.Lines.Text, JRPCNeonConfig);
+  var res := TJRPCResponse.CreateFromJson(mmoLog.Lines.Text);
 
-  if r.IsError then
-    mmoLog.Lines.Add('Error detected: ' + r.Error.Message)
+  if res.IsError then
+    mmoLog.Lines.Add('Error detected: ' + res.Error.Message)
   else
-    mmoLog.Lines.Add('Result (as JSON) is a: ' + r.Result.ClassName);
+    mmoLog.Lines.Add('Result (as JSON) is a: ' + res.Result.ClassName);
+
+  res.Free;
 end;
 
 procedure TfrmMain.actRttiCallExecute(Sender: TObject);
@@ -238,8 +238,7 @@ begin
   LMethodInvoker.Invoke(LRequest, LResponse);
 
   // Show response
-  var s := TNeon.ObjectToJSONString(LResponse, GetNeonConfig);
-  mmoLog.Lines.Add(s);
+  mmoLog.Lines.Add(LResponse.ToJson);
 
   LRequest.Free;
   LResponse.Free;
@@ -248,10 +247,11 @@ end;
 procedure TfrmMain.actJRPCEnvelopeExecute(Sender: TObject);
 begin
   var env := TJRPCEnvelope.Create;
-  //env.ID := 'paolo';
+  env.ID := 'paolo';
 
-  var s := TNeon.ObjectToJSONString(env, GetNeonConfig);
-  mmoLog.Lines.Add(s);
+  mmoLog.Lines.Add(env.ToJson);
+
+  env.Free;
 end;
 
 procedure TfrmMain.actJRPCIDExecute(Sender: TObject);
@@ -300,7 +300,7 @@ begin
 
   var req := TJRPCRequest.Create;
   req.Method := MethodInitialize;
-  req.SetParams(j);
+  req.Params := j;
 
   pars.Free;
   mmoLog.Lines.Add(req.ToJson);
@@ -403,8 +403,6 @@ begin
   end;
 
   c.Free;
-
-
 
 end;
 

@@ -7,7 +7,9 @@ uses
   JSON.RPC,
 
   MCP.Types,
-  MCP.Tools;
+  MCP.Tools,
+  MCP.Resources,
+  MCP.Prompts;
 
 type
   TPerson = class(TObject)

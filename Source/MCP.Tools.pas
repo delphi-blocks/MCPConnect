@@ -128,6 +128,30 @@ type
     function ToJSON(APrettyPrint: Boolean = False): string;
   end;
 
+  TBaseContent = class
+  public
+    [NeonProperty('annotations')] Annotations: TAnnotations;
+    [NeonProperty('_meta')] [NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
+    [NeonProperty('type')] &Type: string;
+  end;
+
+  TTextContent = class(TBaseContent)
+  public
+    [NeonProperty('text')] Text: string;
+  end;
+
+  TImageContent = class(TBaseContent)
+  public
+    [NeonProperty('data')] Data: string;
+    [NeonProperty('mimeType')] MIMEType: string;
+  end;
+
+  TAudioContent = class(TBaseContent)
+  public
+    [NeonProperty('data')] Data: string;
+    [NeonProperty('mimeType')] MIMEType: string;
+  end;
+
   TCallToolResult = class
     /// <summary>
     /// Meta is a metadata object that is reserved by MCP for storing additional information
@@ -142,13 +166,17 @@ type
     /// For backwards compatibility, a tool that returns structured content SHOULD also return
     /// functionally equivalent unstructured content.
     /// </summary>
-    StructuredContent: TJSONObject;
+    [NeonIgnore] StructuredContent: TJSONObject;
 
     /// <summary>
     /// Whether the tool call ended in an error.
     /// If not set, this is assumed to be false (the call was successful).
     /// </summary>
-    IsError: Nullable<Boolean>;
+    [NeonIgnore] IsError: Nullable<Boolean>;
+
+  public
+    constructor Create;
+    destructor Destroy; override;
   end;
 
 type
@@ -466,6 +494,23 @@ begin
   Meta.Free;
   Arguments.Free;
 
+  inherited;
+end;
+
+{ TCallToolResult }
+
+constructor TCallToolResult.Create;
+begin
+  Meta := TJSONObject.Create;
+  Content := TJSONObject.Create;
+  StructuredContent := TJSONObject.Create;
+end;
+
+destructor TCallToolResult.Destroy;
+begin
+  Meta.Free;
+  Content.Free;
+  StructuredContent.Free;
   inherited;
 end;
 

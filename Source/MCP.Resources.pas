@@ -262,6 +262,22 @@ type
     [NeonProperty('blob')] Blob: string;
   end;
 
+  TResourceLink = record
+  public
+    [NeonProperty('type')] &Type: string;
+    [NeonProperty('uri')] URI: string;
+    [NeonProperty('name')] Name: string;
+    [NeonProperty('description')] Description: string;
+    [NeonProperty('mimeType')] MIMEType: string;
+  end;
+
+  TEmbeddedResource = record
+  public
+    [NeonProperty('_meta')] [NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
+    [NeonProperty('type')] &Type: string;
+    [NeonProperty('resource')] Resource: TResourceContents;
+  end;
+
 implementation
 
 end.

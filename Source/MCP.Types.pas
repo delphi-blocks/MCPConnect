@@ -82,6 +82,24 @@ type
     [NeonProperty('cursor')] Cursor: NullString;
   end;
 
+  // Otional annotations for the client.
+  // The client can use annotations to inform how objects are used or displayed
+  TAnnotations = class
+    // Describes who the intended customer of this object or data is.
+    //
+    // It can include multiple entries to indicate content useful for multiple
+    // audiences (e.g., `["user", "assistant"]`).
+    Audience: TArray<string>; //`json:"audience,omitempty"`
+
+    // Describes how important this data is for operating the server.
+    //
+    // A value of 1 means "most important," and indicates that the data is
+    // effectively required, while 0 means "least important," and indicates that
+    // the data is entirely optional.
+
+    Priority: Currency; //`json:"priority,omitempty"`
+  end;
+
 
   /// <summary>
   /// TImplementation describes the name and version of an MCP implementation.

@@ -720,15 +720,18 @@ begin
     LReq.Id := LIdValue.AsType<Integer>
   else
     LReq.Id := LIdValue.Value;
-  LParams := AValue.GetValue<TJSONValue>('params');
 
-  // Position parameters
-  if LParams is TJSONArray then
-    LReq.Params := LParams.Clone as TJSONArray;
+  // "params" is optional
+  if AValue.TryGetValue<TJSONValue>('params', LParams) then
+  begin
+    // Position parameters
+    if LParams is TJSONArray then
+      LReq.Params := LParams.Clone as TJSONArray;
 
-  // Named parameters
-  if LParams is TJSONObject then
-    LReq.Params := LParams.Clone as TJSONObject;
+    // Named parameters
+    if LParams is TJSONObject then
+      LReq.Params := LParams.Clone as TJSONObject;
+  end;
 
   Result := TValue.From<TJRPCRequest>(LReq);
 end;

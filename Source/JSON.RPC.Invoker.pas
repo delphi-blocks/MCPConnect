@@ -99,6 +99,8 @@ type
     ['{407C168F-A81C-4E41-96B2-BFEA94C58B0D}']
     procedure Add(const AValue: TValue); overload;
     procedure Add(const AValue: TValue; AAction: TDisposeAction); overload;
+    procedure Add(const AValues: TArray<TValue>); overload;
+    procedure Add(const AValues: TArray<TValue>; AAction: TDisposeAction); overload;
     procedure CollectGarbage();
   end;
 
@@ -126,6 +128,8 @@ type
 
     procedure Add(const AValue: TValue); overload;
     procedure Add(const AValue: TValue; AAction: TDisposeAction); overload;
+    procedure Add(const AValues: TArray<TValue>); overload;
+    procedure Add(const AValues: TArray<TValue>; AAction: TDisposeAction); overload;
     procedure CollectGarbage();
   end;
 
@@ -287,9 +291,12 @@ procedure TJRPCMethodInvoker.Invoke(ARequest: TJRPCRequest;
 var
   LArgs: TArray<TValue>;
   LResult: TValue;
+  LGarbageCollector: IJRPCGarbageCollector;
 begin
+  LGarbageCollector := TJRPCGarbageCollector.CreateInstance;
   LArgs := RequestToRttiParams(ARequest);
   try
+    LGarbageCollector.Add(LArgs);
     LResult := FMethod.Invoke(FInstance, LArgs);
     try
       AResponse.Id := ARequest.Id;
@@ -417,6 +424,20 @@ begin
   if FGarbage.ContainsKey(AValue) then
     Exit;
   FGarbage.Add(AValue, AAction);
+end;
+
+procedure TJRPCGarbageCollector.Add(const AValues: TArray<TValue>);
+begin
+  Add(AValues, nil);
+end;
+
+procedure TJRPCGarbageCollector.Add(const AValues: TArray<TValue>;
+  AAction: TDisposeAction);
+var
+  LValue: TValue;
+begin
+  for LValue in AValues do
+    Add(LValue, AAction);
 end;
 
 procedure TJRPCGarbageCollector.CollectGarbage;

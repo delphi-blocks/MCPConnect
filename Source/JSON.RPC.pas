@@ -337,6 +337,8 @@ begin
     Result := TJSONObject.Create;
     FParams := Result;
   end;
+  // This should never happen
+  raise EJSONRPCException.Create('Not a valid type for named allowed');
 end;
 
 function TJRPCRequest.GetPositionParams: TJSONArray;
@@ -353,6 +355,8 @@ begin
     Result := TJSONArray.Create;
     FParams := Result;
   end;
+  // This should never happen
+  raise EJSONRPCException.Create('Not a valid type for position allowed');
 end;
 
 function TJRPCRequest.ParamsCount: Integer;
@@ -807,6 +811,7 @@ function TJRPCRegistry.GetClassInstance(const AName: string;
 var
   LConstructorProxy: TJRPCConstructorProxy;
 begin
+  Result := False;
   if GetConstructorProxy(AName, LConstructorProxy) then
     Value := LConstructorProxy.ConstructorFunc();
 end;

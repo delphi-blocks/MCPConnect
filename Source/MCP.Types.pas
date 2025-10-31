@@ -400,10 +400,12 @@ end;
 constructor TInitializeResult.Create;
 begin
   Capabilities := TServerCapabilities.Create;
+  ServerInfo := TImplementation.Create;
 end;
 
 destructor TInitializeResult.Destroy;
 begin
+  ServerInfo.Free;
   Capabilities.Free;
   inherited;
 end;

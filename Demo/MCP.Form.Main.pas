@@ -74,7 +74,7 @@ type
     btnClearLog: TToolButton;
     ilMain: TImageList;
     splMemo: TSplitter;
-    Action1: TAction;
+    actResource: TAction;
     procedure FormCreate(Sender: TObject);
     procedure actRequestPosExecute(Sender: TObject);
     procedure actRequestDesExecute(Sender: TObject);
@@ -92,6 +92,7 @@ type
     procedure actToolListExecute(Sender: TObject);
     procedure actCallToolParamsExecute(Sender: TObject);
     procedure actClearLogExecute(Sender: TObject);
+    procedure actResourceExecute(Sender: TObject);
   private
     ctx: TRttiContext;
     tools: TArray<TRttiMethod>;
@@ -346,7 +347,6 @@ begin
   if b then
     mmoLog.Lines.add('It is True!!');
 
-
   tags.free;
 end;
 
@@ -409,6 +409,18 @@ end;
 procedure TfrmMain.actClearLogExecute(Sender: TObject);
 begin
   mmoLog.Clear;
+end;
+
+procedure TfrmMain.actResourceExecute(Sender: TObject);
+begin
+  var res := TResource.Create;
+
+  res.Name := 'Clients';
+  res.URI := '/resources/clients';
+
+  mmoLog.Lines.Add(TNeon.ValueToJSONString(TValue.From<TResource>(res), MCPNeonConfig));
+
+  res.Free;
 end;
 
 function TfrmMain.CreatePerson(const AName: string): TPerson;

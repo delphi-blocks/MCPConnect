@@ -25,6 +25,8 @@ const
 type
   EJSONRPCException = class(Exception);
 
+  TJRPCParamsType = (ByPos, ByName, Null);
+
   JRPCAttribute = class(TCustomAttribute)
   private
     FName: string;
@@ -75,35 +77,6 @@ type
 
     [NeonProperty('id'), NeonUnwrapped]
     property Id: TJRPCID read FId write FId;
-  end;
-
-  TJRPCParamList = class(TObjectList<TJSONValue>)
-  public
-    function ToJson: TJSONArray;
-  end;
-
-  TJRPCParamDictionary = class(TObjectDictionary<string, TJSONValue>)
-  public
-    function ToJson: TJSONObject;
-  end;
-
-  TJRPCParamsType = (ByPos, ByName, Null);
-  TJRPCParams = class
-  private
-    FByName: TJRPCParamDictionary;
-    FByPos: TJRPCParamList;
-    function GetCount: Integer;
-  public
-    constructor Create;
-    destructor Destroy; override;
-
-    procedure AddParam(const AValue: TJSONValue); overload;
-    procedure AddParam(const AName: string; const AValue: TJSONValue); overload;
-    function ParamsType: TJRPCParamsType;
-
-    property ByPos: TJRPCParamList read FByPos write FByPos;
-    property ByName: TJRPCParamDictionary read FByName write FByName;
-    property Count: Integer read GetCount;
   end;
 
   TJRPCError = class
@@ -169,7 +142,6 @@ type
   public
     class function CreateFromJson(const AJSON: string): TJRPCResponse;
   end;
-
 
   /// <summary>
   ///   Custom serializer for the TJRPCRequest class.
@@ -414,65 +386,6 @@ begin
   end;
 end;
 
-{ TJRPCParams }
-
-procedure TJRPCParams.AddParam(const AName: string; const AValue: TJSONValue);
-begin
-  if ByPos.Count > 0 then
-    raise Exception.Create('Only position params are allowed');
-
-  ByName.Add(AName, AValue);
-end;
-
-constructor TJRPCParams.Create;
-begin
-  FByName := TJRPCParamDictionary.Create([doOwnsValues]);
-  FByPos := TJRPCParamList.Create(True);
-end;
-
-destructor TJRPCParams.Destroy;
-begin
-  FByName.Free;
-  FByPos.Free;
-  inherited;
-end;
-
-function TJRPCParams.GetCount: Integer;
-begin
-  Result := 0;
-
-  if (FByPos.Count = 0) and (FByName.Count = 0)  then
-    Exit(0);
-
-  if (FByPos.Count = 0)  then
-    Exit(FByName.Count);
-
-  if (FByName.Count = 0)  then
-    Exit(FByPos.Count);
-end;
-
-function TJRPCParams.ParamsType: TJRPCParamsType;
-begin
-  Result := TJRPCParamsType.Null;
-
-  if (FByPos.Count = 0) and (FByName.Count = 0)  then
-    Exit(TJRPCParamsType.Null);
-
-  if (FByPos.Count = 0)  then
-    Exit(TJRPCParamsType.ByName);
-
-  if (FByName.Count = 0)  then
-    Exit(TJRPCParamsType.ByPos);
-end;
-
-procedure TJRPCParams.AddParam(const AValue: TJSONValue);
-begin
-  if ByName.Count > 0 then
-    raise Exception.Create('Only named params are allowed');
-
-  ByPos.Add(AValue);
-end;
-
 { TJRPCID }
 
 class operator TJRPCID.Implicit(ASource: Integer): TJRPCID;
@@ -603,42 +516,6 @@ begin
   begin
     FResult.Free;
     FResult := AValue;
-  end;
-end;
-
-{ TJRPCParamList }
-
-function TJRPCParamList.ToJson: TJSONArray;
-var
-  LValue: TJSONValue;
-begin
-  Result := TJSONArray.Create;
-  try
-    for LValue in Self do
-    begin
-      Result.AddElement(LValue.Clone as TJSONValue);
-    end;
-  except
-    Result.Free;
-    raise;
-  end;
-end;
-
-{ TJRPCParamDictionary }
-
-function TJRPCParamDictionary.ToJson: TJSONObject;
-var
-  LValue: TPair<string, TJSONValue>;
-begin
-  Result := TJSONObject.Create;
-  try
-    for LValue in Self do
-    begin
-      Result.AddPair(LValue.Key, LValue.Value.Clone as TJSONValue);
-    end;
-  except
-    Result.Free;
-    raise;
   end;
 end;
 
@@ -831,8 +708,7 @@ begin
     Result := AClass.QualifiedClassName;
 end;
 
-function TJRPCRegistry.GetConstructorProxy(const AName: string;
-  out Value: TJRPCConstructorProxy): Boolean;
+function TJRPCRegistry.GetConstructorProxy(const AName: string; out Value: TJRPCConstructorProxy): Boolean;
 var
   LClassName: string;
   LSeparatorIndex: Integer;
@@ -872,8 +748,7 @@ begin
   Self.AddClass(AClass, Result);
 end;
 
-function TJRPCRegistry.RegisterClass<T>(
-  ANeonConfig: INeonConfiguration): TJRPCConstructorProxy;
+function TJRPCRegistry.RegisterClass<T>(ANeonConfig: INeonConfiguration): TJRPCConstructorProxy;
 begin
   Result := RegisterClass<T>(nil, ANeonConfig);
 end;
@@ -885,8 +760,7 @@ begin
   AddClass(TClass(T), Result);
 end;
 
-function TJRPCRegistry.RegisterClass<T>(
-  const AConstructorFunc: TFunc<TObject>): TJRPCConstructorProxy;
+function TJRPCRegistry.RegisterClass<T>(const AConstructorFunc: TFunc<TObject>): TJRPCConstructorProxy;
 begin
   Result := TJRPCConstructorProxy.Create(TClass(T), AConstructorFunc, FNeonConfig);
   AddClass(TClass(T), Result);

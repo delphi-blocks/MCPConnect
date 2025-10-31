@@ -147,6 +147,8 @@ type
    /// </summary>
 	  [NeonProperty('content')] Content: TBaseContent;
 
+
+
     /// <summary>
     ///   Structured content returned as a JSON object in the structuredContent
     ///   field of a result. For backwards compatibility, a tool that returns
@@ -166,6 +168,12 @@ type
     destructor Destroy; override;
 
     procedure SetContent(AContent: TBaseContent);
+
+    function GetContentAsText: TTextContent;
+    function GetContentAsImage: TImageContent;
+    function GetContentAsAudio: TAudioContent;
+    function GetContentAsResource: TResourceLink;
+    function GetContentAsEmbedded: TEmbeddedResource;
   end;
 
 type
@@ -501,6 +509,61 @@ begin
   Content.Free;
   StructuredContent.Free;
   inherited;
+end;
+
+function TCallToolResult.GetContentAsAudio: TAudioContent;
+begin
+  if not (Content is TAudioContent) then
+  begin
+    Content.Free;
+    Content := TAudioContent.Create;
+  end;
+
+  Result := Content as TAudioContent;
+end;
+
+function TCallToolResult.GetContentAsEmbedded: TEmbeddedResource;
+begin
+  if not (Content is TEmbeddedResource) then
+  begin
+    Content.Free;
+    Content := TEmbeddedResource.Create;
+  end;
+
+  Result := Content as TEmbeddedResource;
+end;
+
+function TCallToolResult.GetContentAsImage: TImageContent;
+begin
+  if not (Content is TImageContent) then
+  begin
+    Content.Free;
+    Content := TImageContent.Create;
+  end;
+
+  Result := Content as TImageContent;
+end;
+
+function TCallToolResult.GetContentAsResource: TResourceLink;
+begin
+  if not (Content is TResourceLink) then
+  begin
+    Content.Free;
+    Content := TResourceLink.Create;
+  end;
+
+  Result := Content as TResourceLink;
+end;
+
+function TCallToolResult.GetContentAsText: TTextContent;
+begin
+  if not (Content is TTextContent) then
+  begin
+    Content.Free;
+    Content := TTextContent.Create;
+  end;
+
+  Result := Content as TTextContent;
 end;
 
 procedure TCallToolResult.SetContent(AContent: TBaseContent);

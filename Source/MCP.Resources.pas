@@ -62,9 +62,9 @@ type
   /// <summary>
   /// Represents a known resource that the server is capable of reading.
   /// </summary>
-  TResource = record
+  TResource = class
   public
-    [NeonProperty('annotation')] Annotated: TAnnotation;
+    [NeonProperty('annotation'), NeonInclude(IncludeIf.NotEmpty)] Annotated: TAnnotation;
     /// <summary>
     /// Metadata object reserved by MCP for storing additional information.
     /// </summary>
@@ -87,12 +87,17 @@ type
     /// The MIME type of this resource, if known.
     /// </summary>
     [NeonProperty('mimeType')] MIMEType: NullString;
+
+  public
+    constructor Create;
+    destructor Destroy; override;
+
   end;
 
   /// <summary>
   /// Represents a template description for resources available on the server.
   /// </summary>
-  TResourceTemplate = record
+  TResourceTemplate = class
   public
     [NeonProperty('annotations'), NeonInclude(IncludeIf.NotEmpty)] Annotation: TAnnotation;
     /// <summary>
@@ -118,6 +123,10 @@ type
     /// </summary>
     /// <remarks>This should only be included if all resources matching this template have the same type.</remarks>
     [NeonProperty('mimeType')] MIMEType: NullString;
+
+  public
+    constructor Create;
+    destructor Destroy; override;
   end;
 
   /// <summary>
@@ -164,7 +173,7 @@ type
   /// <summary>
   /// Represents the parameters for a resources/read request.
   /// </summary>
-  TReadResourceParams = record
+  TReadResourceParams = class
   public
     /// <summary>
     /// The URI of the resource to read.
@@ -175,18 +184,25 @@ type
     /// Arguments to pass to the resource handler.
     /// </summary>
     [NeonProperty('arguments')] [NeonInclude(IncludeIf.NotEmpty)] Arguments: TJSONObject;
+
+  public
+    constructor Create;
+    destructor Destroy; override;
   end;
 
   /// <summary>
   /// The server's response to a resources/read request from the client.
   /// </summary>
-  TReadResourceResult = record
+  TReadResourceResult = class
   public
     [NeonProperty('Result')] Result: TResult;
     /// <summary>
     /// The contents of the resource. Can be either a TTextResourceContents or TBlobResourceContents.
     /// </summary>
     [NeonProperty('contents')] Contents: TJSONObject;
+  public
+    constructor Create;
+    destructor Destroy; override;
   end;
 
   /// <summary>
@@ -225,5 +241,57 @@ type
   end;
 
 implementation
+
+{ TResource }
+
+constructor TResource.Create;
+begin
+  Meta := TJSONObject.Create;
+end;
+
+destructor TResource.Destroy;
+begin
+  Meta.Free;
+  inherited;
+end;
+
+{ TResourceTemplate }
+
+constructor TResourceTemplate.Create;
+begin
+  Meta := TJSONObject.Create;
+end;
+
+destructor TResourceTemplate.Destroy;
+begin
+  Meta.Free;
+  inherited;
+end;
+
+{ TReadResourceParams }
+
+constructor TReadResourceParams.Create;
+begin
+  Arguments := TJSONObject.Create;
+end;
+
+destructor TReadResourceParams.Destroy;
+begin
+  Arguments.Free;
+  inherited;
+end;
+
+{ TReadResourceResult }
+
+constructor TReadResourceResult.Create;
+begin
+  Contents := TJSONObject.Create;
+end;
+
+destructor TReadResourceResult.Destroy;
+begin
+  Contents.Free;
+  inherited;
+end;
 
 end.

@@ -413,14 +413,31 @@ end;
 
 procedure TfrmMain.actResourceExecute(Sender: TObject);
 begin
-  var res := TResource.Create;
-
+  var res := TMCPResource.Create;
   res.Name := 'Clients';
   res.URI := '/resources/clients';
-
-  mmoLog.Lines.Add(TNeon.ValueToJSONString(TValue.From<TResource>(res), MCPNeonConfig));
-
+  res.MIMEType := 'application/json';
+  mmoLog.Lines.Add(TNeon.ObjectToJSONString(res, MCPNeonConfig));
   res.Free;
+
+  mmoLog.Lines.Add('----------------------');
+
+  var tpl := TMCPResourceTemplate.Create;
+  tpl.Name := 'Article Template';
+  tpl.URITemplate := '/templates/article';
+  tpl.MIMEType := 'application/json';
+  mmoLog.Lines.Add(TNeon.ObjectToJSONString(tpl, MCPNeonConfig));
+  tpl.Free;
+
+  mmoLog.Lines.Add('----------------------');
+
+  var lst := TListResourcesResult.Create;
+  lst.AddResource('clients', '/resources/clients', 'application/json');
+  lst.AddResource('orders', '/resources/orders', 'application/xml');
+  mmoLog.Lines.Add(TNeon.ObjectToJSONString(lst, MCPNeonConfig));
+  tpl.Free;
+
+
 end;
 
 function TfrmMain.CreatePerson(const AName: string): TPerson;

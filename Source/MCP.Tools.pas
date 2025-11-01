@@ -67,7 +67,8 @@ type
   /// <summary>
   /// Tool represents the definition for a tool the client can call.
   /// </summary>
-  TTool = class
+  TMCPTool = class
+
     /// <summary>
     /// Meta is a metadata object that is reserved by MCP for storing additional information
     /// </summary>
@@ -105,8 +106,7 @@ type
     function ToJSON(APrettyPrint: Boolean = False): string;
   end;
 
-  TTools = class(TObjectList<TTool>)
-  end;
+  TMCPTools = class(TObjectList<TMCPTool>);
 
   TListToolsResult = class
   public
@@ -115,7 +115,7 @@ type
     /// </summary>
     [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
 
-    [NeonProperty('tools')] Tools: TTools;
+    [NeonProperty('tools')] Tools: TMCPTools;
 
     /// <summary>
     /// An opaque token representing the pagination position after the last returned result. If present, there may be more results available
@@ -191,16 +191,16 @@ type
     ///   Writer for Integer types
     /// </summary>
     function WriteMethodOld(AMethod: TRttiMethod): TJSONObject;
-    function WriteMethod(AMethod: TRttiMethod): TTool;
+    function WriteMethod(AMethod: TRttiMethod): TMCPTool;
 
     function WriteMethodsOld(AType: TRttiType): TJSONArray;
-    procedure WriteMethods(AType: TRttiType; AList: TTools);
+    procedure WriteMethods(AType: TRttiType; AList: TMCPTools);
   public
     /// <summary>
     ///   Serialize a Delphi method as a MCP tool
     ///   The Delphi method must be marked with the MCP attributes
     /// </summary>
-    class function MethodToTool(AMethod: TRttiMethod): TTool;
+    class function MethodToTool(AMethod: TRttiMethod): TMCPTool;
 
     /// <summary>
     ///   Loops through the methods of a class/record and populate a structure
@@ -215,9 +215,9 @@ type
 
 implementation
 
-{ TTool }
+{ TMCPTool }
 
-constructor TTool.Create;
+constructor TMCPTool.Create;
 begin
   Meta := TJSONObject.Create;
   InputSchema := TJSONObject.Create;
@@ -225,7 +225,7 @@ begin
   OutputSchema := TJSONObject.Create;
 end;
 
-destructor TTool.Destroy;
+destructor TMCPTool.Destroy;
 begin
   Meta.Free;
   InputSchema.Free;
@@ -235,7 +235,7 @@ begin
   inherited;
 end;
 
-procedure TTool.ExchangeInputSchema(ASchema: TJSONObject);
+procedure TMCPTool.ExchangeInputSchema(ASchema: TJSONObject);
 begin
   if Aschema = nil then
     Exit;
@@ -244,7 +244,7 @@ begin
   InputSchema := ASchema;
 end;
 
-function TTool.ToJSON(APrettyPrint: Boolean): string;
+function TMCPTool.ToJSON(APrettyPrint: Boolean): string;
 begin
   Result := TNeon.ObjectToJSONString(Self, MCPNeonConfig.SetPrettyPrint(APrettyPrint));
 end;
@@ -254,7 +254,7 @@ end;
 constructor TListToolsResult.Create;
 begin
   Meta := TJSONObject.Create;
-  Tools := TTools.Create(True);
+  Tools := TMCPTools.Create(True);
 end;
 
 destructor TListToolsResult.Destroy;
@@ -269,6 +269,8 @@ function TListToolsResult.ToJSON(APrettyPrint: Boolean = False): string;
 begin
   Result := TNeon.ObjectToJSONString(Self, MCPNeonConfig.SetPrettyPrint(APrettyPrint));
 end;
+
+{ TMCPSchemaGenerator }
 
 class function TMCPSchemaGenerator.ListTools(AType: TRttiType): TListToolsResult;
 var
@@ -293,7 +295,7 @@ begin
   Result := ListTools(TRttiUtils.Context.GetType(AClass));
 end;
 
-class function TMCPSchemaGenerator.MethodToTool(AMethod: TRttiMethod): TTool;
+class function TMCPSchemaGenerator.MethodToTool(AMethod: TRttiMethod): TMCPTool;
 var
   LGenerator: TMCPSchemaGenerator;
 begin
@@ -352,7 +354,7 @@ begin
     LRequired.Free;
 end;
 
-function TMCPSchemaGenerator.WriteMethod(AMethod: TRttiMethod): TTool;
+function TMCPSchemaGenerator.WriteMethod(AMethod: TRttiMethod): TMCPTool;
 var
   LToolName, LToolDesc: string;
   LProps, LInputSchema: TJSONObject;
@@ -394,7 +396,7 @@ begin
       LToolDesc := LAttr.Description;
   end;
 
-  Result := TTool.Create;
+  Result := TMCPTool.Create;
   try
     Result.Name := LToolName;
     Result.Description := LToolDesc;
@@ -440,11 +442,11 @@ begin
   end;
 end;
 
-procedure TMCPSchemaGenerator.WriteMethods(AType: TRttiType; AList: TTools);
+procedure TMCPSchemaGenerator.WriteMethods(AType: TRttiType; AList: TMCPTools);
 var
   LMethod: TRttiMethod;
   LMethods: TArray<TRttiMethod>;
-  LTool: TTool;
+  LTool: TMCPTool;
 begin
   try
     LMethods := AType.GetMethods;

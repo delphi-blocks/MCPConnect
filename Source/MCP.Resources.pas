@@ -44,7 +44,8 @@ type
     [NeonIgnore] AdditionalFields: TJSONObject;
   end;
 
-  TAnnotation = record
+  TMCPAnnotation = record
+  
     // Describes who the intended customer of this object or data is.
     //
     // It can include multiple entries to indicate content useful for multiple
@@ -62,9 +63,9 @@ type
   /// <summary>
   /// Represents a known resource that the server is capable of reading.
   /// </summary>
-  TResource = class
+  TMCPResource = class
   public
-    [NeonProperty('annotation'), NeonInclude(IncludeIf.NotEmpty)] Annotated: TAnnotation;
+    [NeonProperty('annotation'), NeonInclude(IncludeIf.NotEmpty)] Annotated: TMCPAnnotation;
     /// <summary>
     /// Metadata object reserved by MCP for storing additional information.
     /// </summary>
@@ -87,19 +88,20 @@ type
     /// The MIME type of this resource, if known.
     /// </summary>
     [NeonProperty('mimeType')] MIMEType: NullString;
-
   public
     constructor Create;
     destructor Destroy; override;
-
   end;
+
+  TMCPResources = class(TObjectList<TMCPResource>);
+
 
   /// <summary>
   /// Represents a template description for resources available on the server.
   /// </summary>
-  TResourceTemplate = class
+  TMCPResourceTemplate = class
   public
-    [NeonProperty('annotations'), NeonInclude(IncludeIf.NotEmpty)] Annotation: TAnnotation;
+    [NeonProperty('annotations'), NeonInclude(IncludeIf.NotEmpty)] Annotation: TMCPAnnotation;
     /// <summary>
     /// Metadata object reserved by MCP for storing additional information.
     /// </summary>
@@ -123,11 +125,13 @@ type
     /// </summary>
     /// <remarks>This should only be included if all resources matching this template have the same type.</remarks>
     [NeonProperty('mimeType')] MIMEType: NullString;
-
   public
     constructor Create;
     destructor Destroy; override;
   end;
+
+  TMCPResourceTemplates = class(TObjectList<TMCPResourceTemplate>);
+
 
   /// <summary>
   /// Sent from the client to request a list of resources the server has.
@@ -140,13 +144,18 @@ type
   /// <summary>
   /// The server's response to a resources/list request from the client.
   /// </summary>
-  TListResourcesResult = record
+  TListResourcesResult = class
   public
-    [NeonProperty('PaginatedResult')] PaginatedResult: TPaginatedResult;
+    //[NeonProperty('PaginatedResult')] PaginatedResult: TPaginatedResult;
     /// <summary>
     /// A list of available resources.
     /// </summary>
-    [NeonProperty('resources')] Resources: TArray<TResource>;
+    [NeonProperty('resources')] Resources: TMCPResources;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    function AddResource(const AName, AURI, AType: string): TMCPResource;
   end;
 
   /// <summary>
@@ -161,13 +170,16 @@ type
   /// The server's response to a resources/templates/list request from the client.
   /// </summary>
   [NeonProperty('ListResourceTemplatesResult')]
-  TListResourceTemplatesResult = record
+  TListResourceTemplatesResult = class
   public
     [NeonProperty('PaginatedResult')] PaginatedResult: TPaginatedResult;
     /// <summary>
     /// A list of available resource templates.
     /// </summary>
-    [NeonProperty('resourceTemplates')] ResourceTemplates: TArray<TResourceTemplate>;
+    [NeonProperty('resourceTemplates')] ResourceTemplates: TMCPResourceTemplates;
+  public
+    constructor Create;
+    destructor Destroy; override;
   end;
 
   /// <summary>
@@ -242,27 +254,27 @@ type
 
 implementation
 
-{ TResource }
+{ TMCPResource }
 
-constructor TResource.Create;
+constructor TMCPResource.Create;
 begin
   Meta := TJSONObject.Create;
 end;
 
-destructor TResource.Destroy;
+destructor TMCPResource.Destroy;
 begin
   Meta.Free;
   inherited;
 end;
 
-{ TResourceTemplate }
+{ TMCPResourceTemplate }
 
-constructor TResourceTemplate.Create;
+constructor TMCPResourceTemplate.Create;
 begin
   Meta := TJSONObject.Create;
 end;
 
-destructor TResourceTemplate.Destroy;
+destructor TMCPResourceTemplate.Destroy;
 begin
   Meta.Free;
   inherited;
@@ -291,6 +303,41 @@ end;
 destructor TReadResourceResult.Destroy;
 begin
   Contents.Free;
+  inherited;
+end;
+
+{ TListResourcesResult }
+
+function TListResourcesResult.AddResource(const AName, AURI, AType: string): TMCPResource;
+begin
+  Result := TMCPResource.Create;
+  Result.Name := AName;
+  Result.URI := AURI;
+  Result.MIMEType := AType;
+  Resources.Add(Result);
+end;
+
+constructor TListResourcesResult.Create;
+begin
+  Resources := TMCPResources.Create;
+end;
+
+destructor TListResourcesResult.Destroy;
+begin
+  Resources.Free;
+  inherited;
+end;
+
+{ TListResourceTemplatesResult }
+
+constructor TListResourceTemplatesResult.Create;
+begin
+  ResourceTemplates := TMCPResourceTemplates.Create;
+end;
+
+destructor TListResourceTemplatesResult.Destroy;
+begin
+  ResourceTemplates.Free;
   inherited;
 end;
 

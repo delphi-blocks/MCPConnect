@@ -35,7 +35,7 @@ type
 
     [JRPC('cancelled')]
     [JRPCNotification]
-    procedure Cancelled([JRPCParams] ACancelledParams: TCancelledNotification);
+    procedure Cancelled([JRPCParams] ACancelledParams: TCancelledNotificationParams);
 
   end;
 
@@ -105,7 +105,7 @@ begin
 //    t.Text := t.Text + LPair.JsonString.Value + ':' + LPair.JsonValue.ToString;
 end;
 
-procedure TMCPNotificationsApi.Cancelled(ACancelledParams: TCancelledNotification);
+procedure TMCPNotificationsApi.Cancelled([JRPCParams] ACancelledParams: TCancelledNotificationParams);
 begin
 
 end;

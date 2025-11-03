@@ -27,6 +27,9 @@ type
 
   TJRPCParamsType = (ByPos, ByName, Null);
 
+  JRPCNotificationAttribute = class(TCustomAttribute)
+  end;
+
   JRPCAttribute = class(TCustomAttribute)
   private
     FName: string;
@@ -47,6 +50,7 @@ type
   JRPCPathAttribute = class(JRPCAttribute);
   JRPCMethodAttribute = class(JRPCAttribute);
   JRPCParamAttribute = class(JRPCAttribute);
+  JRPCParamsAttribute = class(TCustomAttribute);
 
   TJRPCID = record
   private
@@ -118,6 +122,7 @@ type
 
     [NeonProperty('params')]
     property Params: TJSONValue read FParams write SetParams;
+
   public
     class function CreateFromJson(const AJSON: string): TJRPCRequest;
   end;
@@ -133,6 +138,7 @@ type
     destructor Destroy; override;
 
     function IsError: Boolean;
+    function IsNotification: Boolean;
 
     [NeonProperty('error')]
     property Error: TJRPCError read FError write FError;
@@ -510,6 +516,11 @@ begin
     Result := False;
 end;
 
+function TJRPCResponse.IsNotification: Boolean;
+begin
+  Result := (not IsError) and not Assigned(FResult);
+end;
+
 procedure TJRPCResponse.SetResult(AValue: TJSONValue);
 begin
   if Assigned(FResult) and (FResult <> AValue) then
@@ -596,8 +607,10 @@ begin
 
   LReq.Method := AValue.GetValue<string>('method');
   LReq.JsonRpc := AValue.GetValue<string>('jsonrpc');
-  LIdValue := AValue.GetValue<TJSONValue>('id');
-  if LIdValue is TJSONNumber then
+  LIdValue := AValue.GetValue<TJSONValue>('id', nil);
+  if not Assigned(LIdValue) then
+    LReq.Id := ''
+  else if LIdValue is TJSONNumber then
     LReq.Id := LIdValue.AsType<Integer>
   else
     LReq.Id := LIdValue.Value;

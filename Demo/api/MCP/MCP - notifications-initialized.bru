@@ -1,0 +1,23 @@
+meta {
+  name: MCP - notifications/initialized
+  type: http
+  seq: 9
+}
+
+post {
+  url: http://localhost:8080/mcp
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+      "method": "notifications/initialized",
+      "jsonrpc": "2.0"
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

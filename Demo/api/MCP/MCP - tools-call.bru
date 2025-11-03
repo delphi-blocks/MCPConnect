@@ -1,0 +1,30 @@
+meta {
+  name: MCP - tools/call
+  type: http
+  seq: 11
+}
+
+post {
+  url: http://localhost:8080/mcp
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+      "method": "tools/call",
+      "params": {
+          "name": "discounted_items",
+          "arguments": {
+              "itemType": "courses"
+          }
+      },
+      "jsonrpc": "2.0",
+      "id": 3
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

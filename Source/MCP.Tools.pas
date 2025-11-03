@@ -145,7 +145,7 @@ type
    ///   Can be TextContent, ImageContent, AudioContent, ResourceLink, or
    ///   EmbeddedResource
    /// </summary>
-	  [NeonProperty('content')] Content: TBaseContent;
+	  [NeonProperty('content')] Content: TObjectList<TBaseContent>;
 
 
 
@@ -167,13 +167,7 @@ type
     constructor Create;
     destructor Destroy; override;
 
-    procedure SetContent(AContent: TBaseContent);
-
-    function GetContentAsText: TTextContent;
-    function GetContentAsImage: TImageContent;
-    function GetContentAsAudio: TAudioContent;
-    function GetContentAsResource: TResourceLink;
-    function GetContentAsEmbedded: TEmbeddedResource;
+    procedure AddContent(AContent: TBaseContent);
   end;
 
 type
@@ -501,7 +495,7 @@ end;
 constructor TCallToolResult.Create;
 begin
   Meta := TJSONObject.Create;
-  Content := TBaseContent.Create;
+  Content := TObjectList<TBaseContent>.Create;
   StructuredContent := TJSONObject.Create;
 end;
 
@@ -513,68 +507,9 @@ begin
   inherited;
 end;
 
-function TCallToolResult.GetContentAsAudio: TAudioContent;
+procedure TCallToolResult.AddContent(AContent: TBaseContent);
 begin
-  if not (Content is TAudioContent) then
-  begin
-    Content.Free;
-    Content := TAudioContent.Create;
-  end;
-
-  Result := Content as TAudioContent;
-end;
-
-function TCallToolResult.GetContentAsEmbedded: TEmbeddedResource;
-begin
-  if not (Content is TEmbeddedResource) then
-  begin
-    Content.Free;
-    Content := TEmbeddedResource.Create;
-  end;
-
-  Result := Content as TEmbeddedResource;
-end;
-
-function TCallToolResult.GetContentAsImage: TImageContent;
-begin
-  if not (Content is TImageContent) then
-  begin
-    Content.Free;
-    Content := TImageContent.Create;
-  end;
-
-  Result := Content as TImageContent;
-end;
-
-function TCallToolResult.GetContentAsResource: TResourceLink;
-begin
-  if not (Content is TResourceLink) then
-  begin
-    Content.Free;
-    Content := TResourceLink.Create;
-  end;
-
-  Result := Content as TResourceLink;
-end;
-
-function TCallToolResult.GetContentAsText: TTextContent;
-begin
-  if not (Content is TTextContent) then
-  begin
-    Content.Free;
-    Content := TTextContent.Create;
-  end;
-
-  Result := Content as TTextContent;
-end;
-
-procedure TCallToolResult.SetContent(AContent: TBaseContent);
-begin
-  if (AContent <> nil) and (AContent <> Content) then
-  begin
-    Content.Free;
-    Content := AContent;
-  end;
+  Content.Add(AContent);
 end;
 
 end.

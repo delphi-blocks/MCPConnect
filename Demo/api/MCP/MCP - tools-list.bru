@@ -1,20 +1,21 @@
 meta {
-  name: JRPC - GET PERSON
+  name: MCP - tools/list
   type: http
-  seq: 5
+  seq: 8
 }
 
 post {
-  url: http://localhost:8080/jrpc
+  url: http://localhost:8080/mcp
   body: json
   auth: inherit
 }
 
 body:json {
   {
+    "method": "tools/list",
+    "params": {},
     "jsonrpc": "2.0",
-    "id": 42,
-    "method": "object/person"
+    "id": 1
   }
 }
 

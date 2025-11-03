@@ -1,0 +1,27 @@
+meta {
+  name: MCP - notifications/cancelled
+  type: http
+  seq: 10
+}
+
+post {
+  url: http://localhost:8080/mcp
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+      "jsonrpc": "2.0",
+      "method": "notifications/cancelled",
+      "params": {
+          "requestId": 1,
+          "reason": "AbortError: This operation was aborted"
+      }
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

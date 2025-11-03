@@ -1,4 +1,4 @@
-unit ServerDemo.WebModule;
+unit MCPServerDemo.WebModule;
 
 interface
 
@@ -41,6 +41,7 @@ end;
 procedure TWebModule1.WebModuleCreate(Sender: TObject);
 begin
   FJRPCDispacher := TJRPCDispacher.Create(Self);
+  FJRPCDispacher.PathInfo := '/mcp';
 end;
 
 end.

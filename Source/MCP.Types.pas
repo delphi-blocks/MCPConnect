@@ -292,10 +292,24 @@ type
     // Parent "Notification" type is not defined in the source, assuming it contains no serialized fields.
   end;
 
+  /// <summary>
+  /// When a party wants to cancel an in-progress request, it sends a notifications/cancelled
+  /// * The ID of the request to cancel
+  /// * An optional reason string that can be logged or displayed
+  /// </summary>
+  TCancelledNotification = class
+
+    [NeonProperty('requestId')] RequestId: Integer;
+
+    [NeonProperty('reason')] Reason: string;
+
+  end;
+
   { ************ Contents ************ }
 
   TBaseContent = class
   public
+    [NeonInclude(IncludeIf.NotEmpty)]
     [NeonProperty('annotations')] Annotations: TAnnotations;
     [NeonProperty('_meta')] [NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
     [NeonProperty('type')] &Type: string;

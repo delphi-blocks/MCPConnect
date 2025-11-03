@@ -1,0 +1,33 @@
+meta {
+  name: MCP - Initialize
+  type: http
+  seq: 7
+}
+
+post {
+  url: http://localhost:8080/mcp
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+      "method": "initialize",
+      "params": {
+          "protocolVersion": "2025-06-18",
+          "capabilities": {
+          },
+          "clientInfo": {
+              "name": "lmstudio-mcp-server-session",
+              "version": "1.0.0"
+          }
+      },
+      "jsonrpc": "2.0",
+      "id": 0
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

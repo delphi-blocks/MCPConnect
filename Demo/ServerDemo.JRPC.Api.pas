@@ -43,16 +43,6 @@ type
     function GetPerson(): TPerson;
   end;
 
-  [JRPC('tool')]
-  TMCPToolApi = class
-  public
-    [JRPC('call')]
-    function Call(
-        [JRPCParam('name')] const AName: string;
-        [JRPC('arguments')] AArguments: TJSONObject;
-        [JRPC('_meta')] Meta: TJSONObject): TCallToolResult;
-  end;
-
 implementation
 
 { TMathApi }
@@ -87,25 +77,8 @@ begin
   FName := AName;
 end;
 
-{ TMCPToolApi }
-
-function TMCPToolApi.Call(const AName: string; AArguments: TJSONObject; Meta: TJSONObject): TCallToolResult;
-begin
-  var t := TTextContent.Create;
-  t.Text := 'This is the result => ';
-  t.&Type := 'text';
-
-  Result := TCallToolResult.Create;
-  Result.SetContent(t);
-
-  for var LPair in AArguments do
-    t.Text := t.Text + LPair.JsonString.Value + ':' + LPair.JsonValue.ToString;
-end;
-
 initialization
-  //TJRPCRegistry.Instance.NeonConfig := MCPNeonConfig;
   TJRPCRegistry.Instance.RegisterClass(TMathApi);
   TJRPCRegistry.Instance.RegisterClass(TJRPObjectApi);
-  TJRPCRegistry.Instance.RegisterClass(TMCPToolApi, MCPNeonConfig);
 
 end.

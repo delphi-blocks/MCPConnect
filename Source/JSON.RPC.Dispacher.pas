@@ -17,12 +17,16 @@ type
   TJRPCDispacher = class(TComponent, IWebDispatch)
   private
     FDispachMask: TMask;
+    FPathInfo: string;
+    procedure SetPathInfo(const Value: string);
   public
     { IWebDispatch }
     function DispatchEnabled: Boolean;
     function DispatchMethodType: TMethodType;
     function DispatchRequest(Sender: TObject; Request: TWebRequest; Response: TWebResponse): Boolean;
     function DispatchMask: TMask;
+
+    property PathInfo: string read FPathInfo write SetPathInfo;
 
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -36,6 +40,7 @@ constructor TJRPCDispacher.Create(AOwner: TComponent);
 begin
   inherited;
   FDispachMask := nil;
+  FPathInfo := 'jrpc';
 end;
 
 destructor TJRPCDispacher.Destroy;
@@ -53,7 +58,7 @@ function TJRPCDispacher.DispatchMask: TMask;
 begin
   if not Assigned(FDispachMask) then
   begin
-    FDispachMask := TMask.Create('*');
+    FDispachMask := TMask.Create(FPathInfo);
   end;
   Result := FDispachMask;
 end;
@@ -90,10 +95,28 @@ begin
 
   LInvokable := TJRPCObjectInvoker.Create(LInstance);
   LInvokable.NeonConfig := LConstructorProxy.NeonConfig;
-  LInvokable.Invoke(LRequest, LResponse);
+  if not LInvokable.Invoke(LRequest, LResponse) then
+  begin
+    Exit(False);
+  end;
 
-  Response.Content := TNeon.ObjectToJSONString(LResponse, JRPCNeonConfig);
+  Response.ContentType := 'application/json';
+  if LResponse.IsNotification then
+  begin
+    Response.StatusCode := 204;
+    Response.Content := '';
+  end
+  else
+  begin
+    Response.Content := TNeon.ObjectToJSONString(LResponse, JRPCNeonConfig);
+  end;
   Result := True;
+end;
+
+procedure TJRPCDispacher.SetPathInfo(const Value: string);
+begin
+  // If the mask is already created should I raise an exception?
+  FPathInfo := Value;
 end;
 
 end.

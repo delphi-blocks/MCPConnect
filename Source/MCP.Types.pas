@@ -66,7 +66,7 @@ type
     destructor Destroy; override;
   end;
 
-  TRequestParams = class
+  TMetaClass = class
     /// <summary>
     /// Meta is a metadata object that is reserved by MCP for storing additional information
     /// </summary>
@@ -74,6 +74,9 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+  end;
+
+  TRequestParams = class(TMetaClass)
   end;
 
   TPaginatedParams = record
@@ -288,21 +291,25 @@ type
   /// TInitializedNotification is sent from the client to the server after
   /// initialization has finished.
   /// </summary>
-  TInitializedNotification = record
-    // Parent "Notification" type is not defined in the source, assuming it contains no serialized fields.
+  TInitializedNotificationParams = class(TMetaClass)
   end;
 
   /// <summary>
-  /// When a party wants to cancel an in-progress request, it sends a notifications/cancelled
-  /// * The ID of the request to cancel
-  /// * An optional reason string that can be logged or displayed
+  ///   When a party wants to cancel an in-progress request, it sends a notifications/cancelled *
+  ///   The ID of the request to cancel * An optional reason string that can be logged or displayed
   /// </summary>
-  TCancelledNotification = class
+  TCancelledNotificationParams = record
 
+    /// <summary>
+    ///   A uniquely identifying ID for a request in JSON-RPC.
+    /// </summary>
     [NeonProperty('requestId')] RequestId: Integer;
 
-    [NeonProperty('reason')] Reason: string;
-
+    /// <summary>
+    ///   An optional string describing the reason for the cancellation. This MAY be logged or
+    ///   presented to the user.
+    /// </summary>
+    [NeonProperty('reason')] Reason: NullString;
   end;
 
   { ************ Contents ************ }
@@ -310,10 +317,9 @@ type
   /// <summary>
   ///   Base class for the content(s)
   /// </summary>
-  TBaseContent = class
+  TBaseContent = class(TMetaClass)
   public
     [NeonProperty('annotations'), NeonInclude(IncludeIf.NotEmpty)] Annotations: TAnnotations;
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
     [NeonProperty('type')] &Type: string;
   public
     constructor Create;
@@ -349,22 +355,17 @@ type
   /// <summary>
   ///   The contents of a specific resource or sub-resource.
   /// </summary>
-  TResourceContents = class
-    /// <summary>
-    /// Metadata object reserved for additional information.
-    /// </summary>
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
+  TResourceContents = class(TMetaClass)
+  public
     /// <summary>
     /// The URI of this resource.
     /// </summary>
     [NeonProperty('uri')] URI: string;
+
     /// <summary>
     /// The MIME type of this resource, if known.
     /// </summary>
     [NeonProperty('mimeType')] MIMEType: NullString;
-  public
-    constructor Create;
-    destructor Destroy; override;
   end;
 
   /// <summary>
@@ -511,19 +512,6 @@ begin
   inherited;
 end;
 
-{ TRequestParams }
-
-constructor TRequestParams.Create;
-begin
-  Meta := TJSONObject.Create;
-end;
-
-destructor TRequestParams.Destroy;
-begin
-  Meta.Free;
-  inherited;
-end;
-
 { TAnyMapOwned }
 
 destructor TAnyMapOwned.Destroy;
@@ -558,28 +546,13 @@ end;
 
 constructor TBaseContent.Create;
 begin
+  inherited;
   Annotations := TAnnotations.Create;
-  Meta := TJSONObject.Create;
 end;
 
 destructor TBaseContent.Destroy;
 begin
-  Meta.Free;
   Annotations.Free;
-
-  inherited;
-end;
-
-{ TResourceContents }
-
-constructor TResourceContents.Create;
-begin
-  Meta := TJSONObject.Create;
-end;
-
-destructor TResourceContents.Destroy;
-begin
-  Meta.Free;
   inherited;
 end;
 
@@ -671,6 +644,19 @@ begin
     Content.Free;
     Content := AContent;
   end;
+end;
+
+{ TMetaClass }
+
+constructor TMetaClass.Create;
+begin
+  Meta := TJSONObject.Create;
+end;
+
+destructor TMetaClass.Destroy;
+begin
+  Meta.Free;
+  inherited;
 end;
 
 end.

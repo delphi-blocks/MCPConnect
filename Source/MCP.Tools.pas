@@ -25,10 +25,9 @@ type
   /// <summary>
   /// Parameters for CallToolRequest
   /// </summary>
-  TCallToolParams = class
+  TCallToolParams = class(TMetaClass)
     [NeonProperty('name')] Name: string;
     [NeonProperty('arguments'), NeonInclude(IncludeIf.NotEmpty)] Arguments: TJSONObject;
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
   public
     constructor Create;
     destructor Destroy; override;
@@ -67,12 +66,7 @@ type
   /// <summary>
   /// Tool represents the definition for a tool the client can call.
   /// </summary>
-  TMCPTool = class
-
-    /// <summary>
-    /// Meta is a metadata object that is reserved by MCP for storing additional information
-    /// </summary>
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
+  TMCPTool = class(TMetaClass)
 
     /// <summary>
     /// The name of the tool
@@ -108,13 +102,8 @@ type
 
   TMCPTools = class(TObjectList<TMCPTool>);
 
-  TListToolsResult = class
+  TListToolsResult = class(TMetaClass)
   public
-    /// <summary>
-    /// Meta is a metadata object that is reserved by MCP for storing additional information
-    /// </summary>
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
-
     [NeonProperty('tools')] Tools: TMCPTools;
 
     /// <summary>
@@ -132,22 +121,14 @@ type
   ///   Can be TextContent, ImageContent, AudioContent, ResourceLink, or
   ///   EmbeddedResource
   /// </summary>
-  TCallToolResult = class
-  private
+  TCallToolResult = class(TMetaClass)
   public
-
-    /// <summary>
-    /// Meta is a metadata object that is reserved by MCP for storing additional information
-    /// </summary>
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
 
    /// <summary>
    ///   Can be TextContent, ImageContent, AudioContent, ResourceLink, or
    ///   EmbeddedResource
    /// </summary>
 	  [NeonProperty('content')] Content: TObjectList<TBaseContent>;
-
-
 
     /// <summary>
     ///   Structured content returned as a JSON object in the structuredContent
@@ -206,14 +187,13 @@ type
 
 
 
-
 implementation
 
 { TMCPTool }
 
 constructor TMCPTool.Create;
 begin
-  Meta := TJSONObject.Create;
+  inherited;
   InputSchema := TJSONObject.Create;
   Annotations := TToolAnnotation.Create;
   OutputSchema := TJSONObject.Create;
@@ -221,7 +201,6 @@ end;
 
 destructor TMCPTool.Destroy;
 begin
-  Meta.Free;
   InputSchema.Free;
   Annotations.Free;
   OutputSchema.Free;
@@ -247,15 +226,13 @@ end;
 
 constructor TListToolsResult.Create;
 begin
-  Meta := TJSONObject.Create;
+  inherited;
   Tools := TMCPTools.Create(True);
 end;
 
 destructor TListToolsResult.Destroy;
 begin
   Tools.Free;
-  Meta.Free;
-
   inherited;
 end;
 
@@ -478,15 +455,13 @@ end;
 
 constructor TCallToolParams.Create;
 begin
+  inherited;
   Arguments := TJSONObject.Create;
-  Meta := TJSONObject.Create;
 end;
 
 destructor TCallToolParams.Destroy;
 begin
-  Meta.Free;
   Arguments.Free;
-
   inherited;
 end;
 
@@ -494,14 +469,13 @@ end;
 
 constructor TCallToolResult.Create;
 begin
-  Meta := TJSONObject.Create;
+  inherited;
   Content := TObjectList<TBaseContent>.Create;
   StructuredContent := TJSONObject.Create;
 end;
 
 destructor TCallToolResult.Destroy;
 begin
-  Meta.Free;
   Content.Free;
   StructuredContent.Free;
   inherited;

@@ -10,7 +10,9 @@ uses
   JSON.RPC.Dispacher in '..\Source\JSON.RPC.Dispacher.pas',
   JSON.RPC in '..\Source\JSON.RPC.pas',
   MCPServerDemo.Api in 'MCPServerDemo.Api.pas',
-  MCP.Types in '..\Source\MCP.Types.pas';
+  MCP.Types in '..\Source\MCP.Types.pas',
+  MCP.Invoker in '..\Source\MCP.Invoker.pas',
+  MCP.Utils in '..\Source\MCP.Utils.pas';
 
 {$R *.res}
 

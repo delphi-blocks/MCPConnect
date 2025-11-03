@@ -332,6 +332,7 @@ type
   TTextContent = class(TBaseContent)
   public
     [NeonProperty('text')] Text: string;
+    constructor Create(const AText: string = '');
   end;
 
   /// <summary>
@@ -657,6 +658,15 @@ destructor TMetaClass.Destroy;
 begin
   Meta.Free;
   inherited;
+end;
+
+{ TTextContent }
+
+constructor TTextContent.Create(const AText: string);
+begin
+  inherited Create;
+  Text := AText;
+  &Type := 'text';
 end;
 
 end.

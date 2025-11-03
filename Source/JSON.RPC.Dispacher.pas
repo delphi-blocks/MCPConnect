@@ -34,6 +34,9 @@ type
 
 implementation
 
+uses
+  MCP.Utils;
+
 { TJRPCDispacher }
 
 constructor TJRPCDispacher.Create(AOwner: TComponent);
@@ -71,14 +74,14 @@ end;
 function TJRPCDispacher.DispatchRequest(Sender: TObject; Request: TWebRequest;
   Response: TWebResponse): Boolean;
 var
-  LGarbageCollector: IJRPCGarbageCollector;
+  LGarbageCollector: IGarbageCollector;
   LRequest: TJRPCRequest;
   LResponse: TJRPCResponse;
   LConstructorProxy: TJRPCConstructorProxy;
   LInstance: TObject;
   LInvokable: IJRPCInvokable;
 begin
-  LGarbageCollector := TJRPCGarbageCollector.CreateInstance;
+  LGarbageCollector := TGarbageCollector.CreateInstance;
 
   LResponse := TJRPCResponse.Create;
   LGarbageCollector.Add(LResponse);

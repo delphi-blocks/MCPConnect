@@ -70,39 +70,27 @@ implementation
 
 { TMCPToolApi }
 
+uses MCP.Invoker;
+
 function TMCPToolsApi.Call(const AName: string; AArguments: TJSONObject; Meta: TJSONObject): TCallToolResult;
 var
+  LInvoker: IMCPInvokable;
   LTestTool: TTestTool;
 begin
-  if AName = 'discounted_items' then
-  begin
+  Result := TCallToolResult.Create;
+  try
     LTestTool := TTestTool.Create;
     try
-      var LDiscountedItems := LTestTool.GetDiscountedItems(AArguments.GetValue<string>('itemType'));
-      try
-        var LTextContent := TTextContent.Create;
-        LTextContent.Text := LDiscountedItems.Text;
-        LTextContent.&Type := 'text';
-        Result := TCallToolResult.Create;
-        Result.AddContent(LTextContent);
-      finally
-        LDiscountedItems.Free;
-      end;
+      LInvoker := TMCPObjectInvoker.Create(LTestTool);
+      if not LInvoker.Invoke(AName, AArguments, Meta, Result) then
+        raise Exception.CreateFmt('Tool "%s" non found', [AName]);
     finally
       LTestTool.Free;
     end;
-  end
-  else
-    raise Exception.Create('Error Message');
-//  var t := TTextContent.Create;
-//  t.Text := 'This is the result => ';
-//  t.&Type := 'text';
-//
-//  Result := TCallToolResult.Create;
-//  Result.SetContent(t);
-//
-//  for var LPair in AArguments do
-//    t.Text := t.Text + LPair.JsonString.Value + ':' + LPair.JsonValue.ToString;
+  except
+    Result.Free;
+    raise;
+  end;
 end;
 
 procedure TMCPNotificationsApi.Cancelled([JRPCParams] ACancelledParams: TCancelledNotificationParams);
@@ -148,13 +136,13 @@ begin
   try
     if AItemType = 'courses' then
     begin
-      Result.add('Programmazione ad Oggetti con Delphi');
-      Result.add('Delphi Modern Development');
+      Result.Add('Programmazione ad Oggetti con Delphi');
+      Result.Add('Delphi Modern Development');
     end
     else if AItemType = 'product' then
     begin
-      Result.add('Fast Report');
-      Result.add('UniDAC');
+      Result.Add('Fast Report');
+      Result.Add('UniDAC');
     end
     else
       Result.Add('none');

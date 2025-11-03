@@ -141,6 +141,8 @@
         <DCCReference Include="..\Source\JSON.RPC.pas"/>
         <DCCReference Include="MCPServerDemo.Api.pas"/>
         <DCCReference Include="..\Source\MCP.Types.pas"/>
+        <DCCReference Include="..\Source\MCP.Invoker.pas"/>
+        <DCCReference Include="..\Source\MCP.Utils.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

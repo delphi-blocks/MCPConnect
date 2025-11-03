@@ -89,7 +89,7 @@ type
     //
     // It can include multiple entries to indicate content useful for multiple
     // audiences (e.g., `["user", "assistant"]`).
-    Audience: TArray<string>; //`json:"audience,omitempty"`
+    [NeonInclude(IncludeIf.NotEmpty)] Audience: TArray<string>;
 
     // Describes how important this data is for operating the server.
     //
@@ -97,7 +97,7 @@ type
     // effectively required, while 0 means "least important," and indicates that
     // the data is entirely optional.
 
-    Priority: Currency; //`json:"priority,omitempty"`
+    [NeonInclude(IncludeIf.NotEmpty)] Priority: Currency;
   end;
 
 
@@ -307,34 +307,48 @@ type
 
   { ************ Contents ************ }
 
+  /// <summary>
+  ///   Base class for the content(s)
+  /// </summary>
   TBaseContent = class
   public
-    [NeonInclude(IncludeIf.NotEmpty)]
-    [NeonProperty('annotations')] Annotations: TAnnotations;
-    [NeonProperty('_meta')] [NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
+    [NeonProperty('annotations'), NeonInclude(IncludeIf.NotEmpty)] Annotations: TAnnotations;
+    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
     [NeonProperty('type')] &Type: string;
   public
     constructor Create;
     destructor Destroy; override;
   end;
 
+  /// <summary>
+  ///   Text provided to or from an LLM.
+  /// </summary>
   TTextContent = class(TBaseContent)
   public
     [NeonProperty('text')] Text: string;
   end;
 
+  /// <summary>
+  ///   An image provided to or from an LLM.
+  /// </summary>
   TImageContent = class(TBaseContent)
   public
     [NeonProperty('data')] Data: string;
     [NeonProperty('mimeType')] MIMEType: string;
   end;
 
+  /// <summary>
+  ///   Audio provided to or from an LLM.
+  /// </summary>
   TAudioContent = class(TBaseContent)
   public
     [NeonProperty('data')] Data: string;
     [NeonProperty('mimeType')] MIMEType: string;
   end;
 
+  /// <summary>
+  ///   The contents of a specific resource or sub-resource.
+  /// </summary>
   TResourceContents = class
     /// <summary>
     /// Metadata object reserved for additional information.
@@ -376,6 +390,13 @@ type
     [NeonProperty('blob')] Blob: string;
   end;
 
+  /// <summary>
+  ///   A resource that the server is capable of reading, included in a prompt or tool call result.
+  /// </summary>
+  /// <remarks>
+  ///   Note: resource links returned by tools are not guaranteed to appear in the results of
+  ///   `resources/list` requests.
+  /// </remarks>
   TResourceLink = class(TBaseContent)
   public
     [NeonProperty('uri')] URI: string;
@@ -384,12 +405,41 @@ type
     [NeonProperty('mimeType')] MIMEType: string;
   end;
 
+  /// <summary>
+  ///   The contents of a resource, embedded into a prompt or tool call result. It is up to the
+  ///   client how best to render embedded resources for the benefit of the LLM and/or the user.
+  /// </summary>
   TEmbeddedResource = class(TBaseContent)
   public
     [NeonProperty('resource')] Resource: TResourceContents;
   public
     constructor Create;
     destructor Destroy; override;
+  end;
+
+  /// <summary>
+  ///   Base class for all the Content-based MCP classes
+  /// </summary>
+  TContentClass = class
+  public
+
+   /// <summary>
+   ///   Can be TextContent, ImageContent, AudioContent, ResourceLink, or
+   ///   EmbeddedResource
+   /// </summary>
+	  [NeonProperty('content')] Content: TBaseContent;
+
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    procedure SetContent(AContent: TBaseContent);
+
+    function GetContentAsText: TTextContent;
+    function GetContentAsImage: TImageContent;
+    function GetContentAsAudio: TAudioContent;
+    function GetContentAsResource: TResourceLink;
+    function GetContentAsEmbedded: TEmbeddedResource;
   end;
 
 
@@ -544,6 +594,83 @@ destructor TEmbeddedResource.Destroy;
 begin
   Resource.Free;
   inherited;
+end;
+
+{ TContentClass }
+
+constructor TContentClass.Create;
+begin
+  Content := TBaseContent.Create;
+end;
+
+destructor TContentClass.Destroy;
+begin
+  Content.Free;
+  inherited;
+end;
+
+function TContentClass.GetContentAsAudio: TAudioContent;
+begin
+  if not (Content is TAudioContent) then
+  begin
+    Content.Free;
+    Content := TAudioContent.Create;
+  end;
+
+  Result := Content as TAudioContent;
+end;
+
+function TContentClass.GetContentAsEmbedded: TEmbeddedResource;
+begin
+  if not (Content is TEmbeddedResource) then
+  begin
+    Content.Free;
+    Content := TEmbeddedResource.Create;
+  end;
+
+  Result := Content as TEmbeddedResource;
+end;
+
+function TContentClass.GetContentAsImage: TImageContent;
+begin
+  if not (Content is TImageContent) then
+  begin
+    Content.Free;
+    Content := TImageContent.Create;
+  end;
+
+  Result := Content as TImageContent;
+end;
+
+function TContentClass.GetContentAsResource: TResourceLink;
+begin
+  if not (Content is TResourceLink) then
+  begin
+    Content.Free;
+    Content := TResourceLink.Create;
+  end;
+
+  Result := Content as TResourceLink;
+end;
+
+function TContentClass.GetContentAsText: TTextContent;
+begin
+  if not (Content is TTextContent) then
+  begin
+    Content.Free;
+    Content := TTextContent.Create;
+  end;
+
+  Result := Content as TTextContent;
+end;
+
+procedure TContentClass.SetContent(AContent: TBaseContent);
+begin
+  if (AContent <> nil) and (AContent <> Content) then
+  begin
+    Content.Free;
+    Content := AContent;
+  end;
 end;
 
 end.

@@ -32,7 +32,7 @@ type
   end;
 
   /// <summary>
-  ///   This interface define a standard method to handle JRPC call
+  ///   This interface defines a standard method to handle the JRPC call
   /// </summary>
   IJRPCInvokable = interface
   ['{246F6538-B87C-4164-B81C-74F0ABDD2FCD}']
@@ -105,17 +105,18 @@ type
     procedure CollectGarbage();
   end;
 
-  /// <summary> 
-  /// TJRPCGarbageCollector implements IJRPCGarbageCollector and provides a
-  /// mechanism to track and dispose of objects or values. It supports
-  /// custom disposal actions and recursive cleanup of arrays and class
-  /// instances. Garbage is collected either on demand or automatically
-  /// on destruction.
-  /// NOTICE: When the garbage collector is destroyed, it will automatically
-  /// collect and dispose all tracked garbage. If you get the instance through
-  /// the *CreateInstance* method, then it will be destroyed automatically
-  /// when it goes out of scope.
+  /// <summary>
+  ///   TJRPCGarbageCollector implements IJRPCGarbageCollector and provides a
+  ///   mechanism to track and dispose of objects or values. It supports custom
+  ///   disposal actions and recursive cleanup of arrays and class instances.
+  ///   Garbage is collected either on demand or automatically on destruction.
   /// </summary>
+  /// <remarks>
+  ///   When the garbage collector is destroyed, it will automatically collect
+  ///   and dispose all tracked garbage. If you get the instance through the
+  ///   *CreateInstance* method, then it will be destroyed automatically when it
+  ///   goes out of scope.
+  /// </remarks>
   TJRPCGarbageCollector = class(TInterfacedObject, IJRPCGarbageCollector)
   private
     FGarbage: TDictionary<TValue, TDisposeAction>;
@@ -138,7 +139,7 @@ implementation
 
 { TJRPCMethodInvoker }
 
-// Check the compatibility of the JSONValue with the function parameters
+// Checks the compatibility of the JSONValue with the function parameters
 procedure CheckCompatibility(AParam: TRttiParameter; AValue: TJSONValue);
 begin
   if AValue is TJSONNumber then
@@ -194,7 +195,7 @@ begin
   end;
 end;
 
-
+{ TJRPCMethodInvoker }
 
 function TJRPCMethodInvoker.RequestToRttiParams(ARequest: TJRPCRequest): TArray<TValue>;
 
@@ -224,7 +225,6 @@ function TJRPCMethodInvoker.RequestToRttiParams(ARequest: TJRPCRequest): TArray<
 var
   LParam: TRttiParameter;
   LParamIndex: Integer;
-  //LParamValue: TValue;
   LParamJSON: TJSONValue;
   LRttiParams: TArray<TRttiParameter>;
 begin
@@ -301,8 +301,7 @@ begin
     Result := LParam.Name;
 end;
 
-function TJRPCMethodInvoker.Invoke(ARequest: TJRPCRequest;
-  AResponse: TJRPCResponse): Boolean;
+function TJRPCMethodInvoker.Invoke(ARequest: TJRPCRequest; AResponse: TJRPCResponse): Boolean;
 var
   LArgs: TArray<TValue>;
   LResult: TValue;
@@ -382,8 +381,7 @@ begin
   Result := FNeonConfig;
 end;
 
-function TJRPCObjectInvoker.Invoke(ARequest: TJRPCRequest;
-  AResponse: TJRPCResponse): Boolean;
+function TJRPCObjectInvoker.Invoke(ARequest: TJRPCRequest; AResponse: TJRPCResponse): Boolean;
 var
   LMethod: TRttiMethod;
   LMethodInvoker: IJRPCInvokable;
@@ -420,8 +418,7 @@ end;
 
 { EJRPCInvokerError }
 
-constructor EJRPCInvokerError.Create(ACode: Integer; const AMessage,
-  AData: string);
+constructor EJRPCInvokerError.Create(ACode: Integer; const AMessage, AData: string);
 begin
   inherited Create(AMessage);
   FCode := ACode;
@@ -435,8 +432,7 @@ begin
   Add(AValue, nil);
 end;
 
-procedure TJRPCGarbageCollector.Add(const AValue: TValue;
-  AAction: TDisposeAction);
+procedure TJRPCGarbageCollector.Add(const AValue: TValue; AAction: TDisposeAction);
 begin
   if FGarbage.ContainsKey(AValue) then
     Exit;
@@ -448,8 +444,7 @@ begin
   Add(AValues, nil);
 end;
 
-procedure TJRPCGarbageCollector.Add(const AValues: TArray<TValue>;
-  AAction: TDisposeAction);
+procedure TJRPCGarbageCollector.Add(const AValues: TArray<TValue>; AAction: TDisposeAction);
 var
   LValue: TValue;
 begin
@@ -487,8 +482,7 @@ begin
   end;
 end;
 
-procedure TJRPCGarbageCollector.CollectSingleGarbage(
-  AGarbage: TPair<TValue, TDisposeAction>);
+procedure TJRPCGarbageCollector.CollectSingleGarbage(AGarbage: TPair<TValue, TDisposeAction>);
 begin
   if Assigned(AGarbage.Value) then
     AGarbage.Value()

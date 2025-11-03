@@ -187,11 +187,13 @@ type
   /// </summary>
   TReadResourceParams = class
   public
+
     /// <summary>
     /// The URI of the resource to read.
     /// </summary>
     /// <remarks>The URI can use any protocol; it is up to the server how to interpret it.</remarks>
     [NeonProperty('uri')] URI: string;
+
     /// <summary>
     /// Arguments to pass to the resource handler.
     /// </summary>

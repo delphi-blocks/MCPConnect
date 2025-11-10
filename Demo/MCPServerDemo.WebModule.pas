@@ -28,7 +28,9 @@ implementation
 {%CLASSGROUP 'Vcl.Controls.TControl'}
 
 uses
-  JRPC.Configuration.Authentication, JRPC.Configuration.Neon;
+  JSON.RPC,
+  JRPC.Configuration.Authentication,
+  JRPC.Configuration.Neon, MCP.Types;
 
 {$R *.dfm}
 
@@ -48,16 +50,12 @@ begin
 
   FJRPCServer
     .Plugin.Configure<IJRCPAuthTokenConfig>()
-      .SetTokenLocation(TAuthTokenLocation.Header)
-      .SetTokenCustomHeader('x-test')
       .SetToken('my-secret-token')
-      .ApplyConfig;
+      .ApplyConfig
 
-//    .Plugin.Configure<IJRPCNeonConfig>
-        //TNeonConfiguration.Camel
-        //.SetMembers([TNeonMembers.Fields]);
-        //TJSONValueSerializer);
-//      .ApplyConfig;
+    .Plugin.Configure<IJRPCNeonConfig>
+      .SetNeonConfig(MCPNeonConfig)
+      .ApplyConfig;
 
   FJRPCDispacher := TJRPCDispacher.Create(Self);
   FJRPCDispacher.PathInfo := '/mcp';

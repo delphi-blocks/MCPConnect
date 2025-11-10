@@ -116,6 +116,7 @@ var
   LConstructorProxy: TJRPCConstructorProxy;
   LInstance: TObject;
   LInvokable: IJRPCInvokable;
+  LContext: TJRPCContext;
 begin
   if not CheckAuthorization(Request, Response) then
   begin
@@ -139,9 +140,15 @@ begin
   LInstance := LConstructorProxy.ConstructorFunc();
   LGarbageCollector.Add(LInstance);
 
+  LContext := TJRPCContext.Create;
+  LGarbageCollector.Add(LContext);
+
+  LContext.AddContent(LRequest);
+  LContext.AddContent(LResponse);
+  LContext.AddContent(FServer);
+
   LInvokable := TJRPCObjectInvoker.Create(LInstance);
-  LInvokable.NeonConfig := LConstructorProxy.NeonConfig;
-  if not LInvokable.Invoke(LRequest, LResponse) then
+  if not LInvokable.Invoke(LContext, LRequest, LResponse) then
   begin
     Exit(False);
   end;

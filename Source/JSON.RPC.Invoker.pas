@@ -36,11 +36,7 @@ type
   /// </summary>
   IJRPCInvokable = interface
   ['{246F6538-B87C-4164-B81C-74F0ABDD2FCD}']
-    function Invoke(ARequest: TJRPCRequest; AResponse: TJRPCResponse): Boolean;
-    function GetNeonConfig: INeonConfiguration;
-    procedure SetNeonConfig(AConfig: INeonConfiguration);
-
-    property NeonConfig: INeonConfiguration read GetNeonConfig write SetNeonConfig;
+    function Invoke(AContext: TJRPCContext; ARequest: TJRPCRequest; AResponse: TJRPCResponse): Boolean;
   end;
 
   /// <summary>
@@ -56,11 +52,10 @@ type
     function GetParamName(LParam: TRttiParameter): string;
     function RequestToRttiParams(ARequest: TJRPCRequest): TArray<TValue>;
     function RttiResultToResponse(AResult: TValue): TJSONValue;
+    procedure Configure(AContext: TJRPCContext);
   public
     { IJRPCInvokable }
-    function Invoke(ARequest: TJRPCRequest; AResponse: TJRPCResponse): Boolean;
-    function GetNeonConfig: INeonConfiguration;
-    procedure SetNeonConfig(AConfig: INeonConfiguration);
+    function Invoke(AContext: TJRPCContext; ARequest: TJRPCRequest; AResponse: TJRPCResponse): Boolean;
 
     constructor Create(AInstance: TObject; AMethod: TRttiMethod);
   end;
@@ -74,15 +69,12 @@ type
   private
     FInstance: TObject;
     FRttiType: TRttiType;
-    FNeonConfig: INeonConfiguration;
     FSeparator: string;
     function FindMethod(ARequest: TJRPCRequest): TRttiMethod;
     function GetRequestMethodName(ARequest: TJRPCRequest): string;
   public
     { IJRPCInvokable }
-    function Invoke(ARequest: TJRPCRequest; AResponse: TJRPCResponse): Boolean;
-    function GetNeonConfig: INeonConfiguration;
-    procedure SetNeonConfig(AConfig: INeonConfiguration);
+    function Invoke(AContext: TJRPCContext; ARequest: TJRPCRequest; AResponse: TJRPCResponse): Boolean;
 
     constructor Create(AInstance: TObject);
   end;
@@ -92,7 +84,8 @@ implementation
 { TJRPCMethodInvoker }
 
 uses
-  MCP.Utils;
+  MCP.Utils,
+  JRPC.Configuration.Neon;
 
 // Checks the compatibility of the JSONValue with the function parameters
 procedure CheckCompatibility(AParam: TRttiParameter; AValue: TJSONValue);
@@ -133,9 +126,9 @@ function TJRPCMethodInvoker.RequestToRttiParams(ARequest: TJRPCRequest): TArray<
 
     CheckCompatibility(AParam, AValue);
     if AParam.ParamType.IsInstance then
-      Result := TNeon.JSONToObject(AParam.ParamType, AValue, GetNeonConfig)
+      Result := TNeon.JSONToObject(AParam.ParamType, AValue, FNeonConfig)
     else
-      Result := TNeon.JSONToValue(AParam.ParamType, AValue, GetNeonConfig);
+      Result := TNeon.JSONToValue(AParam.ParamType, AValue, FNeonConfig);
   end;
 
   function CastParamValue(AParam: TRttiParameter; AValue: TValue): TValue;
@@ -161,7 +154,7 @@ begin
   if (Length(LRttiParams) = 1) and (TRttiUtils.HasAttribute<JRPCParamsAttribute>(LRttiParams[0])) then
   begin
     //Result := [TNeon.JSONToObject(LRttiParams[0].ParamType, ARequest.Params, TNeonConfiguration.Camel.SetMembers([TNeonMembers.Fields])) ];
-    Result := [TNeon.JSONToObject(LRttiParams[0].ParamType, ARequest.Params, GetNeonConfig) ];
+    Result := [TNeon.JSONToObject(LRttiParams[0].ParamType, ARequest.Params, FNeonConfig) ];
   end
   else
   begin
@@ -197,9 +190,13 @@ begin
     Result := TNeon.ValueToJSON(AResult, FNeonConfig);
 end;
 
-procedure TJRPCMethodInvoker.SetNeonConfig(AConfig: INeonConfiguration);
+procedure TJRPCMethodInvoker.Configure(AContext: TJRPCContext);
+var
+  LJRPCNeonConfig: TJRPCNeonConfig;
 begin
-  FNeonConfig := AConfig;
+  LJRPCNeonConfig := AContext.FindContextDataAs<TJRPCNeonConfig>;
+  if Assigned(LJRPCNeonConfig) then
+    FNeonConfig := LJRPCNeonConfig.NeonConfig;
 end;
 
 constructor TJRPCMethodInvoker.Create(AInstance: TObject; AMethod: TRttiMethod);
@@ -208,11 +205,6 @@ begin
   FInstance := AInstance;
   FMethod := AMethod;
   FNeonConfig := TNeonConfiguration.Default;
-end;
-
-function TJRPCMethodInvoker.GetNeonConfig: INeonConfiguration;
-begin
-  Result := FNeonConfig;
 end;
 
 function TJRPCMethodInvoker.GetParamName(LParam: TRttiParameter): string;
@@ -226,7 +218,7 @@ begin
     Result := LParam.Name;
 end;
 
-function TJRPCMethodInvoker.Invoke(ARequest: TJRPCRequest;
+function TJRPCMethodInvoker.Invoke(AContext: TJRPCContext; ARequest: TJRPCRequest;
   AResponse: TJRPCResponse): Boolean;
 var
   LArgs: TArray<TValue>;
@@ -234,6 +226,9 @@ var
   LGarbageCollector: IGarbageCollector;
 begin
   Result := True;
+
+  Configure(AContext);
+
   LGarbageCollector := TGarbageCollector.CreateInstance;
   LArgs := RequestToRttiParams(ARequest);
   try
@@ -270,7 +265,6 @@ begin
   FSeparator := '/';
   FInstance := AInstance;
   FRttiType := TRttiUtils.GetType(AInstance);
-  FNeonConfig := TNeonConfiguration.Default;
 
   TRttiUtils.HasAttribute<JRPCAttribute>(FRttiType,
     procedure (LAttrib: JRPCAttribute)
@@ -302,12 +296,7 @@ begin
   end;
 end;
 
-function TJRPCObjectInvoker.GetNeonConfig: INeonConfiguration;
-begin
-  Result := FNeonConfig;
-end;
-
-function TJRPCObjectInvoker.Invoke(ARequest: TJRPCRequest;
+function TJRPCObjectInvoker.Invoke(AContext: TJRPCContext; ARequest: TJRPCRequest;
   AResponse: TJRPCResponse): Boolean;
 var
   LMethod: TRttiMethod;
@@ -322,8 +311,7 @@ begin
   end;
 
   LMethodInvoker := TJRPCMethodInvoker.Create(FInstance, LMethod);
-  LMethodInvoker.NeonConfig := FNeonConfig;
-  Result := LMethodInvoker.Invoke(ARequest, AResponse);
+  Result := LMethodInvoker.Invoke(AContext, ARequest, AResponse);
 end;
 
 function TJRPCObjectInvoker.GetRequestMethodName(ARequest: TJRPCRequest): string;
@@ -335,11 +323,6 @@ begin
     Result := Copy(ARequest.Method, LSeparatorIndex + 1, Length(ARequest.Method))
   else
     Result := '';
-end;
-
-procedure TJRPCObjectInvoker.SetNeonConfig(AConfig: INeonConfiguration);
-begin
-  FNeonConfig := AConfig;
 end;
 
 { EJRPCInvokerError }

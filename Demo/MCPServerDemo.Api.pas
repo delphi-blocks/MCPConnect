@@ -157,10 +157,9 @@ begin
 end;
 
 initialization
-  //TJRPCRegistry.Instance.NeonConfig := MCPNeonConfig;
   TJRPCRegistry.Instance.RegisterClass(TMCPInitializeApi);
-  TJRPCRegistry.Instance.RegisterClass(TMCPToolsApi, MCPNeonConfig);
-  TJRPCRegistry.Instance.RegisterClass(TMCPNotificationsApi, MCPNeonConfig);
+  TJRPCRegistry.Instance.RegisterClass(TMCPToolsApi);
+  TJRPCRegistry.Instance.RegisterClass(TMCPNotificationsApi);
 
   //TMCPRegistry.Instance.RegisterClass(TTestTool);
 

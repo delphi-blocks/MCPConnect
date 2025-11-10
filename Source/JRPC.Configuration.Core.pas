@@ -29,6 +29,7 @@ type
 
     function GetConfigByClassRef(AClass: TJRPCConfigurationClass): TJRPCConfiguration;
     function GetAppConfigurator: TAppConfigurator;
+    function GetConfigurations: TEnumerable<TJRPCConfiguration>;
 
     property Plugin: TAppConfigurator read GetAppConfigurator;
   end;

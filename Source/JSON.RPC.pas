@@ -32,6 +32,9 @@ type
   JRPCNotificationAttribute = class(TCustomAttribute)
   end;
 
+  ContextAttribute = class(TCustomAttribute)
+  end;
+
   JRPCAttribute = class(TCustomAttribute)
   private
     FName: string;
@@ -252,6 +255,8 @@ type
     function GetContextDataAs(AClass: TClass): TObject; overload;
     function FindContextDataAs<T: class>: T; overload;
     function FindContextDataAs(AClass: TClass): TObject; overload;
+
+    procedure Inject(AObject: TObject);
 
     property Request: TJRPCRequest read GetRequest;
     property Response: TJRPCResponse read GetResponse;
@@ -897,6 +902,25 @@ begin
     raise EJSONRPCException.Create('Response not found');
 
   Result := FResponse;
+end;
+
+procedure TJRPCContext.Inject(AObject: TObject);
+var
+  LRttiType: TRttiType;
+begin
+  LRttiType := TRttiUtils.Context.GetType(AObject.ClassType);
+  TRttiUtils.ForEachFieldWithAttribute<ContextAttribute>(LRttiType,
+    function (AField: TRttiField; AAttr: ContextAttribute): Boolean
+    var
+      LValue: TValue;
+    begin
+      if not (AField.FieldType is TRttiInstanceType) then
+        raise EJSONRPCException.Create('Context variables should be an object');
+
+      LValue := GetContextDataAs(TRttiInstanceType(AField.FieldType).MetaclassType);
+      AField.SetValue(AObject, LValue);
+      Result := True;
+    end);
 end;
 
 end.

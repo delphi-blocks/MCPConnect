@@ -5,6 +5,7 @@ interface
 uses
   System.Classes, System.SysUtils, System.JSON,
   JSON.RPC,
+  JRPC.Configuration.MCP,
 
   MCP.Types,
   MCP.Attributes,
@@ -16,6 +17,9 @@ type
   [JRPC('tools')]
   TMCPToolsApi = class
   public
+    [Context]
+    MCPConfig: TJRPCMCPConfig;
+
     [JRPC('list')]
     function List: TListToolsResult;
 
@@ -42,49 +46,34 @@ type
   [JRPC('initialize')]
   TMCPInitializeApi = class
   public
+    [Context]
+    MCPConfig: TJRPCMCPConfig;
+
     [JRPC('')]
     function Initialize([JRPCParams] AInitializeParams: TInitializeParams): TInitializeResult;
   end;
-
-  TTestTool = class
-  public
-    [McpTool('double_or_nothing', 'Doubles or zeroes the param value')]
-    function TestParam(
-    [McpParam('value1', 'Test Parameter 1 for MCP')] AParam1: Int64;
-    [McpParam('value2', 'Test Parameter 2 for MCP')] AParam2: Boolean
-    ): Integer;
-
-    [McpTool('discounted_items', 'Retrieves a list of discounted items on Wintech-Italia based on the specified item type')]
-    function GetDiscountedItems(
-      [McpParam('itemType', 'The type of item to filter. Valid values: ''courses'', ''product'', ''consulting''')]
-       const AItemType: string
-    ): TStringList;
-  end;
-
-const
-  ServerName = 'delphi-mcp-server';
-  ServerVersion = '1.0.0';
 
 implementation
 
 { TMCPToolApi }
 
-uses MCP.Invoker;
+uses
+  MCP.Invoker;
 
 function TMCPToolsApi.Call(const AName: string; AArguments: TJSONObject; Meta: TJSONObject): TCallToolResult;
 var
   LInvoker: IMCPInvokable;
-  LTestTool: TTestTool;
+  LTool: TObject;
 begin
   Result := TCallToolResult.Create;
   try
-    LTestTool := TTestTool.Create;
+    LTool := MCPConfig.CreateDefaultTool;
     try
-      LInvoker := TMCPObjectInvoker.Create(LTestTool);
+      LInvoker := TMCPObjectInvoker.Create(LTool);
       if not LInvoker.Invoke(AName, AArguments, Meta, Result) then
         raise Exception.CreateFmt('Tool "%s" non found', [AName]);
     finally
-      LTestTool.Free;
+      LTool.Free;
     end;
   except
     Result.Free;
@@ -103,7 +92,7 @@ end;
 
 function TMCPToolsApi.List: TListToolsResult;
 begin
-  Result := TMCPSchemaGenerator.ListTools(TTestTool);
+  Result := TMCPSchemaGenerator.ListTools(MCPConfig.GetDefaultToolClass);
 end;
 
 { TMCPInitializeApi }
@@ -118,49 +107,17 @@ begin
     Result.Capabilities.Tools.ListChanged := False;
     Result.Capabilities.Resources.ListChanged := False;
     Result.Capabilities.Resources.Subscribe := False;
-    Result.ServerInfo.Name := ServerName;
-    Result.ServerInfo.Version := ServerVersion;
+    Result.ServerInfo.Name := MCPConfig.ServerName;
+    Result.ServerInfo.Version := MCPConfig.ServerVersion;
   except
     Result.Free;
     raise;
   end;
-end;
-
-{ TTestTool }
-
-function TTestTool.GetDiscountedItems(const AItemType: string): TStringList;
-begin
-  //'courses'', ''product'', ''consulting';
-  Result := TStringList.Create;
-  try
-    if AItemType = 'courses' then
-    begin
-      Result.Add('Programmazione ad Oggetti con Delphi');
-      Result.Add('Delphi Modern Development');
-    end
-    else if AItemType = 'product' then
-    begin
-      Result.Add('Fast Report');
-      Result.Add('UniDAC');
-    end
-    else
-      Result.Add('none');
-  except
-    Result.Free;
-    raise;
-  end;
-end;
-
-function TTestTool.TestParam(AParam1: Int64; AParam2: Boolean): Integer;
-begin
-  Result := AParam1;
 end;
 
 initialization
   TJRPCRegistry.Instance.RegisterClass(TMCPInitializeApi);
   TJRPCRegistry.Instance.RegisterClass(TMCPToolsApi);
   TJRPCRegistry.Instance.RegisterClass(TMCPNotificationsApi);
-
-  //TMCPRegistry.Instance.RegisterClass(TTestTool);
 
 end.

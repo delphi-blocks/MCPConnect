@@ -30,7 +30,8 @@ implementation
 uses
   JSON.RPC,
   JRPC.Configuration.Authentication,
-  JRPC.Configuration.Neon, MCP.Types;
+  JRPC.Configuration.Neon, MCP.Types, JRPC.Configuration.MCP,
+  ServerDemo.MCP.Tools;
 
 {$R *.dfm}
 
@@ -49,8 +50,14 @@ begin
   FJRPCServer := TJRPCServer.Create(Self);
 
   FJRPCServer
-    .Plugin.Configure<IJRCPAuthTokenConfig>()
+    .Plugin.Configure<IJRCPAuthTokenConfig>
       .SetToken('my-secret-token')
+      .ApplyConfig
+
+    .Plugin.Configure<IJRPCMCPConfig>
+      .SetServerName('delphi-mcp-server')
+      .SetServerVersion('2.0.0')
+      .SetToolClass(TTestTool)
       .ApplyConfig
 
     .Plugin.Configure<IJRPCNeonConfig>

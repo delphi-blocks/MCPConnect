@@ -147,6 +147,9 @@ begin
   LContext.AddContent(LResponse);
   LContext.AddContent(FServer);
 
+  // Injects the context inside the instance
+  LContext.Inject(LInstance);
+
   LInvokable := TJRPCObjectInvoker.Create(LInstance);
   if not LInvokable.Invoke(LContext, LRequest, LResponse) then
   begin

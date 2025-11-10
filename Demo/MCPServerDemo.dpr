@@ -16,7 +16,9 @@ uses
   JRPC.Configuration.Core in '..\Source\JRPC.Configuration.Core.pas',
   JRPC.Server in '..\Source\JRPC.Server.pas',
   JRPC.Configuration.Authentication in '..\Source\JRPC.Configuration.Authentication.pas',
-  JRPC.Configuration.Neon in '..\Source\JRPC.Configuration.Neon.pas';
+  JRPC.Configuration.Neon in '..\Source\JRPC.Configuration.Neon.pas',
+  JRPC.Configuration.MCP in '..\Source\JRPC.Configuration.MCP.pas',
+  ServerDemo.MCP.Tools in 'ServerDemo.MCP.Tools.pas';
 
 {$R *.res}
 

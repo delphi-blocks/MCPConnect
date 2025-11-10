@@ -147,6 +147,8 @@
         <DCCReference Include="..\Source\JRPC.Server.pas"/>
         <DCCReference Include="..\Source\JRPC.Configuration.Authentication.pas"/>
         <DCCReference Include="..\Source\JRPC.Configuration.Neon.pas"/>
+        <DCCReference Include="..\Source\JRPC.Configuration.MCP.pas"/>
+        <DCCReference Include="ServerDemo.MCP.Tools.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

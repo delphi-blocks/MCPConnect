@@ -11,14 +11,19 @@ uses
   Neon.Core.Persistence.JSON,
 
   JSON.RPC,
-  JSON.RPC.Invoker;
+  JSON.RPC.Invoker,
+  JRPC.Server, JRPC.Configuration.Authentication;
 
 type
   TJRPCDispacher = class(TComponent, IWebDispatch)
   private
     FDispachMask: TMask;
     FPathInfo: string;
+    FServer: TJRPCServer;
+    FAuthTokenConfig: TJRCPAuthTokenConfig;
     procedure SetPathInfo(const Value: string);
+    procedure SetServer(const Value: TJRPCServer);
+    function CheckAuthorization(Request: TWebRequest; Response: TWebResponse): Boolean;
   public
     { IWebDispatch }
     function DispatchEnabled: Boolean;
@@ -27,6 +32,7 @@ type
     function DispatchMask: TMask;
 
     property PathInfo: string read FPathInfo write SetPathInfo;
+    property Server: TJRPCServer read FServer write SetServer;
 
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -38,6 +44,36 @@ uses
   MCP.Utils;
 
 { TJRPCDispacher }
+
+function TJRPCDispacher.CheckAuthorization(Request: TWebRequest; Response: TWebResponse): Boolean;
+begin
+  Result := True;
+  if Assigned(FAuthTokenConfig) then
+  begin
+    case FAuthTokenConfig.Location of
+      TAuthTokenLocation.Bearer:
+      begin
+        if Request.Authorization <> 'Bearer ' + FAuthTokenConfig.Token then
+          Exit(False);
+      end;
+
+      TAuthTokenLocation.Cookie:
+      begin
+        if Request.CookieFields.Values[FAuthTokenConfig.CustomHeader] <> FAuthTokenConfig.Token then
+          Exit(False);
+      end;
+
+      TAuthTokenLocation.Header:
+      begin
+        if Request.GetFieldByName(FAuthTokenConfig.CustomHeader) <> FAuthTokenConfig.Token then
+          Exit(False);
+      end;
+
+      else
+        raise EJSONRPCException.Create('Invalid token location');
+    end;
+  end;
+end;
 
 constructor TJRPCDispacher.Create(AOwner: TComponent);
 begin
@@ -81,6 +117,13 @@ var
   LInstance: TObject;
   LInvokable: IJRPCInvokable;
 begin
+  if not CheckAuthorization(Request, Response) then
+  begin
+    Response.StatusCode := 403;
+    Response.Content := '';
+    Exit(True);
+  end;
+
   LGarbageCollector := TGarbageCollector.CreateInstance;
 
   LResponse := TJRPCResponse.Create;
@@ -120,6 +163,13 @@ procedure TJRPCDispacher.SetPathInfo(const Value: string);
 begin
   // If the mask is already created should I raise an exception?
   FPathInfo := Value;
+end;
+
+procedure TJRPCDispacher.SetServer(const Value: TJRPCServer);
+begin
+  FServer := Value;
+
+  FAuthTokenConfig := FServer.GetConfiguration<TJRCPAuthTokenConfig>;
 end;
 
 end.

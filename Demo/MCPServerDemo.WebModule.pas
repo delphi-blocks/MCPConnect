@@ -6,7 +6,7 @@ uses
   System.SysUtils, System.Classes, Web.HTTPApp,
   Neon.Core.Types,
   Neon.Core.Persistence,
-  JSON.RPC.Dispacher;
+  JSON.RPC.Dispacher, JRPC.Server;
 
 type
   TWebModule1 = class(TWebModule)
@@ -14,6 +14,7 @@ type
       Request: TWebRequest; Response: TWebResponse; var Handled: Boolean);
     procedure WebModuleCreate(Sender: TObject);
   private
+    FJRPCServer: TJRPCServer;
     FJRPCDispacher: TJRPCDispacher;
   public
     { Public declarations }
@@ -25,6 +26,9 @@ var
 implementation
 
 {%CLASSGROUP 'Vcl.Controls.TControl'}
+
+uses
+  JRPC.Configuration.Authentication, JRPC.Configuration.Neon;
 
 {$R *.dfm}
 
@@ -40,8 +44,24 @@ end;
 
 procedure TWebModule1.WebModuleCreate(Sender: TObject);
 begin
+  FJRPCServer := TJRPCServer.Create(Self);
+
+  FJRPCServer
+    .Plugin.Configure<IJRCPAuthTokenConfig>()
+      .SetTokenLocation(TAuthTokenLocation.Header)
+      .SetTokenCustomHeader('x-test')
+      .SetToken('my-secret-token')
+      .ApplyConfig;
+
+//    .Plugin.Configure<IJRPCNeonConfig>
+        //TNeonConfiguration.Camel
+        //.SetMembers([TNeonMembers.Fields]);
+        //TJSONValueSerializer);
+//      .ApplyConfig;
+
   FJRPCDispacher := TJRPCDispacher.Create(Self);
   FJRPCDispacher.PathInfo := '/mcp';
+  FJRPCDispacher.Server := FJRPCServer;
 end;
 
 end.

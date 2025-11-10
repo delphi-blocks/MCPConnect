@@ -12,7 +12,11 @@ uses
   MCPServerDemo.Api in 'MCPServerDemo.Api.pas',
   MCP.Types in '..\Source\MCP.Types.pas',
   MCP.Invoker in '..\Source\MCP.Invoker.pas',
-  MCP.Utils in '..\Source\MCP.Utils.pas';
+  MCP.Utils in '..\Source\MCP.Utils.pas',
+  JRPC.Configuration.Core in '..\Source\JRPC.Configuration.Core.pas',
+  JRPC.Server in '..\Source\JRPC.Server.pas',
+  JRPC.Configuration.Authentication in '..\Source\JRPC.Configuration.Authentication.pas',
+  JRPC.Configuration.Neon in '..\Source\JRPC.Configuration.Neon.pas';
 
 {$R *.res}
 

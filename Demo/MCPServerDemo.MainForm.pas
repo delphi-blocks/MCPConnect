@@ -5,7 +5,8 @@ interface
 uses
   Winapi.Messages, System.SysUtils, System.Variants,
   System.Classes, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs,
-  Vcl.AppEvnts, Vcl.StdCtrls, IdHTTPWebBrokerBridge, IdGlobal, Web.HTTPApp;
+  Vcl.AppEvnts, Vcl.StdCtrls, IdHTTPWebBrokerBridge, IdGlobal, Web.HTTPApp,
+  IdContext;
 
 type
   TForm1 = class(TForm)
@@ -23,7 +24,8 @@ type
   private
     FServer: TIdHTTPWebBrokerBridge;
     procedure StartServer;
-    { Private declarations }
+
+    procedure ParseAuthentication(AContext: TIdContext; const AAuthType, AAuthData: String; var VUsername, VPassword: String; var VHandled: Boolean);
   public
     { Public declarations }
   end;
@@ -77,7 +79,14 @@ end;
 procedure TForm1.FormCreate(Sender: TObject);
 begin
   FServer := TIdHTTPWebBrokerBridge.Create(Self);
+  FServer.OnParseAuthentication := ParseAuthentication;
   StartServer;
+end;
+
+procedure TForm1.ParseAuthentication(AContext: TIdContext; const AAuthType,
+  AAuthData: String; var VUsername, VPassword: String; var VHandled: Boolean);
+begin
+  VHandled := True;
 end;
 
 procedure TForm1.StartServer;

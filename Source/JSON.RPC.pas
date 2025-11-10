@@ -231,7 +231,7 @@ type
 
     // This config will be used for the serialization and deserialization
     // of input parameters and result
-    property NeonConfig: INeonConfiguration read FNeonConfig write FNeonConfig;
+    //property NeonConfig: INeonConfiguration read FNeonConfig write FNeonConfig;
 
     class property Instance: TJRPCRegistry read GetInstance;
     class constructor Create;

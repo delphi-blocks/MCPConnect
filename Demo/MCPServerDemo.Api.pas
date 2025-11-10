@@ -59,7 +59,6 @@ type
       [McpParam('itemType', 'The type of item to filter. Valid values: ''courses'', ''product'', ''consulting''')]
        const AItemType: string
     ): TStringList;
-
   end;
 
 const
@@ -158,9 +157,11 @@ begin
 end;
 
 initialization
-  TJRPCRegistry.Instance.NeonConfig := MCPNeonConfig;
+  //TJRPCRegistry.Instance.NeonConfig := MCPNeonConfig;
   TJRPCRegistry.Instance.RegisterClass(TMCPInitializeApi);
   TJRPCRegistry.Instance.RegisterClass(TMCPToolsApi, MCPNeonConfig);
   TJRPCRegistry.Instance.RegisterClass(TMCPNotificationsApi, MCPNeonConfig);
+
+  //TMCPRegistry.Instance.RegisterClass(TTestTool);
 
 end.

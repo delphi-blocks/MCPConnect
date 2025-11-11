@@ -20,8 +20,6 @@ object frmMain: TfrmMain
     Align = alClient
     Caption = 'Panel1'
     TabOrder = 0
-    ExplicitWidth = 1085
-    ExplicitHeight = 594
     object splMemo: TSplitter
       Left = 601
       Top = 39
@@ -47,7 +45,6 @@ object frmMain: TfrmMain
       ScrollBars = ssBoth
       TabOrder = 0
       WordWrap = False
-      ExplicitHeight = 554
     end
     object mmoSnippets: TMemo
       Left = 604
@@ -177,8 +174,6 @@ object frmMain: TfrmMain
       ScrollBars = ssBoth
       TabOrder = 1
       WordWrap = False
-      ExplicitWidth = 480
-      ExplicitHeight = 554
     end
     object tlbMain: TToolBar
       Left = 1
@@ -196,7 +191,6 @@ object frmMain: TfrmMain
       AllowTextButtons = True
       ShowHint = True
       TabOrder = 2
-      ExplicitWidth = 1083
       object btnClearLog: TToolButton
         Left = 0
         Top = 0
@@ -289,7 +283,6 @@ object frmMain: TfrmMain
     RegularButtonColor = clWhite
     SelectedButtonColor = 15132390
     TabOrder = 1
-    ExplicitHeight = 594
   end
   object actListMain: TActionList
     Images = ilMain

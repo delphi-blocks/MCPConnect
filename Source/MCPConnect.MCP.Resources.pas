@@ -1,4 +1,4 @@
-unit MCP.Resources;
+unit MCPConnect.MCP.Resources;
 
 interface
 
@@ -14,7 +14,7 @@ uses
   Neon.Core.Persistence.JSON,
   Neon.Core.Serializers.RTL,
 
-  MCP.Types;
+  MCPConnect.MCP.Types;
 
 type
   /// <summary>

@@ -7,10 +7,7 @@ uses
   IdHTTPWebBrokerBridge,
   ServerDemo.UI.Main in 'ServerDemo.UI.Main.pas' {Form1},
   ServerDemo.WebModule in 'ServerDemo.WebModule.pas' {WebModule1: TWebModule},
-  JSON.RPC.Dispacher in '..\Source\JSON.RPC.Dispacher.pas',
-  JSON.RPC in '..\Source\JSON.RPC.pas',
-  ServerDemo.JRPC.Api in 'ServerDemo.JRPC.Api.pas',
-  MCP.Types in '..\Source\MCP.Types.pas';
+  ServerDemo.JRPC.Api in 'ServerDemo.JRPC.Api.pas';
 
 {$R *.res}
 

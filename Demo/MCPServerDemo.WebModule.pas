@@ -8,8 +8,8 @@ uses
   Neon.Core.Types,
   Neon.Core.Persistence,
 
-  JSON.RPC.Dispacher,
-  JSON.RPC.Server;
+  MCPConnect.Transport.WebBroker,
+  MCPConnect.JRPC.Server;
 
 type
   TWebModule1 = class(TWebModule)
@@ -31,14 +31,14 @@ implementation
 {%CLASSGROUP 'Vcl.Controls.TControl'}
 
 uses
-  JSON.RPC,
-  JRPC.Configuration.MCP,
-  JRPC.Configuration.Auth,
-  JRPC.Configuration.Neon,
+  MCPConnect.JRPC.Core,
+  MCPConnect.Configuration.MCP,
+  MCPConnect.Configuration.Auth,
+  MCPConnect.Configuration.Neon,
 
-  MCP.Types,
+  MCPConnect.MCP.Types,
   // Implemetation of MCP API
-  MCP.Server.Api,
+  MCPConnect.MCP.Server.Api,
 
   MCPServerDemo.Tools;
 

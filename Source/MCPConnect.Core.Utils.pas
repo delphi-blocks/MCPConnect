@@ -1,4 +1,4 @@
-unit MCP.Utils;
+unit MCPConnect.Core.Utils;
 
 interface
 

@@ -1,4 +1,4 @@
-unit MCP.Attributes;
+unit MCPConnect.MCP.Attributes;
 
 interface
 

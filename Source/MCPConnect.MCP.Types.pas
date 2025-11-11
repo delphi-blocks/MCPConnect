@@ -1,4 +1,4 @@
-unit MCP.Types;
+unit MCPConnect.MCP.Types;
 
 interface
 
@@ -301,7 +301,7 @@ type
   TCancelledNotificationParams = record
 
     /// <summary>
-    ///   A uniquely identifying ID for a request in JSON-RPC.
+    ///   A uniquely identifying ID for a request in MCPConnect.JRPC.Core.
     /// </summary>
     [NeonProperty('requestId')] RequestId: Integer;
 

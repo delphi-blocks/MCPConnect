@@ -1,4 +1,4 @@
-unit JRPC.Configuration.Neon;
+unit MCPConnect.Configuration.Neon;
 
 interface
 
@@ -6,7 +6,7 @@ uses
   System.Classes, System.SysUtils,
   Neon.Core.Persistence,
 
-  JRPC.Configuration.Core;
+  MCPConnect.Configuration.Core;
 
 type
   IJRPCNeonConfig = interface(IJRPCConfiguration)

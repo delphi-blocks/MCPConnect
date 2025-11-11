@@ -1,11 +1,11 @@
-unit JSON.RPC.Server;
+unit MCPConnect.JRPC.Server;
 
 interface
 
 uses
   System.Classes, System.SysUtils, System.Generics.Collections,
 
-  JRPC.Configuration.Core;
+  MCPConnect.Configuration.Core;
 
 type
   TJRPCServer = class(TComponent, IJRPCApplication)
@@ -43,7 +43,7 @@ implementation
 { TJRPCServer }
 
 uses
-  JSON.RPC;
+  MCPConnect.JRPC.Core;
 
 //function TJRPCServer.Configure<T>: T;
 //begin

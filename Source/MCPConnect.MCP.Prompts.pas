@@ -1,4 +1,4 @@
-unit MCP.Prompts;
+unit MCPConnect.MCP.Prompts;
 
 interface
 
@@ -18,8 +18,8 @@ uses
   Neon.Core.Serializers.RTL,
   Neon.Core.Utils,
 
-  MCP.Types,
-  MCP.Attributes;
+  MCPConnect.MCP.Types,
+  MCPConnect.MCP.Attributes;
 
 
 type

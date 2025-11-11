@@ -1,4 +1,4 @@
-unit JSON.RPC.Dispacher;
+unit MCPConnect.Transport.WebBroker;
 
 interface
 
@@ -10,10 +10,11 @@ uses
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
 
-  JSON.RPC,
-  JSON.RPC.Invoker,
-  JSON.RPC.Server,
-  JRPC.Configuration.Auth;
+  MCPConnect.JRPC.Core,
+  MCPConnect.JRPC.Invoker,
+  MCPConnect.JRPC.Server,
+
+  MCPConnect.Configuration.Auth;
 
 type
   TJRPCDispacher = class(TComponent, IWebDispatch)
@@ -42,14 +43,14 @@ type
 implementation
 
 uses
-  MCP.Utils;
+  MCPConnect.Core.Utils;
 
 { TJRPCDispacher }
 
 function TJRPCDispacher.CheckAuthorization(Request: TWebRequest; Response: TWebResponse): Boolean;
 begin
   Result := True;
-  if Assigned(FAuthTokenConfig) then
+  if Assigned(FAuthTokenConfig) and (FAuthTokenConfig.Token <> '') then
   begin
     case FAuthTokenConfig.Location of
       TAuthTokenLocation.Bearer:
@@ -119,6 +120,9 @@ var
   LInvokable: IJRPCInvokable;
   LContext: TJRPCContext;
 begin
+  if not Assigned(FServer) then
+    raise EJSONRPCException.Create('Server not found');
+
   if not CheckAuthorization(Request, Response) then
   begin
     Response.StatusCode := 403;

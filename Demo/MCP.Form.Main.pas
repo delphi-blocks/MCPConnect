@@ -6,17 +6,19 @@ uses
   System.SysUtils, System.Rtti, System.Classes, System.Generics.Collections,
   System.TypInfo, System.JSON,
   Vcl.Graphics, Vcl.StdCtrls, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.ExtCtrls,
-
-  JSON.RPC, System.ImageList, Vcl.ImgList, System.Actions, Vcl.ActnList,
+  System.ImageList, Vcl.ImgList, System.Actions, Vcl.ActnList,
   Vcl.CategoryButtons, Vcl.ComCtrls, Vcl.ToolWin,
 
-  MCP.Attributes,
-  MCP.Types,
-  MCP.Tools,
-  MCP.Resources,
-  MCP.Prompts,
+  MCPConnect.Core.Utils,
 
-  JSON.RPC.Invoker,
+  MCPConnect.MCP.Attributes,
+  MCPConnect.MCP.Types,
+  MCPConnect.MCP.Tools,
+  MCPConnect.MCP.Resources,
+  MCPConnect.MCP.Prompts,
+
+  MCPConnect.JRPC.Invoker,
+  MCPConnect.JRPC.Core,
 
   Neon.Core.Tags,
   Neon.Core.Types,
@@ -220,6 +222,7 @@ end;
 
 procedure TfrmMain.actRttiCallExecute(Sender: TObject);
 var
+  LContext: TJRPCContext;
   LRequest: TJRPCRequest;
   LResponse: TJRPCResponse;
   LMethodInvoker: IJRPCInvokable;
@@ -235,14 +238,20 @@ begin
   LResponse := TJRPCResponse.Create;
   LResponse.Id := 1;
 
+  // Build context
+  LContext := TJRPCContext.Create;
+  LContext.AddContent(LRequest);
+  LContext.AddContent(LResponse);
+
   LMethodInvoker := TJRPCObjectInvoker.Create(Self);
-  LMethodInvoker.Invoke(LRequest, LResponse);
+  LMethodInvoker.Invoke(LContext, LRequest, LResponse);
 
   // Show response
   mmoLog.Lines.Add(LResponse.ToJson);
 
   LRequest.Free;
   LResponse.Free;
+  LContext.Free;
 end;
 
 procedure TfrmMain.actJRPCEnvelopeExecute(Sender: TObject);
@@ -311,7 +320,7 @@ end;
 
 procedure TfrmMain.actInvokeRequestExecute(Sender: TObject);
 begin
-  var GC := TJRPCGarbageCollector.CreateInstance;
+  var GC := TGarbageCollector.CreateInstance;
 
   var LRequest := TNeon.JSONToObject<TJRPCRequest>(mmoLog.Lines.Text, JRPCNeonConfig);
   GC.Add(LRequest);
@@ -322,7 +331,14 @@ begin
   GC.Add(LResponse);
   var LMethodInvoker: IJRPCInvokable := TJRPCObjectInvoker.Create(Self);
   LMethodInvoker.NeonConfig := TNeonConfiguration.Camel;
-  LMethodInvoker.Invoke(LRequest, LResponse);
+
+  // Build context
+  var LContext := TJRPCContext.Create;
+  GC.Add(LContext);
+  LContext.AddContent(LRequest);
+  LContext.AddContent(LResponse);
+
+  LMethodInvoker.Invoke(LContext, LRequest, LResponse);
 
   mmoLog.Lines.Add('------ SERIALIZED RESPONSE ------');
   var LStringResponse := TNeon.ObjectToJSONString(LResponse, JRPCNeonConfig);

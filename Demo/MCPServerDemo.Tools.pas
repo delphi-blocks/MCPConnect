@@ -4,10 +4,10 @@ interface
 
 uses
   System.Classes, System.SysUtils, System.JSON,
-  JSON.RPC,
+  MCPConnect.JRPC.Core,
 
-  MCP.Types,
-  MCP.Attributes;
+  MCPConnect.MCP.Types,
+  MCPConnect.MCP.Attributes;
 
 type
   TTestTool = class

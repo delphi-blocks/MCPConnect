@@ -6,7 +6,9 @@ uses
   System.SysUtils, System.Classes, Web.HTTPApp,
   Neon.Core.Types,
   Neon.Core.Persistence,
-  JSON.RPC.Dispacher;
+
+  MCPConnect.JRPC.Server,
+  MCPConnect.Transport.WebBroker;
 
 type
   TWebModule1 = class(TWebModule)
@@ -15,6 +17,7 @@ type
     procedure WebModuleCreate(Sender: TObject);
   private
     FJRPCDispacher: TJRPCDispacher;
+    FJRPCServer: TJRPCServer;
   public
     { Public declarations }
   end;
@@ -40,7 +43,11 @@ end;
 
 procedure TWebModule1.WebModuleCreate(Sender: TObject);
 begin
+  FJRPCServer := TJRPCServer.Create(Self);
+
   FJRPCDispacher := TJRPCDispacher.Create(Self);
+  FJRPCDispacher.PathInfo := '/jrpc';
+  FJRPCDispacher.Server := FJRPCServer;
 end;
 
 end.

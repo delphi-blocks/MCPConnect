@@ -1,4 +1,4 @@
-unit JSON.RPC;
+unit MCPConnect.JRPC.Core;
 
 interface
 
@@ -15,12 +15,12 @@ uses
   Neon.Core.Serializers.RTL;
 
 const
-  // Standard JSON-RPC error codes
+  // Standard MCPConnect.JRPC.Core error codes
 	JRPC_PARSE_ERROR      = -32700; // Invalid JSON was received by the server.
 	JRPC_INVALID_REQUEST  = -32600; // The JSON sent is not a valid Request object.
 	JRPC_METHOD_NOT_FOUND = -32601; // The method does not exist / is not available.
 	JRPC_INVALID_PARAMS   = -32602; // Invalid method parameter(s).
-	JRPC_INTERNAL_ERROR   = -32603; // Internal error.	Internal JSON-RPC error.
+	JRPC_INTERNAL_ERROR   = -32603; // Internal error.	Internal MCPConnect.JRPC.Core error.
 
 type
   EJSONRPCException = class(Exception);
@@ -132,7 +132,7 @@ type
     class function CreateFromJson(const AJSON: string): TJRPCRequest;
   end;
 
-  // Class representing a JSON-RPC response
+  // Class representing a MCPConnect.JRPC.Core response
   TJRPCResponse = class(TJRPCEnvelope)
   protected
     FError: TJRPCError;
@@ -272,7 +272,8 @@ function JRPCNeonConfig: INeonConfiguration;
 
 implementation
 
-uses JRPC.Configuration.Core;
+uses
+  MCPConnect.Configuration.Core;
 
 function JRPCNeonConfig: INeonConfiguration;
 begin

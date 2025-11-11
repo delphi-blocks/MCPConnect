@@ -1,4 +1,4 @@
-unit MCP.Tools;
+unit MCPConnect.MCP.Tools;
 
 interface
 
@@ -18,8 +18,8 @@ uses
   Neon.Core.Serializers.RTL,
   Neon.Core.Utils,
 
-  MCP.Types,
-  MCP.Attributes;
+  MCPConnect.MCP.Types,
+  MCPConnect.MCP.Attributes;
 
 type
   /// <summary>
@@ -153,7 +153,7 @@ type
 
 type
   /// <summary>
-  ///   MCP Tools Schema Generator
+  ///   MCPConnect.MCP.Tools Schema Generator
   /// </summary>
   TMCPSchemaGenerator = class
   protected
@@ -173,7 +173,7 @@ type
   public
     /// <summary>
     ///   Serialize a Delphi method as a MCP tool
-    ///   The Delphi method must be marked with the MCP attributes
+    ///   The Delphi method must be marked with the MCPConnect.MCP.Attributes
     /// </summary>
     class function MethodToTool(AMethod: TRttiMethod): TMCPTool;
 

@@ -1,11 +1,11 @@
-unit JRPC.Configuration.MCP;
+unit MCPConnect.Configuration.MCP;
 
 interface
 
 uses
   System.Classes, System.SysUtils,
 
-  JRPC.Configuration.Core;
+  MCPConnect.Configuration.Core;
 
 type
   IMCPConfig = interface(IJRPCConfiguration)

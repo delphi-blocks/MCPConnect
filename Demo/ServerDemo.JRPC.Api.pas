@@ -4,12 +4,12 @@ interface
 
 uses
   System.Classes, System.SysUtils, System.JSON,
-  JSON.RPC,
+  MCPConnect.JRPC.Core,
 
-  MCP.Types,
-  MCP.Tools,
-  MCP.Resources,
-  MCP.Prompts;
+  MCPConnect.MCP.Types,
+  MCPConnect.MCP.Tools,
+  MCPConnect.MCP.Resources,
+  MCPConnect.MCP.Prompts;
 
 type
   TPerson = class(TObject)

@@ -1,17 +1,17 @@
-unit MCP.Server.Api;
+unit MCPConnect.MCP.Server.Api;
 
 interface
 
 uses
   System.Classes, System.SysUtils, System.JSON,
-  JSON.RPC,
-  JRPC.Configuration.MCP,
+  MCPConnect.JRPC.Core,
+  MCPConnect.Configuration.MCP,
 
-  MCP.Types,
-  MCP.Attributes,
-  MCP.Tools,
-  MCP.Resources,
-  MCP.Prompts;
+  MCPConnect.MCP.Types,
+  MCPConnect.MCP.Attributes,
+  MCPConnect.MCP.Tools,
+  MCPConnect.MCP.Resources,
+  MCPConnect.MCP.Prompts;
 
 type
   [JRPC('tools')]
@@ -58,7 +58,7 @@ implementation
 { TMCPToolApi }
 
 uses
-  MCP.Invoker;
+  MCPConnect.MCP.Invoker;
 
 function TMCPToolsApi.Call(const AName: string; AArguments: TJSONObject; Meta: TJSONObject): TCallToolResult;
 var

@@ -1,4 +1,4 @@
-unit JSON.RPC.Invoker;
+unit MCPConnect.JRPC.Invoker;
 
 interface
 
@@ -13,12 +13,12 @@ uses
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
 
-  JSON.RPC;
+  MCPConnect.JRPC.Core;
 
 type
   /// <summary>
   ///   This exception is raised when an error occurs during the invocation of a JRPC method.
-  ///   It provide the standard information required by the JSON-RPC specification.
+  ///   It provide the standard information required by the MCPConnect.JRPC.Core specification.
   /// </summary>
   EJRPCInvokerError = class(Exception)
   private
@@ -93,8 +93,8 @@ implementation
 { TJRPCMethodInvoker }
 
 uses
-  MCP.Utils,
-  JRPC.Configuration.Neon;
+  MCPConnect.Core.Utils,
+  MCPConnect.Configuration.Neon;
 
 // Checks the compatibility of the JSONValue with the function parameters
 procedure CheckCompatibility(AParam: TRttiParameter; AValue: TJSONValue);

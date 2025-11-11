@@ -137,10 +137,7 @@
             <FormType>dfm</FormType>
             <DesignClass>TWebModule</DesignClass>
         </DCCReference>
-        <DCCReference Include="..\Source\JSON.RPC.Dispacher.pas"/>
-        <DCCReference Include="..\Source\JSON.RPC.pas"/>
         <DCCReference Include="ServerDemo.JRPC.Api.pas"/>
-        <DCCReference Include="..\Source\MCP.Types.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

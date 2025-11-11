@@ -1,10 +1,10 @@
-unit JRPC.Configuration.Auth;
+unit MCPConnect.Configuration.Auth;
 
 interface
 
 uses
   System.Classes, System.SysUtils,
-  JRPC.Configuration.Core;
+  MCPConnect.Configuration.Core;
 
 {$SCOPEDENUMS ON}
 

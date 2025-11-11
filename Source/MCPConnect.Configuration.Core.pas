@@ -1,4 +1,4 @@
-unit JRPC.Configuration.Core;
+unit MCPConnect.Configuration.Core;
 
 interface
 
@@ -6,7 +6,7 @@ uses
   System.Classes, System.SysUtils, System.TypInfo, System.Rtti, System.Generics.Collections,
   System.Generics.Defaults, System.JSON,
 
-  JSON.RPC;
+  MCPConnect.JRPC.Core;
 
 type
   TAppConfigurator = class(TInterfacedObject)

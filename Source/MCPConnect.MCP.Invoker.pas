@@ -1,4 +1,4 @@
-unit MCP.Invoker;
+unit MCPConnect.MCP.Invoker;
 
 interface
 
@@ -10,9 +10,9 @@ uses
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
 
-  MCP.Attributes,
-  MCP.Types,
-  MCP.Tools;
+  MCPConnect.MCP.Attributes,
+  MCPConnect.MCP.Types,
+  MCPConnect.MCP.Tools;
 
 type
   /// <summary>
@@ -57,7 +57,7 @@ type
 implementation
 
 uses
-  MCP.Utils;
+  MCPConnect.Core.Utils;
 
 { TMCPObjectInvoker }
 

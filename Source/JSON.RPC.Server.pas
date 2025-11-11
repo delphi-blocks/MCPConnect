@@ -1,4 +1,4 @@
-unit JRPC.Server;
+unit JSON.RPC.Server;
 
 interface
 

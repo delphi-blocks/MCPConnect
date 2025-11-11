@@ -12,7 +12,8 @@ uses
 
   JSON.RPC,
   JSON.RPC.Invoker,
-  JRPC.Server, JRPC.Configuration.Authentication;
+  JSON.RPC.Server,
+  JRPC.Configuration.Auth;
 
 type
   TJRPCDispacher = class(TComponent, IWebDispatch)
@@ -20,7 +21,7 @@ type
     FDispachMask: TMask;
     FPathInfo: string;
     FServer: TJRPCServer;
-    FAuthTokenConfig: TJRCPAuthTokenConfig;
+    FAuthTokenConfig: TAuthTokenConfig;
     procedure SetPathInfo(const Value: string);
     procedure SetServer(const Value: TJRPCServer);
     function CheckAuthorization(Request: TWebRequest; Response: TWebResponse): Boolean;
@@ -151,6 +152,7 @@ begin
   LContext.Inject(LInstance);
 
   LInvokable := TJRPCObjectInvoker.Create(LInstance);
+  LInvokable.NeonConfig := LConstructorProxy.NeonConfig;
   if not LInvokable.Invoke(LContext, LRequest, LResponse) then
   begin
     Exit(False);
@@ -179,7 +181,7 @@ procedure TJRPCDispacher.SetServer(const Value: TJRPCServer);
 begin
   FServer := Value;
 
-  FAuthTokenConfig := FServer.GetConfiguration<TJRCPAuthTokenConfig>;
+  FAuthTokenConfig := FServer.GetConfiguration<TAuthTokenConfig>;
 end;
 
 end.

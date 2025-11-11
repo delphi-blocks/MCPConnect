@@ -7,18 +7,7 @@ uses
   IdHTTPWebBrokerBridge,
   MCPServerDemo.MainForm in 'MCPServerDemo.MainForm.pas' {Form1},
   MCPServerDemo.WebModule in 'MCPServerDemo.WebModule.pas' {WebModule1: TWebModule},
-  JSON.RPC.Dispacher in '..\Source\JSON.RPC.Dispacher.pas',
-  JSON.RPC in '..\Source\JSON.RPC.pas',
-  MCPServerDemo.Api in 'MCPServerDemo.Api.pas',
-  MCP.Types in '..\Source\MCP.Types.pas',
-  MCP.Invoker in '..\Source\MCP.Invoker.pas',
-  MCP.Utils in '..\Source\MCP.Utils.pas',
-  JRPC.Configuration.Core in '..\Source\JRPC.Configuration.Core.pas',
-  JRPC.Server in '..\Source\JRPC.Server.pas',
-  JRPC.Configuration.Authentication in '..\Source\JRPC.Configuration.Authentication.pas',
-  JRPC.Configuration.Neon in '..\Source\JRPC.Configuration.Neon.pas',
-  JRPC.Configuration.MCP in '..\Source\JRPC.Configuration.MCP.pas',
-  ServerDemo.MCP.Tools in 'ServerDemo.MCP.Tools.pas';
+  MCPServerDemo.Tools in 'MCPServerDemo.Tools.pas';
 
 {$R *.res}
 

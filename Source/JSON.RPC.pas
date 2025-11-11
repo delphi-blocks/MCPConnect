@@ -194,10 +194,12 @@ type
   private
     FConstructorFunc: TFunc<TObject>;
     FTypeTClass: TClass;
+    FNeonConfig: INeonConfiguration;
   public
-    constructor Create(AClass: TClass; const AConstructorFunc: TFunc<TObject>);
+    constructor Create(AClass: TClass; const AConstructorFunc: TFunc<TObject>; ANeonConfig: INeonConfiguration);
 
     property TypeTClass: TClass read FTypeTClass;
+    property NeonConfig: INeonConfiguration read FNeonConfig;
     property ConstructorFunc: TFunc<TObject> read FConstructorFunc write FConstructorFunc;
     function Clone: TJRPCConstructorProxy;
   end;
@@ -215,8 +217,11 @@ type
   public
     constructor Create; virtual;
     function RegisterClass(AClass: TClass): TJRPCConstructorProxy; overload;
+    function RegisterClass(AClass: TClass; ANeonConfig: INeonConfiguration): TJRPCConstructorProxy; overload;
     function RegisterClass<T: class>: TJRPCConstructorProxy; overload;
+    function RegisterClass<T: class>(ANeonConfig: INeonConfiguration): TJRPCConstructorProxy; overload;
     function RegisterClass<T: class>(const AConstructorFunc: TFunc<TObject>): TJRPCConstructorProxy; overload;
+    function RegisterClass<T: class>(const AConstructorFunc: TFunc<TObject>; ANeonConfig: INeonConfiguration): TJRPCConstructorProxy; overload;
 
     function ClassExists(AClass: TClass): Boolean; overload;
     function ClassExists<T: class>: Boolean; overload;
@@ -771,18 +776,37 @@ end;
 
 function TJRPCRegistry.RegisterClass(AClass: TClass): TJRPCConstructorProxy;
 begin
-  Result := TJRPCConstructorProxy.Create(AClass, nil);
+  Result := TJRPCConstructorProxy.Create(AClass, nil, nil);
   Self.AddClass(AClass, Result);
 end;
 
 function TJRPCRegistry.RegisterClass<T>: TJRPCConstructorProxy;
 begin
-  Result := RegisterClass<T>(nil);
+  Result := RegisterClass<T>(nil, nil);
+end;
+
+function TJRPCRegistry.RegisterClass(AClass: TClass;
+  ANeonConfig: INeonConfiguration): TJRPCConstructorProxy;
+begin
+  Result := TJRPCConstructorProxy.Create(AClass, nil, ANeonConfig);
+  Self.AddClass(AClass, Result);
+end;
+
+function TJRPCRegistry.RegisterClass<T>(ANeonConfig: INeonConfiguration): TJRPCConstructorProxy;
+begin
+  Result := RegisterClass<T>(nil, ANeonConfig);
+end;
+
+function TJRPCRegistry.RegisterClass<T>(const AConstructorFunc: TFunc<TObject>;
+  ANeonConfig: INeonConfiguration): TJRPCConstructorProxy;
+begin
+  Result := TJRPCConstructorProxy.Create(TClass(T), AConstructorFunc, ANeonConfig);
+  AddClass(TClass(T), Result);
 end;
 
 function TJRPCRegistry.RegisterClass<T>(const AConstructorFunc: TFunc<TObject>): TJRPCConstructorProxy;
 begin
-  Result := TJRPCConstructorProxy.Create(TClass(T), AConstructorFunc);
+  Result := TJRPCConstructorProxy.Create(TClass(T), AConstructorFunc, nil);
   AddClass(TClass(T), Result);
 end;
 
@@ -805,15 +829,16 @@ end;
 
 function TJRPCConstructorProxy.Clone: TJRPCConstructorProxy;
 begin
-  Result := TJRPCConstructorProxy.Create(FTypeTClass, FConstructorFunc);
+  Result := TJRPCConstructorProxy.Create(FTypeTClass, FConstructorFunc, FNeonConfig);
 end;
 
 constructor TJRPCConstructorProxy.Create(AClass: TClass;
-  const AConstructorFunc: TFunc<TObject>);
+  const AConstructorFunc: TFunc<TObject>; ANeonConfig: INeonConfiguration);
 begin
   inherited Create;
   FConstructorFunc := AConstructorFunc;
   FTypeTClass := AClass;
+  FNeonConfig := ANeonConfig;
 
   // Default constructor function
   if not Assigned(FConstructorFunc) then

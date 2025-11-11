@@ -137,18 +137,7 @@
             <FormType>dfm</FormType>
             <DesignClass>TWebModule</DesignClass>
         </DCCReference>
-        <DCCReference Include="..\Source\JSON.RPC.Dispacher.pas"/>
-        <DCCReference Include="..\Source\JSON.RPC.pas"/>
-        <DCCReference Include="MCPServerDemo.Api.pas"/>
-        <DCCReference Include="..\Source\MCP.Types.pas"/>
-        <DCCReference Include="..\Source\MCP.Invoker.pas"/>
-        <DCCReference Include="..\Source\MCP.Utils.pas"/>
-        <DCCReference Include="..\Source\JRPC.Configuration.Core.pas"/>
-        <DCCReference Include="..\Source\JRPC.Server.pas"/>
-        <DCCReference Include="..\Source\JRPC.Configuration.Authentication.pas"/>
-        <DCCReference Include="..\Source\JRPC.Configuration.Neon.pas"/>
-        <DCCReference Include="..\Source\JRPC.Configuration.MCP.pas"/>
-        <DCCReference Include="ServerDemo.MCP.Tools.pas"/>
+        <DCCReference Include="MCPServerDemo.Tools.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

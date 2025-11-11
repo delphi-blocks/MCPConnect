@@ -37,6 +37,10 @@ type
   IJRPCInvokable = interface
   ['{246F6538-B87C-4164-B81C-74F0ABDD2FCD}']
     function Invoke(AContext: TJRPCContext; ARequest: TJRPCRequest; AResponse: TJRPCResponse): Boolean;
+    function GetNeonConfig: INeonConfiguration;
+    procedure SetNeonConfig(AConfig: INeonConfiguration);
+
+    property NeonConfig: INeonConfiguration read GetNeonConfig write SetNeonConfig;
   end;
 
   /// <summary>
@@ -56,6 +60,8 @@ type
   public
     { IJRPCInvokable }
     function Invoke(AContext: TJRPCContext; ARequest: TJRPCRequest; AResponse: TJRPCResponse): Boolean;
+    function GetNeonConfig: INeonConfiguration;
+    procedure SetNeonConfig(AConfig: INeonConfiguration);
 
     constructor Create(AInstance: TObject; AMethod: TRttiMethod);
   end;
@@ -69,12 +75,15 @@ type
   private
     FInstance: TObject;
     FRttiType: TRttiType;
+    FNeonConfig: INeonConfiguration;
     FSeparator: string;
     function FindMethod(ARequest: TJRPCRequest): TRttiMethod;
     function GetRequestMethodName(ARequest: TJRPCRequest): string;
   public
     { IJRPCInvokable }
     function Invoke(AContext: TJRPCContext; ARequest: TJRPCRequest; AResponse: TJRPCResponse): Boolean;
+    function GetNeonConfig: INeonConfiguration;
+    procedure SetNeonConfig(AConfig: INeonConfiguration);
 
     constructor Create(AInstance: TObject);
   end;
@@ -190,13 +199,24 @@ begin
     Result := TNeon.ValueToJSON(AResult, FNeonConfig);
 end;
 
+procedure TJRPCMethodInvoker.SetNeonConfig(AConfig: INeonConfiguration);
+begin
+  FNeonConfig := AConfig;
+end;
+
 procedure TJRPCMethodInvoker.Configure(AContext: TJRPCContext);
 var
   LJRPCNeonConfig: TJRPCNeonConfig;
 begin
-  LJRPCNeonConfig := AContext.FindContextDataAs<TJRPCNeonConfig>;
-  if Assigned(LJRPCNeonConfig) then
-    FNeonConfig := LJRPCNeonConfig.NeonConfig;
+  if not Assigned(FNeonConfig) then
+  begin
+    LJRPCNeonConfig := AContext.FindContextDataAs<TJRPCNeonConfig>;
+    if Assigned(LJRPCNeonConfig) then
+      FNeonConfig := LJRPCNeonConfig.NeonConfig;
+  end;
+
+  if not Assigned(FNeonConfig) then
+    FNeonConfig := TNeonConfiguration.Default;
 end;
 
 constructor TJRPCMethodInvoker.Create(AInstance: TObject; AMethod: TRttiMethod);
@@ -205,6 +225,11 @@ begin
   FInstance := AInstance;
   FMethod := AMethod;
   FNeonConfig := TNeonConfiguration.Default;
+end;
+
+function TJRPCMethodInvoker.GetNeonConfig: INeonConfiguration;
+begin
+  Result := FNeonConfig;
 end;
 
 function TJRPCMethodInvoker.GetParamName(LParam: TRttiParameter): string;
@@ -311,7 +336,18 @@ begin
   end;
 
   LMethodInvoker := TJRPCMethodInvoker.Create(FInstance, LMethod);
+  LMethodInvoker.NeonConfig := FNeonConfig;
   Result := LMethodInvoker.Invoke(AContext, ARequest, AResponse);
+end;
+
+function TJRPCObjectInvoker.GetNeonConfig: INeonConfiguration;
+begin
+  Result := FNeonConfig;
+end;
+
+procedure TJRPCObjectInvoker.SetNeonConfig(AConfig: INeonConfiguration);
+begin
+  FNeonConfig := AConfig;
 end;
 
 function TJRPCObjectInvoker.GetRequestMethodName(ARequest: TJRPCRequest): string;

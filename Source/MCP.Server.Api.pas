@@ -1,4 +1,4 @@
-unit MCPServerDemo.Api;
+unit MCP.Server.Api;
 
 interface
 
@@ -18,7 +18,7 @@ type
   TMCPToolsApi = class
   public
     [Context]
-    MCPConfig: TJRPCMCPConfig;
+    MCPConfig: TMCPConfig;
 
     [JRPC('list')]
     function List: TListToolsResult;
@@ -47,7 +47,7 @@ type
   TMCPInitializeApi = class
   public
     [Context]
-    MCPConfig: TJRPCMCPConfig;
+    MCPConfig: TMCPConfig;
 
     [JRPC('')]
     function Initialize([JRPCParams] AInitializeParams: TInitializeParams): TInitializeResult;
@@ -116,8 +116,8 @@ begin
 end;
 
 initialization
-  TJRPCRegistry.Instance.RegisterClass(TMCPInitializeApi);
-  TJRPCRegistry.Instance.RegisterClass(TMCPToolsApi);
-  TJRPCRegistry.Instance.RegisterClass(TMCPNotificationsApi);
+  TJRPCRegistry.Instance.RegisterClass(TMCPInitializeApi, MCPNeonConfig);
+  TJRPCRegistry.Instance.RegisterClass(TMCPToolsApi, MCPNeonConfig);
+  TJRPCRegistry.Instance.RegisterClass(TMCPNotificationsApi, MCPNeonConfig);
 
 end.

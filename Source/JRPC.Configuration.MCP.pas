@@ -8,23 +8,23 @@ uses
   JRPC.Configuration.Core;
 
 type
-  IJRPCMCPConfig = interface(IJRPCConfiguration)
-    ['{B8BBD257-2FE1-479A-8D63-5331164CF5E5}']
-    function SetToolClass(AClass: TClass): IJRPCMCPConfig;
-    function SetServerName(const AName: string): IJRPCMCPConfig;
-    function SetServerVersion(const AVersion: string): IJRPCMCPConfig;
+  IMCPConfig = interface(IJRPCConfiguration)
+  ['{B8BBD257-2FE1-479A-8D63-5331164CF5E5}']
+    function SetToolClass(AClass: TClass): IMCPConfig;
+    function SetServerName(const AName: string): IMCPConfig;
+    function SetServerVersion(const AVersion: string): IMCPConfig;
   end;
 
-  [Implements(IJRPCMCPConfig)]
-  TJRPCMCPConfig = class(TJRPCConfiguration, IJRPCMCPConfig)
+  [Implements(IMCPConfig)]
+  TMCPConfig = class(TJRPCConfiguration, IMCPConfig)
   private
     FToolClass: TClass;
     FServerVersion: string;
     FServerName: string;
   public
-    function SetToolClass(AClass: TClass): IJRPCMCPConfig;
-    function SetServerName(const AName: string): IJRPCMCPConfig;
-    function SetServerVersion(const AVersion: string): IJRPCMCPConfig;
+    function SetToolClass(AClass: TClass): IMCPConfig;
+    function SetServerName(const AName: string): IMCPConfig;
+    function SetServerVersion(const AVersion: string): IMCPConfig;
 
     function CreateDefaultTool: TObject;
     function GetDefaultToolClass: TClass;
@@ -42,16 +42,16 @@ implementation
 uses
   Neon.Core.Utils;
 
-{ TJRPCMCPConfig }
+{ TMCPConfig }
 
-procedure TJRPCMCPConfig.AfterConstruction;
+procedure TMCPConfig.AfterConstruction;
 begin
   inherited;
   FServerName := 'MCPServer';
   FServerVersion := '1.0';
 end;
 
-function TJRPCMCPConfig.CreateDefaultTool: TObject;
+function TMCPConfig.CreateDefaultTool: TObject;
 begin
   if not Assigned(FToolClass) then
     raise Exception.Create('Default tool not found');
@@ -59,7 +59,7 @@ begin
   Result := TRttiUtils.CreateInstance(FToolClass);
 end;
 
-function TJRPCMCPConfig.GetDefaultToolClass: TClass;
+function TMCPConfig.GetDefaultToolClass: TClass;
 begin
   if not Assigned(FToolClass) then
     raise Exception.Create('Default tool not found');
@@ -67,25 +67,25 @@ begin
   Result := FToolClass;
 end;
 
-function TJRPCMCPConfig.SetServerName(const AName: string): IJRPCMCPConfig;
+function TMCPConfig.SetServerName(const AName: string): IMCPConfig;
 begin
   FServerName := AName;
   Result := Self;
 end;
 
-function TJRPCMCPConfig.SetServerVersion(const AVersion: string): IJRPCMCPConfig;
+function TMCPConfig.SetServerVersion(const AVersion: string): IMCPConfig;
 begin
   FServerVersion := AVersion;
   Result := Self;
 end;
 
-function TJRPCMCPConfig.SetToolClass(AClass: TClass): IJRPCMCPConfig;
+function TMCPConfig.SetToolClass(AClass: TClass): IMCPConfig;
 begin
   FToolClass := AClass;
   Result := Self;
 end;
 
 initialization
-  TJRPCConfigClassRegistry.Instance.RegisterConfigClass(TJRPCMCPConfig);
+  TJRPCConfigClassRegistry.Instance.RegisterConfigClass(TMCPConfig);
 
 end.

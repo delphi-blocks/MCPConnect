@@ -4,9 +4,12 @@ interface
 
 uses
   System.SysUtils, System.Classes, Web.HTTPApp,
+
   Neon.Core.Types,
   Neon.Core.Persistence,
-  JSON.RPC.Dispacher, JRPC.Server;
+
+  JSON.RPC.Dispacher,
+  JSON.RPC.Server;
 
 type
   TWebModule1 = class(TWebModule)
@@ -29,9 +32,15 @@ implementation
 
 uses
   JSON.RPC,
-  JRPC.Configuration.Authentication,
-  JRPC.Configuration.Neon, MCP.Types, JRPC.Configuration.MCP,
-  ServerDemo.MCP.Tools;
+  JRPC.Configuration.MCP,
+  JRPC.Configuration.Auth,
+  JRPC.Configuration.Neon,
+
+  MCP.Types,
+  // Implemetation of MCP API
+  MCP.Server.Api,
+
+  MCPServerDemo.Tools;
 
 {$R *.dfm}
 
@@ -50,19 +59,19 @@ begin
   FJRPCServer := TJRPCServer.Create(Self);
 
   FJRPCServer
-    .Plugin.Configure<IJRCPAuthTokenConfig>
+    .Plugin.Configure<IAuthTokenConfig>
       .SetToken('my-secret-token')
       .ApplyConfig
 
-    .Plugin.Configure<IJRPCMCPConfig>
+    .Plugin.Configure<IMCPConfig>
       .SetServerName('delphi-mcp-server')
       .SetServerVersion('2.0.0')
       .SetToolClass(TTestTool)
-      .ApplyConfig
-
-    .Plugin.Configure<IJRPCNeonConfig>
-      .SetNeonConfig(MCPNeonConfig)
       .ApplyConfig;
+
+//    .Plugin.Configure<IJRPCNeonConfig>
+//      .SetNeonConfig(MCPNeonConfig)
+//      .ApplyConfig;
 
   FJRPCDispacher := TJRPCDispacher.Create(Self);
   FJRPCDispacher.PathInfo := '/mcp';

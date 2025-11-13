@@ -18,7 +18,7 @@ uses
 type
   /// <summary>
   ///   This exception is raised when an error occurs during the invocation of a JRPC method.
-  ///   It provide the standard information required by the MCPConnect.JRPC.Core specification.
+  ///   It provide the standard information required by the JSON-RPC specification.
   /// </summary>
   EJRPCInvokerError = class(Exception)
   private

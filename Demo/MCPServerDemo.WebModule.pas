@@ -19,7 +19,7 @@ type
     procedure WebModuleCreate(Sender: TObject);
   private
     FJRPCServer: TJRPCServer;
-    FJRPCDispacher: TJRPCDispacher;
+    FJRPCDispatcher: TJRPCDispatcher;
   public
     { Public declarations }
   end;
@@ -75,9 +75,9 @@ begin
 //      .SetNeonConfig(MCPNeonConfig)
 //      .ApplyConfig;
 
-  FJRPCDispacher := TJRPCDispacher.Create(Self);
-  FJRPCDispacher.PathInfo := '/mcp';
-  FJRPCDispacher.Server := FJRPCServer;
+  FJRPCDispatcher := TJRPCDispatcher.Create(Self);
+  FJRPCDispatcher.PathInfo := '/mcp';
+  FJRPCDispatcher.Server := FJRPCServer;
 end;
 
 end.

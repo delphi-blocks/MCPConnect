@@ -16,7 +16,7 @@ type
       Request: TWebRequest; Response: TWebResponse; var Handled: Boolean);
     procedure WebModuleCreate(Sender: TObject);
   private
-    FJRPCDispacher: TJRPCDispacher;
+    FJRPCDispatcher: TJRPCDispatcher;
     FJRPCServer: TJRPCServer;
   public
     { Public declarations }
@@ -45,9 +45,9 @@ procedure TWebModule1.WebModuleCreate(Sender: TObject);
 begin
   FJRPCServer := TJRPCServer.Create(Self);
 
-  FJRPCDispacher := TJRPCDispacher.Create(Self);
-  FJRPCDispacher.PathInfo := '/jrpc';
-  FJRPCDispacher.Server := FJRPCServer;
+  FJRPCDispatcher := TJRPCDispatcher.Create(Self);
+  FJRPCDispatcher.PathInfo := '/jrpc';
+  FJRPCDispatcher.Server := FJRPCServer;
 end;
 
 end.

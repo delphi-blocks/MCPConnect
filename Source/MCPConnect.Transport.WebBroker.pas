@@ -17,9 +17,9 @@ uses
   MCPConnect.Configuration.Auth;
 
 type
-  TJRPCDispacher = class(TComponent, IWebDispatch)
+  TJRPCDispatcher = class(TComponent, IWebDispatch)
   private
-    FDispachMask: TMask;
+    FDispatchMask: TMask;
     FPathInfo: string;
     FServer: TJRPCServer;
     FAuthTokenConfig: TAuthTokenConfig;
@@ -45,9 +45,9 @@ implementation
 uses
   MCPConnect.Core.Utils;
 
-{ TJRPCDispacher }
+{ TJRPCDispatcher }
 
-function TJRPCDispacher.CheckAuthorization(Request: TWebRequest; Response: TWebResponse): Boolean;
+function TJRPCDispatcher.CheckAuthorization(Request: TWebRequest; Response: TWebResponse): Boolean;
 begin
   Result := True;
   if Assigned(FAuthTokenConfig) and (FAuthTokenConfig.Token <> '') then
@@ -77,39 +77,39 @@ begin
   end;
 end;
 
-constructor TJRPCDispacher.Create(AOwner: TComponent);
+constructor TJRPCDispatcher.Create(AOwner: TComponent);
 begin
   inherited;
-  FDispachMask := nil;
+  FDispatchMask := nil;
   FPathInfo := 'jrpc';
 end;
 
-destructor TJRPCDispacher.Destroy;
+destructor TJRPCDispatcher.Destroy;
 begin
-  FDispachMask.Free;
+  FDispatchMask.Free;
   inherited;
 end;
 
-function TJRPCDispacher.DispatchEnabled: Boolean;
+function TJRPCDispatcher.DispatchEnabled: Boolean;
 begin
   Result := True;
 end;
 
-function TJRPCDispacher.DispatchMask: TMask;
+function TJRPCDispatcher.DispatchMask: TMask;
 begin
-  if not Assigned(FDispachMask) then
+  if not Assigned(FDispatchMask) then
   begin
-    FDispachMask := TMask.Create(FPathInfo);
+    FDispatchMask := TMask.Create(FPathInfo);
   end;
-  Result := FDispachMask;
+  Result := FDispatchMask;
 end;
 
-function TJRPCDispacher.DispatchMethodType: TMethodType;
+function TJRPCDispatcher.DispatchMethodType: TMethodType;
 begin
   Result := mtPost;
 end;
 
-function TJRPCDispacher.DispatchRequest(Sender: TObject; Request: TWebRequest;
+function TJRPCDispatcher.DispatchRequest(Sender: TObject; Request: TWebRequest;
   Response: TWebResponse): Boolean;
 var
   LGarbageCollector: IGarbageCollector;
@@ -175,13 +175,13 @@ begin
   Result := True;
 end;
 
-procedure TJRPCDispacher.SetPathInfo(const Value: string);
+procedure TJRPCDispatcher.SetPathInfo(const Value: string);
 begin
   // If the mask is already created should I raise an exception?
   FPathInfo := Value;
 end;
 
-procedure TJRPCDispacher.SetServer(const Value: TJRPCServer);
+procedure TJRPCDispatcher.SetServer(const Value: TJRPCServer);
 begin
   FServer := Value;
 

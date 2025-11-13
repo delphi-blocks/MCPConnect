@@ -282,10 +282,10 @@ end;
 
 { TMCPWriterRegistry.TWriterInfo }
 
-class function TMCPWriterRegistry.TWriterInfo.FromWriter(
-  AWriterClass: TCustomWriterClass): TWriterInfo;
+class function TMCPWriterRegistry.TWriterInfo.FromWriter(AWriterClass: TCustomWriterClass): TWriterInfo;
 begin
-
+  Result.WriterClass := AWriterClass;
+  Result.Distance := AWriterClass.ClassDistance;
 end;
 
 end.

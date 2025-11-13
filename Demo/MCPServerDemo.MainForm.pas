@@ -22,9 +22,11 @@ type
     Button1: TButton;
     ApplicationEvents1: TApplicationEvents;
     ButtonOpenBrowser: TButton;
+    Button2: TButton;
     procedure FormCreate(Sender: TObject);
     procedure ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
     procedure Button1Click(Sender: TObject);
+    procedure Button2Click(Sender: TObject);
     procedure ButtonStartClick(Sender: TObject);
     procedure ButtonStopClick(Sender: TObject);
     procedure ButtonOpenBrowserClick(Sender: TObject);
@@ -77,7 +79,11 @@ uses
 {$IFDEF MSWINDOWS}
   WinApi.Windows, Winapi.ShellApi,
 {$ENDIF}
-  System.Generics.Collections;
+  System.Generics.Collections,
+
+  Neon.Core.Types,
+  Neon.Core.Persistence,
+  Neon.Core.Persistence.JSON;
 
 procedure TForm1.ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
 begin
@@ -88,6 +94,7 @@ end;
 
 procedure TForm1.Button1Click(Sender: TObject);
 begin
+{
   var res := TCallToolResult.Create;
   var inv := TMCPObjectInvoker.Create(Self);
 
@@ -103,7 +110,26 @@ begin
 
   res.Free;
   inv.Free;
+}
 end;
+
+procedure TForm1.Button2Click(Sender: TObject);
+begin
+  var cfg := TNeonConfiguration.Camel.SetMembers([TNeonMembers.Fields]);
+  var emb := TEmbeddedResource.Create;
+  TBlobResourceContents(emb.Resource).Blob := 'ieydwg3rf7fgrg76ergf67wrgfrgf6gr2f3';
+  TBlobResourceContents(emb.Resource).MIMEType := 'application/octect-stream';
+  //var s := TNeon.ObjectToJSONString(emb, cfg);
+  //memoLog.Lines.Add(s);
+
+
+  var res := TCallToolResult.Create;
+  res.Content.Add(emb);
+  var ss := TNeon.ObjectToJSONString(res, cfg);
+  memoLog.Lines.Add(ss);
+  res.Free;
+end;
+
 procedure TForm1.ButtonOpenBrowserClick(Sender: TObject);
 {$IFDEF MSWINDOWS}
 var
@@ -151,6 +177,7 @@ var
 begin
   var res := TCallToolResult.Create;
   var inv := TMCPObjectInvoker.Create(Self);
+
 
   inv.Invoke(AName, nil, nil, res);
   for LContent in res.Content do

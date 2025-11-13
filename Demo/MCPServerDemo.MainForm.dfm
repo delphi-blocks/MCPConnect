@@ -68,8 +68,6 @@ object Form1: TForm1
     ParentFont = False
     ScrollBars = ssVertical
     TabOrder = 4
-    ExplicitTop = 344
-    ExplicitWidth = 1267
   end
   object Button1: TButton
     Left = 472
@@ -79,6 +77,15 @@ object Form1: TForm1
     Caption = 'Button1'
     TabOrder = 5
     OnClick = Button1Click
+  end
+  object Button2: TButton
+    Left = 616
+    Top = 112
+    Width = 75
+    Height = 25
+    Caption = 'Button2'
+    TabOrder = 6
+    OnClick = Button2Click
   end
   object ApplicationEvents1: TApplicationEvents
     OnIdle = ApplicationEvents1Idle

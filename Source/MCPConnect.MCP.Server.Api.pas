@@ -1,3 +1,16 @@
+{******************************************************************************}
+{                                                                              }
+{  Delphi MCP Connect Library                                                  }
+{                                                                              }
+{  Copyright (c) Paolo Rossi <dev@paolorossi.net>                              }
+{                Luca Minuti <code@lucaminuti.it>                              }
+{  All rights reserved.                                                        }
+{                                                                              }
+{  https://github.com/delphi-blocks/MCPConnect                                 }
+{                                                                              }
+{  Licensed under the MIT license                                              }
+{                                                                              }
+{******************************************************************************}
 unit MCPConnect.MCP.Server.Api;
 
 interface
@@ -19,6 +32,9 @@ type
   public
     [Context]
     MCPConfig: TMCPConfig;
+
+    [Context]
+    Context: TJRPCContext;
 
     [JRPC('list')]
     function List: TListToolsResult;
@@ -70,6 +86,7 @@ begin
     LTool := MCPConfig.CreateDefaultTool;
     try
       LInvoker := TMCPObjectInvoker.Create(LTool);
+      Context.Inject(LInvoker);
       if not LInvoker.Invoke(AName, AArguments, Meta, Result) then
         raise Exception.CreateFmt('Tool "%s" non found', [AName]);
     finally

@@ -2,8 +2,8 @@ object Form1: TForm1
   Left = 271
   Top = 114
   Caption = 'Form1'
-  ClientHeight = 839
-  ClientWidth = 1267
+  ClientHeight = 695
+  ClientWidth = 873
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -56,8 +56,8 @@ object Form1: TForm1
   end
   object memoLog: TMemo
     Left = 0
-    Top = 344
-    Width = 1267
+    Top = 200
+    Width = 873
     Height = 495
     Align = alBottom
     Font.Charset = ANSI_CHARSET
@@ -68,12 +68,12 @@ object Form1: TForm1
     ParentFont = False
     ScrollBars = ssVertical
     TabOrder = 4
-    ExplicitTop = 327
-    ExplicitWidth = 1261
+    ExplicitTop = 344
+    ExplicitWidth = 1267
   end
   object Button1: TButton
-    Left = 464
-    Top = 184
+    Left = 472
+    Top = 112
     Width = 75
     Height = 25
     Caption = 'Button1'

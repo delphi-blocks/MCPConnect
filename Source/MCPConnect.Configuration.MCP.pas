@@ -5,6 +5,7 @@ interface
 uses
   System.Classes, System.SysUtils,
 
+  MCPConnect.Content.Writers,
   MCPConnect.Configuration.Core;
 
 type
@@ -13,18 +14,27 @@ type
     function SetToolClass(AClass: TClass): IMCPConfig;
     function SetServerName(const AName: string): IMCPConfig;
     function SetServerVersion(const AVersion: string): IMCPConfig;
+    function RegisterWriter(AClass: TCustomWriterClass): IMCPConfig;
+    function GetWriters: TMCPWriterRegistry;
   end;
 
   [Implements(IMCPConfig)]
   TMCPConfig = class(TJRPCConfiguration, IMCPConfig)
   private
+    FWriterRegistry: TMCPWriterRegistry;
     FToolClass: TClass;
     FServerVersion: string;
     FServerName: string;
   public
+    constructor Create; override;
+    destructor Destroy; override;
+    procedure AfterConstruction; override;
+
     function SetToolClass(AClass: TClass): IMCPConfig;
     function SetServerName(const AName: string): IMCPConfig;
     function SetServerVersion(const AVersion: string): IMCPConfig;
+    function RegisterWriter(AClass: TCustomWriterClass): IMCPConfig;
+    function GetWriters: TMCPWriterRegistry;
 
     function CreateDefaultTool: TObject;
     function GetDefaultToolClass: TClass;
@@ -32,9 +42,6 @@ type
     property ToolClass: TClass read FToolClass write FToolClass;
     property ServerName: string read FServerName write FServerName;
     property ServerVersion: string read FServerVersion write FServerVersion;
-
-    procedure AfterConstruction; override;
-
   end;
 
 implementation
@@ -44,11 +51,23 @@ uses
 
 { TMCPConfig }
 
+constructor TMCPConfig.Create;
+begin
+  inherited;
+  FWriterRegistry := TMCPWriterRegistry.Create;
+end;
+
 procedure TMCPConfig.AfterConstruction;
 begin
   inherited;
   FServerName := 'MCPServer';
   FServerVersion := '1.0';
+end;
+
+destructor TMCPConfig.Destroy;
+begin
+   FWriterRegistry.Free;
+  inherited;
 end;
 
 function TMCPConfig.CreateDefaultTool: TObject;
@@ -65,6 +84,16 @@ begin
     raise Exception.Create('Default tool not found');
 
   Result := FToolClass;
+end;
+
+function TMCPConfig.GetWriters: TMCPWriterRegistry;
+begin
+  Result := FWriterRegistry;
+end;
+
+function TMCPConfig.RegisterWriter(AClass: TCustomWriterClass): IMCPConfig;
+begin
+  FWriterRegistry.RegisterWriter(AClass);
 end;
 
 function TMCPConfig.SetServerName(const AName: string): IMCPConfig;

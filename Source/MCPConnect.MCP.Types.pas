@@ -5,7 +5,7 @@ interface
 {$SCOPEDENUMS ON}
 
 uses
-  System.SysUtils, System.Generics.Collections, System.JSON, System.Rtti,
+  System.SysUtils, System.Classes, System.Generics.Collections, System.JSON, System.Rtti,
 
   Neon.Core.Types,
   Neon.Core.Attributes,
@@ -295,13 +295,14 @@ type
   end;
 
   /// <summary>
-  ///   When a party wants to cancel an in-progress request, it sends a notifications/cancelled *
-  ///   The ID of the request to cancel * An optional reason string that can be logged or displayed
+  /// When a party wants to cancel an in-progress request, it sends a notifications/cancelled
+  /// * The ID of the request to cancel
+  /// * An optional reason string that can be logged or displayed
   /// </summary>
   TCancelledNotificationParams = record
 
     /// <summary>
-    ///   A uniquely identifying ID for a request in MCPConnect.JRPC.Core.
+    ///   A uniquely identifying ID for a request in JSON-RPC.
     /// </summary>
     [NeonProperty('requestId')] RequestId: Integer;
 
@@ -324,6 +325,8 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+
+    function DataFromStream(AStream: TStream): string;
   end;
 
   /// <summary>
@@ -332,7 +335,8 @@ type
   TTextContent = class(TBaseContent)
   public
     [NeonProperty('text')] Text: string;
-    constructor Create(const AText: string = '');
+
+    constructor Create(const AText: string = ''); overload;
   end;
 
   /// <summary>
@@ -342,6 +346,8 @@ type
   public
     [NeonProperty('data')] Data: string;
     [NeonProperty('mimeType')] MIMEType: string;
+
+    constructor Create; overload;
   end;
 
   /// <summary>
@@ -351,6 +357,25 @@ type
   public
     [NeonProperty('data')] Data: string;
     [NeonProperty('mimeType')] MIMEType: string;
+
+    constructor Create;
+  end;
+
+  /// <summary>
+  ///   A resource that the server is capable of reading, included in a prompt or tool call result.
+  /// </summary>
+  /// <remarks>
+  ///   Note: resource links returned by tools are not guaranteed to appear in the results of
+  ///   `resources/list` requests.
+  /// </remarks>
+  TResourceLink = class(TBaseContent)
+  public
+    [NeonProperty('uri')] URI: string;
+    [NeonProperty('name')] Name: string;
+    [NeonProperty('description')] Description: string;
+    [NeonProperty('mimeType')] MIMEType: string;
+
+    constructor Create;
   end;
 
   /// <summary>
@@ -393,30 +418,25 @@ type
   end;
 
   /// <summary>
-  ///   A resource that the server is capable of reading, included in a prompt or tool call result.
-  /// </summary>
-  /// <remarks>
-  ///   Note: resource links returned by tools are not guaranteed to appear in the results of
-  ///   `resources/list` requests.
-  /// </remarks>
-  TResourceLink = class(TBaseContent)
-  public
-    [NeonProperty('uri')] URI: string;
-    [NeonProperty('name')] Name: string;
-    [NeonProperty('description')] Description: string;
-    [NeonProperty('mimeType')] MIMEType: string;
-  end;
-
-  /// <summary>
   ///   The contents of a resource, embedded into a prompt or tool call result. It is up to the
   ///   client how best to render embedded resources for the benefit of the LLM and/or the user.
   /// </summary>
+  /// <remarks>
+  ///   Defaults to TBlobResourceContents
+  /// </remarks>
   TEmbeddedResource = class(TBaseContent)
   public
     [NeonProperty('resource')] Resource: TResourceContents;
   public
     constructor Create;
     destructor Destroy; override;
+  end;
+
+  /// <summary>
+  ///   List of Contents. Used in CallToolResult
+  /// </summary>
+  TContentList = class(TObjectList<TBaseContent>)
+
   end;
 
   /// <summary>
@@ -444,12 +464,44 @@ type
     function GetContentAsEmbedded: TEmbeddedResource;
   end;
 
+  /// <summary>
+  ///   Interface for the CallToolResult array
+  /// </summary>
+  IToolResultBuilder = interface
+  ['{62895467-E05D-4B86-A26D-E057F3684267}']
+    function AddText(const AText: string): IToolResultBuilder;
+    function AddImage(const AMime: string; AImage: TStream): IToolResultBuilder;
+    function AddAudio(const AMime: string; AAudio: TStream): IToolResultBuilder;
+    function AddLink(const AMime, AURL, ADescription: string): IToolResultBuilder;
+    function AddBlob(const AMime: string; ABlob: TStream): IToolResultBuilder;
+  end;
 
+  /// <summary>
+  ///   Implementation for the CallToolResult array. To be called inside a tool method.
+  /// </summary>
+  TToolResultBuilder = class
+  private
+    FContents: TContentList;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    function AddText(const AText: string): IToolResultBuilder;
+    function AddImage(const AMime: string; AImage: TStream): IToolResultBuilder;
+    function AddAudio(const AMime: string; AAudio: TStream): IToolResultBuilder;
+    function AddLink(const AMime, AURI, ADescription: string): IToolResultBuilder;
+    function AddBlob(const AMime: string; ABlob: TStream): IToolResultBuilder;
+
+    function Build(): TContentList;
+  end;
 
 function MCPNeonConfig: INeonConfiguration;
 
 
 implementation
+
+uses
+  System.NetEncoding;
 
 
 function MCPNeonConfig: INeonConfiguration;
@@ -551,6 +603,24 @@ begin
   Annotations := TAnnotations.Create;
 end;
 
+function TBaseContent.DataFromStream(AStream: TStream): string;
+var
+  LBase64 :TBase64Encoding;
+  LData :TStringStream;
+begin
+  Result := '';
+  LBase64 := TBase64Encoding.Create;
+  LData := TStringStream.Create;
+  try
+    LBase64.Encode(AStream, LData);
+    Result := LData.DataString;
+  finally
+    LBase64.Free;
+    LData.Free;
+  end;
+
+end;
+
 destructor TBaseContent.Destroy;
 begin
   Annotations.Free;
@@ -561,7 +631,7 @@ end;
 
 constructor TEmbeddedResource.Create;
 begin
-  Resource := TResourceContents.Create;
+  Resource := TBlobResourceContents.Create;
 end;
 
 destructor TEmbeddedResource.Destroy;
@@ -665,8 +735,97 @@ end;
 constructor TTextContent.Create(const AText: string);
 begin
   inherited Create;
-  Text := AText;
   &Type := 'text';
+  Text := AText;
+end;
+
+{ TToolResultBuilder }
+
+function TToolResultBuilder.AddAudio(const AMime: string; AAudio: TStream): IToolResultBuilder;
+var
+  LContent: TAudioContent;
+begin
+  LContent := TAudioContent.Create;
+  LContent.Data := LContent.DataFromStream(AAudio);
+  LContent.MIMEType := AMime;
+  FContents.Add(LContent);
+end;
+
+function TToolResultBuilder.AddBlob(const AMime: string; ABlob: TStream): IToolResultBuilder;
+var
+  LResource: TEmbeddedResource;
+  LBlob: TBlobResourceContents;
+begin
+  LResource := TEmbeddedResource.Create;
+  LBlob := LResource.Resource as TBlobResourceContents;
+  LBlob.MIMEType := AMime;
+  LBlob.Blob := LResource.DataFromStream(ABlob);
+end;
+
+function TToolResultBuilder.AddImage(const AMime: string; AImage: TStream): IToolResultBuilder;
+var
+  LContent: TImageContent;
+begin
+  LContent := TImageContent.Create;
+  LContent.Data := LContent.DataFromStream(AImage);
+  LContent.MIMEType := AMime;
+  FContents.Add(LContent);
+end;
+
+function TToolResultBuilder.AddLink(const AMime, AURI, ADescription: string): IToolResultBuilder;
+begin
+  var LResource := TResourceLink.Create;
+  LResource.URI := AURI;
+  LResource.MIMEType := AMime;
+  LResource.Description := ADescription;
+end;
+
+function TToolResultBuilder.AddText(const AText: string): IToolResultBuilder;
+begin
+  FContents.Add(TTextContent.Create(AText));
+end;
+
+function TToolResultBuilder.Build: TContentList;
+begin
+  Result := TContentList.Create;
+  for var cont in FContents do
+    Result.Add(cont);
+  FContents.Clear;
+end;
+
+constructor TToolResultBuilder.Create;
+begin
+  FContents := TContentList.Create(False);
+end;
+
+destructor TToolResultBuilder.Destroy;
+begin
+  FContents.Free;
+  inherited;
+end;
+
+{ TImageContent }
+
+constructor TImageContent.Create;
+begin
+  inherited Create;
+  &Type := 'image';
+end;
+
+{ TAudioContent }
+
+constructor TAudioContent.Create;
+begin
+  inherited Create;
+  &Type := 'audio';
+end;
+
+{ TResourceLink }
+
+constructor TResourceLink.Create;
+begin
+  inherited Create;
+  &Type := 'resource_link';
 end;
 
 end.

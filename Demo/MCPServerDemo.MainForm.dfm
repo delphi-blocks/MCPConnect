@@ -2,8 +2,8 @@ object Form1: TForm1
   Left = 271
   Top = 114
   Caption = 'Form1'
-  ClientHeight = 235
-  ClientWidth = 399
+  ClientHeight = 839
+  ClientWidth = 1267
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -53,6 +53,32 @@ object Form1: TForm1
     Caption = 'Open Browser'
     TabOrder = 3
     OnClick = ButtonOpenBrowserClick
+  end
+  object memoLog: TMemo
+    Left = 0
+    Top = 344
+    Width = 1267
+    Height = 495
+    Align = alBottom
+    Font.Charset = ANSI_CHARSET
+    Font.Color = clWindowText
+    Font.Height = -18
+    Font.Name = 'Consolas'
+    Font.Style = []
+    ParentFont = False
+    ScrollBars = ssVertical
+    TabOrder = 4
+    ExplicitTop = 327
+    ExplicitWidth = 1261
+  end
+  object Button1: TButton
+    Left = 464
+    Top = 184
+    Width = 75
+    Height = 25
+    Caption = 'Button1'
+    TabOrder = 5
+    OnClick = Button1Click
   end
   object ApplicationEvents1: TApplicationEvents
     OnIdle = ApplicationEvents1Idle

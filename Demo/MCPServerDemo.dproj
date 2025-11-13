@@ -138,6 +138,25 @@
             <DesignClass>TWebModule</DesignClass>
         </DCCReference>
         <DCCReference Include="MCPServerDemo.Tools.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Configuration.Auth.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Configuration.Core.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Configuration.MCP.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Configuration.Neon.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Content.Writers.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Content.Writers.RTL.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Content.Writers.VCL.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Core.Utils.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.JRPC.Core.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.JRPC.Invoker.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.JRPC.Server.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.MCP.Attributes.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.MCP.Invoker.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.MCP.Prompts.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.MCP.Resources.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.MCP.Server.Api.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.MCP.Tools.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.MCP.Types.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Transport.WebBroker.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

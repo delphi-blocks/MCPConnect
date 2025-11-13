@@ -10,6 +10,10 @@ uses
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
 
+  MCPConnect.JRPC.Core,
+  MCPConnect.Configuration.Core,
+  MCPConnect.Configuration.MCP,
+
   MCPConnect.MCP.Attributes,
   MCPConnect.MCP.Types,
   MCPConnect.MCP.Tools;
@@ -30,6 +34,9 @@ type
   /// </summary>
   TMCPObjectInvoker = class(TInterfacedObject, IMCPInvokable)
   private
+    [Context] FContext: TJRPCContext;
+    [Context] FConfig: TMCPConfig;
+  private
     FInstance: TObject;
     FRttiType: TRttiType;
     function FindMethod(const AName: string): TRttiMethod;
@@ -42,10 +49,13 @@ type
 
   TMCPMethodInvoker = class(TInterfacedObject, IMCPInvokable)
   private
+    [Context] FContext: TJRPCContext;
+    [Context] FConfig: TMCPConfig;
+  private
     FInstance: TObject;
     FMethod: TRttiMethod;
     function ArgumentsToRttiParams(AArguments: TJSONObject): TArray<TValue>;
-    function RttiResultToResponseContent(AResult: TValue): TBaseContent;
+    procedure ResultToContents(const AToolResult: TValue; AContentList: TContentList);
     function GetParamName(LParam: TRttiParameter): string;
   public
     { IMCPInvokable }
@@ -57,6 +67,7 @@ type
 implementation
 
 uses
+  MCPConnect.Content.Writers,
   MCPConnect.Core.Utils;
 
 { TMCPObjectInvoker }
@@ -83,7 +94,7 @@ begin
     else
       LMethodName := '';
 
-    if AName = LMethodName then
+    if SameText(AName, LMethodName) then
       Exit(LMethod);
   end;
 end;
@@ -102,6 +113,8 @@ begin
   end;
 
   LMethodInvoker := TMCPMethodInvoker.Create(FInstance, LMethod);
+  FContext.Inject(LMethodInvoker);
+
   Result := LMethodInvoker.Invoke(AName, AArguments, Meta, AResult);
 end;
 
@@ -128,7 +141,8 @@ begin
     LGarbageCollector.Add(LArgs);
     LResult := FMethod.Invoke(FInstance, LArgs);
     try
-      AResult.AddContent( RttiResultToResponseContent(LResult) );
+      ResultToContents(LResult, AResult.Content);
+      //AResult.AddContent( RttiResultToResponseContent(LResult) );
     finally
       if LResult.IsObject then
         LResult.AsObject.Free;
@@ -141,19 +155,74 @@ begin
   end;
 end;
 
-function TMCPMethodInvoker.RttiResultToResponseContent(AResult: TValue): TBaseContent;
+procedure TMCPMethodInvoker.ResultToContents(const AToolResult: TValue; AContentList: TContentList);
+var
+  LRes: string;
+  LContent: TBaseContent;
+  LText: TTextContent absolute LContent;
+  LBlob: TEmbeddedResource absolute LContent;
 begin
-  //Result := TNeon.ValueToJSON(AResult, FNeonConfig);
-  if AResult.IsType<string> then
+  LRes := TNeon.ValueToJSONString(AToolResult, TNeonConfiguration.Default);
+
+  var w := FConfig.GetWriters.GetWriter(AToolResult);
+  if Assigned(w) then
   begin
-    Result := TTextContent.Create(AResult.tostring)
-  end
-  else if AResult.IsType<TStringList> then
-  begin
-    Result := TTextContent.Create(AResult.AsType<TStringList>.Text);
-  end
-  else
-    raise Exception.Create('MCP return type not supported');
+    var ctx: TMCPWriterContext;
+    ctx.ContentList := AContentList;
+    ctx.ToolAttributes := [];
+
+    w.Write(AToolResult, ctx);
+    Exit;
+  end;
+
+  case AToolResult.Kind of
+
+    // As it is
+    tkInt64,
+    tkInteger,
+    tkFloat: LText := TTextContent.Create(LRes);
+
+    // Dequote
+    tkEnumeration,
+    tkChar,
+    tkWChar,
+    tkString,
+    tkLString,
+    tkWString,
+    tkUString: LText := TTextContent.Create(LRes.DeQuotedString('"'));
+
+    // JSON response
+    tkSet,
+    tkClass,
+    tkRecord, tkMRecord:
+    begin
+      LBlob := TEmbeddedResource.Create;
+      LBlob.Resource.MIMEType := 'application/json';
+      (LBlob.Resource as TBlobResourceContents).Blob := LRes;
+    end;
+
+    tkArray, tkDynArray:
+    begin
+      if AToolResult.TypeInfo = TypeInfo(TBytes) then
+      begin
+        LBlob := TEmbeddedResource.Create;
+        LBlob.Resource.MIMEType := 'application/octect-stream';
+        (LBlob.Resource as TBlobResourceContents).Blob := LRes;
+      end
+      else
+      begin
+        LBlob := TEmbeddedResource.Create;
+        LBlob.Resource.MIMEType := 'application/json';
+        (LBlob.Resource as TBlobResourceContents).Blob := LRes;
+      end;
+
+    end;
+
+    else
+      LText := TTextContent.Create(LRes);
+  end;
+
+  AContentList.Add(LContent);
 end;
 
 function TMCPMethodInvoker.GetParamName(LParam: TRttiParameter): string;

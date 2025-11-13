@@ -35,6 +35,8 @@ type
 
   //MCPToolNoteAttribute = class(TCustomAttribute);
 
+  TAttributes = TArray<TCustomAttribute>;
+
 implementation
 
 { McpAttribute }

@@ -128,7 +128,7 @@ type
    ///   Can be TextContent, ImageContent, AudioContent, ResourceLink, or
    ///   EmbeddedResource
    /// </summary>
-	  [NeonProperty('content')] Content: TObjectList<TBaseContent>;
+	  [NeonProperty('content')] Content: TContentList;
 
     /// <summary>
     ///   Structured content returned as a JSON object in the structuredContent
@@ -153,7 +153,7 @@ type
 
 type
   /// <summary>
-  ///   MCPConnect.MCP.Tools Schema Generator
+  ///   MCP Tools Schema Generator
   /// </summary>
   TMCPSchemaGenerator = class
   protected
@@ -173,7 +173,7 @@ type
   public
     /// <summary>
     ///   Serialize a Delphi method as a MCP tool
-    ///   The Delphi method must be marked with the MCPConnect.MCP.Attributes
+    ///   The Delphi method must be marked with the MCP attributes
     /// </summary>
     class function MethodToTool(AMethod: TRttiMethod): TMCPTool;
 
@@ -470,7 +470,7 @@ end;
 constructor TCallToolResult.Create;
 begin
   inherited;
-  Content := TObjectList<TBaseContent>.Create;
+  Content := TContentList.Create;
   StructuredContent := TJSONObject.Create;
 end;
 

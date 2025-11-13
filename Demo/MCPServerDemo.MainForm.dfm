@@ -71,23 +71,14 @@ object Form1: TForm1
     ExplicitTop = 183
     ExplicitWidth = 867
   end
-  object Button1: TButton
-    Left = 472
-    Top = 112
-    Width = 75
+  object btnConfig: TButton
+    Left = 24
+    Top = 152
+    Width = 107
     Height = 25
-    Caption = 'Button1'
+    Caption = 'Generate MCP.json'
     TabOrder = 5
-    OnClick = Button1Click
-  end
-  object Button2: TButton
-    Left = 616
-    Top = 112
-    Width = 75
-    Height = 25
-    Caption = 'Button2'
-    TabOrder = 6
-    OnClick = Button2Click
+    OnClick = btnConfigClick
   end
   object ApplicationEvents1: TApplicationEvents
     OnIdle = ApplicationEvents1Idle

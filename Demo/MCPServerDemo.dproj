@@ -157,6 +157,7 @@
         <DCCReference Include="..\Source\MCPConnect.MCP.Tools.pas"/>
         <DCCReference Include="..\Source\MCPConnect.MCP.Types.pas"/>
         <DCCReference Include="..\Source\MCPConnect.Transport.WebBroker.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.MCP.Config.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

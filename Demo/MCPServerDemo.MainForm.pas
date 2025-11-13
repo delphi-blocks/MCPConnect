@@ -7,6 +7,9 @@ uses
   System.Classes, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs,
   Vcl.AppEvnts, Vcl.StdCtrls, IdHTTPWebBrokerBridge, IdGlobal, Web.HTTPApp,
   IdContext,
+
+
+  MCPConnect.MCP.Config,
   MCPConnect.MCP.Tools,
   MCPConnect.MCP.Invoker,
   MCPConnect.MCP.Types,
@@ -19,14 +22,12 @@ type
     EditPort: TEdit;
     memoLog: TMemo;
     Label1: TLabel;
-    Button1: TButton;
     ApplicationEvents1: TApplicationEvents;
     ButtonOpenBrowser: TButton;
-    Button2: TButton;
+    btnConfig: TButton;
     procedure FormCreate(Sender: TObject);
     procedure ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
-    procedure Button1Click(Sender: TObject);
-    procedure Button2Click(Sender: TObject);
+    procedure btnConfigClick(Sender: TObject);
     procedure ButtonStartClick(Sender: TObject);
     procedure ButtonStopClick(Sender: TObject);
     procedure ButtonOpenBrowserClick(Sender: TObject);
@@ -93,42 +94,34 @@ begin
   EditPort.Enabled := not FServer.Active;
 end;
 
-procedure TForm1.Button1Click(Sender: TObject);
+procedure TForm1.btnConfigClick(Sender: TObject);
 begin
-{
-  var res := TCallToolResult.Create;
-  var inv := TMCPObjectInvoker.Create(Self);
+  var mcp := TMCPConfig.Create;
 
-  TestInvoke('TestInt');
-  TestInvoke('TestFloat');
-  TestInvoke('TestEnum');
-  TestInvoke('TestSet');
-  TestInvoke('TestChar');
-  TestInvoke('TestString');
-  TestInvoke('TestDate');
-  TestInvoke('TestRecord');
-  TestInvoke('TestObject');
+  var remote := TMCPConfigServerRemote.Create;
+  remote.&Type := 'http';
+  remote.Url := 'http://localhost:8080/mcp';
+  remote.Headers.Add('Authorization', 'Bearer ' + '378eye6t.e3y883yee3eu8yg32e63.93ue983u');
+  mcp.Servers.Add('mpc-connect-remote', remote);
 
-  res.Free;
-  inv.Free;
-}
-end;
+  var local := TMCPConfigServerLocal.Create;
+  local.&Type := 'stdio';
+  local.Command := 'mcp.exe';
+  local.Args := ['-v', './data'];
+  local.Env.Add('KEY', 'aabbccdd');
+  mcp.Servers.Add('mpc-connect-local', local);
 
-procedure TForm1.Button2Click(Sender: TObject);
-begin
-  var cfg := TNeonConfiguration.Camel.SetMembers([TNeonMembers.Fields]);
-  cfg.RegisterSerializer(TJSONValueSerializer);
-  var emb := TEmbeddedResource.Create;
-  emb.Resource.MimeType := 'application/octect-stream';
-  TBlobResourceContents(emb.Resource).Blob := 'ieydwg3rf7fgrg76ergf67wrgfrgf6gr2f3';
-  var s := TNeon.ObjectToJSONString(emb, cfg);
+  var s := TNeon.ObjectToJSONString(mcp,
+    TNeonConfiguration
+      .Camel
+      .SetMembers([TNeonMembers.Fields])
+      .SetPrettyPrint(True)
+      .SetMemberSort(TNeonSort.RttiReverse)
+  );
 
-  var res := TCallToolResult.Create;
-  res.AddContent(emb);
-  //res.Content.Add(emb);
-  var ss := TNeon.ObjectToJSONString(res, cfg);
-  memoLog.Lines.Add(ss);
-  res.Free;
+  memoLog.Lines.Add(s);
+
+  mcp.Free;
 end;
 
 procedure TForm1.ButtonOpenBrowserClick(Sender: TObject);

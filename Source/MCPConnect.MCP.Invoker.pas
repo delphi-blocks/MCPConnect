@@ -154,8 +154,15 @@ begin
     LGarbageCollector.Add(LArgs);
     LResult := FMethod.Invoke(FInstance, LArgs);
     try
-      ResultToContents(LResult, AResult.Content);
-      //AResult.AddContent( RttiResultToResponseContent(LResult) );
+      // If the result is already a TContentList just assign it
+      if LResult.IsType<TContentList> then
+      begin
+        AResult.Content.Free;
+        AResult.Content := TContentList(LResult.AsObject);
+        LResult := nil;
+      end
+      else
+        ResultToContents(LResult, AResult.Content);
     finally
       if LResult.IsObject then
         LResult.AsObject.Free;
@@ -177,16 +184,16 @@ var
 begin
   LRes := TNeon.ValueToJSONString(AToolResult, TNeonConfiguration.Default);
 
-  var w := FConfig.GetWriters.GetWriter(AToolResult);
-  if Assigned(w) then
-  begin
-    var ctx: TMCPWriterContext;
-    ctx.ContentList := AContentList;
-    ctx.ToolAttributes := [];
-
-    w.Write(AToolResult, ctx);
-    Exit;
-  end;
+//  var w := FConfig.GetWriters.GetWriter(AToolResult);
+//  if Assigned(w) then
+//  begin
+//    var ctx: TMCPWriterContext;
+//    ctx.ContentList := AContentList;
+//    ctx.ToolAttributes := [];
+//
+//    w.Write(AToolResult, ctx);
+//    Exit;
+//  end;
 
   case AToolResult.Kind of
 

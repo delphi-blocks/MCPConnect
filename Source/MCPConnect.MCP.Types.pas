@@ -52,7 +52,7 @@ const
   // Lists all available executable tools.
   MethodToolsList = 'tools/list';
 
-  // Ivokes a specific tool with provided parameters.
+  // Invokes a specific tool with provided parameters.
   MethodToolsCall = 'tools/call';
 
   // Configures the minimum log level for client
@@ -98,7 +98,7 @@ type
     [NeonProperty('cursor')] Cursor: NullString;
   end;
 
-  // Otional annotations for the client.
+  // Optional annotations for the client.
   // The client can use annotations to inform how objects are used or displayed
   TAnnotations = class
     // Describes who the intended customer of this object or data is.
@@ -113,7 +113,7 @@ type
     // effectively required, while 0 means "least important," and indicates that
     // the data is entirely optional.
 
-    [NeonInclude(IncludeIf.NotEmpty)] Priority: Currency;
+    [NeonInclude(IncludeIf.NotDefault)] Priority: Currency;
   end;
 
 
@@ -399,6 +399,7 @@ type
     /// <summary>
     /// The URI of this resource.
     /// </summary>
+    [NeonInclude(IncludeIf.NotDefault)]
     [NeonProperty('uri')] URI: string;
 
     /// <summary>
@@ -449,7 +450,6 @@ type
   ///   List of Contents. Used in CallToolResult
   /// </summary>
   TContentList = class(TObjectList<TBaseContent>)
-
   end;
 
   /// <summary>
@@ -487,14 +487,18 @@ type
     function AddAudio(const AMime: string; AAudio: TStream): IToolResultBuilder;
     function AddLink(const AMime, AURL, ADescription: string): IToolResultBuilder;
     function AddBlob(const AMime: string; ABlob: TStream): IToolResultBuilder;
+
+    function Build(): TContentList;
   end;
 
   /// <summary>
   ///   Implementation for the CallToolResult array. To be called inside a tool method.
   /// </summary>
-  TToolResultBuilder = class
+  TToolResultBuilder = class(TInterfacedObject, IToolResultBuilder)
   private
     FContents: TContentList;
+  public
+    class function New: IToolResultBuilder;
   public
     constructor Create;
     destructor Destroy; override;
@@ -644,7 +648,8 @@ end;
 
 constructor TEmbeddedResource.Create;
 begin
-  inherited;
+  inherited Create;
+  &Type := 'resource';
   Resource := TBlobResourceContents.Create;
 end;
 
@@ -763,6 +768,7 @@ begin
   LContent.Data := LContent.DataFromStream(AAudio);
   LContent.MIMEType := AMime;
   FContents.Add(LContent);
+  Result := Self;
 end;
 
 function TToolResultBuilder.AddBlob(const AMime: string; ABlob: TStream): IToolResultBuilder;
@@ -774,6 +780,7 @@ begin
   LBlob := LResource.Resource as TBlobResourceContents;
   LBlob.MIMEType := AMime;
   LBlob.Blob := LResource.DataFromStream(ABlob);
+  Result := Self;
 end;
 
 function TToolResultBuilder.AddImage(const AMime: string; AImage: TStream): IToolResultBuilder;
@@ -784,6 +791,7 @@ begin
   LContent.Data := LContent.DataFromStream(AImage);
   LContent.MIMEType := AMime;
   FContents.Add(LContent);
+  Result := Self;
 end;
 
 function TToolResultBuilder.AddLink(const AMime, AURI, ADescription: string): IToolResultBuilder;
@@ -792,11 +800,13 @@ begin
   LResource.URI := AURI;
   LResource.MIMEType := AMime;
   LResource.Description := ADescription;
+  Result := Self;
 end;
 
 function TToolResultBuilder.AddText(const AText: string): IToolResultBuilder;
 begin
   FContents.Add(TTextContent.Create(AText));
+  Result := Self;
 end;
 
 function TToolResultBuilder.Build: TContentList;
@@ -816,6 +826,11 @@ destructor TToolResultBuilder.Destroy;
 begin
   FContents.Free;
   inherited;
+end;
+
+class function TToolResultBuilder.New: IToolResultBuilder;
+begin
+  Result := TToolResultBuilder.Create;
 end;
 
 { TImageContent }

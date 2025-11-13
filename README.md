@@ -1,3 +1,6 @@
+<p align="center">
+  <img src="logo-white.png" alt="MCPConnect" width="300" height="300" />
+</p>
 
 # 🔌 Delphi MCP Connect Library (MCPConnect)
 

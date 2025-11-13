@@ -1,3 +1,16 @@
+{******************************************************************************}
+{                                                                              }
+{  Delphi MCP Connect Library                                                  }
+{                                                                              }
+{  Copyright (c) Paolo Rossi <dev@paolorossi.net>                              }
+{                Luca Minuti <code@lucaminuti.it>                              }
+{  All rights reserved.                                                        }
+{                                                                              }
+{  https://github.com/delphi-blocks/MCPConnect                                 }
+{                                                                              }
+{  Licensed under the MIT license                                              }
+{                                                                              }
+{******************************************************************************}
 unit MCPConnect.JRPC.Core;
 
 interface
@@ -15,12 +28,12 @@ uses
   Neon.Core.Serializers.RTL;
 
 const
-  // Standard MCPConnect.JRPC.Core error codes
+  // Standard JSON-RPC error codes
 	JRPC_PARSE_ERROR      = -32700; // Invalid JSON was received by the server.
 	JRPC_INVALID_REQUEST  = -32600; // The JSON sent is not a valid Request object.
 	JRPC_METHOD_NOT_FOUND = -32601; // The method does not exist / is not available.
 	JRPC_INVALID_PARAMS   = -32602; // Invalid method parameter(s).
-	JRPC_INTERNAL_ERROR   = -32603; // Internal error.	Internal MCPConnect.JRPC.Core error.
+	JRPC_INTERNAL_ERROR   = -32603; // Internal error.	Internal JSON-RPC error.
 
 type
   EJSONRPCException = class(Exception);
@@ -132,7 +145,7 @@ type
     class function CreateFromJson(const AJSON: string): TJRPCRequest;
   end;
 
-  // Class representing a MCPConnect.JRPC.Core response
+  // Class representing a JSON-RPC response
   TJRPCResponse = class(TJRPCEnvelope)
   protected
     FError: TJRPCError;
@@ -261,7 +274,8 @@ type
     function FindContextDataAs<T: class>: T; overload;
     function FindContextDataAs(AClass: TClass): TObject; overload;
 
-    procedure Inject(AObject: TObject);
+    procedure Inject(AObject: TObject); overload;
+    procedure Inject(AInterface: IInterface); overload;
 
     property Request: TJRPCRequest read GetRequest;
     property Response: TJRPCResponse read GetResponse;
@@ -883,6 +897,7 @@ constructor TJRPCContext.Create;
 begin
   inherited Create;
   FContextData := TJRPCContextData.Create;
+  AddContent(Self);
 end;
 
 destructor TJRPCContext.Destroy;
@@ -928,6 +943,11 @@ begin
     raise EJSONRPCException.Create('Response not found');
 
   Result := FResponse;
+end;
+
+procedure TJRPCContext.Inject(AInterface: IInterface);
+begin
+  Inject(AInterface as TObject);
 end;
 
 procedure TJRPCContext.Inject(AObject: TObject);

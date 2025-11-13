@@ -164,12 +164,3 @@ We welcome contributions\! If you have suggestions, bug reports, or want to cont
 ## 📄 License
 
 Distributed under the **MIT License**. See `LICENSE` for more information.
-
------
-
-## 📞 Contact
-
-Your Name/Organization Name - **[@YourTwitterHandle](https://www.google.com/search?q=https://twitter.com/YourTwitterHandle)** (or other contact info)
-
-Project Link: **[https://github.com/delphi-blocks/MCPConnect](https://github.com/delphi-blocks/MCPConnect)**
-

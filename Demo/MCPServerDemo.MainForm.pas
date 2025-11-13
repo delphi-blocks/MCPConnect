@@ -82,6 +82,7 @@ uses
   System.Generics.Collections,
 
   Neon.Core.Types,
+  Neon.Core.Serializers.RTL,
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON;
 
@@ -116,15 +117,15 @@ end;
 procedure TForm1.Button2Click(Sender: TObject);
 begin
   var cfg := TNeonConfiguration.Camel.SetMembers([TNeonMembers.Fields]);
+  cfg.RegisterSerializer(TJSONValueSerializer);
   var emb := TEmbeddedResource.Create;
+  emb.Resource.MimeType := 'application/octect-stream';
   TBlobResourceContents(emb.Resource).Blob := 'ieydwg3rf7fgrg76ergf67wrgfrgf6gr2f3';
-  TBlobResourceContents(emb.Resource).MIMEType := 'application/octect-stream';
-  //var s := TNeon.ObjectToJSONString(emb, cfg);
-  //memoLog.Lines.Add(s);
-
+  var s := TNeon.ObjectToJSONString(emb, cfg);
 
   var res := TCallToolResult.Create;
-  res.Content.Add(emb);
+  res.AddContent(emb);
+  //res.Content.Add(emb);
   var ss := TNeon.ObjectToJSONString(res, cfg);
   memoLog.Lines.Add(ss);
   res.Free;

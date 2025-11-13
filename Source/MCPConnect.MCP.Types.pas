@@ -404,7 +404,7 @@ type
     /// <summary>
     /// The MIME type of this resource, if known.
     /// </summary>
-    [NeonProperty('mimeType')] MIMEType: NullString;
+    [NeonProperty('mimeType')] MimeType: NullString;
   end;
 
   /// <summary>
@@ -644,6 +644,7 @@ end;
 
 constructor TEmbeddedResource.Create;
 begin
+  inherited;
   Resource := TBlobResourceContents.Create;
 end;
 

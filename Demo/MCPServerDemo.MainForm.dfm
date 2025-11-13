@@ -68,6 +68,8 @@ object Form1: TForm1
     ParentFont = False
     ScrollBars = ssVertical
     TabOrder = 4
+    ExplicitTop = 183
+    ExplicitWidth = 867
   end
   object Button1: TButton
     Left = 472

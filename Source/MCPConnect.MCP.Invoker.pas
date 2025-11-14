@@ -218,9 +218,19 @@ begin
     tkClass,
     tkRecord, tkMRecord:
     begin
-      LBlob := TEmbeddedResource.Create;
-      LBlob.Resource.MIMEType := 'application/json';
-      (LBlob.Resource as TBlobResourceContents).Blob := LRes;
+      // Check if the tool is configured to return an embedded resource
+      var LMCPTool := TRttiUtils.FindAttribute<MCPToolAttribute>(FMethod);
+      if Assigned(LMCPTool) and (LMCPTool.Tags.GetValueAs<Boolean>('embedded')) then
+      begin
+        LBlob := TEmbeddedResource.Create;
+        LBlob.Resource.MIMEType := 'application/json';
+        LBlob.Resource.URI := '';
+        (LBlob.Resource as TTextResourceContents).Text := LRes;
+      end
+      else
+      begin
+        LText := TTextContent.Create(LRes);
+      end;
     end;
 
     tkArray, tkDynArray:

@@ -6,7 +6,6 @@ object WebModule1: TWebModule1
       PathInfo = '/'
       OnAction = WebModule1DefaultHandlerAction
     end>
-  Height = 345
-  Width = 623
-  PixelsPerInch = 144
+  Height = 230
+  Width = 415
 end

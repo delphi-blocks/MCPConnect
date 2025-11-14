@@ -312,7 +312,7 @@ type
   /// * The ID of the request to cancel
   /// * An optional reason string that can be logged or displayed
   /// </summary>
-  TCancelledNotificationParams = record
+  TCancelledNotificationParams = class
 
     /// <summary>
     ///   A uniquely identifying ID for a request in JSON-RPC.
@@ -399,7 +399,6 @@ type
     /// <summary>
     /// The URI of this resource.
     /// </summary>
-    [NeonInclude(IncludeIf.NotDefault)]
     [NeonProperty('uri')] URI: string;
 
     /// <summary>
@@ -650,7 +649,8 @@ constructor TEmbeddedResource.Create;
 begin
   inherited Create;
   &Type := 'resource';
-  Resource := TBlobResourceContents.Create;
+  //Resource := TBlobResourceContents.Create;
+  Resource := TTextResourceContents.Create;
 end;
 
 destructor TEmbeddedResource.Destroy;

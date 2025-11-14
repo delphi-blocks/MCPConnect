@@ -8,7 +8,6 @@ uses
   Neon.Core.Types,
   Neon.Core.Persistence,
 
-  MCPConnect.Content.Writers.VCL,
   MCPConnect.Transport.WebBroker,
   MCPConnect.JRPC.Server;
 
@@ -37,11 +36,15 @@ uses
   MCPConnect.Configuration.Auth,
   MCPConnect.Configuration.Neon,
 
-  MCPConnect.MCP.Types,
-  // Implemetation of MCP API
-  MCPConnect.MCP.Server.Api,
+  MCPConnect.Content.Writers.RTL,
+  MCPConnect.Content.Writers.VCL,
 
-  MCPServerDemo.Tools;
+  MCPConnect.MCP.Types,
+  MCPServerDemo.Tools,
+
+  // Implemetation of MCP API
+  MCPConnect.MCP.Server.Api;
+
 
 {$R *.dfm}
 
@@ -69,6 +72,8 @@ begin
       .SetServerVersion('2.0.0')
       .SetToolClass(TTestTool)
       .RegisterWriter(TMCPImageWriter)
+      .RegisterWriter(TMCPPictureWriter)
+      .RegisterWriter(TMCPStringListWriter)
       .ApplyConfig;
 
 //    .Plugin.Configure<IJRPCNeonConfig>

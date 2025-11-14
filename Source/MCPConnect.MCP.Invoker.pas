@@ -178,22 +178,24 @@ end;
 procedure TMCPMethodInvoker.ResultToContents(const AToolResult: TValue; AContentList: TContentList);
 var
   LRes: string;
+  LWriter: TMCPCustomWriter;
+  LContext: TMCPWriterContext;
   LContent: TBaseContent;
   LText: TTextContent absolute LContent;
   LBlob: TEmbeddedResource absolute LContent;
 begin
+  { TODO -opaolo -c : Change the Neon configuration!!! 14/11/2025 10:25:55 }
   LRes := TNeon.ValueToJSONString(AToolResult, TNeonConfiguration.Default);
 
-//  var w := FConfig.GetWriters.GetWriter(AToolResult);
-//  if Assigned(w) then
-//  begin
-//    var ctx: TMCPWriterContext;
-//    ctx.ContentList := AContentList;
-//    ctx.ToolAttributes := [];
-//
-//    w.Write(AToolResult, ctx);
-//    Exit;
-//  end;
+  LWriter := FConfig.GetWriters.GetWriter(AToolResult);
+  if Assigned(LWriter) then
+  begin
+    LContext.ContentList := AContentList;
+    LContext.ToolAttributes := FMethod.GetAttributes;
+
+    LWriter.Write(AToolResult, LContext);
+    Exit;
+  end;
 
   case AToolResult.Kind of
 

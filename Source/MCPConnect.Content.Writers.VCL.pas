@@ -32,6 +32,14 @@ type
     procedure Write(const AValue: TValue; AContext: TMCPWriterContext); override;
   end;
 
+  TMCPPictureWriter = class(TMCPCustomWriter)
+  protected
+    class function GetTargetInfo: PTypeInfo; override;
+    class function CanHandle(AType: PTypeInfo): Boolean; override;
+  public
+    procedure Write(const AValue: TValue; AContext: TMCPWriterContext); override;
+  end;
+
 implementation
 
 uses
@@ -56,6 +64,7 @@ var
   LImage: TImage;
   LStream: TMemoryStream;
   LBase64: string;
+  LContent: TImageContent;
 begin
   LImage := AValue.AsObject as TImage;
 
@@ -72,10 +81,49 @@ begin
     LStream.Free;
   end;
 
-  var ic := TImageContent.Create;
-  ic.Data := LBase64;
-  ic.MIMEType := 'image';
-  AContext.ContentList.Add(ic);
+  LContent := TImageContent.Create;
+  LContent.Data := LBase64;
+  LContent.MIMEType := 'image';
+  AContext.ContentList.Add(LContent);
+end;
+
+{ TMCPPictureWriter }
+
+class function TMCPPictureWriter.CanHandle(AType: PTypeInfo): Boolean;
+begin
+  Result := TypeInfoIs(AType);
+end;
+
+class function TMCPPictureWriter.GetTargetInfo: PTypeInfo;
+begin
+  Result := TPicture.ClassInfo;
+end;
+
+procedure TMCPPictureWriter.Write(const AValue: TValue; AContext: TMCPWriterContext);
+var
+  LPicture: TPicture;
+  LStream: TMemoryStream;
+  LBase64: string;
+  LContent: TImageContent;
+begin
+  LPicture := AValue.AsObject as TPicture;
+  LStream := TMemoryStream.Create;
+  try
+{$IF CompilerVersion >= 30}
+    LPicture.SaveToStream(LStream);
+{$ELSE}
+    LPicture.Bitmap.SaveToStream(LStream);
+{$ENDIF}
+    LStream.Position := soFromBeginning;
+    LBase64 := TBase64.Encode(LStream);
+  finally
+    LStream.Free;
+  end;
+
+  LContent := TImageContent.Create;
+  LContent.Data := LBase64;
+  LContent.MIMEType := 'image';
+  AContext.ContentList.Add(LContent);
 end;
 
 end.

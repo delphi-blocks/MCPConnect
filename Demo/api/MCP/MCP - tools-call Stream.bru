@@ -1,0 +1,30 @@
+meta {
+  name: MCP - tools/call Stream
+  type: http
+  seq: 12
+}
+
+post {
+  url: http://localhost:8080/mcp
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+      "method": "tools/call",
+      "params": {
+          "name": "course_image",
+          "arguments": {
+              "name": "OOP"
+          }
+      },
+      "jsonrpc": "2.0",
+      "id": 3
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

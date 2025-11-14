@@ -73,7 +73,7 @@ end;
 
 class function TMCPStreamWriter.CanHandle(AType: PTypeInfo): Boolean;
 begin
-  Result := ClassIs(AType);
+  Result := TypeInfoIs(AType);
 end;
 
 class function TMCPStreamWriter.GetTargetInfo: PTypeInfo;

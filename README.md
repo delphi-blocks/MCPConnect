@@ -147,6 +147,110 @@ type
   end;
 ```
 
+-----------------------------
+
+### 3. Connecting LLM Clients to Your MCP Server
+
+Once your MCP server is running, you need to configure your LLM client to connect to it. Below are configuration examples for popular clients.
+
+#### Prerequisites
+
+Before configuring any client, ensure:
+1. Your MCP server is running and accessible (e.g., `http://localhost:8080/mcp`)
+2. You know the authentication token if your server requires one
+3. The endpoint path matches your `TJRPCDispatcher.PathInfo` setting
+
+#### LM Studio Configuration
+
+LM Studio supports HTTP-based MCP servers natively. Add the following configuration to your LM Studio settings:
+
+**Configuration file location:**
+- Windows: `%USERPROFILE%\.lmstudio\mcp.json`
+- macOS/Linux: `~/.lmstudio/mcp.json`
+
+**Configuration:**
+```json
+{
+  "mcpServers": {
+    "delphi-mcp-server": {
+      "url": "http://localhost:8080/mcp",
+      "headers": {
+        "Authorization": "Bearer my-secret-token"
+      }
+    }
+  }
+}
+```
+
+**Configuration Parameters:**
+- `delphi-mcp-server`: A unique identifier for your server (can be any name)
+- `url`: The full URL to your MCP server endpoint
+- `headers`: Optional HTTP headers (e.g., for authentication)
+
+After saving the configuration, restart LM Studio to load the new MCP server.
+
+#### Claude Desktop Configuration
+
+Claude Desktop currently requires an intermediate tool called `mcp-remote` to connect to HTTP-based MCP servers, as it doesn't support HTTP transport natively yet.
+
+##### Step 1: Test the Connection (Recommended)
+
+Before configuring Claude Desktop, verify that `mcp-remote` can connect to your server:
+
+```bash
+npx mcp-remote http://localhost:8080/mcp --header "Authorization: Bearer my-secret-token"
+```
+
+If the connection is successful, you should see your server's capabilities listed.
+
+##### Step 2: Configure Claude Desktop
+
+**Configuration file location:**
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+**Configuration:**
+```json
+{
+  "mcpServers": {
+    "my-demo-server": {
+      "command": "C:\\Program Files\\nodejs\\npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "http://localhost:8080/mcp",
+        "--header",
+        "Authorization: Bearer my-secret-token"
+      ]
+    }
+  }
+}
+```
+
+**Configuration Parameters:**
+- `my-demo-server`: A unique identifier for your server
+- `command`: Path to the Node.js `npx` executable
+  - Windows: `C:\\Program Files\\nodejs\\npx` (note the double backslashes)
+  - macOS/Linux: `/usr/local/bin/npx` or `npx` (if in PATH)
+- `args`: Arguments passed to `npx`:
+  - `-y`: Auto-confirm package installation
+  - `mcp-remote`: The bridge tool for HTTP transport
+  - URL to your MCP server
+  - `--header`: Optional authentication header
+
+##### Step 3: Restart Claude Desktop
+
+After saving the configuration, restart Claude Desktop to load the MCP server connection.
+
+---
+
+### 📝 Notes
+
+- **Security:** Never commit configuration files with real authentication tokens to version control
+- **Development:** For local development, you can omit authentication headers
+- **Production:** Always use HTTPS and secure authentication tokens in production environments
+- **Multiple Servers:** You can configure multiple MCP servers by adding additional entries under `mcpServers`
+
 -----
 
 ## 🤝 Contributing

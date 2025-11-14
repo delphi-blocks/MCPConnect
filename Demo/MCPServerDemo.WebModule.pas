@@ -8,6 +8,7 @@ uses
   Neon.Core.Types,
   Neon.Core.Persistence,
 
+  MCPConnect.Content.Writers.RTL,
   MCPConnect.Content.Writers.VCL,
   MCPConnect.Transport.WebBroker,
   MCPConnect.JRPC.Server;
@@ -67,8 +68,12 @@ begin
     .Plugin.Configure<IMCPConfig>
       .SetServerName('delphi-mcp-server')
       .SetServerVersion('2.0.0')
+      .SetToolClass(TTestTool)
+      .RegisterWriter(TMCPImageWriter)
+      .RegisterWriter(TMCPPictureWriter)
+      .RegisterWriter(TMCPStreamWriter)
+      .RegisterWriter(TMCPStringListWriter)
       .SetToolClass(TDelphiDayTool)
-      //.RegisterWriter(TMCPImageWriter)
       .ApplyConfig;
 
 //    .Plugin.Configure<IJRPCNeonConfig>

@@ -42,6 +42,9 @@ type
 
 implementation
 
+uses
+  Neon.Core.Utils;
+
 { TMCPStringListWriter }
 
 class function TMCPStringListWriter.CanHandle(AType: PTypeInfo): Boolean;
@@ -70,18 +73,28 @@ end;
 
 class function TMCPStreamWriter.CanHandle(AType: PTypeInfo): Boolean;
 begin
-
+  Result := ClassIs(AType);
 end;
 
 class function TMCPStreamWriter.GetTargetInfo: PTypeInfo;
 begin
-
+  Result := TStream.ClassInfo;
 end;
 
 procedure TMCPStreamWriter.Write(const AValue: TValue; AContext: TMCPWriterContext);
+var
+  LStream: TStream;
+  LBase64: string;
+  LBlob: TEmbeddedResourceBlob;
 begin
-  inherited;
+  LStream := AValue.AsObject as TStream;
+  LStream.Position := soFromBeginning;
+  LBase64 := TBase64.Encode(LStream);
 
+  LBlob := TEmbeddedResourceBlob.Create;
+  LBlob.Resource.MIMEType := 'application/octect-stream';
+  LBlob.Resource.Blob := LBase64;
+  AContext.ContentList.Add(LBlob);
 end;
 
 end.

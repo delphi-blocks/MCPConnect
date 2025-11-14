@@ -437,9 +437,24 @@ type
   /// <remarks>
   ///   Defaults to TBlobResourceContents
   /// </remarks>
-  TEmbeddedResource = class(TBaseContent)
+  TEmbeddedResourceBlob = class(TBaseContent)
   public
-    [NeonProperty('resource')] Resource: TResourceContents;
+    [NeonProperty('resource')] Resource: TBlobResourceContents;
+  public
+    constructor Create;
+    destructor Destroy; override;
+  end;
+
+  /// <summary>
+  ///   The contents of a resource, embedded into a prompt or tool call result. It is up to the
+  ///   client how best to render embedded resources for the benefit of the LLM and/or the user.
+  /// </summary>
+  /// <remarks>
+  ///   Defaults to TTextResourceContents
+  /// </remarks>
+  TEmbeddedResourceText = class(TBaseContent)
+  public
+    [NeonProperty('resource')] Resource: TTextResourceContents;
   public
     constructor Create;
     destructor Destroy; override;
@@ -473,7 +488,7 @@ type
     function GetContentAsImage: TImageContent;
     function GetContentAsAudio: TAudioContent;
     function GetContentAsResource: TResourceLink;
-    function GetContentAsEmbedded: TEmbeddedResource;
+    function GetContentAsEmbedded: TEmbeddedResourceBlob;
   end;
 
   /// <summary>
@@ -643,17 +658,16 @@ begin
   inherited;
 end;
 
-{ TEmbeddedResource }
+{ TEmbeddedResourceBlob }
 
-constructor TEmbeddedResource.Create;
+constructor TEmbeddedResourceBlob.Create;
 begin
   inherited Create;
   &Type := 'resource';
-  //Resource := TBlobResourceContents.Create;
-  Resource := TTextResourceContents.Create;
+  Resource := TBlobResourceContents.Create;
 end;
 
-destructor TEmbeddedResource.Destroy;
+destructor TEmbeddedResourceBlob.Destroy;
 begin
   Resource.Free;
   inherited;
@@ -683,15 +697,15 @@ begin
   Result := Content as TAudioContent;
 end;
 
-function TContentClass.GetContentAsEmbedded: TEmbeddedResource;
+function TContentClass.GetContentAsEmbedded: TEmbeddedResourceBlob;
 begin
-  if not (Content is TEmbeddedResource) then
+  if not (Content is TEmbeddedResourceBlob) then
   begin
     Content.Free;
-    Content := TEmbeddedResource.Create;
+    Content := TEmbeddedResourceBlob.Create;
   end;
 
-  Result := Content as TEmbeddedResource;
+  Result := Content as TEmbeddedResourceBlob;
 end;
 
 function TContentClass.GetContentAsImage: TImageContent;
@@ -773,10 +787,10 @@ end;
 
 function TToolResultBuilder.AddBlob(const AMime: string; ABlob: TStream): IToolResultBuilder;
 var
-  LResource: TEmbeddedResource;
+  LResource: TEmbeddedResourceBlob;
   LBlob: TBlobResourceContents;
 begin
-  LResource := TEmbeddedResource.Create;
+  LResource := TEmbeddedResourceBlob.Create;
   LBlob := LResource.Resource as TBlobResourceContents;
   LBlob.MIMEType := AMime;
   LBlob.Blob := LResource.DataFromStream(ABlob);
@@ -855,6 +869,21 @@ constructor TResourceLink.Create;
 begin
   inherited Create;
   &Type := 'resource_link';
+end;
+
+{ TEmbeddedResourceText }
+
+constructor TEmbeddedResourceText.Create;
+begin
+  inherited Create;
+  &Type := 'resource';
+  Resource := TTextResourceContents.Create;
+end;
+
+destructor TEmbeddedResourceText.Destroy;
+begin
+  Resource.Free;
+  inherited;
 end;
 
 end.

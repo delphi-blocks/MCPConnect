@@ -48,7 +48,7 @@ type
   TMCPObjectInvoker = class(TInterfacedObject, IMCPInvokable)
   private
     [Context] FContext: TJRPCContext;
-    [Context] FConfig: TMCPConfig;
+    //[Context] FConfig: TMCPConfig;
   private
     FInstance: TObject;
     FRttiType: TRttiType;
@@ -62,7 +62,7 @@ type
 
   TMCPMethodInvoker = class(TInterfacedObject, IMCPInvokable)
   private
-    [Context] FContext: TJRPCContext;
+    //[Context] FContext: TJRPCContext;
     [Context] FConfig: TMCPConfig;
   private
     FInstance: TObject;
@@ -177,15 +177,16 @@ end;
 
 procedure TMCPMethodInvoker.ResultToContents(const AToolResult: TValue; AContentList: TContentList);
 var
-  LRes: string;
+  LResult: string;
   LWriter: TMCPCustomWriter;
   LContext: TMCPWriterContext;
   LContent: TBaseContent;
   LText: TTextContent absolute LContent;
-  LBlob: TEmbeddedResource absolute LContent;
+  LResText: TEmbeddedResourceText absolute LContent;
+  LResBlob: TEmbeddedResourceBlob absolute LContent;
 begin
   { TODO -opaolo -c : Change the Neon configuration!!! 14/11/2025 10:25:55 }
-  LRes := TNeon.ValueToJSONString(AToolResult, TNeonConfiguration.Default);
+  LResult := TNeon.ValueToJSONString(AToolResult, TNeonConfiguration.Default);
 
   LWriter := FConfig.GetWriters.GetWriter(AToolResult);
   if Assigned(LWriter) then
@@ -202,7 +203,7 @@ begin
     // As it is
     tkInt64,
     tkInteger,
-    tkFloat: LText := TTextContent.Create(LRes);
+    tkFloat: LText := TTextContent.Create(LResult);
 
     // Dequote
     tkEnumeration,
@@ -211,7 +212,7 @@ begin
     tkString,
     tkLString,
     tkWString,
-    tkUString: LText := TTextContent.Create(LRes.DeQuotedString('"'));
+    tkUString: LText := TTextContent.Create(LResult.DeQuotedString('"'));
 
     // JSON response
     tkSet,
@@ -222,36 +223,30 @@ begin
       var LMCPTool := TRttiUtils.FindAttribute<MCPToolAttribute>(FMethod);
       if Assigned(LMCPTool) and (LMCPTool.Tags.GetValueAs<Boolean>('embedded')) then
       begin
-        LBlob := TEmbeddedResource.Create;
-        LBlob.Resource.MIMEType := 'application/json';
-        LBlob.Resource.URI := '';
-        (LBlob.Resource as TTextResourceContents).Text := LRes;
+        LResText := TEmbeddedResourceText.Create;
+        LResText.Resource.MIMEType := 'application/json';
+        LResText.Resource.URI := '';
+        LResText.Resource.Text := LResult;
       end
       else
       begin
-        LText := TTextContent.Create(LRes);
+        LText := TTextContent.Create(LResult);
       end;
     end;
 
     tkArray, tkDynArray:
     begin
-      if AToolResult.TypeInfo = TypeInfo(TBytes) then
-      begin
-        LBlob := TEmbeddedResource.Create;
-        LBlob.Resource.MIMEType := 'application/octect-stream';
-        (LBlob.Resource as TBlobResourceContents).Blob := LRes;
-      end
-      else
-      begin
-        LBlob := TEmbeddedResource.Create;
-        LBlob.Resource.MIMEType := 'application/json';
-        (LBlob.Resource as TBlobResourceContents).Blob := LRes;
-      end;
+      LResBlob := TEmbeddedResourceBlob.Create;
+      LResBlob.Resource.Blob := LResult;
 
+      if AToolResult.TypeInfo = TypeInfo(TBytes) then
+        LResBlob.Resource.MIMEType := 'application/octect-stream'
+      else
+        LResBlob.Resource.MIMEType := 'application/json';
     end;
 
-    else
-      LText := TTextContent.Create(LRes);
+  else
+    LText := TTextContent.Create(LResult);
   end;
 
   AContentList.Add(LContent);

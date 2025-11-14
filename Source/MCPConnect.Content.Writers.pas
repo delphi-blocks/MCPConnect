@@ -74,7 +74,6 @@ type
   public
     procedure Clear;
     procedure ClearCache;
-    procedure Assign(ARegistry: TMCPWriterRegistry);
 
     function RegisterWriter(AWriterClass: TCustomWriterClass): TMCPWriterRegistry; overload;
     procedure UnregisterWriter(AWriterClass: TCustomWriterClass);
@@ -88,21 +87,10 @@ type
   end;
 
 
-
-
-
 implementation
 
 uses
   Neon.Core.Utils;
-
-procedure TMCPWriterRegistry.Assign(ARegistry: TMCPWriterRegistry);
-var
-  LWriterInfo: TWriterInfo;
-begin
-  {for LWriterInfo in ARegistry.FRegistry do
-    FRegistry.Add(LWriterInfo);}
-end;
 
 constructor TMCPWriterRegistry.Create;
 begin

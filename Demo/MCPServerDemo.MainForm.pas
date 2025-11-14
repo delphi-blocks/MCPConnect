@@ -167,7 +167,7 @@ procedure TForm1.TestInvoke(const AName: string);
 var
   LContent: TBaseContent;
   LText: TTextContent absolute LContent;
-  LBlob: TEmbeddedResource absolute LContent;
+  LBlob: TEmbeddedResourceBlob absolute LContent;
 begin
   var res := TCallToolResult.Create;
   var inv := TMCPObjectInvoker.Create(Self);
@@ -178,8 +178,8 @@ begin
   begin
     if LContent is TTextContent then
       memoLog.Lines.Add(AName + ': ' + LText.Text)
-    else if LContent is TEmbeddedResource then
-      memoLog.Lines.Add(AName + ': ' + (LBlob.Resource as TBlobResourceContents).Blob);
+    else if LContent is TEmbeddedResourceBlob then
+      memoLog.Lines.Add(AName + ': ' + LBlob.Resource.Blob);
 
     memoLog.Lines.Add('----------------------');
   end;

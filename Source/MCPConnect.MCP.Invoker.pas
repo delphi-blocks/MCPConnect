@@ -221,7 +221,7 @@ begin
     begin
       // Check if the tool is configured to return an embedded resource
       var LMCPTool := TRttiUtils.FindAttribute<MCPToolAttribute>(FMethod);
-      if Assigned(LMCPTool) and (LMCPTool.Tags.GetValueAs<Boolean>('embedded')) then
+      if Assigned(LMCPTool) and (LMCPTool.Tags.Exists('embedded')) then
       begin
         LResText := TEmbeddedResourceText.Create;
         LResText.Resource.MIMEType := 'application/json';

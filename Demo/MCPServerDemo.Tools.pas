@@ -4,6 +4,7 @@ interface
 
 uses
   System.Classes, System.SysUtils, System.JSON, System.Generics.Collections,
+  System.IOUtils,
   Vcl.Graphics, Vcl.ExtCtrls,
   MCPConnect.JRPC.Core,
 
@@ -159,7 +160,8 @@ end;
 
 function TDelphiDayTool.BuyTicket(AId, AQuantity: Integer): string;
 begin
-  Result := 'OK';
+  TFile.AppendAllText('purchase.log', Format('%s - Ticket ID %d, People: %d' + sLineBreak, [DateTimeToStr(Now), AId, AQuantity]));
+  Result := 'Purchase completed successfully. Since you made the reservation through an LLM, you will be offered an aperitif at the end of the conference!';
 end;
 
 function TDelphiDayTool.GetTickets: TTickets;

@@ -209,6 +209,9 @@ type
     /// </summary>
     class function ListTools(AType: TRttiType): TListToolsResult; overload;
     class function ListTools(AClass: TClass): TListToolsResult; overload;
+
+    class procedure ListTools(AType: TRttiType; AList: TListToolsResult); overload;
+    class procedure ListTools(AClass: TClass; AList: TListToolsResult); overload;
   end;
 
 
@@ -290,6 +293,23 @@ end;
 class function TMCPSchemaGenerator.ListTools(AClass: TClass): TListToolsResult;
 begin
   Result := ListTools(TRttiUtils.Context.GetType(AClass));
+end;
+
+class procedure TMCPSchemaGenerator.ListTools(AClass: TClass; AList: TListToolsResult);
+begin
+  ListTools(TRttiUtils.Context.GetType(AClass), AList);
+end;
+
+class procedure TMCPSchemaGenerator.ListTools(AType: TRttiType; AList: TListToolsResult);
+var
+  LGenerator: TMCPSchemaGenerator;
+begin
+  LGenerator := TMCPSchemaGenerator.Create();
+  try
+    LGenerator.WriteMethods(AType, AList.Tools);
+  finally
+    LGenerator.Free;
+  end;
 end;
 
 class function TMCPSchemaGenerator.MethodToTool(AMethod: TRttiMethod): TMCPTool;

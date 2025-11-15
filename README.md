@@ -13,7 +13,12 @@
 
 The Model Context Protocol (MCP) is an open standard for connecting large language models (LLMs) to external tools and data.
 
-It enables AI models to go beyond their training data by accessing new information, performing actions, and interacting with tools and databases. 
+It enables AI models to go beyond their training data by accessing new information, performing actions, and interacting with tools and databases.
+
+With MCP servers you can:
+* Provide functionality through `Tools` (used to execute code or otherwise produce a side effect)
+* Expose data through `Resources` (used to load information into the LLM’s context)
+* Define interaction through `Prompts` (reusable templates for LLM interactions)
 
 ## ⚡ Highlights
 
@@ -27,11 +32,28 @@ MCPConnect handles the serialization, routing, and context management required f
 
 -----
 
-## 🚀 Features
+## 🚀 Key Features
 
   * **Attribute-Driven Development:** Simply register classes to automatically discover tools, resources, and prompts using the **`[McpTool], [McpResource], [McpPrompt]`** attributes to expose specific methods.
   * **Standard Code Re-use:** Easily expose existing business logic classes without heavy modification or complex inheritance hierarchies.
   * **Automatic Routing:** The framework automatically scans and registers methods decorated with the appropriate attributes, handling all request routing.
+  * **Easy-to-use** classes for tools, prompts, and resources
+  * **API-Key** authentication for http transport (more to be implemented)
+  * **JSON-RPC** MCPConnect contains an modular JSON-RPC library (`JRPC`) a comprehensive, high-performance **JSON-RPC 2.0** library built specifically for Delphi.
+  
+
+## 📡What is JSON-RPC?
+
+JSON-RPC is a stateless, light-weight remote procedure call (RPC) protocol. Primarily this specification defines several data structures and the rules around their processing. It is transport agnostic in that the concepts can be used within the same process, over sockets, over http, or in many various message passing environments. It uses JSON (RFC 4627) as data format and it is designed to be simple!
+
+### J-RPC for Delphi
+Inside MCPConnect you can find a complete implementation of the JSON-RPC v2.0 protocol that can be used independently of MCPConnect for all types of Delphi projects. This library empowers you to focus purely on your application logic, allowing you to define your remote APIs using simple Delphi class methods and attributes. Whether you are creating a client to consume external RPC services or exposing your own high-performance server methods, **JRPC** makes complex distributed computing simple, declarative, and fast.
+
+The main features of JRPC are:
+
+* **Automatic Marshaling**: Seamless conversion of Delphi objects into JSON-RPC requests and responses.
+* **Broad Delphi types support**: Using Neon, JRPC supports virtually every Delphi type as Request parameters or result
+* **Protocol Compliance**: Full adherence to the JSON-RPC 2.0 specification.
 
 -----
 

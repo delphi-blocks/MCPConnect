@@ -46,15 +46,18 @@ type
   end;
 
   TDelphiDayTool = class
+  private
+    [Context]
+    FGC: IGarbageCollector;
   public
-    [McpTool('get_ticket', 'Get the list of available tickets for the DelphiDay event in Padova')]
+    [McpTool('get_tickets', 'Get the list of available tickets for the DelphiDay event in Padova')]
     function GetTickets: TTickets;
 
     [McpTool('buy_ticket', 'Get the list of available tickets for the DelphiDay event in Padova')]
     function BuyTicket(
       [McpParam('id', 'ID of the ticket to buy')] AId: Integer;
       [McpParam('quantity', 'Number of tickets to buy')] AQuantity: Integer
-    ): string;
+    ): TContentList;
   end;
 
   TTestTool = class
@@ -131,7 +134,7 @@ end;
 
 function TTestTool.GetSplitString(const AValue: string): TContentList;
 begin
-  var LResultBuilder := TToolResultBuilder.New;
+  var LResultBuilder := TToolResultBuilder.CreateInstance;
   var LStrings := AValue.Split([',']);
   for var LString in LStrings do
   begin
@@ -158,24 +161,30 @@ end;
 
 { TDelphiDayTool }
 
-function TDelphiDayTool.BuyTicket(AId, AQuantity: Integer): string;
+function TDelphiDayTool.BuyTicket(AId, AQuantity: Integer): TContentList;
 begin
   TFile.AppendAllText('purchase.log', Format('%s - Ticket ID %d, People: %d' + sLineBreak, [DateTimeToStr(Now), AId, AQuantity]));
-  Result := 'Purchase completed successfully. Since you made the reservation through an LLM, you will be offered an aperitif at the end of the conference!';
+
+  var LResultBuilder := TToolResultBuilder.CreateInstance;
+  LResultBuilder.AddText('Purchase completed successfully. Since you made the reservation through an LLM, you will be offered an aperitif at the end of the conference!');
+
+  var LStream := TFileStream.Create('..\..\ticket.png', fmOpenRead or fmShareDenyWrite);
+  try
+    LResultBuilder.AddImage('image/png', LStream);
+  finally
+    LStream.Free;
+  end;
+
+  Result := LResultBuilder.Build;
 end;
 
 function TDelphiDayTool.GetTickets: TTickets;
 begin
-  var LTikets := TTickets.Create;
-  try
-    LTikets.Add(TTicket.Create(1, 'Conferenza + Seminari', StrToDate('19/11/2025'), 179.0, ''));
-    LTikets.Add(TTicket.Create(2, 'Solo Conferenza', StrToDate('19/11/2025'), 0, ''));
-    LTikets.Add(TTicket.Create(3, 'Young ticket', StrToDate('19/11/2025'), 69.0, ''));
-    //Result := TNeon.ObjectToJSONString(LTikets);
-  finally
-    //LTikets.Free;
-  end;
-  Result := LTikets;
+  Result := TTickets.Create;
+  FGC.Add(Result);
+  Result.Add(TTicket.Create(1, 'Conferenza + Seminari', StrToDate('19/11/2025'), 179.0, ''));
+  Result.Add(TTicket.Create(2, 'Solo Conferenza', StrToDate('19/11/2025'), 0, ''));
+  Result.Add(TTicket.Create(3, 'Young ticket', StrToDate('19/11/2025'), 69.0, ''));
 end;
 
 { TTicket }

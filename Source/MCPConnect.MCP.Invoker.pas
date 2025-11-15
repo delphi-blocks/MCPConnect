@@ -23,6 +23,8 @@ uses
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
 
+  MCPConnect.Core.Utils,
+
   MCPConnect.JRPC.Core,
   MCPConnect.Configuration.Core,
   MCPConnect.Configuration.MCP,
@@ -64,6 +66,8 @@ type
   private
     //[Context] FContext: TJRPCContext;
     [Context] FConfig: TMCPConfig;
+    [Context] FGarbageCollector: IGarbageCollector;
+
   private
     FInstance: TObject;
     FMethod: TRttiMethod;
@@ -80,8 +84,7 @@ type
 implementation
 
 uses
-  MCPConnect.Content.Writers,
-  MCPConnect.Core.Utils;
+  MCPConnect.Content.Writers;
 
 { TMCPObjectInvoker }
 
@@ -145,13 +148,11 @@ function TMCPMethodInvoker.Invoke(const AName: string; AArguments,
 var
   LArgs: TArray<TValue>;
   LResult: TValue;
-  LGarbageCollector: IGarbageCollector;
 begin
   Result := True;
-  LGarbageCollector := TGarbageCollector.CreateInstance;
   LArgs := ArgumentsToRttiParams(AArguments);
   try
-    LGarbageCollector.Add(LArgs);
+    FGarbageCollector.Add(LArgs);
     LResult := FMethod.Invoke(FInstance, LArgs);
     try
       // If the result is already a TContentList just assign it
@@ -165,7 +166,7 @@ begin
         ResultToContents(LResult, AResult.Content);
     finally
       if LResult.IsObject then
-        LResult.AsObject.Free;
+        FGarbageCollector.Add(LResult.AsObject);
     end;
   except
     on E: Exception do

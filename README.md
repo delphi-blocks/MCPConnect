@@ -242,14 +242,36 @@ If the connection is successful, you should see your server's capabilities liste
 
 After saving the configuration, restart Claude Desktop to load the MCP server connection.
 
----
+-----
 
-### 📝 Notes
+## Testing
 
-- **Security:** Never commit configuration files with real authentication tokens to version control
-- **Development:** For local development, you can omit authentication headers
-- **Production:** Always use HTTPS and secure authentication tokens in production environments
-- **Multiple Servers:** You can configure multiple MCP servers by adding additional entries under `mcpServers`
+MCPConnect servers can be tested using different approaches, depending on your testing needs and preferences.
+
+### Low-Level Testing with HTTP Clients
+
+For low-level protocol testing, you can use standard HTTP clients like **Bruno** or **Postman** to send JSON-RPC requests directly to your MCP server endpoint.
+
+**Example test files for Bruno** are already available in the `demo/api` directory of this repository. These files demonstrate how to structure JSON-RPC calls for testing various MCP operations.
+
+### Testing with MCPJam Inspector
+
+For a more specialized testing experience, you can use **MCPJam Inspector**, a tool specifically designed for testing and debugging MCP servers. MCPJam provides a web-based interface that makes it easy to explore your server's capabilities and test its tools interactively.
+
+#### Quick Start with MCPJam
+
+To launch MCPJam Inspector, simply run:
+
+```bash
+npx @mcpjam/inspector@latest
+```
+
+This command will:
+1. Download the latest version of MCPJam Inspector
+2. Start the local server
+3. Open a web interface where you can add and test your MCP server
+
+From the web interface, you can add your Delphi MCP server by providing its endpoint URL (e.g., `http://localhost:8080/mcp`) and start testing your tools immediately.
 
 -----
 

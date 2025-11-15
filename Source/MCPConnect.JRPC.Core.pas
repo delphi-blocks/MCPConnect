@@ -267,12 +267,15 @@ type
     constructor Create;
     destructor Destroy; override;
 
-    procedure AddContent(AObject: TObject);
+    procedure AddContent(AObject: TObject); overload;
+    procedure AddContent(AInterface: IInterface); overload;
 
     function GetContextDataAs<T: class>: T; overload;
     function GetContextDataAs(AClass: TClass): TObject; overload;
+    function GetContextDataAs(AInterface: TGUID): IInterface; overload;
     function FindContextDataAs<T: class>: T; overload;
     function FindContextDataAs(AClass: TClass): TObject; overload;
+    function FindContextDataAs(AInterface: TGUID): IInterface; overload;
 
     procedure Inject(AObject: TObject); overload;
     procedure Inject(AInterface: IInterface); overload;
@@ -893,6 +896,11 @@ begin
   end;
 end;
 
+procedure TJRPCContext.AddContent(AInterface: IInterface);
+begin
+  AddContent(AInterface as TObject);
+end;
+
 constructor TJRPCContext.Create;
 begin
   inherited Create;
@@ -912,6 +920,18 @@ begin
     Result := nil;
 end;
 
+function TJRPCContext.FindContextDataAs(AInterface: TGUID): IInterface;
+var
+  LObject: TObject;
+begin
+  Result := nil;
+  for LObject in FContextData.Values do
+  begin
+    if Supports(LObject, AInterface, Result) then
+      Exit;
+  end;
+end;
+
 function TJRPCContext.FindContextDataAs<T>: T;
 begin
   Result := FindContextDataAs(TClass(T)) as T;
@@ -922,6 +942,13 @@ begin
   Result := FindContextDataAs(AClass);
   if not Assigned(Result) then
     raise EJSONRPCException.CreateFmt('Context: object "%s" not found', [AClass.ClassName]);
+end;
+
+function TJRPCContext.GetContextDataAs(AInterface: TGUID): IInterface;
+begin
+  Result := FindContextDataAs(AInterface);
+  if not Assigned(Result) then
+    raise EJSONRPCException.CreateFmt('Context: interface "%s" not found', [AInterface.ToString]);
 end;
 
 function TJRPCContext.GetContextDataAs<T>: T;
@@ -960,12 +987,20 @@ begin
     var
       LValue: TValue;
     begin
-      if not (AField.FieldType is TRttiInstanceType) then
-        raise EJSONRPCException.Create('Context variables should be an object');
-
-      LValue := GetContextDataAs(TRttiInstanceType(AField.FieldType).MetaclassType);
-      AField.SetValue(AObject, LValue);
-      Result := True;
+      if AField.FieldType is TRttiInstanceType then
+      begin
+        LValue := GetContextDataAs(TRttiInstanceType(AField.FieldType).MetaclassType);
+        AField.SetValue(AObject, LValue);
+        Result := True;
+      end
+      else if AField.FieldType is TRttiInterfaceType then
+      begin
+        LValue := GetContextDataAs(TRttiInterfaceType(AField.FieldType).GUID) as TObject;
+        AField.SetValue(AObject, LValue);
+        Result := True;
+      end
+      else
+        raise EJSONRPCException.Create('Context variables should be an object or interface');
     end);
 end;
 

@@ -268,6 +268,7 @@ begin
   Configure(AContext);
 
   LGarbageCollector := TGarbageCollector.CreateInstance;
+  AContext.AddContent(LGarbageCollector);
   LArgs := RequestToRttiParams(ARequest);
   try
     LGarbageCollector.Add(LArgs);
@@ -277,7 +278,7 @@ begin
       AResponse.Result := RttiResultToResponse(LResult);
     finally
       if LResult.IsObject then
-        LResult.AsObject.Free;
+        LGarbageCollector.Add(LResult.AsObject);
     end;
   except
     on E: EJRPCInvokerError do

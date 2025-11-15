@@ -512,7 +512,7 @@ type
   private
     FContents: TContentList;
   public
-    class function New: IToolResultBuilder;
+    class function CreateInstance: IToolResultBuilder; static;
   public
     constructor Create;
     destructor Destroy; override;
@@ -787,13 +787,14 @@ end;
 
 function TToolResultBuilder.AddBlob(const AMime: string; ABlob: TStream): IToolResultBuilder;
 var
-  LResource: TEmbeddedResourceBlob;
   LBlob: TBlobResourceContents;
+  LContent: TEmbeddedResourceBlob;
 begin
-  LResource := TEmbeddedResourceBlob.Create;
-  LBlob := LResource.Resource as TBlobResourceContents;
+  LContent := TEmbeddedResourceBlob.Create;
+  LBlob := LContent.Resource as TBlobResourceContents;
   LBlob.MIMEType := AMime;
-  LBlob.Blob := LResource.DataFromStream(ABlob);
+  LBlob.Blob := LContent.DataFromStream(ABlob);
+  FContents.Add(LContent);
   Result := Self;
 end;
 
@@ -814,6 +815,7 @@ begin
   LResource.URI := AURI;
   LResource.MIMEType := AMime;
   LResource.Description := ADescription;
+  FContents.Add(LResource);
   Result := Self;
 end;
 
@@ -842,7 +844,7 @@ begin
   inherited;
 end;
 
-class function TToolResultBuilder.New: IToolResultBuilder;
+class function TToolResultBuilder.CreateInstance: IToolResultBuilder;
 begin
   Result := TToolResultBuilder.Create;
 end;

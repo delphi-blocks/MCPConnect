@@ -87,6 +87,7 @@ begin
     try
       LInvoker := TMCPObjectInvoker.Create(LTool);
       Context.Inject(LInvoker);
+      Context.Inject(LTool);
       if not LInvoker.Invoke(AName, AArguments, Meta, Result) then
         raise Exception.CreateFmt('Tool "%s" non found', [AName]);
     finally

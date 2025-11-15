@@ -39,8 +39,16 @@ type
   /// Parameters for CallToolRequest
   /// </summary>
   TCallToolParams = class(TMetaClass)
-    [NeonProperty('name')] Name: string;
-    [NeonProperty('arguments'), NeonInclude(IncludeIf.NotEmpty)] Arguments: TJSONObject;
+
+    /// <summary>
+    ///   Name for the params
+    /// </summary>
+    Name: string;
+
+    /// <summary>
+    ///   Arguments for the tool
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)] Arguments: TJSONObject;
   public
     constructor Create;
     destructor Destroy; override;
@@ -50,30 +58,31 @@ type
   /// Optional properties describing tool behavior
   /// </summary>
   TToolAnnotation = class
+
     /// <summary>
     /// Human-readable title for the tool
     /// </summary>
-    [NeonProperty('title')] Title: Nullable<string>;
+    Title: Nullable<string>;
 
     /// <summary>
     /// If true, the tool does not modify its environment
     /// </summary>
-    [NeonProperty('readOnlyHint')] ReadOnlyHint: Nullable<Boolean>;
+    ReadOnlyHint: Nullable<Boolean>;
 
     /// <summary>
     /// If true, the tool may perform destructive updates
     /// </summary>
-    [NeonProperty('destructiveHint')] DestructiveHint: Nullable<Boolean>;
+    DestructiveHint: Nullable<Boolean>;
 
     /// <summary>
     /// If true, repeated calls with same args have no additional effect
     /// </summary>
-    [NeonProperty('idempotentHint')] IdempotentHint: Nullable<Boolean>;
+    IdempotentHint: Nullable<Boolean>;
 
     /// <summary>
     /// If true, tool interacts with external entities
     /// </summary>
-    [NeonProperty('openWorldHint')] OpenWorldHint: Nullable<Boolean>;
+    OpenWorldHint: Nullable<Boolean>;
   end;
 
   /// <summary>
@@ -84,27 +93,27 @@ type
     /// <summary>
     /// The name of the tool
     /// </summary>
-    [NeonProperty('name')] Name: string;
+    Name: string;
 
     /// <summary>
     /// A human-readable description of the tool
     /// </summary>
-    [NeonProperty('description')] Description: Nullable<string>;
+    Description: Nullable<string>;
 
     /// <summary>
     /// A JSON Schema object defining the expected parameters for the tool
     /// </summary>
-    [NeonProperty('inputSchema')] InputSchema: TJSONObject;
+    InputSchema: TJSONObject;
 
     /// <summary>
     /// A JSON Schema object defining the expected parameters for the tool
     /// </summary>
-    [NeonProperty('outputSchema'), NeonInclude(IncludeIf.NotEmpty)] OutputSchema: TJSONObject;
+    [NeonInclude(IncludeIf.NotEmpty)] OutputSchema: TJSONObject;
 
     /// <summary>
     /// Optional properties describing tool behavior
     /// </summary>
-    [NeonProperty('annotations'), NeonInclude(IncludeIf.NotEmpty)] Annotations: TToolAnnotation;
+    [NeonInclude(IncludeIf.NotEmpty)] Annotations: TToolAnnotation;
   public
     constructor Create;
     destructor Destroy; override;
@@ -117,12 +126,16 @@ type
 
   TListToolsResult = class(TMetaClass)
   public
-    [NeonProperty('tools')] Tools: TMCPTools;
 
     /// <summary>
-    /// An opaque token representing the pagination position after the last returned result. If present, there may be more results available
+    ///   Tool list
     /// </summary>
-    [NeonProperty('nextCursor')] NextCursor: Nullable<string>;
+    Tools: TMCPTools;
+
+    /// <summary>
+    ///   An opaque token representing the pagination position after the last returned result. If present, there may be more results available
+    /// </summary>
+    NextCursor: NullString;
   public
     constructor Create;
     destructor Destroy; override;
@@ -141,7 +154,7 @@ type
    ///   Can be TextContent, ImageContent, AudioContent, ResourceLink, or
    ///   EmbeddedResource
    /// </summary>
-	  [NeonProperty('content')] Content: TContentList;
+	  Content: TContentList;
 
     /// <summary>
     ///   Structured content returned as a JSON object in the structuredContent
@@ -149,7 +162,7 @@ type
     ///   structured content SHOULD also return functionally equivalent
     ///   unstructured content.
     /// </summary>
-    [NeonIgnore] StructuredContent: TJSONObject;
+    [NeonInclude(IncludeIf.NotEmpty)] StructuredContent: TJSONObject;
 
     /// <summary>
     ///   Whether the tool call ended in an error. If not set, this is assumed

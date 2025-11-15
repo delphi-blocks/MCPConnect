@@ -27,50 +27,6 @@ uses
   Neon.Core.Persistence.JSON,
   Neon.Core.Serializers.RTL;
 
-const
-  // Initiates connection and negotiates protocol capabilities.
-  MethodInitialize = 'initialize';
-
-  // Verifies connection liveness between client and server.
-  MethodPing = 'ping';
-
-  // Lists all available server resources.
-  MethodResourcesList = 'resources/list';
-
-  // Provides URI templates for constructing resource URIs.
-  MethodResourcesTemplatesList = 'resources/templates/list';
-
-  // Retrieves content of a specific resource by URI.
-  MethodResourcesRead = 'resources/read';
-
-  // Lists all available prompt templates.
-  MethodPromptsList = 'prompts/list';
-
-  // Retrieves a specific prompt template with filled parameters.
-  MethodPromptsGet = 'prompts/get';
-
-  // Lists all available executable tools.
-  MethodToolsList = 'tools/list';
-
-  // Invokes a specific tool with provided parameters.
-  MethodToolsCall = 'tools/call';
-
-  // Configures the minimum log level for client
-  MethodSetLogLevel = 'logging/setLevel';
-
-  // Notifies when the list of available resources changes.
-  MethodNotificationResourcesListChanged = 'notifications/resources/list_changed';
-
-  // Notifies when the resources are updated.
-  MethodNotificationResourceUpdated = 'notifications/resources/updated';
-
-  // Notifies when the list of available prompt templates changes.
-  MethodNotificationPromptsListChanged = 'notifications/prompts/list_changed';
-
-  // Notifies when the list of available tools changes.
-  MethodNotificationToolsListChanged = 'notifications/tools/list_changed';
-
-
 type
   TAnyMap = class(TDictionary<string, TValue>);
 
@@ -80,6 +36,7 @@ type
   end;
 
   TMetaClass = class
+
     /// <summary>
     /// Meta is a metadata object that is reserved by MCP for storing additional information
     /// </summary>
@@ -93,74 +50,93 @@ type
   end;
 
   TPaginatedParams = record
-    // An opaque token representing the current pagination position.
-    // If provided, the server should return results starting after this cursor.
-    [NeonProperty('cursor')] Cursor: NullString;
+
+    /// <summary>
+    ///   An opaque token representing the current pagination position. If provided, the server
+    ///   should return results starting after this cursor.
+    /// </summary>
+    Cursor: NullString;
   end;
 
-  // Optional annotations for the client.
-  // The client can use annotations to inform how objects are used or displayed
+  /// <summary>
+  ///   Optional annotations for the client. The client can use annotations to inform how objects
+  ///   are used or displayed <br />
+  /// </summary>
   TAnnotations = class
-    // Describes who the intended customer of this object or data is.
-    //
-    // It can include multiple entries to indicate content useful for multiple
-    // audiences (e.g., `["user", "assistant"]`).
+
+    /// <summary>
+    ///   Describes who the intended customer of this object or data is.
+    /// </summary>
+    /// <remarks>
+    ///   It can include multiple entries to indicate content useful for multiple audiences (e.g.,
+    ///   `["user", "assistant"]`).
+    /// </remarks>
     [NeonInclude(IncludeIf.NotEmpty)] Audience: TArray<string>;
 
-    // Describes how important this data is for operating the server.
-    //
-    // A value of 1 means "most important," and indicates that the data is
-    // effectively required, while 0 means "least important," and indicates that
-    // the data is entirely optional.
+    // Examples: last activity timestamp in an open file, timestamp when the resource was attached, etc.
+    /// <summary>
+    ///   The moment the resource was last modified, as an ISO 8601 formatted string.
+    /// </summary>
+    /// <example>
+    ///   Last activity timestamp in an open file, timestamp when the resource was attached, etc.
+    /// </example>
+    [NeonInclude(IncludeIf.NotEmpty)] LastModified: TDateTime;
 
+    /// <summary>
+    ///   Describes how important this data is for operating the server. A value of 1 means "most
+    ///   important," and indicates that the data is effectively required, while 0 means "least
+    ///   important," and indicates that the data is entirely optional.
+    /// </summary>
     [NeonInclude(IncludeIf.NotDefault)] Priority: Currency;
   end;
 
 
   /// <summary>
-  /// TImplementation describes the name and version of an MCP implementation.
+  ///   TImplementation describes the name and version of an MCP implementation.
   /// </summary>
   TImplementation = class
-    /// <summary>
-    /// Name is the name of the implementation.
-    /// </summary>
-    [NeonProperty('name')] Name: string;
 
     /// <summary>
-    /// Version is the version of the implementation.
+    ///   Name is the name of the implementation.
     /// </summary>
-    [NeonProperty('version')] Version: string;
+    Name: string;
+
+    /// <summary>
+    ///   Version is the version of the implementation.
+    /// </summary>
+    Version: string;
   end;
 
   /// <summary>
-  /// TRootsCapability is present if the client supports listing roots.
+  ///   TRootsCapability is present if the client supports listing roots.
   /// </summary>
   TRootsCapability = record
+
     /// <summary>
-    /// Whether the client supports notifications for changes to the roots list.
+    ///   Whether the client supports notifications for changes to the roots list.
     /// </summary>
-    [NeonProperty('listChanged'), NeonInclude(IncludeIf.NotEmpty)] ListChanged: NullBoolean;
+    ListChanged: NullBoolean;
   end;
 
   /// <summary>
-  /// TClientCapabilities represents capabilities a client may support.
+  ///   TClientCapabilities represents capabilities a client may support.
   /// </summary>
   TClientCapabilities = class
 
     /// <summary>
-    /// Experimental, non-standard capabilities that the client supports.
+    ///   Experimental, non-standard capabilities that the client supports.
     /// </summary>
     [NeonProperty('experimental'), NeonInclude(IncludeIf.NotEmpty)] &Experimental: TJSONObject;
 
     /// <summary>
-    /// Present if the client supports listing roots.
+    ///   Present if the client supports listing roots.
     /// </summary>
-    [NeonProperty('roots'), NeonInclude(IncludeIf.NotEmpty)] Roots: TRootsCapability;
+    [NeonInclude(IncludeIf.NotEmpty)] Roots: TRootsCapability;
 
     /// <summary>
-    /// Present if the client supports sampling from an LLM.
+    ///   Present if the client supports sampling from an LLM.
     /// </summary>
-    [NeonProperty('sampling'), NeonInclude(IncludeIf.NotEmpty)] Sampling: TJSONObject;
+    [NeonInclude(IncludeIf.NotEmpty)] Sampling: TJSONObject;
 
   public
     constructor Create;
@@ -169,74 +145,78 @@ type
 
 
   /// <summary>
-  /// TServerCapabilities represents capabilities that a server may support.
+  /// T  ServerCapabilities represents capabilities that a server may support.
   /// </summary>
   TServerCapabilities = class
 
     /// <summary>
-    /// TPromptsCapability is present if the server offers any prompt templates.
+    /// T  PromptsCapability is present if the server offers any prompt templates.
     /// </summary>
     public type TPromptsCapability = record
+
       /// <summary>
-      /// Whether this server supports notifications for changes to the prompt list.
+      ///   Whether this server supports notifications for changes to the prompt list.
       /// </summary>
-      [NeonProperty('listChanged'), NeonInclude(IncludeIf.NotEmpty)] ListChanged: NullBoolean;
+      ListChanged: NullBoolean;
     end;
 
     /// <summary>
     /// TResourcesCapability is present if the server offers any resources to read.
     /// </summary>
     public type TResourcesCapability = record
-      /// <summary>
-      /// Whether this server supports subscribing to resource updates.
-      /// </summary>
-      [NeonProperty('subscribe'), NeonInclude(IncludeIf.NotEmpty)] Subscribe: NullBoolean;
 
       /// <summary>
-      /// Whether this server supports notifications for changes to the resource list.
+      ///   Whether this server supports subscribing to resource updates.
       /// </summary>
-      [NeonProperty('listChanged'), NeonInclude(IncludeIf.NotEmpty)] ListChanged: NullBoolean;
+      Subscribe: NullBoolean;
+
+      /// <summary>
+      ///   Whether this server supports notifications for changes to the resource list.
+      /// </summary>
+      ListChanged: NullBoolean;
     end;
 
     /// <summary>
     /// TToolsCapability is present if the server offers any tools to call.
     /// </summary>
     public type TToolsCapability = record
+
       /// <summary>
-      /// Whether this server supports notifications for changes to the tool list.
+      ///   Whether this server supports notifications for changes to the tool list.
       /// </summary>
-      [NeonProperty('listChanged'), NeonInclude(IncludeIf.NotEmpty)] ListChanged: NullBoolean;
+      ListChanged: NullBoolean;
     end;
   public
+
     /// <summary>
-    /// Experimental, non-standard capabilities that the server supports.
+    ///   Experimental, non-standard capabilities that the server supports.
     /// </summary>
     [NeonProperty('experimental'), NeonInclude(IncludeIf.NotEmpty)] &Experimental: TJSONObject;
 
     /// <summary>
-    /// Present if the server supports sending log messages to the client.
+    ///   Present if the server supports sending log messages to the client.
     /// </summary>
-    [NeonProperty('logging'), NeonInclude(IncludeIf.NotEmpty)] Logging: TJSONObject;
+    [NeonInclude(IncludeIf.NotEmpty)] Logging: TJSONObject;
 
     /// <summary>
-    /// Present if the server offers any prompt templates.
+    ///   Present if the server offers any prompt templates.
     /// </summary>
-    [NeonProperty('prompts'), NeonInclude(IncludeIf.NotEmpty)] Prompts: TPromptsCapability;
+    [NeonInclude(IncludeIf.NotEmpty)] Prompts: TPromptsCapability;
 
     /// <summary>
-    /// Present if the server offers any resources to read.
+    ///   Present if the server offers any resources to read.
     /// </summary>
-    [NeonProperty('resources'), NeonInclude(IncludeIf.NotEmpty)] Resources: TResourcesCapability;
+    [NeonInclude(IncludeIf.NotEmpty)] Resources: TResourcesCapability;
 
     /// <summary>
-    /// Present if the server supports sending sampling requests to clients.
+    ///   Present if the server supports sending sampling requests to clients.
     /// </summary>
-    [NeonProperty('sampling'), NeonInclude(IncludeIf.NotEmpty)] Sampling: TJSONObject;
+    [NeonInclude(IncludeIf.NotEmpty)] Sampling: TJSONObject;
 
     /// <summary>
-    /// Present if the server offers any tools to call.
+    ///   Present if the server offers any tools to call.
     /// </summary>
-    [NeonProperty('tools'), NeonInclude(IncludeIf.NotEmpty)] Tools: TToolsCapability;
+    [NeonInclude(IncludeIf.NotEmpty)] Tools: TToolsCapability;
 
   public
     constructor Create;
@@ -244,23 +224,24 @@ type
   end;
 
   /// <summary>
-  /// TInitializeParams is sent from the client to the server when it first connects.
+  ///   TInitializeParams is sent from the client to the server when it first connects.
   /// </summary>
   TInitializeParams = class
-    /// <summary>
-    /// The latest version of the Model Context Protocol that the client supports.
-    /// </summary>
-    [NeonProperty('protocolVersion')] ProtocolVersion: string;
 
     /// <summary>
-    /// Client capabilities.
+    /// T  he latest version of the Model Context Protocol that the client supports.
     /// </summary>
-    [NeonProperty('capabilities')] Capabilities: TClientCapabilities;
+    ProtocolVersion: string;
 
     /// <summary>
-    /// Client implementation information.
+    ///   Client capabilities.
     /// </summary>
-    [NeonProperty('clientInfo')] ClientInfo: TImplementation;
+    Capabilities: TClientCapabilities;
+
+    /// <summary>
+    ///   Client implementation information.
+    /// </summary>
+    ClientInfo: TImplementation;
 
   public
     constructor Create;
@@ -268,30 +249,30 @@ type
   end;
 
   /// <summary>
-  /// TInitializeResult is sent after receiving an initialize request from the
-  /// client.
+  ///   TInitializeResult is sent after receiving an initialize request from the
+  ///   client.
   /// </summary>
   TInitializeResult = class
-    // Parent "Result" type is not defined in the source, assuming it contains no serialized fields.
-    /// <summary>
-    /// The version of the Model Context Protocol that the server wants to use.
-    /// </summary>
-    [NeonProperty('protocolVersion')] ProtocolVersion: string;
 
     /// <summary>
-    /// Server capabilities.
+    ///   The version of the Model Context Protocol that the server wants to use.
     /// </summary>
-    [NeonProperty('capabilities')] Capabilities: TServerCapabilities;
+    ProtocolVersion: string;
 
     /// <summary>
-    /// Server implementation information.
+    ///   Server capabilities.
     /// </summary>
-    [NeonProperty('serverInfo')] ServerInfo: TImplementation;
+    Capabilities: TServerCapabilities;
 
     /// <summary>
-    /// Instructions describing how to use the server and its features.
+    ///   Server implementation information.
     /// </summary>
-    [NeonProperty('instructions'), NeonInclude(IncludeIf.NotEmpty)] Instructions: NullString;
+    ServerInfo: TImplementation;
+
+    /// <summary>
+    ///   Instructions describing how to use the server and its features.
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)] Instructions: NullString;
 
   public
     constructor Create;
@@ -301,29 +282,29 @@ type
   end;
 
   /// <summary>
-  /// TInitializedNotification is sent from the client to the server after
-  /// initialization has finished.
+  ///   TInitializedNotification is sent from the client to the server after
+  ///   initialization has finished.
   /// </summary>
   TInitializedNotificationParams = class(TMetaClass)
   end;
 
   /// <summary>
-  /// When a party wants to cancel an in-progress request, it sends a notifications/cancelled
-  /// * The ID of the request to cancel
-  /// * An optional reason string that can be logged or displayed
+  ///   To cancel an in-progress request, send a notifications/cancelled:<br />
+  ///   *The ID of the request to cancel <br />
+  ///   *An optional reason string that can be logged or displayed
   /// </summary>
   TCancelledNotificationParams = class
 
     /// <summary>
     ///   A uniquely identifying ID for a request in JSON-RPC.
     /// </summary>
-    [NeonProperty('requestId')] RequestId: Integer;
+    RequestId: Integer;
 
     /// <summary>
     ///   An optional string describing the reason for the cancellation. This MAY be logged or
     ///   presented to the user.
     /// </summary>
-    [NeonProperty('reason')] Reason: NullString;
+    Reason: NullString;
   end;
 
   { ************ Contents ************ }
@@ -333,7 +314,16 @@ type
   /// </summary>
   TBaseContent = class(TMetaClass)
   public
-    [NeonProperty('annotations'), NeonInclude(IncludeIf.NotEmpty)] Annotations: TAnnotations;
+
+    /// <summary>
+    ///   Optional annotations for the client. The client can use annotations to inform how objects
+    ///   are used or displayed
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)] Annotations: TAnnotations;
+
+    /// <summary>
+    ///   Content type: can be text, image, audio, etc...
+    /// </summary>
     [NeonProperty('type')] &Type: string;
   public
     constructor Create;
@@ -347,8 +337,12 @@ type
   /// </summary>
   TTextContent = class(TBaseContent)
   public
-    [NeonProperty('text')] Text: string;
 
+    /// <summary>
+    ///   The text content of the message.
+    /// </summary>
+    Text: string;
+  public
     constructor Create(const AText: string = ''); overload;
   end;
 
@@ -357,8 +351,19 @@ type
   /// </summary>
   TImageContent = class(TBaseContent)
   public
-    [NeonProperty('data')] Data: string;
-    [NeonProperty('mimeType')] MIMEType: string;
+
+    /// <summary>
+    ///   The base64-encoded image data.
+    /// </summary>
+    /// <value>
+    ///   Format: byte
+    /// </value>
+    Data: string;
+
+    /// <summary>
+    ///   The MIME type of the image. Different providers may support different image types.
+    /// </summary>
+    MimeType: string;
 
     constructor Create; overload;
   end;
@@ -368,9 +373,21 @@ type
   /// </summary>
   TAudioContent = class(TBaseContent)
   public
-    [NeonProperty('data')] Data: string;
-    [NeonProperty('mimeType')] MIMEType: string;
 
+    /// <summary>
+    ///   The base64-encoded audio data.
+    /// </summary>
+    /// <value>
+    ///   Format: byte
+    /// </value>
+    Data: string;
+
+    /// <summary>
+    ///   The MIME type of the audio. Different providers may support different audio types.
+    /// </summary>
+    MimeType: string;
+
+  public
     constructor Create;
   end;
 
@@ -383,10 +400,47 @@ type
   /// </remarks>
   TResourceLink = class(TBaseContent)
   public
-    [NeonProperty('uri')] URI: string;
-    [NeonProperty('name')] Name: string;
-    [NeonProperty('description')] Description: string;
-    [NeonProperty('mimeType')] MIMEType: string;
+
+    /// <summary>
+    ///   The URI of this resource.
+    /// </summary>
+    /// <value>
+    ///   Format: uri
+    /// </value>
+    Uri: string;
+
+    /// <summary>
+    ///   Intended for programmatic or logical use, but used as a display name in past specs or
+    ///   fallback (if title isn't present).
+    /// </summary>
+    Name: string;
+
+    /// <summary>
+    ///   The size of the raw resource content, in bytes (i.e., before base64 encoding or any
+    ///   tokenization), if known.
+    /// </summary>
+    /// <remarks>
+    ///   This can be used by Hosts to display file sizes and estimate context window usage.
+    /// </remarks>
+    [NeonInclude(IncludeIf.NotEmpty)] Size: Integer;
+
+    /// <summary>
+    ///   A description of what this resource represents. This can be used by clients to improve the
+    ///   LLM's understanding of available resources. It can be thought of like a "hint" to the
+    ///   model.
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)] Description: string;
+
+    /// <summary>
+    ///   Intended for UI and end-user contexts — optimized to be human-readable and easily
+    ///   understood, even by those unfamiliar with domain-specific terminology.
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)] Title: string;
+
+    /// <summary>
+    ///   The MIME type of this resource, if known.
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)] MimeType: string;
 
     constructor Create;
   end;
@@ -396,15 +450,16 @@ type
   /// </summary>
   TResourceContents = class(TMetaClass)
   public
+
     /// <summary>
     /// The URI of this resource.
     /// </summary>
-    [NeonProperty('uri')] URI: string;
+    Uri: string;
 
     /// <summary>
     /// The MIME type of this resource, if known.
     /// </summary>
-    [NeonProperty('mimeType')] MimeType: NullString;
+    MimeType: NullString;
   end;
 
   /// <summary>
@@ -412,11 +467,14 @@ type
   /// </summary>
   TTextResourceContents = class(TResourceContents)
   public
+
     /// <summary>
-    /// The text of the item.
+    ///   The text of the item.
     /// </summary>
-    /// <remarks>This must only be set if the item can actually be represented as text (not binary data).</remarks>
-    [NeonProperty('text')] Text: string;
+    /// <remarks>
+    ///   This must only be set if the item can actually be represented as text (not binary data).
+    /// </remarks>
+    Text: string;
   end;
 
   /// <summary>
@@ -424,10 +482,14 @@ type
   /// </summary>
   TBlobResourceContents = class(TResourceContents)
   public
+
     /// <summary>
-    /// A base64-encoded string representing the binary data of the item.
+    ///   A base64-encoded string representing the binary data of the item.
     /// </summary>
-    [NeonProperty('blob')] Blob: string;
+    /// <value>
+    ///   Format: byte
+    /// </value>
+    Blob: string;
   end;
 
   /// <summary>
@@ -439,7 +501,11 @@ type
   /// </remarks>
   TEmbeddedResourceBlob = class(TBaseContent)
   public
-    [NeonProperty('resource')] Resource: TBlobResourceContents;
+
+    /// <summary>
+    ///   The embedded (blob) resource
+    /// </summary>
+    Resource: TBlobResourceContents;
   public
     constructor Create;
     destructor Destroy; override;
@@ -454,7 +520,11 @@ type
   /// </remarks>
   TEmbeddedResourceText = class(TBaseContent)
   public
-    [NeonProperty('resource')] Resource: TTextResourceContents;
+
+    /// <summary>
+    ///   The embedded (blob) resource
+    /// </summary>
+    Resource: TTextResourceContents;
   public
     constructor Create;
     destructor Destroy; override;
@@ -476,7 +546,7 @@ type
    ///   Can be TextContent, ImageContent, AudioContent, ResourceLink, or
    ///   EmbeddedResource
    /// </summary>
-	  [NeonProperty('content')] Content: TBaseContent;
+   Content: TBaseContent;
 
   public
     constructor Create;
@@ -520,7 +590,7 @@ type
     function AddText(const AText: string): IToolResultBuilder;
     function AddImage(const AMime: string; AImage: TStream): IToolResultBuilder;
     function AddAudio(const AMime: string; AAudio: TStream): IToolResultBuilder;
-    function AddLink(const AMime, AURI, ADescription: string): IToolResultBuilder;
+    function AddLink(const AMime, AUri, ADescription: string): IToolResultBuilder;
     function AddBlob(const AMime: string; ABlob: TStream): IToolResultBuilder;
 
     function Build(): TContentList;
@@ -780,7 +850,7 @@ var
 begin
   LContent := TAudioContent.Create;
   LContent.Data := LContent.DataFromStream(AAudio);
-  LContent.MIMEType := AMime;
+  LContent.MimeType := AMime;
   FContents.Add(LContent);
   Result := Self;
 end;
@@ -792,7 +862,7 @@ var
 begin
   LContent := TEmbeddedResourceBlob.Create;
   LBlob := LContent.Resource as TBlobResourceContents;
-  LBlob.MIMEType := AMime;
+  LBlob.MimeType := AMime;
   LBlob.Blob := LContent.DataFromStream(ABlob);
   FContents.Add(LContent);
   Result := Self;
@@ -804,16 +874,16 @@ var
 begin
   LContent := TImageContent.Create;
   LContent.Data := LContent.DataFromStream(AImage);
-  LContent.MIMEType := AMime;
+  LContent.MimeType := AMime;
   FContents.Add(LContent);
   Result := Self;
 end;
 
-function TToolResultBuilder.AddLink(const AMime, AURI, ADescription: string): IToolResultBuilder;
+function TToolResultBuilder.AddLink(const AMime, AUri, ADescription: string): IToolResultBuilder;
 begin
   var LResource := TResourceLink.Create;
-  LResource.URI := AURI;
-  LResource.MIMEType := AMime;
+  LResource.URI := AUri;
+  LResource.MimeType := AMime;
   LResource.Description := ADescription;
   FContents.Add(LResource);
   Result := Self;

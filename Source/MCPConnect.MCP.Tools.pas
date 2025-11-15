@@ -278,12 +278,7 @@ var
 begin
   Result := TListToolsResult.Create;
   try
-    LGenerator := TMCPSchemaGenerator.Create();
-    try
-      LGenerator.WriteMethods(AType, Result.Tools);
-    finally
-      LGenerator.Free;
-    end;
+    ListTools(AType, Result);
   except
     Result.Free;
     raise;
@@ -465,18 +460,13 @@ var
   LMethods: TArray<TRttiMethod>;
   LTool: TMCPTool;
 begin
-  try
-    LMethods := AType.GetMethods;
-    for LMethod in LMethods do
-      if Assigned(LMethod.GetAttribute(MCPToolAttribute)) then
-      begin
-        LTool := WriteMethod(LMethod);
-        AList.Add(LTool);
-      end;
-  except
-    AList.Clear;
-    raise;
-  end;
+  LMethods := AType.GetMethods;
+  for LMethod in LMethods do
+    if Assigned(LMethod.GetAttribute(MCPToolAttribute)) then
+    begin
+      LTool := WriteMethod(LMethod);
+      AList.Add(LTool);
+    end;
 end;
 
 procedure TMCPSchemaGenerator.WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);

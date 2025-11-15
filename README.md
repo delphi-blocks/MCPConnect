@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo-white.png" alt="MCPConnect" width="300" height="300" />
+  <img src="logo-white.png" alt="MCPConnect" width="400" height="400" />
 </p>
 
 # 🔌 Delphi MCP Connect Library (MCPConnect)
@@ -25,7 +25,7 @@ With MCP servers you can:
 **Delphi MCP Connect (MCPConnect)** is a lightweight yet robust framework designed to drastically simplify the creation of **Model Context Protocol (MCP) Servers** using Embarcadero Delphi. By leveraging the power of **Attributes**, the framework allows developers to re-use existing business logic and standard Delphi classes, turning them into protocol-aware server components with minimal boilerplate code.
 MCPConnect handles the serialization, routing, and context management required for the server-side implementation of the MCP protocol.
 
-- 🛡️**Type safety** - Define your tool arguments as native delphi class or records, have mcp-connect handle the rest. Automatic schema generation, deserialization, error handling etc.
+- 🛡️**Type safety** - Define your tool arguments as native delphi class or records, have mcp-connect handle the rest.
 - 🚛 **Transports** - Use the built-in transport: HTTP for stateless communication (with stdio already in development).
 - ⚡ **Low boilerplate** - mcp-connect generates all the MCP endpoints for you apart from your tools, prompts and resources.
 
@@ -39,7 +39,8 @@ MCPConnect handles the serialization, routing, and context management required f
   * **Automatic Routing:** The framework automatically scans and registers methods decorated with the appropriate attributes, handling all request routing.
   * **Easy-to-use** classes for tools, prompts, and resources
   * **API-Key** authentication for http transport (more to be implemented)
-  * **JSON-RPC** MCPConnect contains an modular JSON-RPC library (`JRPC`) a comprehensive, high-performance **JSON-RPC 2.0** library built specifically for Delphi.
+  * **JSON-RPC** MCPConnect contains a JSON-RPC library (`JRPC`) a comprehensive, high-performance **JSON-RPC 2.0** library built specifically for Delphi.
+ *  **Automatic JSON Schema generation** - Using the powerful Neon TSchemaGenaerator, MCPConnect support any Delphi type as parameter or result. 
   
 
 ## 📡What is JSON-RPC?

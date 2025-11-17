@@ -128,13 +128,6 @@ type
     function CreatePerson(
       [McpParam('name', 'The person object')] const AName: string
     ): TPerson;
-
-    [McpSchema('name=testing123,description=testing the new Attribute format')]
-    function TestTags(
-      [McpSchema('name', 'Name of the person',  'required,regex=![\n]')] const Name: string;
-      [McpSchema('name=age,description=Age of the person,required,min=0')] Age: Integer;
-      [McpSchema('name=active,description=If true the magic happens,required')] Active: Boolean
-    ): TDateTime;
   end;
 
 var
@@ -309,7 +302,7 @@ begin
   mmoLog.Lines.Add(j.ToJson);
 
   var req := TJRPCRequest.Create;
-  req.Method := MethodInitialize;
+  req.Method := 'initialize';
   req.Params := j;
 
   pars.Free;
@@ -498,11 +491,6 @@ end;
 function TfrmMain.TestParam(AParam1: Int64; AParam2: Boolean): Integer;
 begin
   Result := AParam1 * 2;
-end;
-
-function TfrmMain.TestTags(const Name: string; Age: Integer; Active: Boolean): TDateTime;
-begin
-  Result := Now();
 end;
 
 function TfrmMain.TestFunc: string;

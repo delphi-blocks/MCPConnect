@@ -2,12 +2,11 @@
   <img src="logo-white.png" alt="MCPConnect" width="400" height="400" />
 </p>
 
-# 🔌 Delphi MCP Connect Library (MCPConnect)
+# 🔌 MCPConnect: A Delphi MCP Server Library
 
 **A powerful, attribute-driven framework for building Model Context Protocol (MCP) Servers in Delphi.**
 
 -----
-
 
 ## ✨ What is MCP?
 
@@ -47,7 +46,7 @@ MCPConnect handles the serialization, routing, and context management required f
 
 JSON-RPC is a stateless, light-weight remote procedure call (RPC) protocol. Primarily this specification defines several data structures and the rules around their processing. It is transport agnostic in that the concepts can be used within the same process, over sockets, over http, or in many various message passing environments. It uses JSON (RFC 4627) as data format and it is designed to be simple!
 
-### J-RPC for Delphi
+### JRPC for Delphi
 Inside MCPConnect you can find a complete implementation of the JSON-RPC v2.0 protocol that can be used independently of MCPConnect for all types of Delphi projects. This library empowers you to focus purely on your application logic, allowing you to define your remote APIs using simple Delphi class methods and attributes. Whether you are creating a client to consume external RPC services or exposing your own high-performance server methods, **JRPC** makes complex distributed computing simple, declarative, and fast.
 
 The main features of JRPC are:
@@ -163,7 +162,7 @@ type
     [McpTool('doclist', 'List all the available documents')]
     function ListDocument(
       [McpParam('category', 'Document Category')] const ACategory: string
-    ): TObjectList<TPDFDocument>;
+    ): TContentList;
     
     // This method is NOT exposed because it lacks the [McpTool] attribute
     procedure InternalStuff;

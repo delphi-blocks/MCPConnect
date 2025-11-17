@@ -364,6 +364,7 @@ begin
     FParams.Free;
     Result := TJSONObject.Create;
     FParams := Result;
+    Exit(FParams as TJSONObject);
   end;
   // This should never happen
   raise EJSONRPCException.Create('Not a valid type for named allowed');
@@ -382,6 +383,7 @@ begin
     FParams.Free;
     Result := TJSONArray.Create;
     FParams := Result;
+    Exit(FParams as TJSONArray);
   end;
   // This should never happen
   raise EJSONRPCException.Create('Not a valid type for position allowed');

@@ -151,28 +151,21 @@ var
 begin
   Result := True;
   LArgs := ArgumentsToRttiParams(AArguments);
+  FGarbageCollector.Add(LArgs);
+  LResult := FMethod.Invoke(FInstance, LArgs);
   try
-    FGarbageCollector.Add(LArgs);
-    LResult := FMethod.Invoke(FInstance, LArgs);
-    try
-      // If the result is already a TContentList just assign it
-      if LResult.IsType<TContentList> then
-      begin
-        AResult.Content.Free;
-        AResult.Content := TContentList(LResult.AsObject);
-        LResult := nil;
-      end
-      else
-        ResultToContents(LResult, AResult.Content);
-    finally
-      if LResult.IsObject then
-        FGarbageCollector.Add(LResult.AsObject);
-    end;
-  except
-    on E: Exception do
+    // If the result is already a TContentList just assign it
+    if LResult.IsType<TContentList> then
     begin
-      AResult.IsError := True;
-    end;
+      AResult.Content.Free;
+      AResult.Content := TContentList(LResult.AsObject);
+      LResult := nil;
+    end
+    else
+      ResultToContents(LResult, AResult.Content);
+  finally
+    if LResult.IsObject then
+      FGarbageCollector.Add(LResult.AsObject);
   end;
 end;
 

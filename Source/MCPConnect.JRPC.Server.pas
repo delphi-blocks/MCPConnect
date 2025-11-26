@@ -97,7 +97,7 @@ begin
   LConfig := GetConfigByClassRef(LConfigClass);
 
   if not Supports(LConfig, AInterfaceRef, Result) then
-    raise EJSONRPCException.Create('Invalid config');
+    raise EJRPCException.Create('Invalid config');
 end;
 
 function TJRPCServer.GetConfiguration<T>: T;

@@ -162,13 +162,17 @@ end;
 { TDelphiDayTool }
 
 function TDelphiDayTool.BuyTicket(AId, AQuantity: Integer): TContentList;
+var
+  LExePath: string;
 begin
+  LExePath := ExtractFileDir(ParamStr(0));
+
   TFile.AppendAllText('purchase.log', Format('%s - Ticket ID %d, People: %d' + sLineBreak, [DateTimeToStr(Now), AId, AQuantity]));
 
   var LResultBuilder := TToolResultBuilder.CreateInstance;
   LResultBuilder.AddText('Purchase completed successfully. Since you made the reservation through an LLM, you will be offered an aperitif at the end of the conference!');
 
-  var LStream := TFileStream.Create('..\..\ticket.png', fmOpenRead or fmShareDenyWrite);
+  var LStream := TFileStream.Create(TPath.Combine(LExePath, '..\..\ticket.png'), fmOpenRead or fmShareDenyWrite);
   try
     LResultBuilder.AddImage('image/png', LStream);
   finally

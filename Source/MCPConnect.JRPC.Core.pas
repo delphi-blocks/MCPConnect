@@ -36,7 +36,31 @@ const
 	JRPC_INTERNAL_ERROR   = -32603; // Internal error.	Internal JSON-RPC error.
 
 type
-  EJSONRPCException = class(Exception);
+  EJRPCException = class(Exception)
+  protected
+    FCode: Integer;
+    FData: TValue;
+  public
+    procedure AfterConstruction; override;
+
+    property Code: Integer read FCode;
+    property Data: TValue read FData;
+  end;
+
+  EJRPCInvalidRequestError = class(EJRPCException)
+  public
+    procedure AfterConstruction; override;
+  end;
+
+  EJRPCMethodNotFoundError = class(EJRPCException)
+  public
+    procedure AfterConstruction; override;
+  end;
+
+  EJRPCInvalidParamsError = class(EJRPCException)
+  public
+    procedure AfterConstruction; override;
+  end;
 
   TJRPCContext = class;
 
@@ -354,7 +378,7 @@ end;
 function TJRPCRequest.GetNamedParams: TJSONObject;
 begin
   if FParams is TJSONArray then
-    raise EJSONRPCException.Create('Only named params are allowed');
+    raise EJRPCException.Create('Only named params are allowed');
 
   if FParams is TJSONObject then
     Exit(FParams as TJSONObject);
@@ -367,13 +391,13 @@ begin
     Exit(FParams as TJSONObject);
   end;
   // This should never happen
-  raise EJSONRPCException.Create('Not a valid type for named allowed');
+  raise EJRPCException.Create('Not a valid type for named allowed');
 end;
 
 function TJRPCRequest.GetPositionParams: TJSONArray;
 begin
   if FParams is TJSONObject then
-    raise EJSONRPCException.Create('Only position params are allowed');
+    raise EJRPCException.Create('Only position params are allowed');
 
   if FParams is TJSONArray then
     Exit(FParams as TJSONArray);
@@ -386,7 +410,7 @@ begin
     Exit(FParams as TJSONArray);
   end;
   // This should never happen
-  raise EJSONRPCException.Create('Not a valid type for position allowed');
+  raise EJRPCException.Create('Not a valid type for position allowed');
 end;
 
 function TJRPCRequest.ParamsCount: Integer;
@@ -943,14 +967,14 @@ function TJRPCContext.GetContextDataAs(AClass: TClass): TObject;
 begin
   Result := FindContextDataAs(AClass);
   if not Assigned(Result) then
-    raise EJSONRPCException.CreateFmt('Context: object "%s" not found', [AClass.ClassName]);
+    raise EJRPCException.CreateFmt('Context: object "%s" not found', [AClass.ClassName]);
 end;
 
 function TJRPCContext.GetContextDataAs(AInterface: TGUID): IInterface;
 begin
   Result := FindContextDataAs(AInterface);
   if not Assigned(Result) then
-    raise EJSONRPCException.CreateFmt('Context: interface "%s" not found', [AInterface.ToString]);
+    raise EJRPCException.CreateFmt('Context: interface "%s" not found', [AInterface.ToString]);
 end;
 
 function TJRPCContext.GetContextDataAs<T>: T;
@@ -961,7 +985,7 @@ end;
 function TJRPCContext.GetRequest: TJRPCRequest;
 begin
   if not Assigned(FRequest) then
-    raise EJSONRPCException.Create('Request not found');
+    raise EJRPCException.Create('Request not found');
 
   Result := FRequest;
 end;
@@ -969,7 +993,7 @@ end;
 function TJRPCContext.GetResponse: TJRPCResponse;
 begin
   if not Assigned(FResponse) then
-    raise EJSONRPCException.Create('Response not found');
+    raise EJRPCException.Create('Response not found');
 
   Result := FResponse;
 end;
@@ -1002,8 +1026,40 @@ begin
         Result := True;
       end
       else
-        raise EJSONRPCException.Create('Context variables should be an object or interface');
+        raise EJRPCException.Create('Context variables should be an object or interface');
     end);
+end;
+
+{ EJRPCException }
+
+procedure EJRPCException.AfterConstruction;
+begin
+  inherited;
+  FCode := JRPC_INTERNAL_ERROR;
+end;
+
+{ EJRPCInvalidRequestError }
+
+procedure EJRPCInvalidRequestError.AfterConstruction;
+begin
+  inherited;
+  FCode := JRPC_INVALID_REQUEST;
+end;
+
+{ EJRPCMethodNotFoundError }
+
+procedure EJRPCMethodNotFoundError.AfterConstruction;
+begin
+  inherited;
+  FCode := JRPC_METHOD_NOT_FOUND;
+end;
+
+{ EJRPCInvalidParamsError }
+
+procedure EJRPCInvalidParamsError.AfterConstruction;
+begin
+  inherited;
+  FCode := JRPC_INVALID_PARAMS;
 end;
 
 end.

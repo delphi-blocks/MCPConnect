@@ -85,7 +85,7 @@ begin
       end;
 
       else
-        raise EJSONRPCException.Create('Invalid token location');
+        raise EJRPCException.Create('Invalid token location');
     end;
   end;
 end;
@@ -134,7 +134,7 @@ var
   LContext: TJRPCContext;
 begin
   if not Assigned(FServer) then
-    raise EJSONRPCException.Create('Server not found');
+    raise EJRPCException.Create('Server not found');
 
   if not CheckAuthorization(Request, Response) then
   begin

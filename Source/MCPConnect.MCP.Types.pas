@@ -25,7 +25,7 @@ uses
   Neon.Core.Nullables,
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
-  Neon.Core.Serializers.RTL;
+  Neon.Core.Serializers.RTL, MCPConnect.Core.Utils;
 
 type
   TAnyMap = class(TDictionary<string, TValue>);
@@ -581,6 +581,7 @@ type
   TToolResultBuilder = class(TInterfacedObject, IToolResultBuilder)
   private
     FContents: TContentList;
+    FOwnItems: Boolean;
   public
     class function CreateInstance: IToolResultBuilder; static;
   public
@@ -898,18 +899,29 @@ end;
 function TToolResultBuilder.Build: TContentList;
 begin
   Result := TContentList.Create;
-  for var cont in FContents do
-    Result.Add(cont);
-  FContents.Clear;
+  for var LItem in FContents do
+  begin
+    Result.Add(LItem);
+  end;
+  FOwnItems := False;
 end;
 
 constructor TToolResultBuilder.Create;
 begin
   FContents := TContentList.Create(False);
+  FOwnItems := True;
 end;
 
 destructor TToolResultBuilder.Destroy;
+var
+  LItem: TBaseContent;
 begin
+  if FOwnItems then
+  begin
+    for LItem in FContents do
+      LItem.Free;
+  end;
+
   FContents.Free;
   inherited;
 end;

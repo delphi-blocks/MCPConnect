@@ -160,7 +160,7 @@ end;
 function TJRPCConfigClassRegistry.GetImplementationOf(AInterfaceRef: TGUID): TJRPCConfigurationClass;
 begin
   if not TryGetValue(AInterfaceRef, Result) then
-    raise EJSONRPCException.Create('Implementation class not found');
+    raise EJRPCException.Create('Implementation class not found');
 end;
 
 class function TJRPCConfigClassRegistry.GetInstance: TJRPCConfigClassRegistry;
@@ -176,7 +176,7 @@ var
 begin
   LImplementsAttribute := TRttiUtils.FindAttribute<ImplementsAttribute>(TRttiUtils.Context.GetType(AConfigurationClass));
   if not Assigned(LImplementsAttribute) then
-    raise EJSONRPCException.CreateFmt('Attribute [Implements] not found for [%s] class', [AConfigurationClass.ClassName]);
+    raise EJRPCException.CreateFmt('Attribute [Implements] not found for [%s] class', [AConfigurationClass.ClassName]);
   Add(LImplementsAttribute.InterfaceRef, AConfigurationClass);
 end;
 
@@ -192,11 +192,11 @@ begin
 
     LConfig := GetConfigByInterfaceRef(LInterfaceRef);
     if not Supports(LConfig, LInterfaceRef, Result) then
-      raise EJSONRPCException.Create('Invalid config');
+      raise EJRPCException.Create('Invalid config');
   except
     on E: Exception do
     begin
-      raise EJSONRPCException.CreateFmt('%s (%s)', [E.Message, GetTypeName(TypeInfo(T))]);
+      raise EJRPCException.CreateFmt('%s (%s)', [E.Message, GetTypeName(TypeInfo(T))]);
     end;
   end;
 end;

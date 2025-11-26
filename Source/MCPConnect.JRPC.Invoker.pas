@@ -99,6 +99,9 @@ type
     procedure SetNeonConfig(AConfig: INeonConfiguration);
 
     constructor Create(AInstance: TObject);
+
+  public
+    class procedure HandleException(E: Exception; AId: TJRPCID; AResponse: TJRPCResponse); static;
   end;
 
 implementation
@@ -281,18 +284,8 @@ begin
         LGarbageCollector.Add(LResult.AsObject);
     end;
   except
-    on E: EJRPCInvokerError do
-    begin
-      AResponse.Error.Code := E.Code;
-      AResponse.Error.Message := E.Message;
-      if E.Data <> '' then
-        AResponse.Error.Data := E.Data;
-    end;
     on E: Exception do
-    begin
-      AResponse.Error.Code := JRPC_INTERNAL_ERROR;
-      AResponse.Error.Message := E.Message;
-    end;
+      TJRPCObjectInvoker.HandleException(E, ARequest.Id, AResponse);
   end;
 end;
 
@@ -373,6 +366,31 @@ begin
     Result := Copy(ARequest.Method, LSeparatorIndex + 1, Length(ARequest.Method))
   else
     Result := '';
+end;
+
+class procedure TJRPCObjectInvoker.HandleException(E: Exception;
+  AId: TJRPCID; AResponse: TJRPCResponse);
+begin
+  if E is EJRPCException then
+  begin
+    AResponse.Id := AId;
+    AResponse.Error.Code := EJRPCException(E).Code;
+    AResponse.Error.Message := E.Message;
+  end
+  else if E is EJSONParseException then
+  begin
+    AResponse.Id := AId;
+    AResponse.Error.Code := JRPC_PARSE_ERROR;
+    AResponse.Error.Message := E.Message;
+  end
+  else
+  begin
+    AResponse.Id := AId;
+    AResponse.Error.Code := JRPC_INVALID_REQUEST;
+    AResponse.Error.Message := E.Message;
+    AResponse.Error.Data := E.ClassName;
+  end;
+
 end;
 
 { EJRPCInvokerError }

@@ -121,10 +121,13 @@ begin
   Result := TInitializeResult.Create;
   try
     Result.ProtocolVersion := AInitializeParams.ProtocolVersion;
-    //Result.Capabilities.Prompts.ListChanged := False;
     Result.Capabilities.Tools.ListChanged := False;
-    Result.Capabilities.Resources.ListChanged := False;
-    Result.Capabilities.Resources.Subscribe := False;
+
+    // At the moment we do not support prompts and resources 
+    //Result.Capabilities.Prompts.ListChanged := False;
+    //Result.Capabilities.Resources.ListChanged := False;
+    //Result.Capabilities.Resources.Subscribe := False;
+
     Result.ServerInfo.Name := MCPConfig.ServerName;
     Result.ServerInfo.Version := MCPConfig.ServerVersion;
   except

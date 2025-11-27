@@ -132,6 +132,7 @@ var
   LInstance: TObject;
   LInvokable: IJRPCInvokable;
   LContext: TJRPCContext;
+  LId: TJRPCID;
 begin
   if not Assigned(FServer) then
     raise EJRPCException.Create('Server not found');
@@ -148,31 +149,38 @@ begin
   LResponse := TJRPCResponse.Create;
   LGarbageCollector.Add(LResponse);
 
-  LRequest := TNeon.JSONToObject<TJRPCRequest>(Request.Content, JRPCNeonConfig);
-  LGarbageCollector.Add(LRequest);
+  try
+    LRequest := TNeon.JSONToObject<TJRPCRequest>(Request.Content, JRPCNeonConfig);
+    LGarbageCollector.Add(LRequest);
+    LId := LRequest.Id;
 
-  if not TJRPCRegistry.Instance.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
-  begin
-    Exit(False);
-  end;
-  LInstance := LConstructorProxy.ConstructorFunc();
-  LGarbageCollector.Add(LInstance);
+    if not TJRPCRegistry.Instance.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
+    begin
+      raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LRequest.Method]);
+    end;
+    LInstance := LConstructorProxy.ConstructorFunc();
+    LGarbageCollector.Add(LInstance);
 
-  LContext := TJRPCContext.Create;
-  LGarbageCollector.Add(LContext);
+    LContext := TJRPCContext.Create;
+    LGarbageCollector.Add(LContext);
 
-  LContext.AddContent(LRequest);
-  LContext.AddContent(LResponse);
-  LContext.AddContent(FServer);
+    LContext.AddContent(LRequest);
+    LContext.AddContent(LResponse);
+    LContext.AddContent(FServer);
 
-  // Injects the context inside the instance
-  LContext.Inject(LInstance);
+    // Injects the context inside the instance
+    LContext.Inject(LInstance);
 
-  LInvokable := TJRPCObjectInvoker.Create(LInstance);
-  LInvokable.NeonConfig := LConstructorProxy.NeonConfig;
-  if not LInvokable.Invoke(LContext, LRequest, LResponse) then
-  begin
-    Exit(False);
+    LInvokable := TJRPCObjectInvoker.Create(LInstance);
+    LInvokable.NeonConfig := LConstructorProxy.NeonConfig;
+    if not LInvokable.Invoke(LContext, LRequest, LResponse) then
+    begin
+      raise EJRPCMethodNotFoundError.CreateFmt('Cannot invoke method "%s"', [LRequest.Method]);
+    end;
+
+  except
+    on E: Exception do
+      TJRPCObjectInvoker.HandleException(E, LId, LResponse);
   end;
 
   Response.ContentType := 'application/json';

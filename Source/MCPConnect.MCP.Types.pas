@@ -432,7 +432,7 @@ type
     [NeonInclude(IncludeIf.NotEmpty)] Description: string;
 
     /// <summary>
-    ///   Intended for UI and end-user contexts — optimized to be human-readable and easily
+    ///   Intended for UI and end-user contexts, optimized to be human-readable and easily
     ///   understood, even by those unfamiliar with domain-specific terminology.
     /// </summary>
     [NeonInclude(IncludeIf.NotEmpty)] Title: string;

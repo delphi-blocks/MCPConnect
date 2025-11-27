@@ -104,6 +104,7 @@ var
   LContext: TJRPCContext;
   LEncoding: IIdTextEncoding;
   LRequestContent: string;
+  LId: TJRPCID;
 begin
   if not Assigned(FServer) then
     raise EJRPCException.Create('Server not found');
@@ -120,41 +121,46 @@ begin
   LResponse := TJRPCResponse.Create;
   LGarbageCollector.Add(LResponse);
 
-  if ARequestInfo.CharSet <> '' then
-    LEncoding := IndyTextEncoding(ARequestInfo.CharSet)
-  else
-    LEncoding := IndyTextEncoding_UTF8;
-  ARequestInfo.PostStream.Position := 0;
-  LRequestContent := ReadStringFromStream(ARequestInfo.PostStream, -1, LEncoding);
-  LRequest := TNeon.JSONToObject<TJRPCRequest>(LRequestContent, JRPCNeonConfig);
-  LGarbageCollector.Add(LRequest);
+  try
 
-  if not TJRPCRegistry.Instance.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
-  begin
-    AResponseInfo.ResponseNo := 404;
-    AResponseInfo.ContentText := '';
-    Exit;
-  end;
-  LInstance := LConstructorProxy.ConstructorFunc();
-  LGarbageCollector.Add(LInstance);
+    if ARequestInfo.CharSet <> '' then
+      LEncoding := IndyTextEncoding(ARequestInfo.CharSet)
+    else
+      LEncoding := IndyTextEncoding_UTF8;
 
-  LContext := TJRPCContext.Create;
-  LGarbageCollector.Add(LContext);
+    ARequestInfo.PostStream.Position := 0;
+    LRequestContent := ReadStringFromStream(ARequestInfo.PostStream, -1, LEncoding);
+    LRequest := TNeon.JSONToObject<TJRPCRequest>(LRequestContent, JRPCNeonConfig);
+    LGarbageCollector.Add(LRequest);
+    LId := LRequest.Id;
 
-  LContext.AddContent(LRequest);
-  LContext.AddContent(LResponse);
-  LContext.AddContent(FServer);
+    if not TJRPCRegistry.Instance.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
+    begin
+      raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LRequest.Method]);
+    end;
+    LInstance := LConstructorProxy.ConstructorFunc();
+    LGarbageCollector.Add(LInstance);
 
-  // Injects the context inside the instance
-  LContext.Inject(LInstance);
+    LContext := TJRPCContext.Create;
+    LGarbageCollector.Add(LContext);
 
-  LInvokable := TJRPCObjectInvoker.Create(LInstance);
-  LInvokable.NeonConfig := LConstructorProxy.NeonConfig;
-  if not LInvokable.Invoke(LContext, LRequest, LResponse) then
-  begin
-    AResponseInfo.ResponseNo := 404;
-    AResponseInfo.ContentText := '';
-    Exit;
+    LContext.AddContent(LRequest);
+    LContext.AddContent(LResponse);
+    LContext.AddContent(FServer);
+
+    // Injects the context inside the instance
+    LContext.Inject(LInstance);
+
+    LInvokable := TJRPCObjectInvoker.Create(LInstance);
+    LInvokable.NeonConfig := LConstructorProxy.NeonConfig;
+    if not LInvokable.Invoke(LContext, LRequest, LResponse) then
+    begin
+      raise EJRPCMethodNotFoundError.CreateFmt('Cannot invoke method "%s"', [LRequest.Method]);
+    end;
+
+  except
+    on E: Exception do
+      TJRPCObjectInvoker.HandleException(E, LId, LResponse);
   end;
 
   AResponseInfo.ContentType := 'application/json';
@@ -180,9 +186,7 @@ end;
 constructor TJRPCIndyServer.Create(AOwner: TComponent);
 begin
   inherited;
-  FServer := TJRPCServer.Create(nil);
   FBridge := TJRPCIndyBridge.Create(nil);
-  FBridge.Server := FServer;
 
   OnParseAuthentication := ParseAuthentication;
   OnCommandGet := FBridge.HandleRequest;
@@ -191,7 +195,6 @@ end;
 
 destructor TJRPCIndyServer.Destroy;
 begin
-  FServer.Free;
   FBridge.Free;
   inherited;
 end;

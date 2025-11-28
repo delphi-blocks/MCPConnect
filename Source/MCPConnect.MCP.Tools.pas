@@ -214,9 +214,10 @@ type
     class procedure ListTools(AClass: TClass; AList: TListToolsResult); overload;
   end;
 
-
-
 implementation
+
+uses
+  MCPConnect.JRPC.Core;
 
 { TMCPTool }
 
@@ -479,7 +480,7 @@ begin
   begin
     LAttr := LParam.GetAttribute<MCPParamAttribute>;
       if not Assigned(LAttr) then
-        raise Exception.Create('Non-annotated params are not permitted');
+        raise EJRPCException.Create('Non-annotated params are not permitted');
 
     LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LParam.ParamType, MCPNeonConfig);
 

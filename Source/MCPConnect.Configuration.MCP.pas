@@ -60,7 +60,8 @@ type
 implementation
 
 uses
-  Neon.Core.Utils;
+  Neon.Core.Utils,
+  MCPConnect.JRPC.Core;
 
 { TMCPConfig }
 
@@ -86,7 +87,7 @@ end;
 function TMCPConfig.CreateDefaultTool: TObject;
 begin
   if not Assigned(FToolClass) then
-    raise Exception.Create('Default tool not found');
+    raise EJRPCException.Create('Default tool not found');
 
   Result := TRttiUtils.CreateInstance(FToolClass);
 end;
@@ -94,7 +95,7 @@ end;
 function TMCPConfig.GetDefaultToolClass: TClass;
 begin
   if not Assigned(FToolClass) then
-    raise Exception.Create('Default tool not found');
+    raise EJRPCException.Create('Default tool not found');
 
   Result := FToolClass;
 end;

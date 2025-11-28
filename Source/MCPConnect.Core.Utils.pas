@@ -73,6 +73,9 @@ function CreateNewValue(AType: TRttiType): TValue;
 
 implementation
 
+uses
+  MCPConnect.JRPC.Core;
+
 function CreateNewValue(AType: TRttiType): TValue;
 var
   LAllocatedMem: Pointer;
@@ -98,7 +101,7 @@ begin
       end;
     end;
   else
-    raise Exception.CreateFmt('Error creating type: %s', [AType.Name]);
+    raise EJRPCException.CreateFmt('Error creating type: %s', [AType.Name]);
   end;
 end;
 

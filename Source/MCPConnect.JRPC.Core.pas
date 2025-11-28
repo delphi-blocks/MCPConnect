@@ -47,6 +47,11 @@ type
     property Data: TValue read FData;
   end;
 
+  EJRPCParseError = class(EJRPCException)
+  public
+    procedure AfterConstruction; override;
+  end;
+
   EJRPCInvalidRequestError = class(EJRPCException)
   public
     procedure AfterConstruction; override;
@@ -483,7 +488,7 @@ end;
 class operator TJRPCID.Implicit(const ASource: TJRPCID): string;
 begin
   if ASource.Id.IsType<Integer> then
-    raise Exception.Create('The Id is an integer');
+    raise EJRPCParseError.Create('The Id is an integer');
 
   Result := ASource.Id.AsString;
 end;
@@ -491,7 +496,7 @@ end;
 class operator TJRPCID.Implicit(const ASource: TJRPCID): Integer;
 begin
   if ASource.Id.IsType<string> then
-    raise Exception.Create('The Id is a string');
+    raise EJRPCParseError.Create('The Id is a string');
 
   Result := ASource.Id.AsInteger;
 end;
@@ -1060,6 +1065,14 @@ procedure EJRPCInvalidParamsError.AfterConstruction;
 begin
   inherited;
   FCode := JRPC_INVALID_PARAMS;
+end;
+
+{ EJRPCParseError }
+
+procedure EJRPCParseError.AfterConstruction;
+begin
+  inherited;
+  FCode := JRPC_PARSE_ERROR;
 end;
 
 end.

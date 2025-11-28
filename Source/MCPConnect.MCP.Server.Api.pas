@@ -89,7 +89,7 @@ begin
       Context.Inject(LInvoker);
       Context.Inject(LTool);
       if not LInvoker.Invoke(AName, AArguments, Meta, Result) then
-        raise Exception.CreateFmt('Tool "%s" non found', [AName]);
+        raise EJRPCMethodNotFoundError.CreateFmt('Tool "%s" non found', [AName]);
     finally
       LTool.Free;
     end;

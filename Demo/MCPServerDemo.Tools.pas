@@ -4,7 +4,7 @@ interface
 
 uses
   System.Classes, System.SysUtils, System.JSON, System.Generics.Collections,
-  System.IOUtils,
+  System.IOUtils, System.Rtti,
   Vcl.Graphics, Vcl.ExtCtrls,
   MCPConnect.JRPC.Core,
 
@@ -14,7 +14,9 @@ uses
   Vcl.Dialogs,
 
   MCPConnect.MCP.Types,
-  MCPConnect.MCP.Attributes, MCPConnect.Core.Utils;
+  MCPConnect.MCP.Attributes,
+  MCPConnect.Core.Utils,
+  MCPConnect.Session.Core;
 
 type
   TPerson = class
@@ -23,6 +25,34 @@ type
   public
     property Name: string read FName write FName;
     constructor Create(const AName: string);
+  end;
+
+  /// <summary>
+  ///   Shopping cart item with typed properties
+  /// </summary>
+  TCartItem = class
+  private
+    FItemId: string;
+    FQuantity: Integer;
+  public
+    property ItemId: string read FItemId write FItemId;
+    property Quantity: Integer read FQuantity write FQuantity;
+
+    constructor Create(const AItemId: string; AQuantity: Integer);
+  end;
+
+  /// <summary>
+  ///   Custom typed session for shopping cart.
+  ///   No JSON storage - pure typed properties.
+  /// </summary>
+  TShoppingSession = class(TSessionBase)
+  private
+    FCart: TObjectDictionary<string, TCartItem>;
+  public
+    property Cart: TObjectDictionary<string, TCartItem> read FCart;
+
+    constructor Create;
+    destructor Destroy; override;
   end;
 
   TTicket = class
@@ -93,7 +123,59 @@ type
     ): TPerson;
   end;
 
+  /// <summary>
+  ///   Shopping cart tool that uses typed session to maintain state across requests
+  /// </summary>
+  TShoppingCartTool = class
+  private
+    [Context]
+    FSession: TShoppingSession;
+  public
+    [McpTool('cart_add', 'Add an item to the shopping cart')]
+    function AddToCart(
+      [McpParam('item_id', 'ID of the item to add')] const AItemId: string;
+      [McpParam('quantity', 'Quantity to add')] AQuantity: Integer
+    ): string;
+
+    [McpTool('cart_get', 'Get all items in the shopping cart')]
+    function GetCart: string;
+
+    [McpTool('cart_remove', 'Remove an item from the shopping cart')]
+    function RemoveFromCart(
+      [McpParam('item_id', 'ID of the item to remove')] const AItemId: string
+    ): string;
+
+    [McpTool('cart_clear', 'Clear all items from the shopping cart')]
+    function ClearCart: string;
+
+    [McpTool('session_info', 'Get session information (ID, created time, last accessed)')]
+    function GetSessionInfo: string;
+  end;
+
 implementation
+
+{ TCartItem }
+
+constructor TCartItem.Create(const AItemId: string; AQuantity: Integer);
+begin
+  inherited Create;
+  FItemId := AItemId;
+  FQuantity := AQuantity;
+end;
+
+{ TShoppingSession }
+
+constructor TShoppingSession.Create;
+begin
+  inherited Create;
+  FCart := TObjectDictionary<string, TCartItem>.Create([doOwnsValues]);
+end;
+
+destructor TShoppingSession.Destroy;
+begin
+  FCart.Free;
+  inherited;
+end;
 
 { TTestTool }
 
@@ -202,6 +284,85 @@ begin
   FDate := ADate;
   FPrice := APrice;
   FDescription := ADescription;
+end;
+
+{ TShoppingCartTool }
+
+function TShoppingCartTool.AddToCart(const AItemId: string; AQuantity: Integer): string;
+var
+  LItem: TCartItem;
+begin
+  // Check if item already exists in cart
+  if FSession.Cart.TryGetValue(AItemId, LItem) then
+  begin
+    // Update quantity
+    LItem.Quantity := LItem.Quantity + AQuantity;
+    Result := Format('Updated %s in cart. New quantity: %d', [AItemId, LItem.Quantity]);
+  end
+  else
+  begin
+    // Add new item
+    LItem := TCartItem.Create(AItemId, AQuantity);
+    FSession.Cart.Add(AItemId, LItem);
+    Result := Format('Added %s to cart. Quantity: %d', [AItemId, AQuantity]);
+  end;
+end;
+
+function TShoppingCartTool.GetCart: string;
+var
+  LItem: TCartItem;
+  LList: TStringList;
+begin
+  if FSession.Cart.Count = 0 then
+    Exit('Cart is empty');
+
+  LList := TStringList.Create;
+  try
+    LList.Add('Shopping Cart:');
+    LList.Add('');
+    for LItem in FSession.Cart.Values do
+      LList.Add(Format('  - %s: quantity %d', [LItem.ItemId, LItem.Quantity]));
+    LList.Add('');
+    LList.Add(Format('Total items: %d', [FSession.Cart.Count]));
+    Result := LList.Text;
+  finally
+    LList.Free;
+  end;
+end;
+
+function TShoppingCartTool.RemoveFromCart(const AItemId: string): string;
+begin
+  if FSession.Cart.Count = 0 then
+    Exit('Cart is empty');
+
+  if FSession.Cart.ContainsKey(AItemId) then
+  begin
+    FSession.Cart.Remove(AItemId);
+    Result := Format('Removed %s from cart', [AItemId]);
+  end
+  else
+    Result := Format('Item %s not found in cart', [AItemId]);
+end;
+
+function TShoppingCartTool.ClearCart: string;
+begin
+  FSession.Cart.Clear;
+  Result := 'Cart cleared successfully';
+end;
+
+function TShoppingCartTool.GetSessionInfo: string;
+begin
+  Result := Format(
+    'Session Info:' + sLineBreak +
+    '  ID: %s' + sLineBreak +
+    '  Created: %s' + sLineBreak +
+    '  Last Accessed: %s',
+    [
+      FSession.SessionId,
+      DateTimeToStr(FSession.CreatedAt),
+      DateTimeToStr(FSession.LastAccessedAt)
+    ]
+  );
 end;
 
 end.

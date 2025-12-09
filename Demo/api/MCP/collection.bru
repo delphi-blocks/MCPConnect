@@ -5,3 +5,8 @@ auth {
 auth:bearer {
   token: my-secret-token
 }
+
+script:post-response {
+  bru.setEnvVar("sessionId", res.getHeader("mcp-session-id"));
+  
+}

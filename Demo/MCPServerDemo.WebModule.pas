@@ -36,6 +36,7 @@ uses
   MCPConnect.JRPC.Core,
   MCPConnect.Configuration.MCP,
   MCPConnect.Configuration.Auth,
+  MCPConnect.Configuration.Session,
   MCPConnect.Configuration.Neon,
 
   MCPConnect.MCP.Types,
@@ -65,15 +66,23 @@ begin
       .SetToken('my-secret-token')
       .ApplyConfig
 
+    .Plugin.Configure<ISessionConfig>
+      .SetLocation(TSessionIdLocation.Header)
+      .SetHeaderName('Mcp-Session-Id')
+      .SetTimeout(30)  // 30 minutes timeout
+      .SetSessionClass(TShoppingSession)  // Use custom typed session
+      .ApplyConfig
+
     .Plugin.Configure<IMCPConfig>
       .SetServerName('delphi-mcp-server')
       .SetServerVersion('2.0.0')
       .SetToolClass(TTestTool)
+      .SetToolClass(TDelphiDayTool)
+      .SetToolClass(TShoppingCartTool)  // Session-based shopping cart
       .RegisterWriter(TMCPImageWriter)
       .RegisterWriter(TMCPPictureWriter)
       .RegisterWriter(TMCPStreamWriter)
       .RegisterWriter(TMCPStringListWriter)
-      .SetToolClass(TDelphiDayTool)
       .ApplyConfig;
 
 //    .Plugin.Configure<IJRPCNeonConfig>

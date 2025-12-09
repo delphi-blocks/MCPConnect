@@ -39,7 +39,7 @@ type
     FServerVersion: string;
     FServerName: string;
   public
-    constructor Create; override;
+    constructor Create(AApp: IJRPCApplication); override;
     destructor Destroy; override;
     procedure AfterConstruction; override;
 
@@ -65,7 +65,7 @@ uses
 
 { TMCPConfig }
 
-constructor TMCPConfig.Create;
+constructor TMCPConfig.Create(AApp: IJRPCApplication);
 begin
   inherited;
   FWriterRegistry := TMCPWriterRegistry.Create;

@@ -60,12 +60,10 @@ type
   protected
     FApplication: IJRPCApplication;
   public
-    constructor Create; virtual;
+    constructor Create(AApp: IJRPCApplication); virtual;
     destructor Destroy; override;
 
-    procedure DoAfterCreate; virtual;
-
-    property Application: IJRPCApplication read FApplication write FApplication;
+    property Application: IJRPCApplication read FApplication;
 
     function BackToApp: IJRPCApplication;
     function ApplyConfig: IJRPCApplication; virtual;
@@ -114,18 +112,15 @@ begin
   Result := FApplication;
 end;
 
-constructor TJRPCConfiguration.Create;
+constructor TJRPCConfiguration.Create(AApp: IJRPCApplication);
 begin
+  inherited Create;
+  FApplication := AApp;
 end;
 
 destructor TJRPCConfiguration.Destroy;
 begin
   inherited;
-end;
-
-procedure TJRPCConfiguration.DoAfterCreate;
-begin
-  // Do nothing, allow subclasses to operate on FApplication
 end;
 
 function TJRPCConfiguration.ApplyConfig: IJRPCApplication;
@@ -210,13 +205,15 @@ end;
 
 function TJRPCConfigRegistry.GetApplicationConfig(
   AClass: TJRPCConfigurationClass; AApp: IJRPCApplication): TJRPCConfiguration;
+var
+  LArgs: TArray<TValue>;
 begin
+  SetLength(LArgs, 1);
+  LArgs[0] := TValue.From<IJRPCApplication>(AApp);
   if not TryGetValue(AClass, Result) then
   begin
-    Result := TRttiUtils.CreateInstance(AClass) as TJRPCConfiguration;
+    Result := TRttiUtils.CreateInstance(AClass, LArgs) as TJRPCConfiguration;
     try
-      Result.Application := AApp;
-      Result.DoAfterCreate;
       Add(Result);
     except
       Result.Free;

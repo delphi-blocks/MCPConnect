@@ -27,7 +27,9 @@ uses
   MCPConnect.JRPC.Invoker,
   MCPConnect.JRPC.Server,
 
-  MCPConnect.Configuration.Auth;
+  MCPConnect.Configuration.Auth,
+  MCPConnect.Configuration.Session,
+  MCPConnect.Session.Core;
 
 type
   TJRPCDispatcher = class(TComponent, IWebDispatch)
@@ -36,9 +38,12 @@ type
     FPathInfo: string;
     FServer: TJRPCServer;
     FAuthTokenConfig: TAuthTokenConfig;
+    FSessionConfig: TSessionConfig;
     procedure SetPathInfo(const Value: string);
     procedure SetServer(const Value: TJRPCServer);
     function CheckAuthorization(Request: TWebRequest; Response: TWebResponse): Boolean;
+    function ExtractSessionId(Request: TWebRequest): string;
+    function HandleSession(Request: TWebRequest; out ASessionCreated: Boolean): TSessionBase;
   public
     { IWebDispatch }
     function DispatchEnabled: Boolean;
@@ -133,6 +138,8 @@ var
   LInvokable: IJRPCInvokable;
   LContext: TJRPCContext;
   LId: TJRPCID;
+  LSession: TSessionBase;
+  LSessionCreated: Boolean;
 begin
   if not Assigned(FServer) then
     raise EJRPCException.Create('Server not found');
@@ -145,11 +152,16 @@ begin
   end;
 
   LGarbageCollector := TGarbageCollector.CreateInstance;
+  LSession := nil;
+  LSessionCreated := False;
 
   LResponse := TJRPCResponse.Create;
   LGarbageCollector.Add(LResponse);
 
   try
+    // Handle session (get existing or create new)
+    LSession := HandleSession(Request, LSessionCreated);
+
     LRequest := TNeon.JSONToObject<TJRPCRequest>(Request.Content, JRPCNeonConfig);
     LGarbageCollector.Add(LRequest);
     LId := LRequest.Id;
@@ -168,6 +180,10 @@ begin
     LContext.AddContent(LResponse);
     LContext.AddContent(FServer);
 
+    // Add session to context if available
+    if Assigned(LSession) then
+      LContext.AddContent(LSession);
+
     // Injects the context inside the instance
     LContext.Inject(LInstance);
 
@@ -181,6 +197,12 @@ begin
   except
     on E: Exception do
       TJRPCObjectInvoker.HandleException(E, LId, LResponse);
+  end;
+
+  // If a new session was created, add session ID to response header
+  if LSessionCreated and Assigned(LSession) and Assigned(FSessionConfig) then
+  begin
+    Response.SetCustomHeader(FSessionConfig.GetHeaderName, LSession.SessionId);
   end;
 
   Response.ContentType := 'application/json';
@@ -207,6 +229,52 @@ begin
   FServer := Value;
 
   FAuthTokenConfig := FServer.GetConfiguration<TAuthTokenConfig>;
+  FSessionConfig := FServer.GetConfiguration<TSessionConfig>;
+end;
+
+function TJRPCDispatcher.ExtractSessionId(Request: TWebRequest): string;
+begin
+  Result := '';
+
+  if not Assigned(FSessionConfig) then
+    Exit;
+
+  case FSessionConfig.GetLocation of
+    TSessionIdLocation.Header:
+      Result := Request.GetFieldByName(FSessionConfig.GetHeaderName);
+
+    TSessionIdLocation.Cookie:
+      Result := Request.CookieFields.Values[FSessionConfig.GetHeaderName];
+  end;
+
+  Result := Result.Trim;
+end;
+
+function TJRPCDispatcher.HandleSession(Request: TWebRequest;
+  out ASessionCreated: Boolean): TSessionBase;
+var
+  LSessionId: string;
+begin
+  Result := nil;
+  ASessionCreated := False;
+
+  if not Assigned(FSessionConfig) then
+    Exit;
+
+  LSessionId := ExtractSessionId(Request);
+
+  // If session ID is provided, try to get existing session
+  if not LSessionId.IsEmpty then
+  begin
+    // GetSession will raise exception if expired or not found
+    Result := TSessionManager.Instance.GetSession(LSessionId);
+  end
+  else
+  begin
+    // No session ID provided - auto-create new session
+    Result := TSessionManager.Instance.CreateSession;
+    ASessionCreated := True;
+  end;
 end;
 
 end.

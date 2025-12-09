@@ -10,6 +10,7 @@ uses
   MCPConnect.Configuration.Core in '..\Source\MCPConnect.Configuration.Core.pas',
   MCPConnect.Configuration.MCP in '..\Source\MCPConnect.Configuration.MCP.pas',
   MCPConnect.Configuration.Neon in '..\Source\MCPConnect.Configuration.Neon.pas',
+  MCPConnect.Configuration.Session in '..\Source\MCPConnect.Configuration.Session.pas',
   MCPConnect.JRPC.Core in '..\Source\MCPConnect.JRPC.Core.pas',
   MCPConnect.MCP.Config in '..\Source\MCPConnect.MCP.Config.pas',
   MCPConnect.MCP.Resources in '..\Source\MCPConnect.MCP.Resources.pas',
@@ -24,6 +25,7 @@ uses
   MCPConnect.MCP.Invoker in '..\Source\MCPConnect.MCP.Invoker.pas',
   MCPConnect.MCP.Types in '..\Source\MCPConnect.MCP.Types.pas',
   MCPConnect.JRPC.Server in '..\Source\MCPConnect.JRPC.Server.pas',
+  MCPConnect.Session.Core in '..\Source\MCPConnect.Session.Core.pas',
   MCPServerDemo.Tools in 'MCPServerDemo.Tools.pas',
   MCPConnect.Content.Writers.RTL in '..\Source\MCPConnect.Content.Writers.RTL.pas',
   MCPConnect.Content.Writers.VCL in '..\Source\MCPConnect.Content.Writers.VCL.pas';
@@ -40,6 +42,11 @@ begin
         .SetToken('my-secret-token')
         .ApplyConfig
 
+      .Plugin.Configure<ISessionConfig>
+        .SetTimeout(30)  // 30 minutes timeout
+        .SetSessionClass(TShoppingSession)  // Use custom typed session
+        .ApplyConfig
+
       .Plugin.Configure<IMCPConfig>
         .SetServerName('delphi-mcp-server')
         .SetServerVersion('2.0.0')
@@ -49,6 +56,7 @@ begin
         .RegisterWriter(TMCPStreamWriter)
         .RegisterWriter(TMCPStringListWriter)
         .SetToolClass(TDelphiDayTool)
+        .SetToolClass(TShoppingCartTool)  // Session-based shopping cart
         .ApplyConfig;
 
     LStdioServer := TJRPCStdioServer.Create(nil);

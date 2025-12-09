@@ -132,6 +132,7 @@
         <DCCReference Include="..\Source\MCPConnect.Configuration.Core.pas"/>
         <DCCReference Include="..\Source\MCPConnect.Configuration.MCP.pas"/>
         <DCCReference Include="..\Source\MCPConnect.Configuration.Neon.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Configuration.Session.pas"/>
         <DCCReference Include="..\Source\MCPConnect.Content.Writers.pas"/>
         <DCCReference Include="..\Source\MCPConnect.Content.Writers.RTL.pas"/>
         <DCCReference Include="..\Source\MCPConnect.Content.Writers.VCL.pas"/>
@@ -147,6 +148,8 @@
         <DCCReference Include="..\Source\MCPConnect.MCP.Tools.pas"/>
         <DCCReference Include="..\Source\MCPConnect.MCP.Types.pas"/>
         <DCCReference Include="..\Source\MCPConnect.MCP.Config.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Session.Core.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Transport.Indy.pas"/>
         <DCCReference Include="MCPServerDemo.MainFormIndy.pas">
             <Form>Form1</Form>
         </DCCReference>

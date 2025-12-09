@@ -25,7 +25,8 @@ With MCP servers you can:
 MCPConnect handles the serialization, routing, and context management required for the server-side implementation of the MCP protocol.
 
 - 🛡️**Type safety** - Define your tool arguments as native delphi class or records, have mcp-connect handle the rest.
-- 🚛 **Transports** - Use the built-in transport: HTTP for stateless communication (with stdio already in development).
+- 🚛 **Transports** - Built-in HTTP (WebBroker, Indy) and STDIO transports for both stateless and persistent connections.
+- 🗂️ **Session Management** - Built-in stateful session support across requests with automatic cleanup and custom session data.
 - ⚡ **Low boilerplate** - mcp-connect generates all the MCP endpoints for you apart from your tools, prompts and resources.
 
 
@@ -37,6 +38,7 @@ MCPConnect handles the serialization, routing, and context management required f
   * **Standard Code Re-use:** Easily expose existing business logic classes without heavy modification or complex inheritance hierarchies.
   * **Automatic Routing:** The framework automatically scans and registers methods decorated with the appropriate attributes, handling all request routing.
   * **Easy-to-use** classes for tools, prompts, and resources
+  * **Session Management:** Thread-safe session support with configurable timeout, automatic cleanup, and support for both generic (TJSONObject) and custom typed session data. Sessions are automatically injected via `[Context]` attribute.
   * **API-Key** authentication for http transport (more to be implemented)
   * **JSON-RPC** MCPConnect contains a JSON-RPC library (`JRPC`) a comprehensive, high-performance **JSON-RPC 2.0** library built specifically for Delphi.
  *  **Automatic JSON Schema generation** - Using the powerful Neon TSchemaGenaerator, MCPConnect support any Delphi type as parameter or result. 
@@ -171,7 +173,150 @@ type
 
 -----------------------------
 
-### 3. Connecting LLM Clients to Your MCP Server
+### 3. Working with Sessions
+
+MCPConnect provides built-in session management for maintaining stateful interactions across multiple requests. Sessions are thread-safe, automatically managed, and can store both generic JSON data or custom typed properties.
+
+#### Configuring Session Support
+
+Add session configuration to your server setup:
+
+```delphi
+uses
+  MCPConnect.Configuration.Session,
+  MCPConnect.Session.Core;
+
+// Configure session support
+FJRPCServer
+  .Plugin.Configure<ISessionConfig>
+    .SetLocation(TSessionIdLocation.Header)  // or Cookie
+    .SetHeaderName('Mcp-Session-Id')         // Default for MCP
+    .SetTimeout(30)                           // Minutes
+    .SetSessionClass(TSessionData)            // Or your custom class
+    .ApplyConfig
+
+  .Plugin.Configure<IMCPConfig>
+    .SetServerName('delphi-mcp-server')
+    .SetServerVersion('2.0.0')
+    .SetToolClass(TShoppingCartTool)  // Your session-aware tool
+    .ApplyConfig;
+```
+
+**Session Behavior by Transport:**
+- **HTTP (WebBroker/Indy)**: Session ID passed via header or cookie. Server returns `Mcp-Session-Id` header on first request.
+- **STDIO**: Implicit session per connection - no session ID needed.
+
+#### Using Sessions in Your Tools
+
+Sessions are automatically injected into your tool classes using the `[Context]` attribute:
+
+**Option 1: Generic JSON Storage (TSessionData)**
+
+```delphi
+type
+  TShoppingCartTool = class
+  private
+    [Context]
+    FSession: TSessionData;  // Automatically injected
+  public
+    [McpTool('cart_add', 'Add item to shopping cart')]
+    function AddToCart(
+      [McpParam('item_id')] const AItemId: string;
+      [McpParam('quantity')] AQuantity: Integer
+    ): string;
+  end;
+
+implementation
+
+function TShoppingCartTool.AddToCart(const AItemId: string;
+  AQuantity: Integer): string;
+var
+  LCart: TJSONObject;
+begin
+  // Get or create cart in session
+  if not FSession.Data.TryGetValue<TJSONObject>('cart', LCart) then
+  begin
+    LCart := TJSONObject.Create;
+    FSession.Data.AddPair('cart', LCart);
+  end;
+
+  // Add item
+  LCart.AddPair(AItemId, TJSONNumber.Create(AQuantity));
+  Result := Format('Added %d x %s to cart', [AQuantity, AItemId]);
+end;
+```
+
+**Option 2: Custom Typed Session**
+
+For better type safety, create a custom session class:
+
+```delphi
+type
+  TCartItem = class
+  private
+    FItemId: string;
+    FQuantity: Integer;
+  public
+    property ItemId: string read FItemId write FItemId;
+    property Quantity: Integer read FQuantity write FQuantity;
+  end;
+
+  TShoppingSession = class(TSessionBase)
+  private
+    FCart: TObjectDictionary<string, TCartItem>;
+  public
+    property Cart: TObjectDictionary<string, TCartItem> read FCart;
+
+    constructor Create;
+    destructor Destroy; override;
+  end;
+
+constructor TShoppingSession.Create;
+begin
+  inherited;  // No parameters needed
+  FCart := TObjectDictionary<string, TCartItem>.Create([doOwnsValues]);
+end;
+
+// In your tool class:
+type
+  TShoppingCartTool = class
+  private
+    [Context]
+    FSession: TShoppingSession;  // Typed session!
+  public
+    [McpTool('cart_add', 'Add item to cart')]
+    function AddToCart(const AItemId: string; AQuantity: Integer): string;
+  end;
+
+function TShoppingCartTool.AddToCart(const AItemId: string;
+  AQuantity: Integer): string;
+var
+  LItem: TCartItem;
+begin
+  // Type-safe access
+  if FSession.Cart.TryGetValue(AItemId, LItem) then
+    LItem.Quantity := LItem.Quantity + AQuantity
+  else
+  begin
+    LItem := TCartItem.Create;
+    LItem.ItemId := AItemId;
+    LItem.Quantity := AQuantity;
+    FSession.Cart.Add(AItemId, LItem);
+  end;
+
+  Result := Format('Added %d x %s', [AQuantity, AItemId]);
+end;
+```
+
+Don't forget to register your custom session class in the configuration:
+
+```delphi
+.SetSessionClass(TShoppingSession)  // Use your custom class
+```
+
+-----------------------------
+
+### 4. Connecting LLM Clients to Your MCP Server
 
 Once your MCP server is running, you need to configure your LLM client to connect to it. Below are configuration examples for popular clients.
 

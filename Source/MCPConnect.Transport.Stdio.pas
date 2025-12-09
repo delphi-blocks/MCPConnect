@@ -18,6 +18,8 @@ interface
 uses
   System.SysUtils, System.Classes, System.IOUtils, System.JSON,
 
+  MCPConnect.Configuration.Session,
+  MCPConnect.Session.Core,
   MCPConnect.JRPC.Server;
 
 type
@@ -84,6 +86,8 @@ type
   TWorkerThread = class(TThread)
   private
     FServer: TJRPCServer;
+    FSession: TSessionBase;
+    FSessionConfig: TSessionConfig;
     procedure SetServer(const Value: TJRPCServer);
     procedure HandleRequest(const ARequestContent: string; out AResponseContent: string);
   protected
@@ -344,40 +348,59 @@ var
   LWriter: TStdOutWriter;
   LError: TStdErrWriter;
   LRequest, LResponse: string;
+  LSessionId: string;
 begin
   inherited;
-  LReader := TStdInReader.Create;
+
+  // Create session for this STDIO connection (implicit session per connection)
+  if Assigned(FSessionConfig) then
+  begin
+    FSession := TSessionManager.Instance.CreateSession;
+    LSessionId := FSession.SessionId;  // Save ID before thread ends
+  end;
+
   try
-    LWriter := TStdOutWriter.Create;
+    LReader := TStdInReader.Create;
     try
-      LError := TStdErrWriter.Create;
+      LWriter := TStdOutWriter.Create;
       try
-        while not LReader.EndOfStream do
-        begin
-          LRequest := LReader.ReadLine;
-          try
-            HandleRequest(LRequest, LResponse);
-            if LResponse <> '' then
-            begin
-              LWriter.WriteLine(LResponse);
-            end;
-          except
-            on E: Exception do
-            begin
-              LError.WriteLine(E.Message);
+        LError := TStdErrWriter.Create;
+        try
+          while not LReader.EndOfStream do
+          begin
+            LRequest := LReader.ReadLine;
+            try
+              HandleRequest(LRequest, LResponse);
+              if LResponse <> '' then
+              begin
+                LWriter.WriteLine(LResponse);
+              end;
+            except
+              on E: Exception do
+              begin
+                LError.WriteLine(E.Message);
+              end;
             end;
           end;
+        finally
+          LError.Free;
         end;
       finally
-        LError.Free;
+        LWriter.Free;
       end;
-    finally
-      LWriter.Free;
-    end;
 
+    finally
+      LReader.Free;
+    end;
   finally
-    LReader.Free;
+    // Destroy session when STDIO connection ends
+    // Note: This is done for consistency and explicit resource cleanup.
+    // The session would be automatically destroyed by TSessionManager's destructor
+    // at application termination, but we clean it up here for good practice.
+    if not LSessionId.IsEmpty then
+      TSessionManager.Instance.DestroySession(LSessionId);
   end;
+
   Terminate;
 end;
 
@@ -428,6 +451,10 @@ begin
     LContext.AddContent(LJRPCResponse);
     LContext.AddContent(FServer);
 
+    // Add session to context if available (implicit session per STDIO connection)
+    if Assigned(FSession) then
+      LContext.AddContent(FSession);
+
     // Injects the context inside the instance
     LContext.Inject(LInstance);
 
@@ -455,6 +482,9 @@ end;
 procedure TWorkerThread.SetServer(const Value: TJRPCServer);
 begin
   FServer := Value;
+
+  if Assigned(FServer) then
+    FSessionConfig := FServer.GetConfiguration<TSessionConfig>;
 end;
 
 end.

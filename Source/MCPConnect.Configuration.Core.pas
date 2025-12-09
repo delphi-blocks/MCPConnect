@@ -37,19 +37,60 @@ type
 
   TJRPCConfigurationClass = class of TJRPCConfiguration;
 
+  /// <summary>
+  ///   Core interface representing a JSON-RPC application that supports
+  ///   plugin-based configuration. Provides access to registered configurations
+  ///   and a fluent API for configuring the application via the Plugin property.
+  /// </summary>
   IJRPCApplication = interface
     ['{1A6AE035-77BF-4191-9D40-EBF538F8BF6D}']
 
+    /// <summary>
+    ///   Retrieves a configuration instance by its class reference.
+    /// </summary>
+    /// <param name="AClass">Configuration class to retrieve</param>
+    /// <returns>Configuration instance (creates if not exists)</returns>
     function GetConfigByClassRef(AClass: TJRPCConfigurationClass): TJRPCConfiguration;
+
+    /// <summary>
+    ///   Returns the application configurator used for the fluent configuration API.
+    /// </summary>
+    /// <returns>Configurator instance that provides access to all configuration interfaces</returns>
     function GetAppConfigurator: TAppConfigurator;
+
+    /// <summary>
+    ///   Returns all registered configuration instances.
+    /// </summary>
+    /// <returns>Enumerable collection of all active configurations</returns>
     function GetConfigurations: TEnumerable<TJRPCConfiguration>;
 
+    /// <summary>
+    ///   Provides fluent access to configuration interfaces. Use Configure&lt;T&gt;
+    ///   to access specific configuration types (IMCPConfig, IAuthTokenConfig, etc.).
+    /// </summary>
     property Plugin: TAppConfigurator read GetAppConfigurator;
   end;
 
+  /// <summary>
+  ///   Base interface for all configuration plugins in the JSON-RPC framework.
+  ///   Provides fluent API support through BackToApp and ApplyConfig methods
+  ///   that allow method chaining and navigation between configurations.
+  /// </summary>
   IJRPCConfiguration = interface
     ['{BA740194-E1E6-4FE8-8B02-1A8DC947352E}']
+    /// <summary>
+    ///   Returns to the application interface without applying configuration changes.
+    ///   Useful for navigating between configurations without committing changes.
+    /// </summary>
+    /// <returns>The parent IJRPCApplication instance for further configuration</returns>
     function BackToApp: IJRPCApplication;
+
+    /// <summary>
+    ///   Applies the current configuration changes and returns to the application
+    ///   interface. This commits all configuration changes made through the
+    ///   fluent API methods.
+    /// </summary>
+    /// <returns>The parent IJRPCApplication instance for further configuration</returns>
     function ApplyConfig: IJRPCApplication;
   end;
 

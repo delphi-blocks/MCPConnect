@@ -43,12 +43,12 @@ begin
       .Plugin.Configure<IMCPConfig>
         .SetServerName('delphi-mcp-server')
         .SetServerVersion('2.0.0')
-        .SetToolClass(TTestTool)
+        .RegisterToolClass('test', TTestTool)
+        .RegisterToolClass('delphi_day', TDelphiDayTool)
         .RegisterWriter(TMCPImageWriter)
         .RegisterWriter(TMCPPictureWriter)
         .RegisterWriter(TMCPStreamWriter)
         .RegisterWriter(TMCPStringListWriter)
-        .SetToolClass(TDelphiDayTool)
         .ApplyConfig;
 
     LStdioServer := TJRPCStdioServer.Create(nil);

@@ -113,7 +113,7 @@ FJRPCServer
   .Plugin.Configure<IMCPConfig>
     .SetServerName('delphi-mcp-server')
     .SetServerVersion('2.0.0')
-    .SetToolClass(THelpDeskService)  // Register your tool class here
+    .RegisterToolClass(THelpDeskService)  // Register your tool class
     .ApplyConfig;
 
 // Create and configure the Dispatcher
@@ -171,7 +171,62 @@ type
 
 -----------------------------
 
-### 3. Connecting LLM Clients to Your MCP Server
+### 3. Organizing Tools with Namespaces
+
+When building larger MCP servers with multiple tool classes, you can organize them using **namespaces** to avoid name conflicts and improve API structure.
+
+#### Why Use Namespaces?
+
+- **Avoid conflicts**: Multiple tool classes can have methods with the same name
+- **Clear organization**: Group related tools together logically
+- **Better API structure**: Tools are exposed as `namespace_toolname` (e.g., `auth_login`, `user_get`)
+- **Scalability**: Easy to add/remove entire feature sets
+
+#### Basic Namespace Usage
+
+```delphi
+// Multiple tool classes with namespaces
+FJRPCServer
+  .Plugin.Configure<IMCPConfig>
+    .SetServerName('multi-service-server')
+    .RegisterToolClass('auth', TAuthService)       // auth_login, auth_logout
+    .RegisterToolClass('tickets', TTicketService)  // tickets_list, tickets_create
+    .RegisterToolClass('users', TUserService)      // users_get, users_update
+    .ApplyConfig;
+```
+
+**Important**: Tool names must match the MCP pattern `^[a-zA-Z0-9_-]{1,64}$` (only alphanumeric, underscore, hyphen).
+
+#### Custom Separator
+
+The default separator is `_` (underscore), but you can change it to `-` (hyphen):
+
+```delphi
+FJRPCServer
+  .Plugin.Configure<IMCPConfig>
+    .SetNamespaceSeparator('-')  // Use hyphen instead of underscore
+    .RegisterToolClass('auth', TAuthService)
+    .ApplyConfig;
+// Tools exposed as: auth-login, auth-logout
+```
+
+#### Mixed Approach
+
+You can mix namespaced and non-namespaced tools:
+
+```delphi
+FJRPCServer
+  .Plugin.Configure<IMCPConfig>
+    .RegisterToolClass(TGeneralTools)        // health_check, version (no namespace)
+    .RegisterToolClass('admin', TAdminTools) // admin_restart, admin_config
+    .ApplyConfig;
+```
+
+**Note**: If you have overlapping namespaces (e.g., `delphi` and `delphi_day`), the framework matches the **longest/most specific** namespace first.
+
+-----------------------------
+
+### 4. Connecting LLM Clients to Your MCP Server
 
 Once your MCP server is running, you need to configure your LLM client to connect to it. Below are configuration examples for popular clients.
 

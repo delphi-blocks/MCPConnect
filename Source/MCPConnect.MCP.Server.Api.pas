@@ -80,16 +80,24 @@ function TMCPToolsApi.Call(const AName: string; AArguments: TJSONObject; Meta: T
 var
   LInvoker: IMCPInvokable;
   LTool: TObject;
+  LNamespace, LToolName: string;
 begin
   Result := TCallToolResult.Create;
   try
-    LTool := MCPConfig.CreateDefaultTool;
+    // Find which namespace this tool belongs to
+    if not MCPConfig.FindNamespaceForTool(AName, LNamespace, LToolName) then
+      raise EJRPCMethodNotFoundError.CreateFmt('Tool "%s" not found (no matching namespace)', [AName]);
+
+    // Create instance of the tool class for this namespace
+    LTool := MCPConfig.CreateToolInstance(LNamespace);
     try
       LInvoker := TMCPObjectInvoker.Create(LTool);
       Context.Inject(LInvoker);
       Context.Inject(LTool);
-      if not LInvoker.Invoke(AName, AArguments, Meta, Result) then
-        raise EJRPCMethodNotFoundError.CreateFmt('Tool "%s" non found', [AName]);
+
+      // Invoke using the tool name without namespace
+      if not LInvoker.Invoke(LToolName, AArguments, Meta, Result) then
+        raise EJRPCMethodNotFoundError.CreateFmt('Tool "%s" not found in namespace "%s"', [LToolName, LNamespace]);
     finally
       LTool.Free;
     end;
@@ -109,8 +117,31 @@ begin
 end;
 
 function TMCPToolsApi.List: TListToolsResult;
+var
+  LToolClasses: TArray<TToolClassInfo>;
+  LClassInfo: TToolClassInfo;
+  LNamespaceSeparator: string;
 begin
-  Result := TMCPSchemaGenerator.ListTools(MCPConfig.GetDefaultToolClass);
+  Result := TListToolsResult.Create;
+  try
+    LToolClasses := MCPConfig.GetToolClasses;
+    LNamespaceSeparator := MCPConfig.GetNamespaceSeparator;
+
+    // Iterate through all registered tool classes
+    for LClassInfo in LToolClasses do
+    begin
+      // Add tools directly to Result with namespace prefix
+      TMCPSchemaGenerator.ListTools(
+        LClassInfo.ToolClass,
+        Result,
+        LClassInfo.Namespace,
+        LNamespaceSeparator
+      );
+    end;
+  except
+    Result.Free;
+    raise;
+  end;
 end;
 
 { TMCPInitializeApi }

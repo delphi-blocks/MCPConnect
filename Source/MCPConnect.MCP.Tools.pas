@@ -210,8 +210,8 @@ type
     class function ListTools(AType: TRttiType): TListToolsResult; overload;
     class function ListTools(AClass: TClass): TListToolsResult; overload;
 
-    class procedure ListTools(AType: TRttiType; AList: TListToolsResult); overload;
-    class procedure ListTools(AClass: TClass; AList: TListToolsResult); overload;
+    class procedure ListTools(AType: TRttiType; AList: TListToolsResult; const ANamespace: string = ''; const ASeparator: string = '_'); overload;
+    class procedure ListTools(AClass: TClass; AList: TListToolsResult; const ANamespace: string = ''; const ASeparator: string = '_'); overload;
   end;
 
 implementation
@@ -274,8 +274,6 @@ end;
 { TMCPSchemaGenerator }
 
 class function TMCPSchemaGenerator.ListTools(AType: TRttiType): TListToolsResult;
-var
-  LGenerator: TMCPSchemaGenerator;
 begin
   Result := TListToolsResult.Create;
   try
@@ -291,18 +289,36 @@ begin
   Result := ListTools(TRttiUtils.Context.GetType(AClass));
 end;
 
-class procedure TMCPSchemaGenerator.ListTools(AClass: TClass; AList: TListToolsResult);
+class procedure TMCPSchemaGenerator.ListTools(AClass: TClass; AList: TListToolsResult; const ANamespace: string = ''; const ASeparator: string = '_');
 begin
-  ListTools(TRttiUtils.Context.GetType(AClass), AList);
+  ListTools(TRttiUtils.Context.GetType(AClass), AList, ANamespace, ASeparator);
 end;
 
-class procedure TMCPSchemaGenerator.ListTools(AType: TRttiType; AList: TListToolsResult);
+class procedure TMCPSchemaGenerator.ListTools(AType: TRttiType; AList: TListToolsResult; const ANamespace: string = ''; const ASeparator: string = '_');
 var
   LGenerator: TMCPSchemaGenerator;
+  LTool: TMCPTool;
+  LNamespacePrefix: string;
+  LStartIndex, I: Integer;
 begin
   LGenerator := TMCPSchemaGenerator.Create();
   try
+    // Remember how many tools were already in the list
+    LStartIndex := AList.Tools.Count;
+
+    // Add new tools from this class
     LGenerator.WriteMethods(AType, AList.Tools);
+
+    // Add namespace prefix only to the tools just added
+    if ANamespace <> '' then
+    begin
+      LNamespacePrefix := ANamespace + ASeparator;
+      for I := LStartIndex to AList.Tools.Count - 1 do
+      begin
+        LTool := AList.Tools[I];
+        LTool.Name := LNamespacePrefix + LTool.Name;
+      end;
+    end;
   finally
     LGenerator.Free;
   end;

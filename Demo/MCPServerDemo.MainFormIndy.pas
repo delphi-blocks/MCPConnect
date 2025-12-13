@@ -15,7 +15,11 @@ uses
   MCPConnect.MCP.Server.Api,
 
   MCPConnect.Configuration.MCP,
-  MCPConnect.Configuration.Auth;
+  MCPConnect.Configuration.Session,
+  MCPConnect.Configuration.Auth,
+
+  MCPConnect.Content.Writers.RTL,
+  MCPConnect.Content.Writers.VCL;
 
 type
   TForm1 = class(TForm)
@@ -87,11 +91,19 @@ begin
       .SetToken('my-secret-token')
       .ApplyConfig
 
+    .Plugin.Configure<ISessionConfig>
+      .SetLocation(TSessionIdLocation.Header)
+      .SetHeaderName('Mcp-Session-Id')
+      .SetTimeout(30)  // 30 minutes timeout
+      .SetSessionClass(TShoppingSession)  // Use custom typed session
+      .ApplyConfig
+
     .Plugin.Configure<IMCPConfig>
       .SetServerName('delphi-mcp-server')
       .SetServerVersion('2.0.0')
       .RegisterToolClass('test', TTestTool)
       .RegisterToolClass('delphi_day', TDelphiDayTool)
+      .RegisterToolClass('shopping', TShoppingCartTool)  // Session-based shopping cart
       .ApplyConfig;
 
 //    .Plugin.Configure<IJRPCNeonConfig>

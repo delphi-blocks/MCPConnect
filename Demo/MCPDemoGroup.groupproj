@@ -1,0 +1,84 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{8DD48209-BB08-4E7C-884C-D30E9D64D954}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="MCPIndyServerDemo.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="JRPCServerDemo.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="MCPServerDemo.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="MCPServerStdioDemo.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="MCPTest.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="MCPIndyServerDemo">
+        <MSBuild Projects="MCPIndyServerDemo.dproj"/>
+    </Target>
+    <Target Name="MCPIndyServerDemo:Clean">
+        <MSBuild Projects="MCPIndyServerDemo.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="MCPIndyServerDemo:Make">
+        <MSBuild Projects="MCPIndyServerDemo.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="JRPCServerDemo">
+        <MSBuild Projects="JRPCServerDemo.dproj"/>
+    </Target>
+    <Target Name="JRPCServerDemo:Clean">
+        <MSBuild Projects="JRPCServerDemo.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="JRPCServerDemo:Make">
+        <MSBuild Projects="JRPCServerDemo.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="MCPServerDemo">
+        <MSBuild Projects="MCPServerDemo.dproj"/>
+    </Target>
+    <Target Name="MCPServerDemo:Clean">
+        <MSBuild Projects="MCPServerDemo.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="MCPServerDemo:Make">
+        <MSBuild Projects="MCPServerDemo.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="MCPServerStdioDemo">
+        <MSBuild Projects="MCPServerStdioDemo.dproj"/>
+    </Target>
+    <Target Name="MCPServerStdioDemo:Clean">
+        <MSBuild Projects="MCPServerStdioDemo.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="MCPServerStdioDemo:Make">
+        <MSBuild Projects="MCPServerStdioDemo.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="MCPTest">
+        <MSBuild Projects="MCPTest.dproj"/>
+    </Target>
+    <Target Name="MCPTest:Clean">
+        <MSBuild Projects="MCPTest.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="MCPTest:Make">
+        <MSBuild Projects="MCPTest.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="MCPIndyServerDemo;JRPCServerDemo;MCPServerDemo;MCPServerStdioDemo;MCPTest"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="MCPIndyServerDemo:Clean;JRPCServerDemo:Clean;MCPServerDemo:Clean;MCPServerStdioDemo:Clean;MCPTest:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="MCPIndyServerDemo:Make;JRPCServerDemo:Make;MCPServerDemo:Make;MCPServerStdioDemo:Make;MCPTest:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>

@@ -30,7 +30,6 @@ uses
   Neon.Core.Persistence.JSON.Schema;
 
 type
-  [Test.Abc()]
   TPerson = class
   private
     FName: string;

@@ -7,6 +7,7 @@ uses
   MCPConnect.Configuration.Core in '..\Source\MCPConnect.Configuration.Core.pas',
   MCPConnect.Configuration.MCP in '..\Source\MCPConnect.Configuration.MCP.pas',
   MCPConnect.Configuration.Neon in '..\Source\MCPConnect.Configuration.Neon.pas',
+  MCPConnect.Configuration.Session in '..\Source\MCPConnect.Configuration.Session.pas',
   MCPConnect.Content.Writers in '..\Source\MCPConnect.Content.Writers.pas',
   MCPConnect.Content.Writers.RTL in '..\Source\MCPConnect.Content.Writers.RTL.pas',
   MCPConnect.Content.Writers.VCL in '..\Source\MCPConnect.Content.Writers.VCL.pas',
@@ -22,6 +23,8 @@ uses
   MCPConnect.MCP.Tools in '..\Source\MCPConnect.MCP.Tools.pas',
   MCPConnect.MCP.Types in '..\Source\MCPConnect.MCP.Types.pas',
   MCPConnect.MCP.Config in '..\Source\MCPConnect.MCP.Config.pas',
+  MCPConnect.Session.Core in '..\Source\MCPConnect.Session.Core.pas',
+  MCPConnect.Transport.Indy in '..\Source\MCPConnect.Transport.Indy.pas',
   MCPServerDemo.MainFormIndy in 'MCPServerDemo.MainFormIndy.pas' {Form1},
   MCPServerDemo.Tools in 'MCPServerDemo.Tools.pas';
 

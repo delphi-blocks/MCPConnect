@@ -20,7 +20,23 @@ uses
   System.Generics.Collections;
 
 type
-  // With this anonymous method, you can define custom disposal actions
+  /// <summary>
+  ///   Anonymous method type that defines a custom disposal action.
+  ///   Used by the garbage collector to execute custom cleanup logic
+  ///   when disposing of tracked objects.
+  /// </summary>
+  /// <remarks>
+  ///   Use this when objects require special cleanup beyond the default
+  ///   Free method (e.g., releasing external resources, closing handles).
+  /// </remarks>
+  /// <example>
+  ///   <code>
+  ///     FGC.Add(TValue.From(MyObject), procedure begin
+  ///       MyObject.CloseConnection;
+  ///       MyObject.Free;
+  ///     end);
+  ///   </code>
+  /// </example>
   TDisposeAction = reference to procedure;
 
   /// <summary>
@@ -29,12 +45,46 @@ type
   ///   values with optional custom disposal actions, and provides a method
   ///   to collect and dispose all tracked garbage.
   /// </summary>
+  /// <remarks>
+  ///   The garbage collector is typically injected via [Context] attribute
+  ///   in MCP tool classes, providing automatic memory management for
+  ///   objects created during request processing.
+  /// </remarks>
   IGarbageCollector = interface
     ['{407C168F-A81C-4E41-96B2-BFEA94C58B0D}']
+    /// <summary>
+    ///   Adds a value to the garbage collector for automatic disposal.
+    ///   Uses default disposal logic (calls Free for objects, recursive
+    ///   cleanup for arrays).
+    /// </summary>
+    /// <param name="AValue">The value to track. Typically a TValue.From(Object)</param>
     procedure Add(const AValue: TValue); overload;
+
+    /// <summary>
+    ///   Adds a value with a custom disposal action.
+    /// </summary>
+    /// <param name="AValue">The value to track</param>
+    /// <param name="AAction">Custom cleanup procedure to execute instead of default disposal</param>
     procedure Add(const AValue: TValue; AAction: TDisposeAction); overload;
+
+    /// <summary>
+    ///   Adds multiple values at once for automatic disposal.
+    /// </summary>
+    /// <param name="AValues">Array of values to track</param>
     procedure Add(const AValues: TArray<TValue>); overload;
+
+    /// <summary>
+    ///   Adds multiple values with a shared custom disposal action.
+    /// </summary>
+    /// <param name="AValues">Array of values to track</param>
+    /// <param name="AAction">Custom cleanup procedure applied to all values</param>
     procedure Add(const AValues: TArray<TValue>; AAction: TDisposeAction); overload;
+
+    /// <summary>
+    ///   Immediately disposes all tracked values and clears the collection.
+    ///   Called automatically on destruction, but can be invoked manually
+    ///   for early cleanup.
+    /// </summary>
     procedure CollectGarbage();
   end;
 
@@ -51,24 +101,126 @@ type
   /// the *CreateInstance* method, then it will be destroyed automatically
   /// when it goes out of scope.
   /// </remarks>
+  /// <example>
+  ///   <code>
+  ///   // Typical usage in an MCP tool class:
+  ///   TMyTool = class
+  ///   private
+  ///     [Context] FGC: IGarbageCollector;
+  ///   public
+  ///     [McpTool('get_data', 'Returns data')]
+  ///     function GetData: TContentList;
+  ///     var
+  ///       LList: TStringList;
+  ///       LBuilder: TToolResultBuilder;
+  ///     begin
+  ///       LList := TStringList.Create;
+  ///       FGC.Add(TValue.From(LList)); // Auto-freed after request
+  ///
+  ///       LList.Add('Item 1');
+  ///       LList.Add('Item 2');
+  ///
+  ///       LBuilder := TToolResultBuilder.CreateInstance;
+  ///       LBuilder.AddText(LList.Text);
+  ///       Result := LBuilder.Build;
+  ///     end;
+  ///   end;
+  ///   </code>
+  /// </example>
   TGarbageCollector = class(TInterfacedObject, IGarbageCollector)
   private
     FGarbage: TDictionary<TValue, TDisposeAction>;
+
+    /// <summary>
+    ///   Internal method that performs the actual disposal of a single value.
+    ///   Handles different type kinds: tkClass (calls Free), tkArray/tkDynArray
+    ///   (recursive cleanup of elements).
+    /// </summary>
+    /// <param name="AValue">The value to dispose</param>
     procedure CollectGarbageValue(const AValue: TValue);
+
+    /// <summary>
+    ///   Internal method that processes a single garbage entry. If a custom
+    ///   disposal action is defined, executes it; otherwise, uses default
+    ///   disposal logic via CollectGarbageValue.
+    /// </summary>
+    /// <param name="AGarbage">A pair containing the value and its optional disposal action</param>
     procedure CollectSingleGarbage(AGarbage: TPair<TValue, TDisposeAction>);
   public
+    /// <summary>
+    ///   Creates a new garbage collector instance as an interface reference.
+    ///   Recommended for automatic memory management (destroyed when out of scope).
+    /// </summary>
+    /// <returns>IGarbageCollector interface reference</returns>
     class function CreateInstance: IGarbageCollector; static;
   public
+    /// <summary>
+    ///   Initializes the garbage collector and internal dictionary.
+    /// </summary>
     constructor Create; virtual;
+
+    /// <summary>
+    ///   Destroys the garbage collector. Automatically calls CollectGarbage
+    ///   to dispose all tracked objects before destruction.
+    /// </summary>
     destructor Destroy; override;
 
+    /// <summary>
+    ///   Adds a value to the garbage collector for automatic disposal.
+    ///   Uses default disposal logic (calls Free for objects).
+    /// </summary>
+    /// <param name="AValue">The value to track</param>
     procedure Add(const AValue: TValue); overload;
+
+    /// <summary>
+    ///   Adds a value with a custom disposal action.
+    /// </summary>
+    /// <param name="AValue">The value to track</param>
+    /// <param name="AAction">Custom cleanup procedure</param>
     procedure Add(const AValue: TValue; AAction: TDisposeAction); overload;
+
+    /// <summary>
+    ///   Adds multiple values at once for automatic disposal.
+    /// </summary>
+    /// <param name="AValues">Array of values to track</param>
     procedure Add(const AValues: TArray<TValue>); overload;
+
+    /// <summary>
+    ///   Adds multiple values with a shared custom disposal action.
+    /// </summary>
+    /// <param name="AValues">Array of values to track</param>
+    /// <param name="AAction">Custom cleanup procedure for all values</param>
     procedure Add(const AValues: TArray<TValue>; AAction: TDisposeAction); overload;
+
+    /// <summary>
+    ///   Immediately disposes all tracked values and clears the collection.
+    ///   Called automatically on destruction.
+    /// </summary>
     procedure CollectGarbage();
   end;
 
+/// <summary>
+///   Creates a new TValue initialized with the default value for the specified
+///   RTTI type. Supports common Delphi type kinds including integers, floats,
+///   strings, classes, and records.
+/// </summary>
+/// <param name="AType">RTTI type information for which to create a default value</param>
+/// <returns>
+///   A TValue containing the default/zero value for the type:
+///   - Integers: 0
+///   - Floats: 0.0
+///   - Strings: empty string
+///   - Classes: nil
+///   - Records: zero-initialized memory
+/// </returns>
+/// <remarks>
+///   Used internally by the JRPC invoker to create default parameter values
+///   when arguments are omitted in JSON-RPC requests. For record types,
+///   allocates and zero-initializes memory temporarily to create the TValue.
+/// </remarks>
+/// <exception cref="EJRPCException">
+///   Raised if the type kind is not supported (e.g., interfaces, pointers, methods)
+/// </exception>
 function CreateNewValue(AType: TRttiType): TValue;
 
 implementation

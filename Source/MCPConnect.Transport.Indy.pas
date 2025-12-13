@@ -23,6 +23,8 @@ uses
   Neon.Core.Persistence.JSON,
 
   MCPConnect.Configuration.Auth,
+  MCPConnect.Configuration.Session,
+  MCPConnect.Session.Core,
   MCPConnect.JRPC.Server;
 
 type
@@ -30,7 +32,10 @@ type
   private
     FServer: TJRPCServer;
     FAuthTokenConfig: TAuthTokenConfig;
+    FSessionConfig: TSessionConfig;
     function CheckAuthorization(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo): Boolean;
+    function ExtractSessionId(ARequestInfo: TIdHTTPRequestInfo): string;
+    function HandleSession(ARequestInfo: TIdHTTPRequestInfo; out ASessionCreated: Boolean): TSessionBase;
     procedure SetServer(const Value: TJRPCServer);
   public
     procedure HandleRequest(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
@@ -105,6 +110,8 @@ var
   LEncoding: IIdTextEncoding;
   LRequestContent: string;
   LId: TJRPCID;
+  LSession: TSessionBase;
+  LSessionCreated: Boolean;
 begin
   if not Assigned(FServer) then
     raise EJRPCException.Create('Server not found');
@@ -117,11 +124,15 @@ begin
   end;
 
   LGarbageCollector := TGarbageCollector.CreateInstance;
+  LSession := nil;
+  LSessionCreated := False;
 
   LResponse := TJRPCResponse.Create;
   LGarbageCollector.Add(LResponse);
 
   try
+    // Handle session (get existing or create new)
+    LSession := HandleSession(ARequestInfo, LSessionCreated);
 
     if ARequestInfo.CharSet <> '' then
       LEncoding := IndyTextEncoding(ARequestInfo.CharSet)
@@ -148,6 +159,10 @@ begin
     LContext.AddContent(LResponse);
     LContext.AddContent(FServer);
 
+    // Add session to context if available
+    if Assigned(LSession) then
+      LContext.AddContent(LSession);
+
     // Injects the context inside the instance
     LContext.Inject(LInstance);
 
@@ -161,6 +176,12 @@ begin
   except
     on E: Exception do
       TJRPCObjectInvoker.HandleException(E, LId, LResponse);
+  end;
+
+  // If a new session was created, add session ID to response header
+  if LSessionCreated and Assigned(LSession) and Assigned(FSessionConfig) then
+  begin
+    AResponseInfo.CustomHeaders.AddValue(FSessionConfig.GetHeaderName, LSession.SessionId);
   end;
 
   AResponseInfo.ContentType := 'application/json';
@@ -178,7 +199,54 @@ end;
 procedure TJRPCIndyBridge.SetServer(const Value: TJRPCServer);
 begin
   FServer := Value;
+
   FAuthTokenConfig := FServer.GetConfiguration<TAuthTokenConfig>;
+  FSessionConfig := FServer.GetConfiguration<TSessionConfig>;
+end;
+
+function TJRPCIndyBridge.ExtractSessionId(ARequestInfo: TIdHTTPRequestInfo): string;
+begin
+  Result := '';
+
+  if not Assigned(FSessionConfig) then
+    Exit;
+
+  case FSessionConfig.GetLocation of
+    TSessionIdLocation.Header:
+      Result := ARequestInfo.RawHeaders.Values[FSessionConfig.GetHeaderName];
+
+    TSessionIdLocation.Cookie:
+      Result := ARequestInfo.Cookies.Cookie[FSessionConfig.GetHeaderName, ''].Value;
+  end;
+
+  Result := Result.Trim;
+end;
+
+function TJRPCIndyBridge.HandleSession(ARequestInfo: TIdHTTPRequestInfo;
+  out ASessionCreated: Boolean): TSessionBase;
+var
+  LSessionId: string;
+begin
+  Result := nil;
+  ASessionCreated := False;
+
+  if not Assigned(FSessionConfig) then
+    Exit;
+
+  LSessionId := ExtractSessionId(ARequestInfo);
+
+  // If session ID is provided, try to get existing session
+  if not LSessionId.IsEmpty then
+  begin
+    // GetSession will raise exception if expired or not found
+    Result := TSessionManager.Instance.GetSession(LSessionId);
+  end
+  else
+  begin
+    // No session ID provided - auto-create new session
+    Result := TSessionManager.Instance.CreateSession;
+    ASessionCreated := True;
+  end;
 end;
 
 { TJRPCIndyServer }

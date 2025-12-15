@@ -371,6 +371,7 @@ begin
     Result.FromJson(AJSON);
   except
     Result.Free;
+    raise;
   end;
 end;
 
@@ -523,7 +524,7 @@ begin
 
   var j := AValue.FindValue('result');
   if Assigned(j) then
-    LRes.Result := j;
+    LRes.Result := j.Clone as TJSONValue;
 
   var id := AValue.FindValue('id');
   if id is TJSONNumber then
@@ -584,6 +585,7 @@ begin
     Result.FromJson(AJSON);
   except
     Result.Free;
+    raise;
   end;
 end;
 
@@ -604,9 +606,11 @@ end;
 
 procedure TJRPCResponse.SetResult(AValue: TJSONValue);
 begin
-  if Assigned(FResult) and (FResult <> AValue) then
+  if FResult <> AValue then
   begin
-    FResult.Free;
+    if Assigned(FResult) then
+      FResult.Free;
+
     FResult := AValue;
   end;
 end;

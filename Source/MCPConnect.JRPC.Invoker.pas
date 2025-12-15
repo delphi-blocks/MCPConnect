@@ -188,14 +188,16 @@ begin
       case ARequest.ParamsType of
         TJRPCParamsType.ByPos:
         begin
+          if LParamIndex >= (ARequest.Params as TJSONArray).Count then
+            raise EJRPCInvokerError.CreateFmt('Parameter with index "%d" not found (only %d parameters available)', [LParamIndex, (ARequest.Params as TJSONArray).Count]);
+
           LParamJSON := (ARequest.Params as TJSONArray).Items[LParamIndex];
-          //LParamValue := ARequest.Params.ByPos[LParamIndex];
         end;
 
         TJRPCParamsType.ByName:
         begin
-          LParamJSON := (ARequest.Params as TJSONObject).GetValue(GetParamName(LParam));
-          //LParamValue := ARequest.Params.ByName[GetParamName(LParam)];
+          if not (ARequest.Params as TJSONObject).TryGetValue(GetParamName(LParam), LParamJSON) then
+            raise EJRPCInvokerError.CreateFmt('Parameter "%s" not found', [GetParamName(LParam)]);
         end;
       else
         raise EJRPCInvokerError.Create(JRPC_INTERNAL_ERROR, 'Unknown params type');
@@ -272,8 +274,8 @@ begin
 
   LGarbageCollector := TGarbageCollector.CreateInstance;
   AContext.AddContent(LGarbageCollector);
-  LArgs := RequestToRttiParams(ARequest);
   try
+    LArgs := RequestToRttiParams(ARequest);
     LGarbageCollector.Add(LArgs);
     LResult := FMethod.Invoke(FInstance, LArgs);
     try

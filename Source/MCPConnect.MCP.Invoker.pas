@@ -174,7 +174,7 @@ var
   LResult: string;
   LWriter: TMCPCustomWriter;
   LContext: TMCPWriterContext;
-  LContent: TBaseContent;
+  LContent: TToolContent;
   LText: TTextContent absolute LContent;
   LResText: TEmbeddedResourceText absolute LContent;
   LResBlob: TEmbeddedResourceBlob absolute LContent;

@@ -314,17 +314,11 @@ type
   /// </summary>
   TBaseContent = class(TMetaClass)
   public
-
     /// <summary>
     ///   Optional annotations for the client. The client can use annotations to inform how objects
     ///   are used or displayed
     /// </summary>
     [NeonInclude(IncludeIf.NotEmpty)] Annotations: TAnnotations;
-
-    /// <summary>
-    ///   Content type: can be text, image, audio, etc...
-    /// </summary>
-    [NeonProperty('type')] &Type: string;
   public
     constructor Create;
     destructor Destroy; override;
@@ -332,10 +326,18 @@ type
     function DataFromStream(AStream: TStream): string;
   end;
 
+  TToolContent = class(TBaseContent)
+  public
+    /// <summary>
+    ///   Content type: can be text, image, audio, etc...
+    /// </summary>
+    [NeonProperty('type')] &Type: string;
+  end;
+
   /// <summary>
   ///   Text provided to or from an LLM.
   /// </summary>
-  TTextContent = class(TBaseContent)
+  TTextContent = class(TToolContent)
   public
 
     /// <summary>
@@ -349,7 +351,7 @@ type
   /// <summary>
   ///   An image provided to or from an LLM.
   /// </summary>
-  TImageContent = class(TBaseContent)
+  TImageContent = class(TToolContent)
   public
 
     /// <summary>
@@ -371,7 +373,7 @@ type
   /// <summary>
   ///   Audio provided to or from an LLM.
   /// </summary>
-  TAudioContent = class(TBaseContent)
+  TAudioContent = class(TToolContent)
   public
 
     /// <summary>
@@ -398,7 +400,7 @@ type
   ///   Note: resource links returned by tools are not guaranteed to appear in the results of
   ///   `resources/list` requests.
   /// </remarks>
-  TResourceLink = class(TBaseContent)
+  TResourceLink = class(TToolContent)
   public
 
     /// <summary>
@@ -448,7 +450,7 @@ type
   /// <summary>
   ///   The contents of a specific resource or sub-resource.
   /// </summary>
-  TResourceContents = class(TMetaClass)
+  TResourceContents = class(TBaseContent)
   public
 
     /// <summary>
@@ -493,13 +495,19 @@ type
   end;
 
   /// <summary>
+  ///   List of Resource Contents. Used in ReadResourceResult
+  /// </summary>
+  TResourceContentsList = class(TObjectList<TResourceContents>)
+  end;
+
+  /// <summary>
   ///   The contents of a resource, embedded into a prompt or tool call result. It is up to the
   ///   client how best to render embedded resources for the benefit of the LLM and/or the user.
   /// </summary>
   /// <remarks>
   ///   Defaults to TBlobResourceContents
   /// </remarks>
-  TEmbeddedResourceBlob = class(TBaseContent)
+  TEmbeddedResourceBlob = class(TToolContent)
   public
 
     /// <summary>
@@ -518,7 +526,7 @@ type
   /// <remarks>
   ///   Defaults to TTextResourceContents
   /// </remarks>
-  TEmbeddedResourceText = class(TBaseContent)
+  TEmbeddedResourceText = class(TToolContent)
   public
 
     /// <summary>
@@ -533,32 +541,7 @@ type
   /// <summary>
   ///   List of Contents. Used in CallToolResult
   /// </summary>
-  TContentList = class(TObjectList<TBaseContent>)
-  end;
-
-  /// <summary>
-  ///   Base class for all the Content-based MCP classes
-  /// </summary>
-  TContentClass = class
-  public
-
-   /// <summary>
-   ///   Can be TextContent, ImageContent, AudioContent, ResourceLink, or
-   ///   EmbeddedResource
-   /// </summary>
-   Content: TBaseContent;
-
-  public
-    constructor Create;
-    destructor Destroy; override;
-
-    procedure SetContent(AContent: TBaseContent);
-
-    function GetContentAsText: TTextContent;
-    function GetContentAsImage: TImageContent;
-    function GetContentAsAudio: TAudioContent;
-    function GetContentAsResource: TResourceLink;
-    function GetContentAsEmbedded: TEmbeddedResourceBlob;
+  TContentList = class(TObjectList<TToolContent>)
   end;
 
   /// <summary>
@@ -742,83 +725,6 @@ destructor TEmbeddedResourceBlob.Destroy;
 begin
   Resource.Free;
   inherited;
-end;
-
-{ TContentClass }
-
-constructor TContentClass.Create;
-begin
-  Content := TBaseContent.Create;
-end;
-
-destructor TContentClass.Destroy;
-begin
-  Content.Free;
-  inherited;
-end;
-
-function TContentClass.GetContentAsAudio: TAudioContent;
-begin
-  if not (Content is TAudioContent) then
-  begin
-    Content.Free;
-    Content := TAudioContent.Create;
-  end;
-
-  Result := Content as TAudioContent;
-end;
-
-function TContentClass.GetContentAsEmbedded: TEmbeddedResourceBlob;
-begin
-  if not (Content is TEmbeddedResourceBlob) then
-  begin
-    Content.Free;
-    Content := TEmbeddedResourceBlob.Create;
-  end;
-
-  Result := Content as TEmbeddedResourceBlob;
-end;
-
-function TContentClass.GetContentAsImage: TImageContent;
-begin
-  if not (Content is TImageContent) then
-  begin
-    Content.Free;
-    Content := TImageContent.Create;
-  end;
-
-  Result := Content as TImageContent;
-end;
-
-function TContentClass.GetContentAsResource: TResourceLink;
-begin
-  if not (Content is TResourceLink) then
-  begin
-    Content.Free;
-    Content := TResourceLink.Create;
-  end;
-
-  Result := Content as TResourceLink;
-end;
-
-function TContentClass.GetContentAsText: TTextContent;
-begin
-  if not (Content is TTextContent) then
-  begin
-    Content.Free;
-    Content := TTextContent.Create;
-  end;
-
-  Result := Content as TTextContent;
-end;
-
-procedure TContentClass.SetContent(AContent: TBaseContent);
-begin
-  if (AContent <> nil) and (AContent <> Content) then
-  begin
-    Content.Free;
-    Content := AContent;
-  end;
 end;
 
 { TMetaClass }

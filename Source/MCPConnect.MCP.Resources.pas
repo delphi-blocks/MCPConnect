@@ -76,13 +76,9 @@ type
   /// <summary>
   /// Represents a known resource that the server is capable of reading.
   /// </summary>
-  TMCPResource = class
+  TMCPResource = class(TMetaClass)
   public
     [NeonProperty('annotation'), NeonInclude(IncludeIf.NotEmpty)] Annotated: TMCPAnnotation;
-    /// <summary>
-    /// Metadata object reserved by MCP for storing additional information.
-    /// </summary>
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
     /// <summary>
     /// The URI of this resource.
     /// </summary>
@@ -101,9 +97,6 @@ type
     /// The MIME type of this resource, if known.
     /// </summary>
     [NeonProperty('mimeType')] MIMEType: NullString;
-  public
-    constructor Create;
-    destructor Destroy; override;
   end;
 
   TMCPResources = class(TObjectList<TMCPResource>);
@@ -112,13 +105,9 @@ type
   /// <summary>
   /// Represents a template description for resources available on the server.
   /// </summary>
-  TMCPResourceTemplate = class
+  TMCPResourceTemplate = class(TMetaClass)
   public
     [NeonProperty('annotations'), NeonInclude(IncludeIf.NotEmpty)] Annotation: TMCPAnnotation;
-    /// <summary>
-    /// Metadata object reserved by MCP for storing additional information.
-    /// </summary>
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
     /// <summary>
     /// A URI template (according to RFC 6570) that can be used to construct resource URIs.
     /// </summary>
@@ -138,9 +127,6 @@ type
     /// </summary>
     /// <remarks>This should only be included if all resources matching this template have the same type.</remarks>
     [NeonProperty('mimeType')] MIMEType: NullString;
-  public
-    constructor Create;
-    destructor Destroy; override;
   end;
 
   TMCPResourceTemplates = class(TObjectList<TMCPResourceTemplate>);
@@ -198,38 +184,30 @@ type
   /// <summary>
   /// Represents the parameters for a resources/read request.
   /// </summary>
-  TReadResourceParams = class
+  TReadResourceParams = class(TMetaClass)
   public
-
     /// <summary>
     /// The URI of the resource to read.
     /// </summary>
     /// <remarks>The URI can use any protocol; it is up to the server how to interpret it.</remarks>
     [NeonProperty('uri')] URI: string;
-
-    /// <summary>
-    /// Arguments to pass to the resource handler.
-    /// </summary>
-    [NeonProperty('arguments')] [NeonInclude(IncludeIf.NotEmpty)] Arguments: TJSONObject;
-
-  public
-    constructor Create;
-    destructor Destroy; override;
   end;
 
   /// <summary>
   /// The server's response to a resources/read request from the client.
   /// </summary>
-  TReadResourceResult = class
+  TReadResourceResult = class(TMetaClass)
   public
-    [NeonProperty('Result')] Result: TResult;
     /// <summary>
     /// The contents of the resource. Can be either a TTextResourceContents or TBlobResourceContents.
     /// </summary>
-    [NeonProperty('contents')] Contents: TJSONObject;
+    [NeonProperty('contents')] Contents: TResourceContentsList;
   public
     constructor Create;
     destructor Destroy; override;
+
+
+    procedure AddContent(AContent: TResourceContents);
   end;
 
   /// <summary>
@@ -269,50 +247,16 @@ type
 
 implementation
 
-{ TMCPResource }
-
-constructor TMCPResource.Create;
-begin
-  Meta := TJSONObject.Create;
-end;
-
-destructor TMCPResource.Destroy;
-begin
-  Meta.Free;
-  inherited;
-end;
-
-{ TMCPResourceTemplate }
-
-constructor TMCPResourceTemplate.Create;
-begin
-  Meta := TJSONObject.Create;
-end;
-
-destructor TMCPResourceTemplate.Destroy;
-begin
-  Meta.Free;
-  inherited;
-end;
-
-{ TReadResourceParams }
-
-constructor TReadResourceParams.Create;
-begin
-  Arguments := TJSONObject.Create;
-end;
-
-destructor TReadResourceParams.Destroy;
-begin
-  Arguments.Free;
-  inherited;
-end;
-
 { TReadResourceResult }
+
+procedure TReadResourceResult.AddContent(AContent: TResourceContents);
+begin
+  Contents.Add(AContent);
+end;
 
 constructor TReadResourceResult.Create;
 begin
-  Contents := TJSONObject.Create;
+  Contents := TResourceContentsList.Create;
 end;
 
 destructor TReadResourceResult.Destroy;

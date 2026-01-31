@@ -122,7 +122,7 @@ type
   /// This is similar to `SamplingMessage`, but also supports the embedding of
   /// resources from the MCP server.
   /// </summary>
-  TPromptMessage = class(TContentClass)
+  TPromptMessage = class(TToolContent)
   public
     /// <summary>
     ///   The sender or recipient of messages and data in a conversation.

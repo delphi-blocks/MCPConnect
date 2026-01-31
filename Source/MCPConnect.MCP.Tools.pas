@@ -174,7 +174,7 @@ type
     constructor Create;
     destructor Destroy; override;
 
-    procedure AddContent(AContent: TBaseContent);
+    procedure AddContent(AContent: TToolContent);
   end;
 
 type
@@ -534,7 +534,7 @@ begin
   inherited;
 end;
 
-procedure TCallToolResult.AddContent(AContent: TBaseContent);
+procedure TCallToolResult.AddContent(AContent: TToolContent);
 begin
   Content.Add(AContent);
 end;

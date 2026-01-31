@@ -76,6 +76,8 @@ type
     ilMain: TImageList;
     splMemo: TSplitter;
     actResource: TAction;
+    actResourceTemplate: TAction;
+    actResourceList: TAction;
     procedure FormCreate(Sender: TObject);
     procedure actRequestPosExecute(Sender: TObject);
     procedure actRequestDesExecute(Sender: TObject);
@@ -94,11 +96,14 @@ type
     procedure actCallToolParamsExecute(Sender: TObject);
     procedure actClearLogExecute(Sender: TObject);
     procedure actResourceExecute(Sender: TObject);
+    procedure actResourceListExecute(Sender: TObject);
+    procedure actResourceTemplateExecute(Sender: TObject);
   private
     ctx: TRttiContext;
     tools: TArray<TRttiMethod>;
     procedure FilterTools;
     function GetNeonConfig: INeonConfiguration;
+    function GetMCPNeonConfig: INeonConfiguration;
   public
 
     [McpTool('double_or_nothing', 'Doubles or zeroes the param value')] function TestParam(
@@ -297,7 +302,7 @@ begin
   pars.ClientInfo.Version := '0.8';
   pars.Capabilities.Roots.ListChanged := True;
 
-  var j := TNeon.ObjectToJSON(pars, MCPNeonConfig);
+  var j := TNeon.ObjectToJSON(pars, GetMCPNeonConfig);
   mmoLog.Lines.Add(j.ToJson);
 
   var req := TJRPCRequest.Create;
@@ -395,13 +400,13 @@ begin
   c.Arguments.AddPair('arg2', TNeon.ValueToJSON(Now()));
 
 
-  var s := TNeon.ObjectToJSONString(c, MCPNeonConfig);
+  var s := TNeon.ObjectToJSONString(c, GetMCPNeonConfig);
   mmoLog.Lines.Add(s);
   c.free;
 
   mmoLog.Lines.Add('------------------');
 
-  c :=  TNeon.JSONToObject<TCallToolParams>(s, MCPNeonConfig);
+  c :=  TNeon.JSONToObject<TCallToolParams>(s, GetMCPNeonConfig);
   mmoLog.Lines.Add('Method: ' + c.Name);
   for var arg in c.Arguments do
   begin
@@ -425,27 +430,27 @@ begin
   res.Name := 'Clients';
   res.URI := '/resources/clients';
   res.MIMEType := 'application/json';
-  mmoLog.Lines.Add(TNeon.ObjectToJSONString(res, MCPNeonConfig));
+  mmoLog.Lines.Add(TNeon.ObjectToJSONString(res, GetMCPNeonConfig));
   res.Free;
+end;
 
-  mmoLog.Lines.Add('----------------------');
-
+procedure TfrmMain.actResourceTemplateExecute(Sender: TObject);
+begin
   var tpl := TMCPResourceTemplate.Create;
   tpl.Name := 'Article Template';
   tpl.URITemplate := '/templates/article';
   tpl.MIMEType := 'application/json';
-  mmoLog.Lines.Add(TNeon.ObjectToJSONString(tpl, MCPNeonConfig));
+  mmoLog.Lines.Add(TNeon.ObjectToJSONString(tpl, GetMCPNeonConfig));
   tpl.Free;
+end;
 
-  mmoLog.Lines.Add('----------------------');
-
+procedure TfrmMain.actResourceListExecute(Sender: TObject);
+begin
   var lst := TListResourcesResult.Create;
   lst.AddResource('clients', '/resources/clients', 'application/json');
   lst.AddResource('orders', '/resources/orders', 'application/xml');
-  mmoLog.Lines.Add(TNeon.ObjectToJSONString(lst, MCPNeonConfig));
-  tpl.Free;
-
-
+  mmoLog.Lines.Add(TNeon.ObjectToJSONString(lst, GetMCPNeonConfig));
+  lst.Free;
 end;
 
 function TfrmMain.CreatePerson(const AName: string): TPerson;
@@ -467,6 +472,11 @@ begin
   for var m in methods do
     if Assigned(m.GetAttribute(MCPToolAttribute)) then
       tools := tools + [m];
+end;
+
+function TfrmMain.GetMCPNeonConfig: INeonConfiguration;
+begin
+  Result := MCPNeonConfig.SetPrettyPrint(True);
 end;
 
 function TfrmMain.GetNeonConfig: INeonConfiguration;

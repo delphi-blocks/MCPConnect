@@ -267,6 +267,12 @@ object frmMain: TfrmMain
           end
           item
             Action = actResource
+          end
+          item
+            Action = actResourceTemplate
+          end
+          item
+            Action = actResourceList
           end>
       end
       item
@@ -374,6 +380,16 @@ object frmMain: TfrmMain
       Category = 'MCP'
       Caption = 'Resource'
       OnExecute = actResourceExecute
+    end
+    object actResourceTemplate: TAction
+      Category = 'MCP'
+      Caption = 'Resource Template'
+      OnExecute = actResourceTemplateExecute
+    end
+    object actResourceList: TAction
+      Category = 'MCP'
+      Caption = 'Resource List'
+      OnExecute = actResourceListExecute
     end
   end
   object ilMain: TImageList

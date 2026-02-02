@@ -63,14 +63,23 @@ type
     //
     // It can include multiple entries to indicate content useful for multiple
     // audiences (e.g., `["user", "assistant"]`).
-    [NeonProperty('audience'), NeonInclude(IncludeIf.NotEmpty)]Audience: TArray<string>;
+    [NeonInclude(IncludeIf.NotEmpty)] Audience: TArray<string>;
+
+
+    /// <summary>
+    ///   The moment the resource was last modified, as an ISO 8601 formatted string <br />
+    /// </summary>
+    /// <example>
+    ///   Last activity timestamp in an open file, timestamp when the resource was attached, etc.
+    /// </example>
+    LastModified: NullDateTime;
 
     // Describes how important this data is for operating the server.
     //
     // A value of 1 means "most important," and indicates that the data is
     // effectively required, while 0 means "least important," and indicates that
     // the data is entirely optional.
-    [NeonProperty('priority')] Priority: Nullable<Currency>;
+    Priority: Nullable<Currency>;
   end;
 
   /// <summary>
@@ -78,25 +87,34 @@ type
   /// </summary>
   TMCPResource = class(TMetaClass)
   public
-    [NeonProperty('annotation'), NeonInclude(IncludeIf.NotEmpty)] Annotated: TMCPAnnotation;
+    [NeonInclude(IncludeIf.NotEmpty)] Annotations: TMCPAnnotation;
+
     /// <summary>
     /// The URI of this resource.
     /// </summary>
-    [NeonProperty('uri')] URI: string;
+    Uri: string;
+
     /// <summary>
     /// A human-readable name for this resource.
     /// </summary>
     /// <remarks>This can be used by clients to populate UI elements.</remarks>
-    [NeonProperty('name')] Name: string;
+    Name: string;
+
     /// <summary>
     /// A description of what this resource represents.
     /// </summary>
     /// <remarks>This can be used by clients to improve the LLM's understanding of available resources. It can be thought of like a 'hint' to the model.</remarks>
-    [NeonProperty('description')] Description: NullString;
+    Description: NullString;
+
     /// <summary>
     /// The MIME type of this resource, if known.
     /// </summary>
-    [NeonProperty('mimeType')] MIMEType: NullString;
+    MIMEType: NullString;
+
+    /// <summary>
+    ///   Optional set of sized icons that the client can display in a user interface
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)] Icons: TIconList;
   end;
 
   TMCPResources = class(TObjectList<TMCPResource>);
@@ -107,26 +125,35 @@ type
   /// </summary>
   TMCPResourceTemplate = class(TMetaClass)
   public
-    [NeonProperty('annotations'), NeonInclude(IncludeIf.NotEmpty)] Annotation: TMCPAnnotation;
+    [NeonInclude(IncludeIf.NotEmpty)] Annotations: TMCPAnnotation;
+
     /// <summary>
     /// A URI template (according to RFC 6570) that can be used to construct resource URIs.
     /// </summary>
-    [NeonProperty('uriTemplate')] URITemplate: NullString;
+    URITemplate: NullString;
+
     /// <summary>
     /// A human-readable name for the type of resource this template refers to.
     /// </summary>
     /// <remarks>This can be used by clients to populate UI elements.</remarks>
-    [NeonProperty('name')] Name: string;
+    Name: string;
+
     /// <summary>
     /// A description of what this template is for.
     /// </summary>
     /// <remarks>This can be used by clients to improve the LLM's understanding of available resources. It can be thought of like a 'hint' to the model.</remarks>
-    [NeonProperty('description')] Description: NullString;
+    Description: NullString;
+
     /// <summary>
     /// The MIME type for all resources that match this template.
     /// </summary>
     /// <remarks>This should only be included if all resources matching this template have the same type.</remarks>
-    [NeonProperty('mimeType')] MIMEType: NullString;
+    MIMEType: NullString;
+
+    /// <summary>
+    ///   Optional set of sized icons that the client can display in a user interface
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)] Icons: TIconList;
   end;
 
   TMCPResourceTemplates = class(TObjectList<TMCPResourceTemplate>);
@@ -143,18 +170,24 @@ type
   /// <summary>
   /// The server's response to a resources/list request from the client.
   /// </summary>
-  TListResourcesResult = class
+  TListResourcesResult = class(TMetaClass)
   public
     //[NeonProperty('PaginatedResult')] PaginatedResult: TPaginatedResult;
     /// <summary>
     /// A list of available resources.
     /// </summary>
-    [NeonProperty('resources')] Resources: TMCPResources;
+    Resources: TMCPResources;
+
+    /// <summary>
+    ///   An opaque token representing the pagination position after the last returned result. If present, there may be more results available
+    /// </summary>
+    NextCursor: NullString;
+
   public
     constructor Create;
     destructor Destroy; override;
 
-    function AddResource(const AName, AURI, AType: string): TMCPResource;
+    function AddResource(const AName, AUri, AType: string): TMCPResource;
   end;
 
   /// <summary>
@@ -168,14 +201,19 @@ type
   /// <summary>
   /// The server's response to a resources/templates/list request from the client.
   /// </summary>
-  [NeonProperty('ListResourceTemplatesResult')]
-  TListResourceTemplatesResult = class
+  TListResourceTemplatesResult = class(TMetaClass)
   public
     [NeonProperty('PaginatedResult')] PaginatedResult: TPaginatedResult;
     /// <summary>
     /// A list of available resource templates.
     /// </summary>
-    [NeonProperty('resourceTemplates')] ResourceTemplates: TMCPResourceTemplates;
+    ResourceTemplates: TMCPResourceTemplates;
+
+    /// <summary>
+    ///   An opaque token representing the pagination position after the last returned result. If present, there may be more results available
+    /// </summary>
+    NextCursor: NullString;
+
   public
     constructor Create;
     destructor Destroy; override;
@@ -190,7 +228,7 @@ type
     /// The URI of the resource to read.
     /// </summary>
     /// <remarks>The URI can use any protocol; it is up to the server how to interpret it.</remarks>
-    [NeonProperty('uri')] URI: string;
+    Uri: string;
   end;
 
   /// <summary>
@@ -201,7 +239,7 @@ type
     /// <summary>
     /// The contents of the resource. Can be either a TTextResourceContents or TBlobResourceContents.
     /// </summary>
-    [NeonProperty('contents')] Contents: TResourceContentsList;
+    Contents: TResourceContentsList;
   public
     constructor Create;
     destructor Destroy; override;
@@ -219,7 +257,7 @@ type
     /// The URI of the resource to subscribe to.
     /// </summary>
     /// <remarks>The URI can use any protocol; it is up to the server how to interpret it.</remarks>
-    [NeonProperty('uri')] URI: string;
+    Uri: string;
   end;
 
   /// <summary>
@@ -230,7 +268,7 @@ type
     /// <summary>
     /// The URI of the resource to unsubscribe from.
     /// </summary>
-    [NeonProperty('uri')] URI: string;
+    Uri: string;
   end;
 
   /// <summary>
@@ -242,7 +280,7 @@ type
     /// The URI of the resource that has been updated.
     /// </summary>
     /// <remarks>This might be a sub-resource of the one that the client actually subscribed to.</remarks>
-    [NeonProperty('uri')] URI: string;
+    Uri: string;
   end;
 
 implementation
@@ -267,17 +305,18 @@ end;
 
 { TListResourcesResult }
 
-function TListResourcesResult.AddResource(const AName, AURI, AType: string): TMCPResource;
+function TListResourcesResult.AddResource(const AName, AUri, AType: string): TMCPResource;
 begin
   Result := TMCPResource.Create;
   Result.Name := AName;
-  Result.URI := AURI;
+  Result.Uri := AUri;
   Result.MIMEType := AType;
   Resources.Add(Result);
 end;
 
 constructor TListResourcesResult.Create;
 begin
+  inherited;
   Resources := TMCPResources.Create;
 end;
 
@@ -291,6 +330,7 @@ end;
 
 constructor TListResourceTemplatesResult.Create;
 begin
+  inherited;
   ResourceTemplates := TMCPResourceTemplates.Create;
 end;
 

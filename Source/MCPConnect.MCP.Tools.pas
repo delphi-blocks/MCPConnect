@@ -85,11 +85,35 @@ type
     OpenWorldHint: Nullable<Boolean>;
   end;
 
+  TMCPUIApp = class
+  private
+    FMeta: TJSONObject;
+    function GetResourceUri: NullString;
+    procedure SetResourceUri(const Value: NullString);
+  public
+    constructor Create(AMeta: TJSONObject);
+
+    /// <summary>
+    ///   URI of the UI resource to display for this tool, if any. This is converted to
+    ///   _meta.ui.resourceUri
+    /// </summary>
+    property ResourceUri: NullString read GetResourceUri write SetResourceUri;
+  end;
+
   /// <summary>
   /// Tool represents the definition for a tool the client can call.
   /// </summary>
   TMCPTool = class(TMetaClass)
-
+  private type
+    /// <summary>
+    ///   Model: visible to and callable by the agent <br />
+    ///   App: callable by the app from this server only
+    /// </summary>
+    ToolVisibility = (Model, App);
+  private
+    FVisibility: ToolVisibility;
+    FUI: TMCPUIApp;
+  public
     /// <summary>
     /// The name of the tool
     /// </summary>
@@ -114,12 +138,22 @@ type
     /// Optional properties describing tool behavior
     /// </summary>
     [NeonInclude(IncludeIf.NotEmpty)] Annotations: TToolAnnotation;
+
+    /// <summary>
+    ///   Optional set of sized icons that the client can display in a user interface
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)] Icons: TIconList;
+
   public
     constructor Create;
     destructor Destroy; override;
 
     procedure ExchangeInputSchema(ASchema: TJSONObject);
     function ToJSON(APrettyPrint: Boolean = False): string;
+
+
+    property Visibility: ToolVisibility read FVisibility write FVisibility;
+    property UI: TMCPUIApp read FUI write FUI;
   end;
 
   TMCPTools = class(TObjectList<TMCPTool>);
@@ -224,6 +258,8 @@ uses
 constructor TMCPTool.Create;
 begin
   inherited;
+  FUI := TMCPUIApp.Create(Meta);
+
   InputSchema := TJSONObject.Create;
   Annotations := TToolAnnotation.Create;
   OutputSchema := TJSONObject.Create;
@@ -234,7 +270,7 @@ begin
   InputSchema.Free;
   Annotations.Free;
   OutputSchema.Free;
-
+  FUI.Free;
   inherited;
 end;
 
@@ -537,6 +573,38 @@ end;
 procedure TCallToolResult.AddContent(AContent: TToolContent);
 begin
   Content.Add(AContent);
+end;
+
+{ TMCPUIApp }
+
+constructor TMCPUIApp.Create(AMeta: TJSONObject);
+begin
+  FMeta := AMeta;
+end;
+
+function TMCPUIApp.GetResourceUri: NullString;
+var
+  LUiValue: TJSONValue;
+begin
+  LUiValue := FMeta.GetValue('ui');
+
+  if Assigned(LUiValue) then
+    Result := LUiValue.GetValue<string>('resourceUri');
+end;
+
+procedure TMCPUIApp.SetResourceUri(const Value: NullString);
+var
+  LUiValue: TJSONValue;
+begin
+  LUiValue := FMeta.GetValue('ui');
+
+  if not Assigned(LUiValue) then
+  begin
+    LUiValue := TJSONObject.Create;
+    FMeta.AddPair('ui', LUiValue);
+  end;
+
+  (LUiValue as TJSONObject).AddPair('resourceUri', Value);
 end;
 
 end.

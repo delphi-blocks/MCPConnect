@@ -19,30 +19,52 @@ uses
   System.SysUtils, Neon.Core.Tags;
 
 type
-  McpAttribute = class(TCustomAttribute)
-  private
-    FName: string;
-    FDescription: string;
+  McpBaseAttribute = class(TCustomAttribute)
+  protected
     FAdditionalTags: string;
-    FAdditional: string;
     FTags: TAttributeTags;
     function GetTags: TAttributeTags;
   public
-    property Name: string read FName;
-    property Description: string read FDescription;
-    property AdditionalTags: string read FAdditional write FAdditional;
+    property AdditionalTags: string read FAdditionalTags write FAdditionalTags;
 
     property Tags: TAttributeTags read GetTags write FTags;
 
-    constructor Create(const AName, ADescription: string; const AAdditionalTags: string = '');
+    constructor Create;
     destructor Destroy; override;
+  end;
+
+  McpAttribute = class(McpBaseAttribute)
+  private
+    FName: string;
+    FDescription: string;
+  public
+    property Name: string read FName;
+    property Description: string read FDescription;
+
+    constructor Create(const AName, ADescription: string; const AAdditionalTags: string = '');
   end;
 
   MCPToolAttribute = class(McpAttribute);
   MCPParamAttribute = class(McpAttribute);
 
-  MCPResourceAttribute = class(McpAttribute);
-  MCPResourceTemplateAttribute = class(McpAttribute);
+  MCPResourceAttribute = class(McpBaseAttribute)
+  private
+    FMimeType: string;
+    FUri: string;
+    FName: string;
+    FDescription: string;
+  public
+    property Name: string read FName;
+    property Uri: string read FUri;
+    property MimeType: string read FMimeType;
+    property Description: string read FDescription;
+
+    constructor Create(const AName, AUri, AMime, ADescription: string; const AAdditionalTags: string = '');
+  end;
+
+  MCPResourceTemplateAttribute = class(MCPResourceAttribute)
+
+  end;
 
   MCPPromptAttribute = class(McpAttribute);
 
@@ -56,25 +78,43 @@ implementation
 
 constructor McpAttribute.Create(const AName, ADescription, AAdditionalTags: string);
 begin
+  inherited Create;
   FName := AName;
   FDescription := ADescription;
   FAdditionalTags := AAdditionalTags;
+end;
 
+{ McpBaseAttribute }
+
+constructor McpBaseAttribute.Create;
+begin
   FTags := TAttributeTags.Create();
 end;
 
-destructor McpAttribute.Destroy;
+destructor McpBaseAttribute.Destroy;
 begin
   FTags.Free;
   inherited;
 end;
 
-function McpAttribute.GetTags: TAttributeTags;
+function McpBaseAttribute.GetTags: TAttributeTags;
 begin
   if (FTags.Count = 0) and not FAdditionalTags.IsEmpty then
     FTags.Parse(FAdditionalTags);
 
   Result := FTags;
+end;
+
+{ MCPResourceAttribute }
+
+constructor MCPResourceAttribute.Create(const AName, AUri, AMime, ADescription, AAdditionalTags: string);
+begin
+  inherited Create;
+  FName := AName;
+  FUri := AUri;
+  FMimeType := AMime;
+  FDescription := ADescription;
+  FAdditionalTags := AAdditionalTags;
 end;
 
 end.

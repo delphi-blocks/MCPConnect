@@ -52,6 +52,16 @@ type
     /// If true, clients must include this argument when calling prompts/get.
     /// </summary>
     Required: NullBoolean;
+
+    /// <summary>
+    ///   Intended for UI and end-user contexts — optimized to be human-readable and easily
+    ///   understood, even by those unfamiliar with domain-specific terminology
+    /// </summary>
+    /// <remarks>
+    ///   If not provided, the name should be used for display (except for Tool, where
+    ///   annotations.title should be given precedence over using name, if present)
+    /// </remarks>
+    Title: NullString;
   end;
 
   TPromptArguments = TArray<TPromptArgument>;
@@ -60,37 +70,47 @@ type
   /// <summary>
   /// Represents a known resource that the server is capable of reading.
   /// </summary>
-  TMCPPrompt = class
+  TMCPPrompt = class(TMetaClass)
   public
-
-    /// <summary>
-    /// Metadata object reserved by MCP for storing additional information.
-    /// </summary>
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
 
     /// <summary>
     /// A human-readable name for this resource.
     /// </summary>
     /// <remarks>This can be used by clients to populate UI elements.</remarks>
-    [NeonProperty('name')] Name: string;
+    Name: string;
 
     /// <summary>
     /// A description of what this resource represents.
     /// </summary>
     /// <remarks>This can be used by clients to improve the LLM's understanding of available resources. It can be thought of like a 'hint' to the model.</remarks>
-    [NeonProperty('description')] Description: NullString;
+    Description: NullString;
 
     /// <summary>
-    /// The MIME type of this resource, if known.
+    ///   Optional set of sized icons that the client can display in a user interface. Clients that
+    ///   support rendering icons MUST support at least the following MIME types:
     /// </summary>
-    [NeonProperty('mimeType')] Arguments: TPromptArguments;
-  public
-    constructor Create;
-    destructor Destroy; override;
+    [NeonInclude(IncludeIf.NotEmpty)] Icons: TIconList;
+
+    /// <summary>
+    ///   A list of arguments to use for templating the prompt
+    /// </summary>
+    Arguments: TPromptArguments;
+
+    /// <summary>
+    ///   Intended for UI and end-user contexts — optimized to be human-readable and easily
+    ///   understood, even by those unfamiliar with domain-specific terminology
+    /// </summary>
+    /// <remarks>
+    ///   If not provided, the name should be used for display (except for Tool, where
+    ///   annotations.title should be given precedence over using name, if present)
+    /// </remarks>
+    Title: NullString;
   end;
 
+  TMCPPrompts = TObjectList<TMCPPrompt>;
 
-  TGetPromptParams = class
+
+  TGetPromptParams = class(TMetaClass)
     /// <summary>
     ///  The name of the prompt or prompt template.
     /// </summary>
@@ -138,13 +158,8 @@ type
   /// <summary>
   ///  The server's response to a prompts/get request from the client.
   /// </summary>
-  TGetPromptResult = class
+  TGetPromptResult = class(TMetaClass)
   public
-
-    /// <summary>
-    /// Metadata object reserved by MCP for storing additional information.
-    /// </summary>
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
 
     /// <summary>
     /// A description of what this resource represents.
@@ -162,21 +177,31 @@ type
   end;
 
 
+  /// <summary>
+  /// The server's response to a resources/list request from the client.
+  /// </summary>
+  TListPromptsResult = class(TMetaClass)
+  public
+    //[NeonProperty('PaginatedResult')] PaginatedResult: TPaginatedResult;
+    /// <summary>
+    /// A list of available resources.
+    /// </summary>
+    Prompts: TMCPPrompts;
+
+    /// <summary>
+    ///   An opaque token representing the pagination position after the last returned result. If present, there may be more results available
+    /// </summary>
+    NextCursor: NullString;
+
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    function AddPrompt(const AName, ADescription: string): TMCPPrompt;
+  end;
+
 
 implementation
-
-{ TMCPPrompt }
-
-constructor TMCPPrompt.Create;
-begin
-  Meta := TJSONObject.Create;
-end;
-
-destructor TMCPPrompt.Destroy;
-begin
-  Meta.Free;
-  inherited;
-end;
 
 { TGetPromptResult }
 
@@ -214,6 +239,28 @@ end;
 destructor TGetPromptRequest.Destroy;
 begin
   Params.Free;
+  inherited;
+end;
+
+{ TListPromptsResult }
+
+function TListPromptsResult.AddPrompt(const AName, ADescription: string): TMCPPrompt;
+begin
+  Result := TMCPPrompt.Create;
+  Result.Name := AName;
+  Result.Description := ADescription;
+  Prompts.Add(Result);
+end;
+
+constructor TListPromptsResult.Create;
+begin
+  inherited;
+  Prompts := TMCPPrompts.Create;
+end;
+
+destructor TListPromptsResult.Destroy;
+begin
+  Prompts.Free;
   inherited;
 end;
 

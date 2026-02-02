@@ -32,6 +32,8 @@ type
     ToolClass: TClass;
   end;
 
+  IMCPListConfig = interface;
+  
   /// <summary>
   ///   Primary configuration interface for Model Context Protocol (MCP) servers.
   ///   Configures server metadata, tool classes, and custom content writers for
@@ -77,37 +79,22 @@ type
   /// </example>
   IMCPConfig = interface(IJRPCConfiguration)
   ['{B8BBD257-2FE1-479A-8D63-5331164CF5E5}']
-  /// <summary>
-    ///   Registers a tool class with an optional namespace.
-    ///   Tool methods marked with [McpTool] will be exposed with the format:
-    ///   namespace + separator + tool_name (if namespace is not empty).
-    /// </summary>
-    /// <param name="ANamespace">
-    ///   Namespace prefix for tools in this class. Use empty string for no namespace.
-    /// </param>
-    /// <param name="AClass">Class containing [McpTool] methods</param>
-    /// <returns>Self for fluent chaining</returns>
-    /// <remarks>
-    ///   If multiple classes are registered with the same namespace, the last one
-    ///   overwrites previous registrations (no error is raised).
-    /// </remarks>
-    function RegisterToolClass(const ANamespace: string; AClass: TClass): IMCPConfig; overload;
 
     /// <summary>
-    ///   Registers a tool class without namespace (backward compatible).
-    ///   Equivalent to RegisterToolClass('', AClass).
+    ///   Tools configuration
     /// </summary>
-    /// <param name="AClass">Class containing [McpTool] methods</param>
-    /// <returns>Self for fluent chaining</returns>
-    function RegisterToolClass(AClass: TClass): IMCPConfig; overload;
+    function Tools: IMCPListConfig;
 
     /// <summary>
-    ///   DEPRECATED: Use RegisterToolClass instead.
-    ///   Sets a single tool class (legacy method, maintained for backward compatibility).
+    ///   Resources configuration
     /// </summary>
-    /// <param name="AClass">Class containing [McpTool] methods</param>
-    /// <returns>Self for fluent chaining</returns>
-    function SetToolClass(AClass: TClass): IMCPConfig; deprecated 'Use RegisterToolClass instead';
+    function Resources: IMCPListConfig;
+
+    /// <summary>
+    ///   Prompts configuration
+    /// </summary>
+    function Prompts: IMCPListConfig;
+
 
     /// <summary>
     ///   Sets the separator character/string used between namespace and tool name.
@@ -184,11 +171,63 @@ type
     function GetNamespaceSeparator: string;
   end;
 
+  IMCPListConfig = interface
+  ['{9DCF41EB-99BB-4BCF-A274-1F4E0CCE7DBA}']
+
+    /// <summary>
+    ///   Registers a class without namespace. Equivalent to RegisterToolClass('', AClass).
+    /// </summary>
+    /// <param name="AClass">Class containing [Mcp*] annotated methods</param>
+    /// <returns>Self for fluent chaining</returns>
+    function RegisterClass(AClass: TClass): IMCPListConfig; overload;
+
+    /// <summary>
+    ///   Registers a class with an optional namespace.
+    ///   Methods marked with [McpTool], [McpResource] and [McpPrompt] will be exposed with the format:
+    ///   namespace + separator + tool_name (if namespace is not empty).
+    /// </summary>
+    /// <param name="ANamespace">
+    ///   Namespace prefix in this class. Use empty string for no namespace.
+    /// </param>
+    /// <param name="AClass">Class containing [McpAttribute] methods</param>
+    /// <returns>Self for fluent chaining</returns>
+    /// <remarks>
+    ///   If multiple classes are registered with the same namespace, the last one
+    ///   overwrites previous registrations (no error is raised).
+    /// </remarks>
+    function RegisterClass(const ANamespace: string; AClass: TClass): IMCPListConfig; overload;
+
+    function ApplyConfig: IMCPConfig;
+  end;
+
+
+
+  TMCPListConfig = class(TInterfacedObject, IMCPListConfig)
+  private
+    FMCPConfig: IMCPConfig;
+    FClasses: TObjectDictionary<string, TClass>;
+  public
+    function RegisterClass(AClass: TClass): IMCPListConfig; overload;
+    function RegisterClass(const ANamespace: string; AClass: TClass): IMCPListConfig; overload;
+    function ApplyConfig: IMCPConfig;
+
+    constructor Create(AConfig: IMCPConfig);
+    destructor Destroy; override;
+  end;
+
+
   [Implements(IMCPConfig)]
   TMCPConfig = class(TJRPCConfiguration, IMCPConfig)
   private
+    FTools: TMCPListConfig;
+    FResources: TMCPListConfig;
+    FPrompts: TMCPListConfig;
+  private
     FWriterRegistry: TMCPWriterRegistry;
-    FToolClasses: TObjectDictionary<string, TClass>;
+    FToolRegistry: TObjectDictionary<string, TClass>;
+    FResourceRegistry: TObjectDictionary<string, TClass>;
+    FPromptRegistry: TObjectDictionary<string, TClass>;
+
     FNamespaceSeparator: string;    FServerVersion: string;
     FServerName: string;
   public
@@ -197,9 +236,16 @@ type
     procedure AfterConstruction; override;
 
     { IMCPConfig }
+    function Tools: IMCPListConfig;
+    function Resources: IMCPListConfig;
+    function Prompts: IMCPListConfig;
+
     function RegisterToolClass(const ANamespace: string; AClass: TClass): IMCPConfig; overload;
     function RegisterToolClass(AClass: TClass): IMCPConfig; overload;
-    function SetToolClass(AClass: TClass): IMCPConfig; // deprecated
+
+    function RegisterResourceClass(const ANamespace: string; AClass: TClass): IMCPConfig; overload;
+    function RegisterResourceClass(AClass: TClass): IMCPConfig; overload;
+
     function SetNamespaceSeparator(const ASeparator: string): IMCPConfig;
     function SetServerName(const AName: string): IMCPConfig;
     function SetServerVersion(const AVersion: string): IMCPConfig;
@@ -242,8 +288,13 @@ uses
 constructor TMCPConfig.Create(AApp: IJRPCApplication);
 begin
   inherited;
+
+  { TODO -opaolo -c : finire 02/02/2026 12:20:21 }
+
   FWriterRegistry := TMCPWriterRegistry.Create;
-  FToolClasses := TObjectDictionary<string, TClass>.Create;
+  FToolRegistry := TObjectDictionary<string, TClass>.Create;
+  FResourceRegistry := TObjectDictionary<string, TClass>.Create;
+  FPromptRegistry := TObjectDictionary<string, TClass>.Create;
 end;
 
 procedure TMCPConfig.AfterConstruction;
@@ -256,7 +307,9 @@ end;
 
 destructor TMCPConfig.Destroy;
 begin
-  FToolClasses.Free;
+  FPromptRegistry.Free;
+  FResourceRegistry.Free;
+  FToolRegistry.Free;
   FWriterRegistry.Free;
   inherited;
 end;
@@ -264,7 +317,7 @@ end;
 function TMCPConfig.RegisterToolClass(const ANamespace: string; AClass: TClass): IMCPConfig;
 begin
   // AddOrSetValue: if namespace exists, replaces the class (last wins)
-  FToolClasses.AddOrSetValue(ANamespace, AClass);
+  FToolRegistry.AddOrSetValue(ANamespace, AClass);
   Result := Self;
 end;
 
@@ -274,15 +327,39 @@ begin
   Result := RegisterToolClass('', AClass);
 end;
 
+
+function TMCPConfig.RegisterResourceClass(const ANamespace: string; AClass: TClass): IMCPConfig;
+begin
+  // AddOrSetValue: if namespace exists, replaces the class (last wins)
+  FResourceRegistry.AddOrSetValue(ANamespace, AClass);
+  Result := Self;
+end;
+
+function TMCPConfig.RegisterResourceClass(AClass: TClass): IMCPConfig;
+begin
+  // Register without namespace (empty string key)
+  Result := RegisterResourceClass('', AClass);
+end;
+
 function TMCPConfig.GetWriters: TMCPWriterRegistry;
 begin
   Result := FWriterRegistry;
+end;
+
+function TMCPConfig.Prompts: IMCPListConfig;
+begin
+  Result := FPrompts;
 end;
 
 function TMCPConfig.RegisterWriter(AClass: TCustomWriterClass): IMCPConfig;
 begin
   FWriterRegistry.RegisterWriter(AClass);
   Result := Self;
+end;
+
+function TMCPConfig.Resources: IMCPListConfig;
+begin
+  Result := FResources;
 end;
 
 function TMCPConfig.SetServerName(const AName: string): IMCPConfig;
@@ -297,10 +374,9 @@ begin
   Result := Self;
 end;
 
-function TMCPConfig.SetToolClass(AClass: TClass): IMCPConfig;
+function TMCPConfig.Tools: IMCPListConfig;
 begin
-  // Legacy method - redirects to RegisterToolClass
-  Result := RegisterToolClass('', AClass);
+  Result := FTools;
 end;
 
 function TMCPConfig.SetNamespaceSeparator(const ASeparator: string): IMCPConfig;
@@ -314,9 +390,9 @@ var
   LPair: TPair<string, TClass>;
   LIndex: Integer;
 begin
-  SetLength(Result, FToolClasses.Count);
+  SetLength(Result, FToolRegistry.Count);
   LIndex := 0;
-  for LPair in FToolClasses do
+  for LPair in FToolRegistry do
   begin
     Result[LIndex].Namespace := LPair.Key;
     Result[LIndex].ToolClass := LPair.Value;
@@ -333,7 +409,7 @@ function TMCPConfig.CreateToolInstance(const ANamespace: string): TObject;
 var
   LClass: TClass;
 begin
-  if not FToolClasses.TryGetValue(ANamespace, LClass) then
+  if not FToolRegistry.TryGetValue(ANamespace, LClass) then
     raise EJRPCException.CreateFmt('Tool class not found for namespace "%s"', [ANamespace]);
 
   Result := TRttiUtils.CreateInstance(LClass);
@@ -350,7 +426,7 @@ begin
   ANamespace := '';
   AToolName := AFullToolName;
 
-  LNamespaceList := TList<string>.Create(FToolClasses.Keys);
+  LNamespaceList := TList<string>.Create(FToolRegistry.Keys);
   try
     // Sort namespaces by length (longest first) to match most specific namespace
     LNamespaceList.Sort(TComparer<string>.Construct(
@@ -378,7 +454,7 @@ begin
     end;
 
     // If no namespace matched, try default (empty namespace)
-    if FToolClasses.ContainsKey('') then
+    if FToolRegistry.ContainsKey('') then
     begin
       ANamespace := '';
       AToolName := AFullToolName;
@@ -387,6 +463,37 @@ begin
   finally
     LNamespaceList.Free;
   end;
+end;
+
+{ TMCPListConfig }
+
+constructor TMCPListConfig.Create(AConfig: IMCPConfig);
+begin
+  FClasses := TObjectDictionary<string, TClass>.Create;
+end;
+
+destructor TMCPListConfig.Destroy;
+begin
+  FClasses.Free;
+  inherited;
+end;
+
+function TMCPListConfig.RegisterClass(const ANamespace: string; AClass: TClass): IMCPListConfig;
+begin
+  // AddOrSetValue: if namespace exists, replaces the class (last wins)
+  FClasses.AddOrSetValue(ANamespace, AClass);
+  Result := Self;
+end;
+
+function TMCPListConfig.RegisterClass(AClass: TClass): IMCPListConfig;
+begin
+  // Register without namespace (empty string key)
+  Result := RegisterClass('', AClass);
+end;
+
+function TMCPListConfig.ApplyConfig: IMCPConfig;
+begin
+  Result := FMCPConfig;
 end;
 
 initialization

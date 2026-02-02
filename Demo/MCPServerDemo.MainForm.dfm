@@ -2,8 +2,8 @@ object Form1: TForm1
   Left = 271
   Top = 114
   Caption = 'Form1'
-  ClientHeight = 695
-  ClientWidth = 873
+  ClientHeight = 418
+  ClientWidth = 826
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -46,8 +46,8 @@ object Form1: TForm1
     Text = '8080'
   end
   object ButtonOpenBrowser: TButton
-    Left = 24
-    Top = 112
+    Left = 186
+    Top = 8
     Width = 107
     Height = 25
     Caption = 'Open Browser'
@@ -56,10 +56,11 @@ object Form1: TForm1
   end
   object memoLog: TMemo
     Left = 0
-    Top = 200
-    Width = 873
-    Height = 495
+    Top = 104
+    Width = 826
+    Height = 314
     Align = alBottom
+    Anchors = [akLeft, akTop, akRight, akBottom]
     Font.Charset = ANSI_CHARSET
     Font.Color = clWindowText
     Font.Height = -18
@@ -68,10 +69,11 @@ object Form1: TForm1
     ParentFont = False
     ScrollBars = ssVertical
     TabOrder = 4
+    ExplicitHeight = 413
   end
   object btnConfig: TButton
-    Left = 24
-    Top = 152
+    Left = 299
+    Top = 8
     Width = 107
     Height = 25
     Caption = 'Generate MCP.json'
@@ -80,7 +82,7 @@ object Form1: TForm1
   end
   object ApplicationEvents1: TApplicationEvents
     OnIdle = ApplicationEvents1Idle
-    Left = 288
+    Left = 720
     Top = 24
   end
 end

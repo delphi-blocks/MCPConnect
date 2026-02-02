@@ -43,7 +43,8 @@ uses
   // Implemetation of MCP API
   MCPConnect.MCP.Server.Api,
 
-  MCPServerDemo.Tools;
+  MCPServerDemo.Tools,
+  MCPServerDemo.Resources;
 
 {$R *.dfm}
 
@@ -76,9 +77,17 @@ begin
     .Plugin.Configure<IMCPConfig>
       .SetServerName('delphi-mcp-server')
       .SetServerVersion('2.0.0')
-      .RegisterToolClass('test', TTestTool)
-      .RegisterToolClass('delphi_day', TDelphiDayTool)
-      .RegisterToolClass(TShoppingCartTool)  // Session-based shopping cart
+
+      .Tools
+        .RegisterClass('test', TTestTool)
+        .RegisterClass('delphi_day', TDelphiDayTool)
+        .RegisterClass(TShoppingCartTool)  // Session-based shopping cart
+      .ApplyConfig
+
+      .Resources
+        .RegisterClass('weather', TWeatherResource)
+      .ApplyConfig
+
       .RegisterWriter(TMCPImageWriter)
       .RegisterWriter(TMCPPictureWriter)
       .RegisterWriter(TMCPStreamWriter)

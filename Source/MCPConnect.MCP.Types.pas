@@ -36,7 +36,7 @@ type
   end;
 
   TMetaClass = class
-
+  public
     /// <summary>
     /// Meta is a metadata object that is reserved by MCP for storing additional information
     /// </summary>
@@ -60,7 +60,7 @@ type
 
   /// <summary>
   ///   Optional annotations for the client. The client can use annotations to inform how objects
-  ///   are used or displayed <br />
+  ///   are used or displayed
   /// </summary>
   TAnnotations = class
 
@@ -80,15 +80,67 @@ type
     /// <example>
     ///   Last activity timestamp in an open file, timestamp when the resource was attached, etc.
     /// </example>
-    [NeonInclude(IncludeIf.NotEmpty)] LastModified: TDateTime;
+    LastModified: NullDateTime;
 
     /// <summary>
     ///   Describes how important this data is for operating the server. A value of 1 means "most
     ///   important," and indicates that the data is effectively required, while 0 means "least
     ///   important," and indicates that the data is entirely optional.
     /// </summary>
-    [NeonInclude(IncludeIf.NotDefault)] Priority: Currency;
+    Priority: Nullable<Currency>;
   end;
+
+  /// <summary>
+  ///   An optionally-sized icon that can be displayed in a user interface
+  /// </summary>
+  TIcon = record
+
+    /// <summary>
+    ///   A standard URI pointing to an icon resource. May be an HTTP/HTTPS URL or a data: URI with
+    ///   Base64-encoded image data. <br />
+    ///   <br />
+    ///   Consumers SHOULD takes steps to ensure URLs serving icons are from the same domain as the
+    ///   client/server or a trusted domain. <br />
+    ///   <br />
+    ///   Consumers SHOULD take appropriate precautions when consuming SVGs as they can contain
+    ///   executable JavaScript <br />
+    /// </summary>
+    /// <remarks>
+    ///   Format: uri
+    /// </remarks>
+    Src: string;
+
+    /// <summary>
+    ///   Optional MIME type override if the source MIME type is missing or generic.
+    /// </summary>
+    /// <example>
+    ///   "image/png", "image/jpeg", or "image/svg+xml"
+    /// </example>
+    MimeType: NullString;
+
+    /// <summary>
+    ///   Optional array of strings that specify sizes at which the icon can be used. Each string
+    ///   should be in WxH format (e.g., "48x48", "96x96") or "any" for scalable formats like SVG
+    /// </summary>
+    /// <remarks>
+    ///   If not provided, the client should assume that the icon can be used at any size
+    /// </remarks>
+    Sizes: TArray<string>;
+
+    /// <summary>
+    ///   Optional specifier for the theme this icon is designed for. light indicates the icon is
+    ///   designed to be used with a light background, and dark indicates the icon is designed to be
+    ///   used with a dark background. If not provided, the client should assume the icon can be
+    ///   used with any theme
+    /// </summary>
+    /// <remarks>
+    ///   Valid values: dark, light
+    /// </remarks>
+    Theme: NullString;
+
+  end;
+
+  TIconList = TArray<TIcon>;
 
 
   /// <summary>
@@ -105,6 +157,29 @@ type
     ///   Version is the version of the implementation.
     /// </summary>
     Version: string;
+
+    /// <summary>
+    ///   Optional set of sized icons that the client can display in a user interface
+    /// </summary>
+    Icons: TIconList;
+
+    /// <summary>
+    ///   Intended for UI and end-user contexts — optimized to be human-readable and easily
+    ///   understood, even by those unfamiliar with domain-specific terminology
+    /// </summary>
+    /// <remarks>
+    ///   If not provided, the name should be used for display (except for Tool, where
+    ///   annotations.title should be given precedence over using name, if present)
+    /// </remarks>
+    Title: NullString;
+
+    /// <summary>
+    ///   An optional URL of the website for this implementation <br />
+    /// </summary>
+    /// <remarks>
+    ///   Format: uri
+    /// </remarks>
+    WebsiteUrl: NullString;
   end;
 
   /// <summary>

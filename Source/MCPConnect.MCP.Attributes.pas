@@ -33,6 +33,14 @@ type
     destructor Destroy; override;
   end;
 
+  McpNamespaceAttribute = class(McpBaseAttribute)
+  private
+    FName: string;
+  public
+    property Name: string read FName;
+    constructor Create(const AName: string; const AAdditionalTags: string = '');
+  end;
+
   McpAttribute = class(McpBaseAttribute)
   private
     FName: string;
@@ -47,7 +55,7 @@ type
   MCPToolAttribute = class(McpAttribute);
   MCPParamAttribute = class(McpAttribute);
 
-  MCPResourceAttribute = class(McpBaseAttribute)
+  MCPResourceBaseAttribute = class(McpBaseAttribute)
   private
     FMimeType: string;
     FUri: string;
@@ -55,15 +63,32 @@ type
     FDescription: string;
   public
     property Name: string read FName;
-    property Uri: string read FUri;
     property MimeType: string read FMimeType;
     property Description: string read FDescription;
-
-    constructor Create(const AName, AUri, AMime, ADescription: string; const AAdditionalTags: string = '');
   end;
 
-  MCPResourceTemplateAttribute = class(MCPResourceAttribute)
+  MCPResourceAttribute = class(MCPResourceBaseAttribute)
+  private
+    FUri: string;
+  public
+    property Uri: string read FUri;
+    constructor Create(const AName, AUri: string; const AMime: string = ''; const ADescription: string = ''; const AAdditionalTags: string = '');
+  end;
 
+  MCPTemplateAttribute = class(MCPResourceBaseAttribute)
+  private
+    FUriTemplate: string;
+  public
+    property UriTemplate: string read FUriTemplate;
+    constructor Create(const AName, AUriTemplate: string; const AMime: string = ''; const ADescription: string = ''; const AAdditionalTags: string = '');
+  end;
+
+  MCPTemplateParamAttribute = class(McpBaseAttribute)
+  private
+    FName: string;
+  public
+    property Name: string read FName;
+    constructor Create(const AName: string);
   end;
 
   MCPPromptAttribute = class(McpAttribute);
@@ -114,6 +139,33 @@ begin
   FUri := AUri;
   FMimeType := AMime;
   FDescription := ADescription;
+  FAdditionalTags := AAdditionalTags;
+end;
+
+{ MCPTemplateAttribute }
+
+constructor MCPTemplateAttribute.Create(const AName, AUriTemplate, AMime, ADescription, AAdditionalTags: string);
+begin
+  inherited Create;
+  FName := AName;
+  FUriTemplate := AUriTemplate;
+  FMimeType := AMime;
+  FDescription := ADescription;
+  FAdditionalTags := AAdditionalTags;
+end;
+
+{ MCPTemplateParamAttribute }
+
+constructor MCPTemplateParamAttribute.Create(const AName: string);
+begin
+  FName := AName;
+end;
+
+{ McpNamespaceAttribute }
+
+constructor McpNamespaceAttribute.Create(const AName, AAdditionalTags: string);
+begin
+  FName := AName;
   FAdditionalTags := AAdditionalTags;
 end;
 

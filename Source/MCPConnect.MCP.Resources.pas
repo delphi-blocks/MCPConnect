@@ -25,8 +25,12 @@ uses
   Neon.Core.Nullables,
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
+  Neon.Core.Persistence.JSON.Schema,
   Neon.Core.Serializers.RTL,
+  Neon.Core.Utils,
 
+
+  MCPConnect.MCP.Attributes,
   MCPConnect.MCP.Types;
 
 type
@@ -85,14 +89,8 @@ type
   /// <summary>
   /// Represents a known resource that the server is capable of reading.
   /// </summary>
-  TMCPResource = class(TMetaClass)
-  public
+  TMCPResourceBase = class(TMetaClass)
     [NeonInclude(IncludeIf.NotEmpty)] Annotations: TMCPAnnotation;
-
-    /// <summary>
-    /// The URI of this resource.
-    /// </summary>
-    Uri: string;
 
     /// <summary>
     /// A human-readable name for this resource.
@@ -117,43 +115,52 @@ type
     [NeonInclude(IncludeIf.NotEmpty)] Icons: TIconList;
   end;
 
-  TMCPResources = class(TObjectList<TMCPResource>);
-
 
   /// <summary>
-  /// Represents a template description for resources available on the server.
+  /// Represents a known resource that the server is capable of reading.
   /// </summary>
-  TMCPResourceTemplate = class(TMetaClass)
+  TMCPResource = class(TMCPResourceBase)
   public
-    [NeonInclude(IncludeIf.NotEmpty)] Annotations: TMCPAnnotation;
 
     /// <summary>
-    /// A URI template (according to RFC 6570) that can be used to construct resource URIs.
+    /// The URI of this resource.
     /// </summary>
-    URITemplate: NullString;
+    Uri: string;
 
     /// <summary>
-    /// A human-readable name for the type of resource this template refers to.
+    /// A human-readable name for this resource.
     /// </summary>
     /// <remarks>This can be used by clients to populate UI elements.</remarks>
     Name: string;
 
     /// <summary>
-    /// A description of what this template is for.
+    /// A description of what this resource represents.
     /// </summary>
     /// <remarks>This can be used by clients to improve the LLM's understanding of available resources. It can be thought of like a 'hint' to the model.</remarks>
     Description: NullString;
 
     /// <summary>
-    /// The MIME type for all resources that match this template.
+    /// The MIME type of this resource, if known.
     /// </summary>
-    /// <remarks>This should only be included if all resources matching this template have the same type.</remarks>
-    MIMEType: NullString;
+    MimeType: NullString;
 
     /// <summary>
     ///   Optional set of sized icons that the client can display in a user interface
     /// </summary>
     [NeonInclude(IncludeIf.NotEmpty)] Icons: TIconList;
+  end;
+
+  TMCPResources = class(TObjectList<TMCPResource>);
+
+  /// <summary>
+  /// Represents a template description for resources available on the server.
+  /// </summary>
+  TMCPResourceTemplate = class(TMCPResourceBase)
+  public
+    /// <summary>
+    /// A URI template (according to RFC 6570) that can be used to construct resource URIs.
+    /// </summary>
+    UriTemplate: NullString;
   end;
 
   TMCPResourceTemplates = class(TObjectList<TMCPResourceTemplate>);
@@ -195,7 +202,7 @@ type
   /// </summary>
   TListResourceTemplatesRequest = record
   public
-    [NeonProperty('PaginatedRequest')] PaginatedRequest: TPaginatedRequest;
+    //[NeonProperty('PaginatedRequest')] PaginatedRequest: TPaginatedRequest;
   end;
 
   /// <summary>
@@ -203,7 +210,8 @@ type
   /// </summary>
   TListResourceTemplatesResult = class(TMetaClass)
   public
-    [NeonProperty('PaginatedResult')] PaginatedResult: TPaginatedResult;
+    //[NeonProperty('PaginatedResult')] PaginatedResult: TPaginatedResult;
+
     /// <summary>
     /// A list of available resource templates.
     /// </summary>
@@ -217,6 +225,8 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+
+    function AddResource(const AName, AUriTemplate, AType: string): TMCPResourceTemplate;
   end;
 
   /// <summary>
@@ -244,8 +254,9 @@ type
     constructor Create;
     destructor Destroy; override;
 
-
     procedure AddContent(AContent: TResourceContents);
+    procedure AddTextContent(const AUri, AMime, AText: string);
+    procedure AddBlobContent(const AUri, AMime, ABlob: string);
   end;
 
   /// <summary>
@@ -283,13 +294,71 @@ type
     Uri: string;
   end;
 
+  /// <summary>
+  ///   MCP Resources List Generator
+  /// </summary>
+  TMCPResourcesListGenerator = class
+  protected
+    /// <summary>
+    ///   Writer for a method's params
+    /// </summary>
+    procedure WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
+  public
+    /// <summary>
+    ///   Serialize a Delphi method as a MCP Resource
+    ///   The Delphi method must be marked with the MCP attributes
+    /// </summary>
+    class function MethodToResource(AMethod: TRttiMethod): TMCPResource;
+
+    /// <summary>
+    ///   Serialize a Delphi method as a MCP Resource Template
+    ///   The Delphi method must be marked with the MCP attributes
+    /// </summary>
+    class function MethodToTemplate(AMethod: TRttiMethod): TMCPResourceTemplate;
+
+    /// <summary>
+    ///   Loops through the methods of a class/record and populate a structure
+    ///   in response to the resources/list from a LLM client
+    /// </summary>
+    class procedure ListResources(AClass: TClass; AList: TListResourcesResult); overload;
+
+    /// <summary>
+    ///   Loops through the methods of a class/record and populate a structure
+    ///   in response to the resources/templates/list from a LLM client
+    /// </summary>
+    class procedure ListTemplates(AClass: TClass; AList: TListResourceTemplatesResult); overload;
+  end;
+
+
+
 implementation
+
+uses
+  MCPConnect.JRPC.Core;
 
 { TReadResourceResult }
 
 procedure TReadResourceResult.AddContent(AContent: TResourceContents);
 begin
   Contents.Add(AContent);
+end;
+
+procedure TReadResourceResult.AddBlobContent(const AUri, AMime, ABlob: string);
+begin
+  var blob := TBlobResourceContents.Create;
+  blob.Uri := AUri;
+  blob.MimeType := AMime;
+  blob.Blob := ABlob;
+  Contents.Add(blob);
+end;
+
+procedure TReadResourceResult.AddTextContent(const AUri, AMime, AText: string);
+begin
+  var text := TTextResourceContents.Create;
+  text.Uri := AUri;
+  text.MimeType := AMime;
+  text.text := AText;
+  Contents.Add(text);
 end;
 
 constructor TReadResourceResult.Create;
@@ -328,6 +397,15 @@ end;
 
 { TListResourceTemplatesResult }
 
+function TListResourceTemplatesResult.AddResource(const AName, AUriTemplate, AType: string): TMCPResourceTemplate;
+begin
+  Result := TMCPResourceTemplate.Create;
+  Result.Name := AName;
+  Result.UriTemplate := AUriTemplate;
+  Result.MIMEType := AType;
+  ResourceTemplates.Add(Result);
+end;
+
 constructor TListResourceTemplatesResult.Create;
 begin
   inherited;
@@ -338,6 +416,101 @@ destructor TListResourceTemplatesResult.Destroy;
 begin
   ResourceTemplates.Free;
   inherited;
+end;
+
+{ TMCPResourcesListGenerator }
+
+class procedure TMCPResourcesListGenerator.ListResources(AClass: TClass; AList: TListResourcesResult);
+var
+  LMethod: TRttiMethod;
+  LMethods: TArray<TRttiMethod>;
+  LResource: TMCPResource;
+begin
+  LMethods := TRttiUtils.Context.GetType(AClass).GetMethods;
+  for LMethod in LMethods do
+    if Assigned(LMethod.GetAttribute(MCPResourceAttribute)) then
+    begin
+      LResource := MethodToResource(LMethod);
+
+      AList.Resources.Add(LResource);
+    end;
+end;
+
+class procedure TMCPResourcesListGenerator.ListTemplates(AClass: TClass; AList: TListResourceTemplatesResult);
+var
+  LMethod: TRttiMethod;
+  LMethods: TArray<TRttiMethod>;
+  LTemplate: TMCPResourceTemplate;
+begin
+  LMethods := TRttiUtils.Context.GetType(AClass).GetMethods;
+  for LMethod in LMethods do
+    if Assigned(LMethod.GetAttribute(MCPTemplateAttribute)) then
+    begin
+      LTemplate := MethodToTemplate(LMethod);
+      AList.ResourceTemplates.Add(LTemplate);
+    end;
+end;
+
+class function TMCPResourcesListGenerator.MethodToResource(AMethod: TRttiMethod): TMCPResource;
+var
+  LAttr: MCPResourceAttribute;
+begin
+  LAttr := AMethod.GetAttribute<MCPResourceAttribute>;
+  if not Assigned(LAttr) then
+    raise EMCPException.CreateFmt('Attribute [MCPResource] not found in method %s', [AMethod.Name]);
+
+  Result := TMCPResource.Create;
+  try
+    Result.Name := LAttr.Name;
+    Result.Uri := LAttr.Uri;
+    Result.MIMEType := LAttr.MimeType;
+    Result.Description := LAttr.Description;
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+class function TMCPResourcesListGenerator.MethodToTemplate(AMethod: TRttiMethod): TMCPResourceTemplate;
+var
+  LAttr: MCPTemplateAttribute;
+begin
+  LAttr := AMethod.GetAttribute<MCPTemplateAttribute>;
+  if not Assigned(LAttr) then
+    raise EMCPException.CreateFmt('Attribute [MCPTemplate] not found in method %s', [AMethod.Name]);
+
+  // Controllo UriTemplate e parametri?
+
+  Result := TMCPResourceTemplate.Create;
+  try
+    Result.Name := LAttr.Name;
+    Result.UriTemplate := LAttr.UriTemplate;
+    Result.MIMEType := LAttr.MimeType;
+    Result.Description := LAttr.Description;
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+procedure TMCPResourcesListGenerator.WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
+var
+  LJSONObj: TJSONObject;
+  LParam: TRttiParameter;
+  LAttr: MCPParamAttribute;
+begin
+  for LParam in AMethod.GetParameters do
+  begin
+    LAttr := LParam.GetAttribute<MCPParamAttribute>;
+      if not Assigned(LAttr) then
+        raise EJRPCException.Create('Non-annotated params are not permitted');
+
+    LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LParam.ParamType, MCPNeonConfig);
+
+    LJSONObj.AddPair('description', TJSONString.Create(LAttr.Description));
+    AProps.AddPair(LAttr.Name, LJSONObj);
+    ARequired.Add(LAttr.Name);
+  end;
 end;
 
 end.

@@ -29,7 +29,8 @@ type
     class function GetTargetInfo: PTypeInfo; override;
     class function CanHandle(AType: PTypeInfo): Boolean; override;
   public
-    procedure Write(const AValue: TValue; AContext: TMCPWriterContext); override;
+    procedure WriteTool(const AValue: TValue; AContext: TMCPToolContext); override;
+    procedure WriteResource(const AValue: TValue; AContext: TMCPresourceContext); override;
   end;
 
   TMCPStreamWriter = class(TMCPCustomWriter)
@@ -37,7 +38,8 @@ type
     class function GetTargetInfo: PTypeInfo; override;
     class function CanHandle(AType: PTypeInfo): Boolean; override;
   public
-    procedure Write(const AValue: TValue; AContext: TMCPWriterContext); override;
+    procedure WriteTool(const AValue: TValue; AContext: TMCPToolContext); override;
+    procedure WriteResource(const AValue: TValue; AContext: TMCPresourceContext); override;
   end;
 
 implementation
@@ -57,7 +59,28 @@ begin
   Result := TStringList.ClassInfo;
 end;
 
-procedure TMCPStringListWriter.Write(const AValue: TValue; AContext: TMCPWriterContext);
+procedure TMCPStringListWriter.WriteResource(const AValue: TValue; AContext: TMCPresourceContext);
+var
+  LList: TStringList;
+  LContent: TTextResourceContents;
+  LMCP: MCPResourceAttribute;
+begin
+  LList := AValue.AsObject as TStringList;
+
+  LContent := TTextResourceContents.Create;
+
+  // Read Attributes
+  LMCP := TRttiUtils.FindAttribute<MCPResourceAttribute>(AContext.Attributes);
+  if Assigned(LMCP) then
+    LContent.MimeType := LMCP.MimeType
+  else
+    LContent.MimeType := 'text/plain';
+
+  LContent.Text := LList.CommaText;
+  AContext.Result.Add(LContent);
+end;
+
+procedure TMCPStringListWriter.WriteTool(const AValue: TValue; AContext: TMCPToolContext);
 var
   LList: TStringList;
   LContent: TTextContent;
@@ -66,7 +89,7 @@ begin
 
   LContent := TTextContent.Create;
   LContent.Text := LList.CommaText;
-  AContext.ContentList.Add(LContent);
+  AContext.Result.Add(LContent);
 end;
 
 { TMCPStreamWriter }
@@ -81,7 +104,31 @@ begin
   Result := TStream.ClassInfo;
 end;
 
-procedure TMCPStreamWriter.Write(const AValue: TValue; AContext: TMCPWriterContext);
+procedure TMCPStreamWriter.WriteResource(const AValue: TValue; AContext: TMCPresourceContext);
+var
+  LStream: TStream;
+  LBase64: string;
+  LBlob: TBlobResourceContents;
+  LMCP: MCPResourceAttribute;
+begin
+  LStream := AValue.AsObject as TStream;
+  LStream.Position := soFromBeginning;
+  LBase64 := TBase64.Encode(LStream);
+
+  LBlob := TBlobResourceContents.Create;
+
+  // Read Attributes
+  LMCP := TRttiUtils.FindAttribute<MCPResourceAttribute>(AContext.Attributes);
+  if Assigned(LMCP) then
+    LBlob.MimeType := LMCP.MimeType
+  else
+    LBlob.MimeType := 'application/octect-stream';
+
+  LBlob.Blob := LBase64;
+  AContext.Result.Add(LBlob);
+end;
+
+procedure TMCPStreamWriter.WriteTool(const AValue: TValue; AContext: TMCPToolContext);
 var
   LStream: TStream;
   LBase64: string;
@@ -94,7 +141,7 @@ begin
   LBlob := TEmbeddedResourceBlob.Create;
   LBlob.Resource.MIMEType := 'application/octect-stream';
   LBlob.Resource.Blob := LBase64;
-  AContext.ContentList.Add(LBlob);
+  AContext.Result.Add(LBlob);
 end;
 
 end.

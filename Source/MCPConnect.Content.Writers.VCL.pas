@@ -29,7 +29,7 @@ type
     class function GetTargetInfo: PTypeInfo; override;
     class function CanHandle(AType: PTypeInfo): Boolean; override;
   public
-    procedure Write(const AValue: TValue; AContext: TMCPWriterContext); override;
+    procedure WriteTool(const AValue: TValue; AContext: TMCPToolContext); override;
   end;
 
   TMCPPictureWriter = class(TMCPCustomWriter)
@@ -37,7 +37,8 @@ type
     class function GetTargetInfo: PTypeInfo; override;
     class function CanHandle(AType: PTypeInfo): Boolean; override;
   public
-    procedure Write(const AValue: TValue; AContext: TMCPWriterContext); override;
+    procedure WriteTool(const AValue: TValue; AContext: TMCPToolContext); override;
+    procedure WriteResource(const AValue: TValue; AContext: TMCPresourceContext); override;
   end;
 
 implementation
@@ -59,7 +60,7 @@ begin
   Result := TImage.ClassInfo;
 end;
 
-procedure TMCPImageWriter.Write(const AValue: TValue; AContext: TMCPWriterContext);
+procedure TMCPImageWriter.WriteTool(const AValue: TValue; AContext: TMCPToolContext);
 var
   LImage: TImage;
   LStream: TMemoryStream;
@@ -84,7 +85,7 @@ begin
   LContent := TImageContent.Create;
   LContent.Data := LBase64;
   LContent.MIMEType := 'image';
-  AContext.ContentList.Add(LContent);
+  AContext.Result.Add(LContent);
 end;
 
 { TMCPPictureWriter }
@@ -99,7 +100,43 @@ begin
   Result := TPicture.ClassInfo;
 end;
 
-procedure TMCPPictureWriter.Write(const AValue: TValue; AContext: TMCPWriterContext);
+procedure TMCPPictureWriter.WriteResource(const AValue: TValue; AContext: TMCPresourceContext);
+var
+  LPicture: TPicture;
+  LStream: TMemoryStream;
+  LBase64: string;
+  LBlob: TBlobResourceContents;
+  LMCP: MCPResourceAttribute;
+begin
+  LPicture := AValue.AsObject as TPicture;
+  LStream := TMemoryStream.Create;
+  try
+{$IF CompilerVersion >= 30}
+    LPicture.SaveToStream(LStream);
+{$ELSE}
+    LPicture.Bitmap.SaveToStream(LStream);
+{$ENDIF}
+    LStream.Position := soFromBeginning;
+    LBase64 := TBase64.Encode(LStream);
+  finally
+    LStream.Free;
+  end;
+
+  LBlob := TBlobResourceContents.Create;
+
+  // Read Attributes
+  LMCP := TRttiUtils.FindAttribute<MCPResourceAttribute>(AContext.Attributes);
+  if Assigned(LMCP) then
+    LBlob.MimeType := LMCP.MimeType
+  else
+    LBlob.MimeType := 'image/png';
+
+  LBlob.Blob := LBase64;
+
+  AContext.Result.Add(LBlob);
+end;
+
+procedure TMCPPictureWriter.WriteTool(const AValue: TValue; AContext: TMCPToolContext);
 var
   LPicture: TPicture;
   LStream: TMemoryStream;
@@ -123,7 +160,7 @@ begin
   LContent := TImageContent.Create;
   LContent.Data := LBase64;
   LContent.MIMEType := 'image';
-  AContext.ContentList.Add(LContent);
+  AContext.Result.Add(LContent);
 end;
 
 end.

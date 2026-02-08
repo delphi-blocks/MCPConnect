@@ -24,9 +24,14 @@ uses
 
 
 type
-  TMCPWriterContext = record
-    ContentList: TContentList;
-    ToolAttributes: TAttributes;
+  TMCPToolContext = record
+    Result: TContentList;
+    Attributes: TAttributes;
+  end;
+
+  TMCPresourceContext = record
+    Result: TResourceContentsList;
+    Attributes: TAttributes;
   end;
 
   /// <summary>
@@ -42,7 +47,8 @@ type
     class function GetTargetInfo: PTypeInfo; virtual;
     class function CanHandle(AType: PTypeInfo): Boolean; virtual; abstract;
   public
-    procedure Write(const AValue: TValue; AContext: TMCPWriterContext); virtual; abstract;
+    procedure WriteTool(const AValue: TValue; AContext: TMCPToolContext); virtual; abstract;
+    procedure WriteResource(const AValue: TValue; AContext: TMCPresourceContext); virtual; abstract;
   end;
   TCustomWriterClass = class of TMCPCustomWriter;
 

@@ -28,6 +28,8 @@ uses
   Neon.Core.Serializers.RTL, MCPConnect.Core.Utils;
 
 type
+  EMCPException = class(Exception);
+
   TAnyMap = class(TDictionary<string, TValue>);
 
   TAnyMapOwned = class(TDictionary<string, TValue>)
@@ -159,9 +161,12 @@ type
     Version: string;
 
     /// <summary>
-    ///   Optional set of sized icons that the client can display in a user interface
+    ///   An optional human-readable description of what this implementation does. This can be used
+    ///   by clients or servers to provide context about their purpose and capabilities. For
+    ///   example, a server might describe the types of resources or tools it provides, while a
+    ///   client might describe its intended use case.
     /// </summary>
-    Icons: TIconList;
+    Description: NullString;
 
     /// <summary>
     ///   Intended for UI and end-user contexts — optimized to be human-readable and easily
@@ -180,6 +185,11 @@ type
     ///   Format: uri
     /// </remarks>
     WebsiteUrl: NullString;
+
+    /// <summary>
+    ///   Optional set of sized icons that the client can display in a user interface
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)] Icons: TIconList;
   end;
 
   /// <summary>
@@ -335,7 +345,9 @@ type
     ProtocolVersion: string;
 
     /// <summary>
-    ///   Server capabilities.
+    ///   Capabilities that a server may support. Known capabilities are defined here, in this
+    ///   schema, but this is not a closed set: any server can define its own, additional
+    ///   capabilities.
     /// </summary>
     Capabilities: TServerCapabilities;
 
@@ -346,8 +358,11 @@ type
 
     /// <summary>
     ///   Instructions describing how to use the server and its features.
+    ///   This can be used by clients to improve the LLM's understanding of available
+    ///   tools, resources, etc. It can be thought of like a "hint" to the model.
+    ///   For example, this information MAY be added to the system prompt.
     /// </summary>
-    [NeonInclude(IncludeIf.NotEmpty)] Instructions: NullString;
+    Instructions: NullString;
 
   public
     constructor Create;
@@ -380,6 +395,21 @@ type
     ///   presented to the user.
     /// </summary>
     Reason: NullString;
+  end;
+
+
+  TLogSetLevel = (Alert, Critical, Debug, Emergency, Error, Info, Notice, Warning);
+  TSetLevelRequestParams = class(TMetaClass)
+
+    /// <summary>
+    ///   The severity of a log message. These map to syslog message severities, as specified in
+    ///   RFC-5424: <see href="https://datatracker.ietf.org/doc/html/rfc5424#section-6.2.1" />
+    /// </summary>
+    Level: TLogSetLevel;
+  end;
+
+  TSetLevelResult = class
+    
   end;
 
   { ************ Contents ************ }
@@ -523,7 +553,7 @@ type
   end;
 
   /// <summary>
-  ///   The contents of a specific resource or sub-resource.
+  ///   The contents of a specific resource or sub-resource (TextResourceContents, BlobResourceContents)
   /// </summary>
   TResourceContents = class(TBaseContent)
   public
@@ -572,8 +602,7 @@ type
   /// <summary>
   ///   List of Resource Contents. Used in ReadResourceResult
   /// </summary>
-  TResourceContentsList = class(TObjectList<TResourceContents>)
-  end;
+  TResourceContentsList = class(TObjectList<TResourceContents>);
 
   /// <summary>
   ///   The contents of a resource, embedded into a prompt or tool call result. It is up to the
@@ -616,8 +645,7 @@ type
   /// <summary>
   ///   List of Contents. Used in CallToolResult
   /// </summary>
-  TContentList = class(TObjectList<TToolContent>)
-  end;
+  TContentList = class(TObjectList<TToolContent>);
 
   /// <summary>
   ///   Interface for the CallToolResult array

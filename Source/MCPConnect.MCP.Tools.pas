@@ -213,22 +213,16 @@ type
 
 type
   /// <summary>
-  ///   MCP Tools Schema Generator
+  ///   MCP Tools List Generator
   /// </summary>
-  TMCPSchemaGenerator = class
+  TMCPToolsListGenerator = class
   protected
     /// <summary>
     ///   Writer for a method's params
     /// </summary>
     procedure WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
 
-    /// <summary>
-    ///   Writer for Integer types
-    /// </summary>
-    function WriteMethodOld(AMethod: TRttiMethod): TJSONObject;
     function WriteMethod(AMethod: TRttiMethod): TMCPTool;
-
-    function WriteMethodsOld(AType: TRttiType): TJSONArray;
     procedure WriteMethods(AType: TRttiType; AList: TMCPTools);
   public
     /// <summary>
@@ -241,11 +235,8 @@ type
     ///   Loops through the methods of a class/record and populate a structure
     ///   in response to the tools/list from a LLM client
     /// </summary>
-    class function ListTools(AType: TRttiType): TListToolsResult; overload;
-    class function ListTools(AClass: TClass): TListToolsResult; overload;
-
-    class procedure ListTools(AType: TRttiType; AList: TListToolsResult; const ANamespace: string = ''; const ASeparator: string = '_'); overload;
-    class procedure ListTools(AClass: TClass; AList: TListToolsResult; const ANamespace: string = ''; const ASeparator: string = '_'); overload;
+    class procedure ListTools(AType: TRttiType; AList: TListToolsResult); overload;
+    class procedure ListTools(AClass: TClass; AList: TListToolsResult); overload;
   end;
 
 implementation
@@ -307,64 +298,28 @@ begin
   Result := TNeon.ObjectToJSONString(Self, MCPNeonConfig.SetPrettyPrint(APrettyPrint));
 end;
 
-{ TMCPSchemaGenerator }
-
-class function TMCPSchemaGenerator.ListTools(AType: TRttiType): TListToolsResult;
+class procedure TMCPToolsListGenerator.ListTools(AClass: TClass; AList: TListToolsResult);
 begin
-  Result := TListToolsResult.Create;
-  try
-    ListTools(AType, Result);
-  except
-    Result.Free;
-    raise;
-  end;
+  ListTools(TRttiUtils.Context.GetType(AClass), AList);
 end;
 
-class function TMCPSchemaGenerator.ListTools(AClass: TClass): TListToolsResult;
-begin
-  Result := ListTools(TRttiUtils.Context.GetType(AClass));
-end;
-
-class procedure TMCPSchemaGenerator.ListTools(AClass: TClass; AList: TListToolsResult; const ANamespace: string = ''; const ASeparator: string = '_');
-begin
-  ListTools(TRttiUtils.Context.GetType(AClass), AList, ANamespace, ASeparator);
-end;
-
-class procedure TMCPSchemaGenerator.ListTools(AType: TRttiType; AList: TListToolsResult; const ANamespace: string = ''; const ASeparator: string = '_');
+class procedure TMCPToolsListGenerator.ListTools(AType: TRttiType; AList: TListToolsResult);
 var
-  LGenerator: TMCPSchemaGenerator;
-  LTool: TMCPTool;
-  LNamespacePrefix: string;
-  LStartIndex, I: Integer;
+  LGenerator: TMCPToolsListGenerator;
 begin
-  LGenerator := TMCPSchemaGenerator.Create();
+  LGenerator := TMCPToolsListGenerator.Create();
   try
-    // Remember how many tools were already in the list
-    LStartIndex := AList.Tools.Count;
-
-    // Add new tools from this class
     LGenerator.WriteMethods(AType, AList.Tools);
-
-    // Add namespace prefix only to the tools just added
-    if ANamespace <> '' then
-    begin
-      LNamespacePrefix := ANamespace + ASeparator;
-      for I := LStartIndex to AList.Tools.Count - 1 do
-      begin
-        LTool := AList.Tools[I];
-        LTool.Name := LNamespacePrefix + LTool.Name;
-      end;
-    end;
   finally
     LGenerator.Free;
   end;
 end;
 
-class function TMCPSchemaGenerator.MethodToTool(AMethod: TRttiMethod): TMCPTool;
+class function TMCPToolsListGenerator.MethodToTool(AMethod: TRttiMethod): TMCPTool;
 var
-  LGenerator: TMCPSchemaGenerator;
+  LGenerator: TMCPToolsListGenerator;
 begin
-  LGenerator := TMCPSchemaGenerator.Create();
+  LGenerator := TMCPToolsListGenerator.Create();
   try
     Result := LGenerator.WriteMethod(AMethod);
   finally
@@ -372,60 +327,12 @@ begin
   end;
 end;
 
-function TMCPSchemaGenerator.WriteMethodOld(AMethod: TRttiMethod): TJSONObject;
-var
-  LToolName, LToolDesc: string;
-  LProps, LSchema: TJSONObject;
-  LAttr: MCPToolAttribute;
-  LRequired: TJSONArray;
-begin
-  LProps := TJSONObject.Create;
-  LRequired := TJSONArray.Create;
-  try
-    WriteParams(AMethod, LProps, LRequired);
-  except
-    LProps.Free;
-    LRequired.Free;
-    raise;
-  end;
-
-  LSchema := TJSONObject.Create
-    .AddPair('type', 'object')
-    .AddPair('properties', LProps);
-    //.AddPair('additionalProperties', False);
-    //.AddPair('$schema', 'http://json-schema.org/draft-07/schema#');
-
-  LToolName := AMethod.Name;
-  LToolDesc := AMethod.Name;
-
-  LAttr := AMethod.GetAttribute<MCPToolAttribute>;
-  if Assigned(LAttr) then
-  begin
-    if LAttr.Name <> '' then
-      LToolName := LAttr.Name;
-
-    if LAttr.Description <> '' then
-      LToolDesc := LAttr.Description;
-  end;
-
-  Result := TJSONObject.Create
-    .AddPair('name', LToolName)
-    .AddPair('description', LToolDesc)
-    .AddPair('inputSchema', LSchema);
-
-  if LRequired.Count > 0 then
-    Result.AddPair('required', LRequired)
-  else
-    LRequired.Free;
-end;
-
-function TMCPSchemaGenerator.WriteMethod(AMethod: TRttiMethod): TMCPTool;
+function TMCPToolsListGenerator.WriteMethod(AMethod: TRttiMethod): TMCPTool;
 var
   LToolName, LToolDesc: string;
   LProps, LInputSchema: TJSONObject;
   LAttr: MCPToolAttribute;
   LRequired: TJSONArray;
-
 begin
   LProps := TJSONObject.Create;
   LRequired := TJSONArray.Create;
@@ -486,28 +393,7 @@ begin
   end;
 end;
 
-function TMCPSchemaGenerator.WriteMethodsOld(AType: TRttiType): TJSONArray;
-var
-  LMethod: TRttiMethod;
-  LMethods: TArray<TRttiMethod>;
-  LTool: TJSONObject;
-begin
-  Result := TJSONArray.Create;
-  try
-    LMethods := AType.GetMethods;
-    for LMethod in LMethods do
-      if Assigned(LMethod.GetAttribute(MCPToolAttribute)) then
-      begin
-        LTool := WriteMethodOld(LMethod);
-        Result.AddElement(LTool);
-      end;
-  except
-    Result.Free;
-    raise;
-  end;
-end;
-
-procedure TMCPSchemaGenerator.WriteMethods(AType: TRttiType; AList: TMCPTools);
+procedure TMCPToolsListGenerator.WriteMethods(AType: TRttiType; AList: TMCPTools);
 var
   LMethod: TRttiMethod;
   LMethods: TArray<TRttiMethod>;
@@ -522,7 +408,7 @@ begin
     end;
 end;
 
-procedure TMCPSchemaGenerator.WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
+procedure TMCPToolsListGenerator.WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
 var
   LJSONObj: TJSONObject;
   LParam: TRttiParameter;

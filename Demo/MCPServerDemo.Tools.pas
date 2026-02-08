@@ -5,14 +5,13 @@ interface
 uses
   System.Classes, System.SysUtils, System.JSON, System.Generics.Collections,
   System.IOUtils, System.Rtti,
-  Vcl.Graphics, Vcl.ExtCtrls,
-  MCPConnect.JRPC.Core,
+
+  Vcl.Graphics, Vcl.ExtCtrls, Vcl.Dialogs,
 
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
 
-  Vcl.Dialogs,
-
+  MCPConnect.JRPC.Core,
   MCPConnect.MCP.Types,
   MCPConnect.MCP.Attributes,
   MCPConnect.Core.Utils,
@@ -75,10 +74,10 @@ type
   TTickets = class(TObjectList<TTicket>)
   end;
 
+  [McpNamespace('delphiday')]
   TDelphiDayTool = class
   private
-    [Context]
-    FGC: IGarbageCollector;
+    [Context] FGC: IGarbageCollector;
   public
     [McpTool('get_tickets', 'Get the list of available tickets for the DelphiDay event in Padova')]
     function GetTickets: TTickets;
@@ -90,12 +89,13 @@ type
     ): TContentList;
   end;
 
+  [McpNamespace('test')]
   TTestTool = class
   public
     [McpTool('double_or_nothing', 'Doubles or zeroes the param value')]
     function TestParam(
-    [McpParam('value1', 'Test Parameter 1 for MCP')] AParam1: Int64;
-    [McpParam('value2', 'Test Parameter 2 for MCP')] AParam2: Boolean
+      [McpParam('value1', 'Test Parameter 1 for MCP')] AParam1: Int64;
+      [McpParam('value2', 'Test Parameter 2 for MCP')] AParam2: Boolean
     ): Integer;
 
     [McpTool('discounted_items', 'Retrieves a list of discounted items on Wintech-Italia based on the specified item type')]
@@ -113,13 +113,13 @@ type
     [McpTool('splitstring', 'Gets the content by splitting the string (e.g. "hello,world" -> ["hello", "world"])')]
     function GetSplitString(
       [McpParam('value', 'The string to work with')]
-       const AValue: string
+      const AValue: string
     ): TContentList;
 
     [McpTool('getperson', 'Get a person from his name')]
     function GetPerson(
       [McpParam('name', 'The name of the person to get')]
-       const AName: string
+      const AName: string
     ): TPerson;
   end;
 

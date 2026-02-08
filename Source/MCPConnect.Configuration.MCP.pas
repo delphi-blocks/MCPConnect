@@ -19,20 +19,26 @@ uses
   System.Classes, System.SysUtils,
   System.Generics.Defaults,
   System.Generics.Collections,
+  System.Rtti,
+
+
+  MCPConnect.MCP.Tools,
+  MCPConnect.MCP.Prompts,
+  MCPConnect.MCP.Resources,
 
   MCPConnect.Content.Writers,
   MCPConnect.Configuration.Core;
 
 type
   /// <summary>
-  ///   Represents a tool class registration with its namespace.
+  ///   Represents a tools/resources/prompts class registration with its namespace.
   /// </summary>
-  TToolClassInfo = record
+  TMCPClassInfo = record
     Namespace: string;
-    ToolClass: TClass;
+    MCPClass: TClass;
   end;
 
-  IMCPListConfig = interface;
+  TMCPListConfig = class;
   
   /// <summary>
   ///   Primary configuration interface for Model Context Protocol (MCP) servers.
@@ -83,17 +89,17 @@ type
     /// <summary>
     ///   Tools configuration
     /// </summary>
-    function Tools: IMCPListConfig;
+    function Tools: TMCPListConfig;
 
     /// <summary>
     ///   Resources configuration
     /// </summary>
-    function Resources: IMCPListConfig;
+    function Resources: TMCPListConfig;
 
     /// <summary>
     ///   Prompts configuration
     /// </summary>
-    function Prompts: IMCPListConfig;
+    function Prompts: TMCPListConfig;
 
 
     /// <summary>
@@ -124,6 +130,13 @@ type
     /// <param name="AName">Human-readable server name (default: 'MCPServer')</param>
     /// <returns>Self for fluent chaining</returns>
     function SetServerName(const AName: string): IMCPConfig;
+
+    /// <summary>
+    ///   Sets the server description returned in the MCP initialize response.
+    /// </summary>
+    /// <param name="ADescription">Description for the server (default: '')</param>
+    /// <returns>Self for fluent chaining</returns>
+    function SetServerDescription(const ADescription: string): IMCPConfig;
 
     /// <summary>
     ///   Sets the server version returned in the MCP initialize response.
@@ -162,7 +175,7 @@ type
     ///   Returns all registered tool classes with their namespaces.
     /// </summary>
     /// <returns>Array of tool class registrations</returns>
-    function GetToolClasses: TArray<TToolClassInfo>;
+    function GetToolClasses: TArray<TMCPClassInfo>;
 
     /// <summary>
     ///   Returns the configured namespace separator.
@@ -171,45 +184,14 @@ type
     function GetNamespaceSeparator: string;
   end;
 
-  IMCPListConfig = interface
-  ['{9DCF41EB-99BB-4BCF-A274-1F4E0CCE7DBA}']
-
-    /// <summary>
-    ///   Registers a class without namespace. Equivalent to RegisterToolClass('', AClass).
-    /// </summary>
-    /// <param name="AClass">Class containing [Mcp*] annotated methods</param>
-    /// <returns>Self for fluent chaining</returns>
-    function RegisterClass(AClass: TClass): IMCPListConfig; overload;
-
-    /// <summary>
-    ///   Registers a class with an optional namespace.
-    ///   Methods marked with [McpTool], [McpResource] and [McpPrompt] will be exposed with the format:
-    ///   namespace + separator + tool_name (if namespace is not empty).
-    /// </summary>
-    /// <param name="ANamespace">
-    ///   Namespace prefix in this class. Use empty string for no namespace.
-    /// </param>
-    /// <param name="AClass">Class containing [McpAttribute] methods</param>
-    /// <returns>Self for fluent chaining</returns>
-    /// <remarks>
-    ///   If multiple classes are registered with the same namespace, the last one
-    ///   overwrites previous registrations (no error is raised).
-    /// </remarks>
-    function RegisterClass(const ANamespace: string; AClass: TClass): IMCPListConfig; overload;
-
-    function ApplyConfig: IMCPConfig;
-  end;
-
-
-
-  TMCPListConfig = class(TInterfacedObject, IMCPListConfig)
+  TMCPListConfig = class
   private
     FMCPConfig: IMCPConfig;
     FClasses: TObjectDictionary<string, TClass>;
   public
-    function RegisterClass(AClass: TClass): IMCPListConfig; overload;
-    function RegisterClass(const ANamespace: string; AClass: TClass): IMCPListConfig; overload;
-    function ApplyConfig: IMCPConfig;
+    function RegisterClass(AClass: TClass): TMCPListConfig; overload;
+    function GetClasses: TArray<TMCPClassInfo>;
+    function BackToMCP: IMCPConfig;
 
     constructor Create(AConfig: IMCPConfig);
     destructor Destroy; override;
@@ -221,6 +203,7 @@ type
   private
     FTools: TMCPListConfig;
     FResources: TMCPListConfig;
+    FTemplates: TMCPListConfig;
     FPrompts: TMCPListConfig;
   private
     FWriterRegistry: TMCPWriterRegistry;
@@ -228,30 +211,31 @@ type
     FResourceRegistry: TObjectDictionary<string, TClass>;
     FPromptRegistry: TObjectDictionary<string, TClass>;
 
-    FNamespaceSeparator: string;    FServerVersion: string;
+    FNamespaceSeparator: string;
+    FServerVersion: string;
     FServerName: string;
+    FServerDescription: string;
   public
     constructor Create(AApp: IJRPCApplication); override;
     destructor Destroy; override;
     procedure AfterConstruction; override;
 
     { IMCPConfig }
-    function Tools: IMCPListConfig;
-    function Resources: IMCPListConfig;
-    function Prompts: IMCPListConfig;
+    function Tools: TMCPListConfig;
+    function Resources: TMCPListConfig;
+    function Templates: TMCPListConfig;
+    function Prompts: TMCPListConfig;
 
-    function RegisterToolClass(const ANamespace: string; AClass: TClass): IMCPConfig; overload;
     function RegisterToolClass(AClass: TClass): IMCPConfig; overload;
-
-    function RegisterResourceClass(const ANamespace: string; AClass: TClass): IMCPConfig; overload;
     function RegisterResourceClass(AClass: TClass): IMCPConfig; overload;
 
     function SetNamespaceSeparator(const ASeparator: string): IMCPConfig;
     function SetServerName(const AName: string): IMCPConfig;
+    function SetServerDescription(const ADescription: string): IMCPConfig;
     function SetServerVersion(const AVersion: string): IMCPConfig;
     function RegisterWriter(AClass: TCustomWriterClass): IMCPConfig;
     function GetWriters: TMCPWriterRegistry;
-    function GetToolClasses: TArray<TToolClassInfo>;
+    function GetToolClasses: TArray<TMCPClassInfo>;
     function GetNamespaceSeparator: string;
 
     /// <summary>
@@ -275,6 +259,7 @@ type
 
     property ServerName: string read FServerName write FServerName;
     property ServerVersion: string read FServerVersion write FServerVersion;
+    property ServerDescription: string read FServerDescription write FServerDescription;
   end;
 
 implementation
@@ -283,13 +268,16 @@ uses
   Neon.Core.Utils,
   MCPConnect.JRPC.Core;
 
-{ TMCPConfig }
-
 constructor TMCPConfig.Create(AApp: IJRPCApplication);
 begin
   inherited;
 
   { TODO -opaolo -c : finire 02/02/2026 12:20:21 }
+
+  FTools := TMCPListConfig.Create(Self);
+  FResources := TMCPListConfig.Create(Self);
+  FTemplates := TMCPListConfig.Create(Self);
+  FPrompts := TMCPListConfig.Create(Self);
 
   FWriterRegistry := TMCPWriterRegistry.Create;
   FToolRegistry := TObjectDictionary<string, TClass>.Create;
@@ -311,34 +299,24 @@ begin
   FResourceRegistry.Free;
   FToolRegistry.Free;
   FWriterRegistry.Free;
-  inherited;
-end;
 
-function TMCPConfig.RegisterToolClass(const ANamespace: string; AClass: TClass): IMCPConfig;
-begin
-  // AddOrSetValue: if namespace exists, replaces the class (last wins)
-  FToolRegistry.AddOrSetValue(ANamespace, AClass);
-  Result := Self;
+  FPrompts.Free;
+  FTemplates.Free;
+  FResources.Free;
+  FTools.Free;
+  inherited;
 end;
 
 function TMCPConfig.RegisterToolClass(AClass: TClass): IMCPConfig;
 begin
-  // Register without namespace (empty string key)
-  Result := RegisterToolClass('', AClass);
-end;
-
-
-function TMCPConfig.RegisterResourceClass(const ANamespace: string; AClass: TClass): IMCPConfig;
-begin
-  // AddOrSetValue: if namespace exists, replaces the class (last wins)
-  FResourceRegistry.AddOrSetValue(ANamespace, AClass);
+  FToolRegistry.AddOrSetValue('', AClass);
   Result := Self;
 end;
 
 function TMCPConfig.RegisterResourceClass(AClass: TClass): IMCPConfig;
 begin
-  // Register without namespace (empty string key)
-  Result := RegisterResourceClass('', AClass);
+  FResourceRegistry.AddOrSetValue('', AClass);
+  Result := Self;
 end;
 
 function TMCPConfig.GetWriters: TMCPWriterRegistry;
@@ -346,7 +324,7 @@ begin
   Result := FWriterRegistry;
 end;
 
-function TMCPConfig.Prompts: IMCPListConfig;
+function TMCPConfig.Prompts: TMCPListConfig;
 begin
   Result := FPrompts;
 end;
@@ -357,9 +335,15 @@ begin
   Result := Self;
 end;
 
-function TMCPConfig.Resources: IMCPListConfig;
+function TMCPConfig.Resources: TMCPListConfig;
 begin
   Result := FResources;
+end;
+
+function TMCPConfig.SetServerDescription(const ADescription: string): IMCPConfig;
+begin
+  FServerDescription := ADescription;
+  Result := Self;
 end;
 
 function TMCPConfig.SetServerName(const AName: string): IMCPConfig;
@@ -374,7 +358,12 @@ begin
   Result := Self;
 end;
 
-function TMCPConfig.Tools: IMCPListConfig;
+function TMCPConfig.Templates: TMCPListConfig;
+begin
+  Result := FTemplates;
+end;
+
+function TMCPConfig.Tools: TMCPListConfig;
 begin
   Result := FTools;
 end;
@@ -385,7 +374,7 @@ begin
   Result := Self;
 end;
 
-function TMCPConfig.GetToolClasses: TArray<TToolClassInfo>;
+function TMCPConfig.GetToolClasses: TArray<TMCPClassInfo>;
 var
   LPair: TPair<string, TClass>;
   LIndex: Integer;
@@ -395,7 +384,7 @@ begin
   for LPair in FToolRegistry do
   begin
     Result[LIndex].Namespace := LPair.Key;
-    Result[LIndex].ToolClass := LPair.Value;
+    Result[LIndex].MCPClass := LPair.Value;
     Inc(LIndex);
   end;
 end;
@@ -469,6 +458,7 @@ end;
 
 constructor TMCPListConfig.Create(AConfig: IMCPConfig);
 begin
+  FMCPConfig := AConfig;
   FClasses := TObjectDictionary<string, TClass>.Create;
 end;
 
@@ -478,20 +468,29 @@ begin
   inherited;
 end;
 
-function TMCPListConfig.RegisterClass(const ANamespace: string; AClass: TClass): IMCPListConfig;
+function TMCPListConfig.GetClasses: TArray<TMCPClassInfo>;
+var
+  LPair: TPair<string, TClass>;
+  LIndex: Integer;
+begin
+  SetLength(Result, FClasses.Count);
+  LIndex := 0;
+  for LPair in FClasses do
+  begin
+    Result[LIndex].Namespace := LPair.Key;
+    Result[LIndex].MCPClass := LPair.Value;
+    Inc(LIndex);
+  end;
+end;
+
+function TMCPListConfig.RegisterClass(AClass: TClass): TMCPListConfig;
 begin
   // AddOrSetValue: if namespace exists, replaces the class (last wins)
-  FClasses.AddOrSetValue(ANamespace, AClass);
+  FClasses.AddOrSetValue('', AClass);
   Result := Self;
 end;
 
-function TMCPListConfig.RegisterClass(AClass: TClass): IMCPListConfig;
-begin
-  // Register without namespace (empty string key)
-  Result := RegisterClass('', AClass);
-end;
-
-function TMCPListConfig.ApplyConfig: IMCPConfig;
+function TMCPListConfig.BackToMCP: IMCPConfig;
 begin
   Result := FMCPConfig;
 end;

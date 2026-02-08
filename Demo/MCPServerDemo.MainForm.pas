@@ -8,9 +8,13 @@ uses
   Vcl.AppEvnts, Vcl.StdCtrls, IdHTTPWebBrokerBridge, IdGlobal, Web.HTTPApp,
   IdContext,
 
+  MCPServerDemo.WebModule,
+
+  MCPConnect.MCP.Tools,
+  MCPConnect.MCP.Prompts,
+  MCPConnect.MCP.Resources,
 
   MCPConnect.MCP.Config,
-  MCPConnect.MCP.Tools,
   MCPConnect.MCP.Invoker,
   MCPConnect.MCP.Types,
   MCPConnect.MCP.Attributes;
@@ -25,9 +29,15 @@ type
     ApplicationEvents1: TApplicationEvents;
     ButtonOpenBrowser: TButton;
     btnConfig: TButton;
+    Button1: TButton;
+    btnListResource: TButton;
+    btnTemplates: TButton;
     procedure FormCreate(Sender: TObject);
     procedure ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
     procedure btnConfigClick(Sender: TObject);
+    procedure btnListResourceClick(Sender: TObject);
+    procedure btnTemplatesClick(Sender: TObject);
+    procedure Button1Click(Sender: TObject);
     procedure ButtonStartClick(Sender: TObject);
     procedure ButtonStopClick(Sender: TObject);
     procedure ButtonOpenBrowserClick(Sender: TObject);
@@ -54,7 +64,12 @@ uses
   Neon.Core.Types,
   Neon.Core.Serializers.RTL,
   Neon.Core.Persistence,
-  Neon.Core.Persistence.JSON;
+  Neon.Core.Persistence.JSON,
+
+  MCPServerDemo.Resources,
+  MCPServerDemo.Tools,
+  MCPConnect.Configuration.Neon,
+  MCPConnect.MCP.Server.Api;
 
 procedure TForm1.ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
 begin
@@ -71,14 +86,14 @@ begin
   remote.&Type := 'http';
   remote.Url := 'http://localhost:8080/mcp';
   remote.Headers.Add('Authorization', 'Bearer ' + '378eye6t.e3y883yee3eu8yg32e63.93ue983u');
-  mcp.Servers.Add('mpc-connect-remote', remote);
+  mcp.Servers.Add('mcp-connect-remote', remote);
 
   var local := TMCPConfigServerLocal.Create;
   local.&Type := 'stdio';
   local.Command := 'mcp.exe';
   local.Args := ['-v', './data'];
   local.Env.Add('KEY', 'aabbccdd');
-  mcp.Servers.Add('mpc-connect-local', local);
+  mcp.Servers.Add('mcp-connect-local', local);
 
   var s := TNeon.ObjectToJSONString(mcp,
     TNeonConfiguration
@@ -91,6 +106,44 @@ begin
   memoLog.Lines.Add(s);
 
   mcp.Free;
+end;
+
+procedure TForm1.btnListResourceClick(Sender: TObject);
+begin
+  var list := TListResourcesResult.Create;
+
+  TMCPResourcesListGenerator.ListResources(TWeatherResource, list);
+
+  var s := TNeon.ObjectToJSONString(list{, MCPNeonConfig});
+  memoLog.Lines.Text := s;
+
+  list.Free;
+end;
+
+procedure TForm1.btnTemplatesClick(Sender: TObject);
+begin
+  var list := TListResourceTemplatesResult.Create;
+
+  TMCPResourcesListGenerator.ListTemplates(TWeatherResource, list);
+
+  var s := TNeon.ObjectToJSONString(list{, MCPNeonConfig});
+  memoLog.Lines.Text := s;
+
+  list.Free;
+
+end;
+
+procedure TForm1.Button1Click(Sender: TObject);
+begin
+  var list := TListToolsResult.Create;
+
+  TMCPToolsListGenerator.ListTools(TTestTool, list);
+
+  var s := TNeon.ObjectToJSONString(list, MCPNeonConfig);
+  memoLog.Lines.Text := s;
+
+  list.Free;
+
 end;
 
 procedure TForm1.ButtonOpenBrowserClick(Sender: TObject);

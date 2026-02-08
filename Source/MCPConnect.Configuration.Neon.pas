@@ -87,8 +87,7 @@ implementation
 
 { TJRPCNeonConfig }
 
-function TJRPCNeonConfig.SetNeonConfig(
-  ANeonConfig: INeonConfiguration): IJRPCNeonConfig;
+function TJRPCNeonConfig.SetNeonConfig(ANeonConfig: INeonConfiguration): IJRPCNeonConfig;
 begin
   FNeonConfig := ANeonConfig;
   Result := Self;

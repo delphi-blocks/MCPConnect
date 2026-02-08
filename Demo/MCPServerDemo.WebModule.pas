@@ -65,34 +65,35 @@ begin
   FJRPCServer
     .Plugin.Configure<IAuthTokenConfig>
       .SetToken('my-secret-token')
-      .ApplyConfig
+    .ApplyConfig
 
     .Plugin.Configure<ISessionConfig>
       .SetLocation(TSessionIdLocation.Header)
       .SetHeaderName('Mcp-Session-Id')
       .SetTimeout(30)  // 30 minutes timeout
       .SetSessionClass(TShoppingSession)  // Use custom typed session
-      .ApplyConfig
+    .ApplyConfig
 
     .Plugin.Configure<IMCPConfig>
       .SetServerName('delphi-mcp-server')
       .SetServerVersion('2.0.0')
 
       .Tools
-        .RegisterClass('test', TTestTool)
-        .RegisterClass('delphi_day', TDelphiDayTool)
+        .RegisterClass(TTestTool)
+        .RegisterClass(TDelphiDayTool)
         .RegisterClass(TShoppingCartTool)  // Session-based shopping cart
-      .ApplyConfig
+      .BackToMCP
 
       .Resources
-        .RegisterClass('weather', TWeatherResource)
-      .ApplyConfig
+        .RegisterClass(TWeatherResource)
+      .BackToMCP
 
       .RegisterWriter(TMCPImageWriter)
       .RegisterWriter(TMCPPictureWriter)
       .RegisterWriter(TMCPStreamWriter)
       .RegisterWriter(TMCPStringListWriter)
-      .ApplyConfig;
+  ;
+    //.ApplyConfig;
 
 //    .Plugin.Configure<IJRPCNeonConfig>
 //      .SetNeonConfig(MCPNeonConfig)

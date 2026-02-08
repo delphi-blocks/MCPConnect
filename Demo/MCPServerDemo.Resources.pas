@@ -19,8 +19,7 @@ type
   private
     [Context] FGC: IGarbageCollector;
   public
-    [McpResource('get_tickets', '', 'text/html', 'Get the list of available tickets for the DelphiDay event in Padova',
-    'uri=ui://weather/info,mimetype=text/plain')]
+    [McpResource('get_weather', 'ui://weather/info', 'text/html', 'Shows the weather for the DelphiDay event')]
     function GetWeatherInfo: string;
   end;
 

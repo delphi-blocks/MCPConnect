@@ -69,7 +69,6 @@ object Form1: TForm1
     ParentFont = False
     ScrollBars = ssVertical
     TabOrder = 4
-    ExplicitHeight = 413
   end
   object btnConfig: TButton
     Left = 299
@@ -79,6 +78,33 @@ object Form1: TForm1
     Caption = 'Generate MCP.json'
     TabOrder = 5
     OnClick = btnConfigClick
+  end
+  object Button1: TButton
+    Left = 504
+    Top = 32
+    Width = 75
+    Height = 25
+    Caption = 'Button1'
+    TabOrder = 6
+    OnClick = Button1Click
+  end
+  object btnListResource: TButton
+    Left = 504
+    Top = 73
+    Width = 75
+    Height = 25
+    Caption = 'btnListResource'
+    TabOrder = 7
+    OnClick = btnListResourceClick
+  end
+  object btnTemplates: TButton
+    Left = 608
+    Top = 56
+    Width = 75
+    Height = 25
+    Caption = 'btnTemplates'
+    TabOrder = 8
+    OnClick = btnTemplatesClick
   end
   object ApplicationEvents1: TApplicationEvents
     OnIdle = ApplicationEvents1Idle

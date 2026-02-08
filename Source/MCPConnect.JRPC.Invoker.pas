@@ -212,9 +212,9 @@ end;
 function TJRPCMethodInvoker.RttiResultToResponse(AResult: TValue): TJSONValue;
 begin
   if TRttiUtils.HasAttribute<JRPCNotificationAttribute>(FMethod) then
-    Result := nil
-  else
-    Result := TNeon.ValueToJSON(AResult, FNeonConfig);
+    Exit(nil);
+
+  Result := TNeon.ValueToJSON(AResult, FNeonConfig);
 end;
 
 procedure TJRPCMethodInvoker.SetNeonConfig(AConfig: INeonConfiguration);

@@ -190,7 +190,7 @@ type
     [NeonProperty('error')]
     property Error: TJRPCError read FError write FError;
 
-    [NeonProperty('result')]
+    [NeonProperty('result'), NeonInclude(IncludeIf.Always)]
     property Result: TJSONValue read FResult write SetResult;
   public
     class function CreateFromJson(const AJSON: string): TJRPCResponse;

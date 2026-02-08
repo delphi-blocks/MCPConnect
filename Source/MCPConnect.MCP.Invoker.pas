@@ -31,7 +31,9 @@ uses
 
   MCPConnect.MCP.Attributes,
   MCPConnect.MCP.Types,
-  MCPConnect.MCP.Tools;
+  MCPConnect.MCP.Tools,
+  MCPConnect.MCP.Prompts,
+  MCPConnect.MCP.Resources;
 
 type
   /// <summary>
@@ -39,11 +41,15 @@ type
   /// </summary>
   IMCPInvokable = interface
   ['{3E475D9B-6863-4260-8789-74014419A52B}']
-    function Invoke(const AName: string; AArguments: TJSONObject; Meta: TJSONObject; AResult: TCallToolResult): Boolean;
+    function InvokeTool(const AName: string; AArguments: TJSONObject; Meta: TJSONObject;
+      AResult: TCallToolResult): Boolean;
+
+    function InvokeResource(const AName: string; AArguments: TJSONObject; Meta: TJSONObject;
+      AResult: TReadResourceResult): Boolean;
   end;
 
   /// <summary>
-  ///   This class invoke a specific method on a given instance.
+  ///   This class InvokeTool a specific method on a given instance.
   ///   The method to be invoked is reached through RTTI
   ///   using the MCP specific attributes.
   /// </summary>
@@ -57,7 +63,11 @@ type
     function FindMethod(const AName: string): TRttiMethod;
   public
     { IMCPInvokable }
-    function Invoke(const AName: string; AArguments: TJSONObject; Meta: TJSONObject; AResult: TCallToolResult): Boolean;
+    function InvokeTool(const AName: string; AArguments: TJSONObject; Meta:
+        TJSONObject; AResult: TCallToolResult): Boolean;
+
+    function InvokeResource(const AName: string; AArguments: TJSONObject; Meta: TJSONObject;
+      AResult: TReadResourceResult): Boolean;
 
     constructor Create(AInstance: TObject);
   end;
@@ -72,11 +82,17 @@ type
     FInstance: TObject;
     FMethod: TRttiMethod;
     function ArgumentsToRttiParams(AArguments: TJSONObject): TArray<TValue>;
-    procedure ResultToContents(const AToolResult: TValue; AContentList: TContentList);
     function GetParamName(LParam: TRttiParameter): string;
+  protected
+    procedure ResultToTool(const AToolResult: TValue; AContentList: TContentList);
+    procedure ResultToResource(const AMethodResult: TValue; AContentList: TResourceContentsList);
   public
     { IMCPInvokable }
-    function Invoke(const AName: string; AArguments: TJSONObject; Meta: TJSONObject; AResult: TCallToolResult): Boolean;
+    function InvokeTool(const AName: string; AArguments: TJSONObject; Meta: TJSONObject;
+      AResult: TCallToolResult): Boolean;
+
+    function InvokeResource(const AName: string; AArguments: TJSONObject; Meta: TJSONObject;
+      AResult: TReadResourceResult): Boolean;
 
     constructor Create(AInstance: TObject; AMethod: TRttiMethod);
   end;
@@ -115,8 +131,12 @@ begin
   end;
 end;
 
-function TMCPObjectInvoker.Invoke(const AName: string; AArguments,
-  Meta: TJSONObject; AResult: TCallToolResult): Boolean;
+function TMCPObjectInvoker.InvokeResource(const AName: string; AArguments, Meta: TJSONObject; AResult: TReadResourceResult): Boolean;
+begin
+
+end;
+
+function TMCPObjectInvoker.InvokeTool(const AName: string; AArguments, Meta: TJSONObject; AResult: TCallToolResult): Boolean;
 var
   LMethod: TRttiMethod;
   LMethodInvoker: IMCPInvokable;
@@ -131,7 +151,7 @@ begin
   LMethodInvoker := TMCPMethodInvoker.Create(FInstance, LMethod);
   FContext.Inject(LMethodInvoker);
 
-  Result := LMethodInvoker.Invoke(AName, AArguments, Meta, AResult);
+  Result := LMethodInvoker.InvokeTool(AName, AArguments, Meta, AResult);
 end;
 
 { TMCPMethodInvoker }
@@ -143,8 +163,13 @@ begin
   FMethod := AMethod;
 end;
 
-function TMCPMethodInvoker.Invoke(const AName: string; AArguments,
-  Meta: TJSONObject; AResult: TCallToolResult): Boolean;
+function TMCPMethodInvoker.InvokeResource(const AName: string; AArguments, Meta: TJSONObject; AResult: TReadResourceResult): Boolean;
+begin
+
+end;
+
+function TMCPMethodInvoker.InvokeTool(const AName: string; AArguments:
+    TJSONObject; Meta: TJSONObject; AResult: TCallToolResult): Boolean;
 var
   LArgs: TArray<TValue>;
   LResult: TValue;
@@ -162,18 +187,18 @@ begin
       LResult := nil;
     end
     else
-      ResultToContents(LResult, AResult.Content);
+      ResultToTool(LResult, AResult.Content);
   finally
     if LResult.IsObject then
       FGarbageCollector.Add(LResult.AsObject);
   end;
 end;
 
-procedure TMCPMethodInvoker.ResultToContents(const AToolResult: TValue; AContentList: TContentList);
+procedure TMCPMethodInvoker.ResultToTool(const AToolResult: TValue; AContentList: TContentList);
 var
   LResult: string;
   LWriter: TMCPCustomWriter;
-  LContext: TMCPWriterContext;
+  LContext: TMCPToolContext;
   LContent: TToolContent;
   LText: TTextContent absolute LContent;
   LResText: TEmbeddedResourceText absolute LContent;
@@ -185,10 +210,10 @@ begin
   LWriter := FConfig.GetWriters.GetWriter(AToolResult);
   if Assigned(LWriter) then
   begin
-    LContext.ContentList := AContentList;
-    LContext.ToolAttributes := FMethod.GetAttributes;
+    LContext.Result := AContentList;
+    LContext.Attributes := FMethod.GetAttributes;
 
-    LWriter.Write(AToolResult, LContext);
+    LWriter.WriteTool(AToolResult, LContext);
     Exit;
   end;
 
@@ -244,6 +269,85 @@ begin
   end;
 
   AContentList.Add(LContent);
+end;
+
+procedure TMCPMethodInvoker.ResultToResource(const AMethodResult: TValue; AContentList: TResourceContentsList);
+var
+  LResult: string;
+  LWriter: TMCPCustomWriter;
+  LContext: TMCPResourceContext;
+  LContent: TBaseContent;
+  LText: TTextContent absolute LContent;
+  LResText: TEmbeddedResourceText absolute LContent;
+  LResBlob: TEmbeddedResourceBlob absolute LContent;
+begin
+
+  { TODO -opaolo -c : Change the Neon configuration!!! 14/11/2025 10:25:55
+  LResult := TNeon.ValueToJSONString(AMethodResult, TNeonConfiguration.Default);
+
+  LWriter := FConfig.GetWriters.GetWriter(AMethodResult);
+  if Assigned(LWriter) then
+  begin
+    LContext.Result := AContentList;
+    LContext.Attributes := FMethod.GetAttributes;
+
+    LWriter.WriteTool(AMethodResult, LContext);
+    Exit;
+  end;
+
+  case AMethodResult.Kind of
+
+    // As it is
+    tkInt64,
+    tkInteger,
+    tkFloat: LText := TTextContent.Create(LResult);
+
+    // Dequote
+    tkEnumeration,
+    tkChar,
+    tkWChar,
+    tkString,
+    tkLString,
+    tkWString,
+    tkUString: LText := TTextContent.Create(LResult.DeQuotedString('"'));
+
+    // JSON response
+    tkSet,
+    tkClass,
+    tkRecord, tkMRecord:
+    begin
+      // Check if the tool is configured to return an embedded resource
+      var LMCPTool := TRttiUtils.FindAttribute<MCPToolAttribute>(FMethod);
+      if Assigned(LMCPTool) and (LMCPTool.Tags.Exists('embedded')) then
+      begin
+        LResText := TEmbeddedResourceText.Create;
+        LResText.Resource.MIMEType := 'application/json';
+        LResText.Resource.URI := '';
+        LResText.Resource.Text := LResult;
+      end
+      else
+      begin
+        LText := TTextContent.Create(LResult);
+      end;
+    end;
+
+    tkArray, tkDynArray:
+    begin
+      LResBlob := TEmbeddedResourceBlob.Create;
+      LResBlob.Resource.Blob := LResult;
+
+      if AMethodResult.TypeInfo = TypeInfo(TBytes) then
+        LResBlob.Resource.MIMEType := 'application/octect-stream'
+      else
+        LResBlob.Resource.MIMEType := 'application/json';
+    end;
+
+  else
+    LText := TTextContent.Create(LResult);
+  end;
+
+  AContentList.Add(LContent);
+  }
 end;
 
 function TMCPMethodInvoker.GetParamName(LParam: TRttiParameter): string;

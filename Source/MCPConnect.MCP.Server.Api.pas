@@ -56,10 +56,7 @@ type
     function TemplatesList: TListResourceTemplatesResult;
 
     [JRPC('read')]
-    function ReadResource(
-      [JRPCParam('name')] const AName: string;
-      [JRPC('arguments')] AArguments: TJSONObject;
-      [JRPC('_meta')] Meta: TJSONObject): TReadResourceResult;
+    function ReadResource([JRPCParam('uri')] const AUri: string): TReadResourceResult;
   end;
 
 
@@ -92,6 +89,14 @@ type
     function SetLevel([JRPCParams] ASetLevelParams: TSetLevelRequestParams): TSetLevelResult;
   end;
 
+  [JRPC('ping')]
+  TMCPPingApi = class
+  public
+    [Context] MCPConfig: TMCPConfig;
+
+    [JRPC('')]
+    function Ping(): TJSONObject;
+  end;
 
 
 implementation
@@ -181,10 +186,38 @@ end;
 
 { TMCPResourcesApi }
 
-function TMCPResourcesApi.ReadResource(const AName: string; AArguments, Meta: TJSONObject): TReadResourceResult;
+function TMCPResourcesApi.ReadResource(const AUri: string): TReadResourceResult;
+var
+  LInvoker: IMCPInvokable;
+  LTool: TObject;
+  LNamespace, LToolName: string;
 begin
   Result := TReadResourceResult.Create;
+  Result.AddTextContent(AUri, 'text/text', 'Prova Testo');
+  Exit;
+
   { TODO -opaolo -c : Finire 08/02/2026 09:39:18 }
+  Result := TReadResourceResult.Create;
+  try
+    // Create instance of the tool class for this namespace
+    LTool := MCPConfig.CreateToolInstance(LNamespace);
+    try
+      LInvoker := TMCPObjectInvoker.Create(LTool);
+      RPCContext.Inject(LInvoker);
+      RPCContext.Inject(LTool);
+      {
+      // Invoke using the tool name without namespace
+      if not LInvoker.InvokeTool(LToolName, AArguments, Meta, Result) then
+        raise EJRPCMethodNotFoundError.CreateFmt('Tool "%s" not found in namespace "%s"', [LToolName, LNamespace]);
+      }
+    finally
+      LTool.Free;
+    end;
+  except
+    Result.Free;
+    raise;
+  end;
+
 end;
 
 function TMCPResourcesApi.ResourcesList: TListResourcesResult;
@@ -220,7 +253,13 @@ end;
 function TMCPLoggingApi.SetLevel(ASetLevelParams: TSetLevelRequestParams): TSetLevelResult;
 begin
   Result := TSetLevelResult.Create;
-  //Result.Level := ASetLevelParams.Level;
+end;
+
+{ TMCPPingApi }
+
+function TMCPPingApi.Ping: TJSONObject;
+begin
+  Result := TJSONObject.Create;
 end;
 
 initialization
@@ -230,4 +269,5 @@ initialization
 
   TJRPCRegistry.Instance.RegisterClass(TMCPNotificationsApi, MCPNeonConfig);
   TJRPCRegistry.Instance.RegisterClass(TMCPLoggingApi, MCPNeonConfig);
+  TJRPCRegistry.Instance.RegisterClass(TMCPPingApi, MCPNeonConfig);
 end.

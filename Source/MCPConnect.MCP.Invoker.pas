@@ -44,8 +44,7 @@ type
     function InvokeTool(const AName: string; AArguments: TJSONObject; Meta: TJSONObject;
       AResult: TCallToolResult): Boolean;
 
-    function InvokeResource(const AName: string; AArguments: TJSONObject; Meta: TJSONObject;
-      AResult: TReadResourceResult): Boolean;
+    function InvokeResource(const AUri: string; AResult: TReadResourceResult): Boolean;
   end;
 
   /// <summary>
@@ -66,8 +65,7 @@ type
     function InvokeTool(const AName: string; AArguments: TJSONObject; Meta:
         TJSONObject; AResult: TCallToolResult): Boolean;
 
-    function InvokeResource(const AName: string; AArguments: TJSONObject; Meta: TJSONObject;
-      AResult: TReadResourceResult): Boolean;
+    function InvokeResource(const AUri: string; AResult: TReadResourceResult): Boolean;
 
     constructor Create(AInstance: TObject);
   end;
@@ -91,8 +89,7 @@ type
     function InvokeTool(const AName: string; AArguments: TJSONObject; Meta: TJSONObject;
       AResult: TCallToolResult): Boolean;
 
-    function InvokeResource(const AName: string; AArguments: TJSONObject; Meta: TJSONObject;
-      AResult: TReadResourceResult): Boolean;
+    function InvokeResource(const AUri: string; AResult: TReadResourceResult): Boolean;
 
     constructor Create(AInstance: TObject; AMethod: TRttiMethod);
   end;
@@ -131,7 +128,7 @@ begin
   end;
 end;
 
-function TMCPObjectInvoker.InvokeResource(const AName: string; AArguments, Meta: TJSONObject; AResult: TReadResourceResult): Boolean;
+function TMCPObjectInvoker.InvokeResource(const AUri: string; AResult: TReadResourceResult): Boolean;
 begin
 
 end;
@@ -163,7 +160,7 @@ begin
   FMethod := AMethod;
 end;
 
-function TMCPMethodInvoker.InvokeResource(const AName: string; AArguments, Meta: TJSONObject; AResult: TReadResourceResult): Boolean;
+function TMCPMethodInvoker.InvokeResource(const AUri: string; AResult: TReadResourceResult): Boolean;
 begin
 
 end;

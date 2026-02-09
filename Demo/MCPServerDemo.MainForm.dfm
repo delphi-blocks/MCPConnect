@@ -98,8 +98,8 @@ object Form1: TForm1
     OnClick = btnListResourceClick
   end
   object btnTemplates: TButton
-    Left = 608
-    Top = 56
+    Left = 585
+    Top = 48
     Width = 75
     Height = 25
     Caption = 'btnTemplates'

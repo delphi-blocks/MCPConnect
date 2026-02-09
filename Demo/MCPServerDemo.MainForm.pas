@@ -114,7 +114,7 @@ begin
 
   TMCPResourcesListGenerator.ListResources(TWeatherResource, list);
 
-  var s := TNeon.ObjectToJSONString(list{, MCPNeonConfig});
+  var s := TNeon.ObjectToJSONString(list, MCPNeonConfig);
   memoLog.Lines.Text := s;
 
   list.Free;
@@ -126,11 +126,10 @@ begin
 
   TMCPResourcesListGenerator.ListTemplates(TWeatherResource, list);
 
-  var s := TNeon.ObjectToJSONString(list{, MCPNeonConfig});
+  var s := TNeon.ObjectToJSONString(list, MCPNeonConfig);
   memoLog.Lines.Text := s;
 
   list.Free;
-
 end;
 
 procedure TForm1.Button1Click(Sender: TObject);
@@ -143,7 +142,6 @@ begin
   memoLog.Lines.Text := s;
 
   list.Free;
-
 end;
 
 procedure TForm1.ButtonOpenBrowserClick(Sender: TObject);

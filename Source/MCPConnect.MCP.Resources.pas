@@ -363,6 +363,7 @@ end;
 
 constructor TReadResourceResult.Create;
 begin
+  inherited;
   Contents := TResourceContentsList.Create;
 end;
 

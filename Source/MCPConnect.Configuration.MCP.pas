@@ -189,12 +189,21 @@ type
     FMCPConfig: IMCPConfig;
     FClasses: TObjectDictionary<string, TClass>;
   public
+    constructor Create(AConfig: IMCPConfig);
+    destructor Destroy; override;
+
     function RegisterClass(AClass: TClass): TMCPListConfig; overload;
     function GetClasses: TArray<TMCPClassInfo>;
     function BackToMCP: IMCPConfig;
 
-    constructor Create(AConfig: IMCPConfig);
-    destructor Destroy; override;
+    /// <summary>
+    ///   Creates an instance of a class by namespace.
+    ///   Used internally by the framework to instantiate tools.
+    /// </summary>
+    /// <param name="ANamespace">Namespace of the tool class to instantiate</param>
+    /// <returns>New instance of the tool class</returns>
+    /// <exception cref="EJRPCException">Raised if namespace not found</exception>
+    function CreateInstance(const ANamespace: string): TObject;
   end;
 
 
@@ -404,8 +413,7 @@ begin
   Result := TRttiUtils.CreateInstance(LClass);
 end;
 
-function TMCPConfig.FindNamespaceForTool(const AFullToolName: string;
-  out ANamespace, AToolName: string): Boolean;
+function TMCPConfig.FindNamespaceForTool(const AFullToolName: string; out ANamespace, AToolName: string): Boolean;
 var
   LNamespaceList: TList<string>;
   LNamespace: string;
@@ -493,6 +501,16 @@ end;
 function TMCPListConfig.BackToMCP: IMCPConfig;
 begin
   Result := FMCPConfig;
+end;
+
+function TMCPListConfig.CreateInstance(const ANamespace: string): TObject;
+var
+  LClass: TClass;
+begin
+  if not FClasses.TryGetValue('', LClass) then
+    raise EJRPCException.CreateFmt('Tool class not found for namespace "%s"', [ANamespace]);
+
+  Result := TRttiUtils.CreateInstance(LClass);
 end;
 
 initialization

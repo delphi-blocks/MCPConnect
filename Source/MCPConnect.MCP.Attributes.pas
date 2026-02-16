@@ -33,7 +33,7 @@ type
     destructor Destroy; override;
   end;
 
-  McpNamespaceAttribute = class(McpBaseAttribute)
+  McpScopeAttribute = class(McpBaseAttribute)
   private
     FName: string;
   public
@@ -58,7 +58,6 @@ type
   MCPResourceBaseAttribute = class(McpBaseAttribute)
   private
     FMimeType: string;
-    FUri: string;
     FName: string;
     FDescription: string;
   public
@@ -161,9 +160,9 @@ begin
   FName := AName;
 end;
 
-{ McpNamespaceAttribute }
+{ McpScopeAttribute }
 
-constructor McpNamespaceAttribute.Create(const AName, AAdditionalTags: string);
+constructor McpScopeAttribute.Create(const AName, AAdditionalTags: string);
 begin
   FName := AName;
   FAdditionalTags := AAdditionalTags;

@@ -74,12 +74,13 @@ type
   TTickets = class(TObjectList<TTicket>)
   end;
 
-  [McpNamespace('delphiday')]
+  //[McpNamespace('delphiday')]
   TDelphiDayTool = class
   private
     [Context] FGC: IGarbageCollector;
   public
-    [McpTool('get_tickets', 'Get the list of available tickets for the DelphiDay event in Padova')]
+    [McpTool('get_tickets', 'Get the list of available tickets for the DelphiDay event in Padova',
+    'meta.ui=ui://weather.info')]
     function GetTickets: TTickets;
 
     [McpTool('buy_ticket', 'Get the list of available tickets for the DelphiDay event in Padova')]
@@ -89,23 +90,24 @@ type
     ): TContentList;
   end;
 
-  [McpNamespace('test')]
+  [McpScope('test')]
   TTestTool = class
   public
-    [McpTool('double_or_nothing', 'Doubles or zeroes the param value')]
+    [McpTool('double_or_nothing', 'Doubles or zeroes the param value',
+      'category=group1,meta.ui=ui://weather.info,icon=https://www.wintech-italia.it/assets/images/favicon/favicon-32x32.png')]
     function TestParam(
-      [McpParam('value1', 'Test Parameter 1 for MCP')] AParam1: Int64;
-      [McpParam('value2', 'Test Parameter 2 for MCP')] AParam2: Boolean
+      [McpParam('value1', 'Test Parameter 1 for MCP')] AValue: Int64;
+      [McpParam('value2', 'Test Parameter 2 for MCP')] ADouble: Boolean
     ): Integer;
 
     [McpTool('discounted_items', 'Retrieves a list of discounted items on Wintech-Italia based on the specified item type')]
     function GetDiscountedItems(
       [McpParam('itemType', 'The type of item to filter. Valid values: ''courses'', ''product'', ''consulting''')]
-       const AItemType: string
+      const AItemType: string
     ): string;
 
 
-    [McpTool('course_image', 'Retrieves the image for the selected course', 'mime:image/bmp')]
+    [McpTool('course_image', 'Retrieves the image for the selected course', 'disabled')]
     function GetImage(
       [McpParam('name', 'Course name')] const AName: string
     ): TPicture;
@@ -121,6 +123,7 @@ type
       [McpParam('name', 'The name of the person to get')]
       const AName: string
     ): TPerson;
+
   end;
 
   /// <summary>
@@ -225,10 +228,10 @@ begin
   Result := LResultBuilder.Build;
 end;
 
-function TTestTool.TestParam(AParam1: Int64; AParam2: Boolean): Integer;
+function TTestTool.TestParam(AValue: Int64; ADouble: Boolean): Integer;
 begin
-  if AParam2 then
-    Result := AParam1
+  if ADouble then
+    Result := AValue * 2
   else
     Result := 0;
 end;

@@ -134,7 +134,7 @@ var
   LRequest: TJRPCRequest;
   LResponse: TJRPCResponse;
   LConstructorProxy: TJRPCConstructorProxy;
-  LInstance: TObject;
+  LApiInstance: TObject;
   LInvokable: IJRPCInvokable;
   LContext: TJRPCContext;
   LId: TJRPCID;
@@ -143,14 +143,14 @@ var
 begin
   if not Assigned(FServer) then
     raise EJRPCException.Create('Server not found');
-
+  {
   if not CheckAuthorization(Request, Response) then
   begin
     Response.StatusCode := 403;
     Response.Content := '';
     Exit(True);
   end;
-
+  }
   LGarbageCollector := TGarbageCollector.CreateInstance;
   LSession := nil;
   LSessionCreated := False;
@@ -167,11 +167,10 @@ begin
     LId := LRequest.Id;
 
     if not TJRPCRegistry.Instance.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
-    begin
       raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LRequest.Method]);
-    end;
-    LInstance := LConstructorProxy.ConstructorFunc();
-    LGarbageCollector.Add(LInstance);
+
+    LApiInstance := LConstructorProxy.ConstructorFunc();
+    LGarbageCollector.Add(LApiInstance);
 
     LContext := TJRPCContext.Create;
     LGarbageCollector.Add(LContext);
@@ -185,15 +184,12 @@ begin
       LContext.AddContent(LSession);
 
     // Injects the context inside the instance
-    LContext.Inject(LInstance);
+    LContext.Inject(LApiInstance);
 
-    LInvokable := TJRPCObjectInvoker.Create(LInstance);
+    LInvokable := TJRPCObjectInvoker.Create(LApiInstance);
     LInvokable.NeonConfig := LConstructorProxy.NeonConfig;
     if not LInvokable.Invoke(LContext, LRequest, LResponse) then
-    begin
       raise EJRPCMethodNotFoundError.CreateFmt('Cannot invoke method "%s"', [LRequest.Method]);
-    end;
-
   except
     on E: Exception do
       TJRPCObjectInvoker.HandleException(E, LId, LResponse);

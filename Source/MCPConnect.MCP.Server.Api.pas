@@ -37,10 +37,7 @@ type
     function ToolsList: TListToolsResult;
 
     [JRPC('call')]
-    function CallTool(
-      [JRPCParam('name')] const AName: string;
-      [JRPC('arguments')] AArguments: TJSONObject;
-      [JRPC('_meta')] Meta: TJSONObject): TCallToolResult;
+    function CallTool([JRPCParams] const AParams: TCallToolParams): TCallToolResult;
   end;
 
   [JRPC('resources')]
@@ -56,7 +53,7 @@ type
     function TemplatesList: TListResourceTemplatesResult;
 
     [JRPC('read')]
-    function ReadResource([JRPCParam('uri')] const AUri: string): TReadResourceResult;
+    function ReadResource([JRPCParams] const AParams: TReadResourceParams): TReadResourceResult;
   end;
 
 
@@ -104,36 +101,34 @@ implementation
 { TMCPToolApi }
 
 uses
+  Neon.Core.Utils,
   MCPConnect.MCP.Invoker;
 
-function TMCPToolsApi.CallTool(const AName: string; AArguments: TJSONObject; Meta: TJSONObject): TCallToolResult;
+function TMCPToolsApi.CallTool(const AParams: TCallToolParams): TCallToolResult;
 var
   LInvoker: IMCPInvokable;
-  LTool: TObject;
-  LNamespace, LToolName: string;
+  LTool: TMCPTool;
+  LToolObj: TObject;
 begin
-  Result := TCallToolResult.Create;
+  if not MCPConfig.Tools.ToolRegistry.TryGetValue(AParams.Name, LTool) then
+    raise EMCPException.CreateFmt('Tool [%s] not found', [AParams.Name]);
+
+  // Create an instance of the tool class
+  LToolObj := TRttiUtils.CreateInstance(LTool.Classe);
   try
-    // Find which namespace this tool belongs to
-    if not MCPConfig.FindNamespaceForTool(AName, LNamespace, LToolName) then
-      raise EJRPCMethodNotFoundError.CreateFmt('Tool "%s" not found (no matching namespace)', [AName]);
+    LInvoker := TMCPMethodInvoker.Create(LToolObj, LTool.Method);
+    RPCContext.Inject(LToolObj);
+    RPCContext.Inject(LInvoker);
 
-    // Create instance of the tool class for this namespace
-    LTool := MCPConfig.CreateToolInstance(LNamespace);
+    Result := TCallToolResult.Create;
     try
-      LInvoker := TMCPObjectInvoker.Create(LTool);
-      RPCContext.Inject(LInvoker);
-      RPCContext.Inject(LTool);
-
-      // Invoke using the tool name without namespace
-      if not LInvoker.InvokeTool(LToolName, AArguments, Meta, Result) then
-        raise EJRPCMethodNotFoundError.CreateFmt('Tool "%s" not found in namespace "%s"', [LToolName, LNamespace]);
-    finally
-      LTool.Free;
+      LInvoker.InvokeTool(AParams, Result);
+    except
+      Result.Free;
+      raise;
     end;
-  except
-    Result.Free;
-    raise;
+  finally
+    LToolObj.Free;
   end;
 end;
 
@@ -148,17 +143,8 @@ begin
 end;
 
 function TMCPToolsApi.ToolsList: TListToolsResult;
-var
-  LClassInfo: TMCPClassInfo;
 begin
-  Result := TListToolsResult.Create;
-  try
-    for LClassInfo in MCPConfig.Tools.GetClasses do
-      TMCPToolsListGenerator.ListTools(LClassInfo.MCPClass, Result);
-  except
-    Result.Free;
-    raise;
-  end;
+  Result := MCPConfig.Tools.ListEnabled;
 end;
 
 { TMCPInitializeApi }
@@ -168,16 +154,22 @@ begin
   Result := TInitializeResult.Create;
   try
     Result.ProtocolVersion := AInitializeParams.ProtocolVersion;
-    Result.Capabilities.Tools.ListChanged := False;
-    Result.Capabilities.Resources.ListChanged := False;
-    Result.Capabilities.Resources.Subscribe := False;
+    Result.ServerInfo.Name := MCPConfig.Server.Name;
+    Result.ServerInfo.Version := MCPConfig.Server.Version;
+    Result.ServerInfo.Description := MCPConfig.Server.Description;
 
-    // At the moment we do not support prompts
-    //Result.Capabilities.Prompts.ListChanged := False;
+    if TMCPCapability.Tools in MCPConfig.Server.Capabilities then
+      Result.Capabilities.Tools.ListChanged := False;
 
-    Result.ServerInfo.Name := MCPConfig.ServerName;
-    Result.ServerInfo.Version := MCPConfig.ServerVersion;
-    Result.ServerInfo.Description := MCPConfig.ServerDescription;
+    if TMCPCapability.Resources in MCPConfig.Server.Capabilities then
+    begin
+      Result.Capabilities.Resources.ListChanged := False;
+      Result.Capabilities.Resources.Subscribe := False;
+    end;
+
+    if TMCPCapability.Prompts in MCPConfig.Server.Capabilities then
+      Result.Capabilities.Prompts.ListChanged := False;
+
   except
     Result.Free;
     raise;
@@ -186,66 +178,49 @@ end;
 
 { TMCPResourcesApi }
 
-function TMCPResourcesApi.ReadResource(const AUri: string): TReadResourceResult;
+function TMCPResourcesApi.ReadResource([JRPCParams] const AParams: TReadResourceParams): TReadResourceResult;
 var
   LInvoker: IMCPInvokable;
-  LTool: TObject;
-  LNamespace, LToolName: string;
+  LRes: TMCPResource;
+  LResObj: TObject;
+  LToolName: string;
 begin
-  Result := TReadResourceResult.Create;
-  Result.AddTextContent(AUri, 'text/text', 'Prova Testo');
-  Exit;
+  if not MCPConfig.Resources.Registry.TryGetValue(AParams.Uri, LRes) then
+    raise EMCPException.CreateFmt('Resource [%s] not found', [AParams.Uri]);
 
-  { TODO -opaolo -c : Finire 08/02/2026 09:39:18 }
   Result := TReadResourceResult.Create;
   try
-    // Create instance of the tool class for this namespace
-    LTool := MCPConfig.CreateToolInstance(LNamespace);
-    try
-      LInvoker := TMCPObjectInvoker.Create(LTool);
-      RPCContext.Inject(LInvoker);
-      RPCContext.Inject(LTool);
-      {
-      // Invoke using the tool name without namespace
-      if not LInvoker.InvokeTool(LToolName, AArguments, Meta, Result) then
-        raise EJRPCMethodNotFoundError.CreateFmt('Tool "%s" not found in namespace "%s"', [LToolName, LNamespace]);
-      }
-    finally
-      LTool.Free;
+    // If it's a static resource serve the file directly
+    if not LRes.FileName.IsEmpty then
+      TMCPStaticResource.GetResource(MCPConfig, LRes, Result)
+    else
+    begin
+      // Create an instance of the resource class
+      LResObj := TRttiUtils.CreateInstance(LRes.Classe);
+      RPCContext.Inject(LResObj);
+      try
+        LInvoker.InvokeResource(AParams, Result);
+        LInvoker := TMCPMethodInvoker.Create(LResObj, LRes.Method);
+        RPCContext.Inject(LInvoker);
+      finally
+        LResObj.Free;
+      end;
     end;
   except
     Result.Free;
     raise;
   end;
-
 end;
 
 function TMCPResourcesApi.ResourcesList: TListResourcesResult;
-var
-  LClassInfo: TMCPClassInfo;
 begin
-  Result := TListResourcesResult.Create;
-  try
-    for LClassInfo in MCPConfig.Resources.GetClasses do
-      TMCPResourcesListGenerator.ListResources(LClassInfo.MCPClass, Result);
-  except
-    Result.Free;
-    raise;
-  end;
+  Result := MCPConfig.Resources.ListEnabled;
 end;
 
 function TMCPResourcesApi.TemplatesList: TListResourceTemplatesResult;
-var
-  LClassInfo: TMCPClassInfo;
 begin
+  { TODO -opaolo -c : Finire 16/02/2026 11:59:38 }
   Result := TListResourceTemplatesResult.Create;
-  try
-    for LClassInfo in MCPConfig.Templates.GetClasses do
-      TMCPResourcesListGenerator.ListTemplates(LClassInfo.MCPClass, Result);
-  except
-    Result.Free;
-    raise;
-  end;
 end;
 
 { TMCPLoggingApi }

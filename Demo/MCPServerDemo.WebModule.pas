@@ -63,6 +63,7 @@ begin
   FJRPCServer := TJRPCServer.Create(Self);
 
   FJRPCServer
+
     .Plugin.Configure<IAuthTokenConfig>
       .SetToken('my-secret-token')
     .ApplyConfig
@@ -75,23 +76,30 @@ begin
     .ApplyConfig
 
     .Plugin.Configure<IMCPConfig>
-      .SetServerName('delphi-mcp-server')
-      .SetServerVersion('2.0.0')
+      .Server
+        .SetName('delphi-mcp-server')
+        .SetVersion('2.0.0')
+        .SetCapabilities([Tools, Resources])
+
+        .RegisterWriter(TMCPImageWriter)
+        .RegisterWriter(TMCPPictureWriter)
+        .RegisterWriter(TMCPStreamWriter)
+        .RegisterWriter(TMCPStringListWriter)
+      .BackToMCP
+
 
       .Tools
         .RegisterClass(TTestTool)
-        .RegisterClass(TDelphiDayTool)
-        .RegisterClass(TShoppingCartTool)  // Session-based shopping cart
+        //.RegisterClass(TDelphiDayTool)
+        //.RegisterClass(TShoppingCartTool)  // Session-based shopping cart
       .BackToMCP
 
       .Resources
         .RegisterClass(TWeatherResource)
+        .RegisterStatic('index.md', 'text/markdown', 'Indice Documentazione')
+        .RegisterStatic('mcpconnect.pdf', 'application/pdf', 'MCPConnect Introduction')
       .BackToMCP
 
-      .RegisterWriter(TMCPImageWriter)
-      .RegisterWriter(TMCPPictureWriter)
-      .RegisterWriter(TMCPStreamWriter)
-      .RegisterWriter(TMCPStringListWriter)
   ;
     //.ApplyConfig;
 

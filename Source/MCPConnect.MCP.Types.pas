@@ -30,6 +30,10 @@ uses
 type
   EMCPException = class(Exception);
 
+  TMCPURIBuilder = class
+  end;
+
+
   TAnyMap = class(TDictionary<string, TValue>);
 
   TAnyMapOwned = class(TDictionary<string, TValue>)
@@ -95,7 +99,7 @@ type
   /// <summary>
   ///   An optionally-sized icon that can be displayed in a user interface
   /// </summary>
-  TIcon = record
+  TMCPIcon = record
 
     /// <summary>
     ///   A standard URI pointing to an icon resource. May be an HTTP/HTTPS URL or a data: URI with
@@ -127,7 +131,7 @@ type
     /// <remarks>
     ///   If not provided, the client should assume that the icon can be used at any size
     /// </remarks>
-    Sizes: TArray<string>;
+    [NeonInclude(IncludeIf.NotEmpty)] Sizes: TArray<string>;
 
     /// <summary>
     ///   Optional specifier for the theme this icon is designed for. light indicates the icon is
@@ -142,7 +146,7 @@ type
 
   end;
 
-  TIconList = TArray<TIcon>;
+  TIconList = TArray<TMCPIcon>;
 
 
   /// <summary>
@@ -272,6 +276,11 @@ type
       ListChanged: NullBoolean;
     end;
   public
+
+    /// <summary>
+    ///   Present if the server supports argument autocompletion suggestions
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)] Completions: TJSONObject;
 
     /// <summary>
     ///   Experimental, non-standard capabilities that the server supports.
@@ -740,6 +749,7 @@ end;
 
 constructor TServerCapabilities.Create;
 begin
+  Completions := TJSONObject.Create;
   &Experimental := TJSONObject.Create;
   Logging := TJSONObject.Create;
   Sampling := TJSONObject.Create;
@@ -750,6 +760,7 @@ begin
   Sampling.Free;
   Logging.Free;
   &Experimental.Free;
+  Completions.Free;
   inherited;
 end;
 

@@ -86,7 +86,6 @@ object Form1: TForm1
     Height = 25
     Caption = 'Button1'
     TabOrder = 6
-    OnClick = Button1Click
   end
   object btnListResource: TButton
     Left = 504
@@ -99,12 +98,21 @@ object Form1: TForm1
   end
   object btnTemplates: TButton
     Left = 585
-    Top = 48
+    Top = 32
     Width = 75
     Height = 25
     Caption = 'btnTemplates'
     TabOrder = 8
     OnClick = btnTemplatesClick
+  end
+  object Button2: TButton
+    Left = 585
+    Top = 73
+    Width = 75
+    Height = 25
+    Caption = 'Button2'
+    TabOrder = 9
+    OnClick = Button2Click
   end
   object ApplicationEvents1: TApplicationEvents
     OnIdle = ApplicationEvents1Idle

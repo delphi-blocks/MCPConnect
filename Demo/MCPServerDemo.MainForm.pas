@@ -10,6 +10,9 @@ uses
 
   MCPServerDemo.WebModule,
 
+  Neon.Core.Nullables,
+  Neon.Core.Tags,
+
   MCPConnect.MCP.Tools,
   MCPConnect.MCP.Prompts,
   MCPConnect.MCP.Resources,
@@ -32,12 +35,13 @@ type
     Button1: TButton;
     btnListResource: TButton;
     btnTemplates: TButton;
+    Button2: TButton;
     procedure FormCreate(Sender: TObject);
     procedure ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
     procedure btnConfigClick(Sender: TObject);
     procedure btnListResourceClick(Sender: TObject);
     procedure btnTemplatesClick(Sender: TObject);
-    procedure Button1Click(Sender: TObject);
+    procedure Button2Click(Sender: TObject);
     procedure ButtonStartClick(Sender: TObject);
     procedure ButtonStopClick(Sender: TObject);
     procedure ButtonOpenBrowserClick(Sender: TObject);
@@ -132,16 +136,33 @@ begin
   list.Free;
 end;
 
-procedure TForm1.Button1Click(Sender: TObject);
+procedure TForm1.Button2Click(Sender: TObject);
+var
+  LBool: Boolean;
+  LNum: Integer;
 begin
-  var list := TListToolsResult.Create;
+  var tags := TAttributeTags.Create;
+  tags.Parse('complete=true,onlyname,default=false,count=12,num=');
 
-  TMCPToolsListGenerator.ListTools(TTestTool, list);
+  LBool := tags.GetBoolValue('complete');
+  memoLog.Lines.Add(BoolToStr(LBool, True));
 
-  var s := TNeon.ObjectToJSONString(list, MCPNeonConfig);
-  memoLog.Lines.Text := s;
+  LBool := tags.GetBoolValue('onlyname');
+  memoLog.Lines.Add(BoolToStr(LBool, True));
 
-  list.Free;
+  LBool := tags.GetBoolValue('default');
+  memoLog.Lines.Add(BoolToStr(LBool, True));
+
+  LNum := tags.GetValueAs<Integer>('count');
+  memoLog.Lines.Add(LNum.ToString);
+
+  LNum := tags.GetValueAs<Integer>('num');
+  memoLog.Lines.Add(LNum.ToString);
+
+  LNum := tags.GetValueAs<Integer>('xxx');
+  memoLog.Lines.Add(LNum.ToString);
+
+  tags.Free;
 end;
 
 procedure TForm1.ButtonOpenBrowserClick(Sender: TObject);

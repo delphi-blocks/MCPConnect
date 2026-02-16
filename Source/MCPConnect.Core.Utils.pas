@@ -129,7 +129,7 @@ type
   /// </example>
   TGarbageCollector = class(TInterfacedObject, IGarbageCollector)
   private
-    FGarbage: TDictionary<TValue, TDisposeAction>;
+    FGarbage: TDictionary<TObject, TDisposeAction>;
 
     /// <summary>
     ///   Internal method that performs the actual disposal of a single value.
@@ -145,7 +145,7 @@ type
     ///   disposal logic via CollectGarbageValue.
     /// </summary>
     /// <param name="AGarbage">A pair containing the value and its optional disposal action</param>
-    procedure CollectSingleGarbage(AGarbage: TPair<TValue, TDisposeAction>);
+    procedure CollectSingleGarbage(AGarbage: TPair<TObject, TDisposeAction>);
   public
     /// <summary>
     ///   Creates a new garbage collector instance as an interface reference.
@@ -262,14 +262,15 @@ end;
 
 procedure TGarbageCollector.Add(const AValue: TValue);
 begin
-  Add(AValue, nil);
+  if AValue.IsObject then
+    Add(AValue, nil);
 end;
 
 procedure TGarbageCollector.Add(const AValue: TValue; AAction: TDisposeAction);
 begin
-  if FGarbage.ContainsKey(AValue) then
+  if FGarbage.ContainsKey(AValue.AsObject) then
     Exit;
-  FGarbage.Add(AValue, AAction);
+  FGarbage.Add(AValue.AsObject, AAction);
 end;
 
 procedure TGarbageCollector.Add(const AValues: TArray<TValue>);
@@ -282,12 +283,13 @@ var
   LValue: TValue;
 begin
   for LValue in AValues do
-    Add(LValue, AAction);
+    if LValue.IsObject then
+      Add(LValue, AAction);
 end;
 
 procedure TGarbageCollector.CollectGarbage;
 var
-  LGarbage: TPair<TValue, TDisposeAction>;
+  LGarbage: TPair<TObject, TDisposeAction>;
 begin
   for LGarbage in FGarbage do
     CollectSingleGarbage(LGarbage);
@@ -315,8 +317,7 @@ begin
   end;
 end;
 
-procedure TGarbageCollector.CollectSingleGarbage(
-  AGarbage: TPair<TValue, TDisposeAction>);
+procedure TGarbageCollector.CollectSingleGarbage(AGarbage: TPair<TObject, TDisposeAction>);
 begin
   if Assigned(AGarbage.Value) then
     AGarbage.Value()
@@ -327,7 +328,7 @@ end;
 constructor TGarbageCollector.Create;
 begin
   inherited;
-  FGarbage := TDictionary<TValue, TDisposeAction>.Create;
+  FGarbage := TDictionary<TObject, TDisposeAction>.Create;
 end;
 
 class function TGarbageCollector.CreateInstance: IGarbageCollector;

@@ -21,24 +21,30 @@ uses
   System.Generics.Collections,
   System.Rtti,
 
-
+  MCPConnect.JRPC.Core,
+  MCPConnect.MCP.Types,
   MCPConnect.MCP.Tools,
   MCPConnect.MCP.Prompts,
   MCPConnect.MCP.Resources,
 
+  MCPConnect.MCP.Attributes,
   MCPConnect.Content.Writers,
-  MCPConnect.Configuration.Core;
+  MCPConnect.Configuration.Core, System.JSON;
 
 type
   /// <summary>
   ///   Represents a tools/resources/prompts class registration with its namespace.
   /// </summary>
   TMCPClassInfo = record
-    Namespace: string;
+    Scope: string;
     MCPClass: TClass;
   end;
 
+  TMCPBaseConfig = class;
   TMCPListConfig = class;
+  TMCPToolConfig = class;
+  TMCPServerConfig = class;
+  TMCPResourceConfig = class;
   
   /// <summary>
   ///   Primary configuration interface for Model Context Protocol (MCP) servers.
@@ -87,23 +93,52 @@ type
   ['{B8BBD257-2FE1-479A-8D63-5331164CF5E5}']
 
     /// <summary>
+    ///   Server configuration
+    /// </summary>
+    function Server: TMCPServerConfig;
+
+    /// <summary>
     ///   Tools configuration
     /// </summary>
-    function Tools: TMCPListConfig;
+    function Tools: TMCPToolConfig;
 
     /// <summary>
     ///   Resources configuration
     /// </summary>
-    function Resources: TMCPListConfig;
+    function Resources: TMCPResourceConfig;
 
     /// <summary>
     ///   Prompts configuration
     /// </summary>
     function Prompts: TMCPListConfig;
+  end;
 
+  TMCPBaseConfig = class
+  protected
+    FConfig: IMCPConfig;
+  public
+    constructor Create(AConfig: IMCPConfig);
 
+    function BackToMCP: IMCPConfig;
+  end;
+
+  TMCPCapability = (Tools, Resources, Prompts, Tasks, Logging, Completions);
+  TMCPCapabilities = set of TMCPCapability;
+
+  TMCPServerConfig = class(TMCPBaseConfig)
+  public
+    ScopeSeparator: string;
+    Name: string;
+    Description: string;
+    Version: string;
+    Capabilities: TMCPCapabilities;
+    WriterRegistry: TMCPWriterRegistry;
+  public
+    constructor Create(AConfig: IMCPConfig);
+    destructor Destroy; override;
+  public
     /// <summary>
-    ///   Sets the separator character/string used between namespace and tool name.
+    ///   Sets the separator character/string used between scope and tool name.
     ///   Default is '_' (underscore), resulting in names like "auth_login".
     /// </summary>
     /// <param name="ASeparator">
@@ -115,13 +150,7 @@ type
     ///   IMPORTANT: MCP requires tool names to match ^[a-zA-Z0-9_-]{1,64}$
     ///   Do NOT use '.', ':', or other special characters.
     /// </remarks>
-    /// <example>
-    ///   <code>
-    ///   .SetNamespaceSeparator('_')  // Results in: auth_login (default)
-    ///   .SetNamespaceSeparator('-')  // Results in: auth-login
-    ///   </code>
-    /// </example>
-    function SetNamespaceSeparator(const ASeparator: string): IMCPConfig;
+    function SetScopeSeparator(const ASeparator: string): TMCPServerConfig;
 
     /// <summary>
     ///   Sets the server name returned in the MCP initialize response.
@@ -129,14 +158,14 @@ type
     /// </summary>
     /// <param name="AName">Human-readable server name (default: 'MCPServer')</param>
     /// <returns>Self for fluent chaining</returns>
-    function SetServerName(const AName: string): IMCPConfig;
+    function SetName(const AName: string): TMCPServerConfig;
 
     /// <summary>
     ///   Sets the server description returned in the MCP initialize response.
     /// </summary>
     /// <param name="ADescription">Description for the server (default: '')</param>
     /// <returns>Self for fluent chaining</returns>
-    function SetServerDescription(const ADescription: string): IMCPConfig;
+    function SetDescription(const ADescription: string): TMCPServerConfig;
 
     /// <summary>
     ///   Sets the server version returned in the MCP initialize response.
@@ -144,7 +173,9 @@ type
     /// </summary>
     /// <param name="AVersion">Semantic version string (default: '1.0')</param>
     /// <returns>Self for fluent chaining</returns>
-    function SetServerVersion(const AVersion: string): IMCPConfig;
+    function SetVersion(const AVersion: string): TMCPServerConfig;
+
+    function SetCapabilities(ACapabilities: TMCPCapabilities): TMCPServerConfig;
 
     /// <summary>
     ///   Registers a custom content writer for handling complex return types.
@@ -162,31 +193,11 @@ type
     ///   Writers are checked in registration order. First matching writer handles
     ///   the conversion. Built-in writers for basic types are always available.
     /// </remarks>
-    function RegisterWriter(AClass: TCustomWriterClass): IMCPConfig;
-
-    /// <summary>
-    ///   Returns the registry of all registered content writers.
-    ///   Typically used internally by the framework during result processing.
-    /// </summary>
-    /// <returns>Writer registry containing all registered writers</returns>
-    function GetWriters: TMCPWriterRegistry;
-
-    /// <summary>
-    ///   Returns all registered tool classes with their namespaces.
-    /// </summary>
-    /// <returns>Array of tool class registrations</returns>
-    function GetToolClasses: TArray<TMCPClassInfo>;
-
-    /// <summary>
-    ///   Returns the configured namespace separator.
-    /// </summary>
-    /// <returns>Separator string (default: '_')</returns>
-    function GetNamespaceSeparator: string;
+    function RegisterWriter(AClass: TCustomWriterClass): TMCPServerConfig;
   end;
 
-  TMCPListConfig = class
+  TMCPListConfig = class(TMCPBaseConfig)
   private
-    FMCPConfig: IMCPConfig;
     FClasses: TObjectDictionary<string, TClass>;
   public
     constructor Create(AConfig: IMCPConfig);
@@ -194,7 +205,6 @@ type
 
     function RegisterClass(AClass: TClass): TMCPListConfig; overload;
     function GetClasses: TArray<TMCPClassInfo>;
-    function BackToMCP: IMCPConfig;
 
     /// <summary>
     ///   Creates an instance of a class by namespace.
@@ -207,130 +217,119 @@ type
   end;
 
 
-  [Implements(IMCPConfig)]
-  TMCPConfig = class(TJRPCConfiguration, IMCPConfig)
+  TMCPToolConfig = class(TMCPBaseConfig)
   private
-    FTools: TMCPListConfig;
-    FResources: TMCPListConfig;
-    FTemplates: TMCPListConfig;
-    FPrompts: TMCPListConfig;
-  private
-    FWriterRegistry: TMCPWriterRegistry;
-    FToolRegistry: TObjectDictionary<string, TClass>;
-    FResourceRegistry: TObjectDictionary<string, TClass>;
-    FPromptRegistry: TObjectDictionary<string, TClass>;
-
-    FNamespaceSeparator: string;
-    FServerVersion: string;
-    FServerName: string;
-    FServerDescription: string;
+    procedure WriteInputSchema(ATool: TMCPTool);
+    procedure WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
+    procedure WriteTool(ATool: TMCPTool; AAttr: MCPToolAttribute);
   public
-    constructor Create(AApp: IJRPCApplication); override;
+    ToolRegistry: TMCPToolRegistry;
+  public
+    constructor Create(AConfig: IMCPConfig);
     destructor Destroy; override;
-    procedure AfterConstruction; override;
 
-    { IMCPConfig }
-    function Tools: TMCPListConfig;
-    function Resources: TMCPListConfig;
-    function Templates: TMCPListConfig;
-    function Prompts: TMCPListConfig;
-
-    function RegisterToolClass(AClass: TClass): IMCPConfig; overload;
-    function RegisterResourceClass(AClass: TClass): IMCPConfig; overload;
-
-    function SetNamespaceSeparator(const ASeparator: string): IMCPConfig;
-    function SetServerName(const AName: string): IMCPConfig;
-    function SetServerDescription(const ADescription: string): IMCPConfig;
-    function SetServerVersion(const AVersion: string): IMCPConfig;
-    function RegisterWriter(AClass: TCustomWriterClass): IMCPConfig;
-    function GetWriters: TMCPWriterRegistry;
-    function GetToolClasses: TArray<TMCPClassInfo>;
-    function GetNamespaceSeparator: string;
+    function RegisterClass(AClass: TClass): TMCPToolConfig;
 
     /// <summary>
-    ///   Creates an instance of a tool class by namespace.
+    ///   Creates an instance of a class by namespace.
     ///   Used internally by the framework to instantiate tools.
     /// </summary>
     /// <param name="ANamespace">Namespace of the tool class to instantiate</param>
     /// <returns>New instance of the tool class</returns>
     /// <exception cref="EJRPCException">Raised if namespace not found</exception>
-    function CreateToolInstance(const ANamespace: string): TObject;
+    function CreateInstance(const ATool: string): TObject;
+
+    function ListComplete: TListToolsResult;
+    function ListEnabled: TListToolsResult;
+
+    procedure FilterList(AList: TListToolsResult; AFilter: TMCPToolFilterFunc);
+  end;
+
+  TMCPStaticResource = class
+  public
+    class procedure GetResource(AConfig: IMCPConfig; AResource: TMCPResource; AResult: TReadResourceResult);
+  end;
+
+
+  TMCPResourceConfig = class(TMCPBaseConfig)
+  public
+    Registry: TMCPResourceRegistry;
+    Schemes: TDictionary<string, string>;
+    BasePath: string;
+  public
+    constructor Create(AConfig: IMCPConfig);
+    destructor Destroy; override;
+
+    function SetBasePath(const APath: string): TMCPResourceConfig;
+    function RegisterScheme(const AScheme, APath: string): TMCPResourceConfig;
+
+    function RegisterClass(AClass: TClass): TMCPResourceConfig;
+    function RegisterStatic(const AFileName, AMime, ADescription: string): TMCPResourceConfig;
+    //function RegisterStatic(const AScheme, APath, AMime, ADescription: string): TMCPResourceConfig;
+
+    function RegisterResource(AClass: TClass; const AMethod, AUri: string; AConfig: TMCPResourceConfigurator): TMCPResourceConfig;
 
     /// <summary>
-    ///   Finds the namespace for a fully qualified tool name.
-    ///   Splits the tool name by separator and looks up the namespace part.
+    ///   Creates an instance of a class by namespace.
+    ///   Used internally by the framework to instantiate tools.
     /// </summary>
-    /// <param name="AFullToolName">Full tool name (e.g., "auth.login")</param>
-    /// <param name="ANamespace">Output: namespace found (e.g., "auth")</param>
-    /// <param name="AToolName">Output: tool name without namespace (e.g., "login")</param>
-    /// <returns>True if namespace found, False if tool has no namespace</returns>
-    function FindNamespaceForTool(const AFullToolName: string; out ANamespace, AToolName: string): Boolean;
+    /// <param name="ANamespace">Namespace of the tool class to instantiate</param>
+    /// <returns>New instance of the tool class</returns>
+    /// <exception cref="EJRPCException">Raised if namespace not found</exception>
+    function CreateInstance(const AUri: string): TObject;
 
-    property ServerName: string read FServerName write FServerName;
-    property ServerVersion: string read FServerVersion write FServerVersion;
-    property ServerDescription: string read FServerDescription write FServerDescription;
+    function ListEnabled: TListResourcesResult;
   end;
+
+
+  [Implements(IMCPConfig)]
+  TMCPConfig = class(TJRPCConfiguration, IMCPConfig)
+  private
+    FServer: TMCPServerConfig;
+    FTools: TMCPToolConfig;
+    FResources: TMCPResourceConfig;
+    FTemplates: TMCPListConfig;
+    FPrompts: TMCPListConfig;
+  public
+    constructor Create(AApp: IJRPCApplication); override;
+    destructor Destroy; override;
+
+    { IMCPConfig }
+    function Server: TMCPServerConfig;
+    function Tools: TMCPToolConfig;
+    function Resources: TMCPResourceConfig;
+    function Templates: TMCPListConfig;
+    function Prompts: TMCPListConfig;
+  end;
+
 
 implementation
 
 uses
+  System.IOUtils,
   Neon.Core.Utils,
-  MCPConnect.JRPC.Core;
+  Neon.Core.Persistence.JSON.Schema;
 
 constructor TMCPConfig.Create(AApp: IJRPCApplication);
 begin
   inherited;
 
-  { TODO -opaolo -c : finire 02/02/2026 12:20:21 }
-
-  FTools := TMCPListConfig.Create(Self);
-  FResources := TMCPListConfig.Create(Self);
+  FServer := TMCPServerConfig.Create(Self);
+  FTools := TMCPToolConfig.Create(Self);
+  FResources := TMCPResourceConfig.Create(Self);
   FTemplates := TMCPListConfig.Create(Self);
   FPrompts := TMCPListConfig.Create(Self);
-
-  FWriterRegistry := TMCPWriterRegistry.Create;
-  FToolRegistry := TObjectDictionary<string, TClass>.Create;
-  FResourceRegistry := TObjectDictionary<string, TClass>.Create;
-  FPromptRegistry := TObjectDictionary<string, TClass>.Create;
-end;
-
-procedure TMCPConfig.AfterConstruction;
-begin
-  inherited;
-  FServerName := 'MCPServer';
-  FServerVersion := '1.0';
-  FNamespaceSeparator := '_';  // Default separator (MCP requires ^[a-zA-Z0-9_-]{1,64}$)
 end;
 
 destructor TMCPConfig.Destroy;
 begin
-  FPromptRegistry.Free;
-  FResourceRegistry.Free;
-  FToolRegistry.Free;
-  FWriterRegistry.Free;
-
   FPrompts.Free;
   FTemplates.Free;
   FResources.Free;
   FTools.Free;
+  FServer.Free;
+
   inherited;
-end;
-
-function TMCPConfig.RegisterToolClass(AClass: TClass): IMCPConfig;
-begin
-  FToolRegistry.AddOrSetValue('', AClass);
-  Result := Self;
-end;
-
-function TMCPConfig.RegisterResourceClass(AClass: TClass): IMCPConfig;
-begin
-  FResourceRegistry.AddOrSetValue('', AClass);
-  Result := Self;
-end;
-
-function TMCPConfig.GetWriters: TMCPWriterRegistry;
-begin
-  Result := FWriterRegistry;
 end;
 
 function TMCPConfig.Prompts: TMCPListConfig;
@@ -338,33 +337,9 @@ begin
   Result := FPrompts;
 end;
 
-function TMCPConfig.RegisterWriter(AClass: TCustomWriterClass): IMCPConfig;
-begin
-  FWriterRegistry.RegisterWriter(AClass);
-  Result := Self;
-end;
-
-function TMCPConfig.Resources: TMCPListConfig;
+function TMCPConfig.Resources: TMCPResourceConfig;
 begin
   Result := FResources;
-end;
-
-function TMCPConfig.SetServerDescription(const ADescription: string): IMCPConfig;
-begin
-  FServerDescription := ADescription;
-  Result := Self;
-end;
-
-function TMCPConfig.SetServerName(const AName: string): IMCPConfig;
-begin
-  FServerName := AName;
-  Result := Self;
-end;
-
-function TMCPConfig.SetServerVersion(const AVersion: string): IMCPConfig;
-begin
-  FServerVersion := AVersion;
-  Result := Self;
 end;
 
 function TMCPConfig.Templates: TMCPListConfig;
@@ -372,101 +347,21 @@ begin
   Result := FTemplates;
 end;
 
-function TMCPConfig.Tools: TMCPListConfig;
+function TMCPConfig.Tools: TMCPToolConfig;
 begin
   Result := FTools;
 end;
 
-function TMCPConfig.SetNamespaceSeparator(const ASeparator: string): IMCPConfig;
+function TMCPConfig.Server: TMCPServerConfig;
 begin
-  FNamespaceSeparator := ASeparator;
-  Result := Self;
-end;
-
-function TMCPConfig.GetToolClasses: TArray<TMCPClassInfo>;
-var
-  LPair: TPair<string, TClass>;
-  LIndex: Integer;
-begin
-  SetLength(Result, FToolRegistry.Count);
-  LIndex := 0;
-  for LPair in FToolRegistry do
-  begin
-    Result[LIndex].Namespace := LPair.Key;
-    Result[LIndex].MCPClass := LPair.Value;
-    Inc(LIndex);
-  end;
-end;
-
-function TMCPConfig.GetNamespaceSeparator: string;
-begin
-  Result := FNamespaceSeparator;
-end;
-
-function TMCPConfig.CreateToolInstance(const ANamespace: string): TObject;
-var
-  LClass: TClass;
-begin
-  if not FToolRegistry.TryGetValue(ANamespace, LClass) then
-    raise EJRPCException.CreateFmt('Tool class not found for namespace "%s"', [ANamespace]);
-
-  Result := TRttiUtils.CreateInstance(LClass);
-end;
-
-function TMCPConfig.FindNamespaceForTool(const AFullToolName: string; out ANamespace, AToolName: string): Boolean;
-var
-  LNamespaceList: TList<string>;
-  LNamespace: string;
-  LPrefix: string;
-begin
-  Result := False;
-  ANamespace := '';
-  AToolName := AFullToolName;
-
-  LNamespaceList := TList<string>.Create(FToolRegistry.Keys);
-  try
-    // Sort namespaces by length (longest first) to match most specific namespace
-    LNamespaceList.Sort(TComparer<string>.Construct(
-      function(const A, B: string): Integer
-      begin
-        Result := Length(B) - Length(A);  // Descending order
-      end
-    ));
-
-    // Try each namespace (longest first)
-    for LNamespace in LNamespaceList do
-    begin
-      if LNamespace = '' then
-        Continue; // Skip empty namespace for now
-
-      // Check if tool name starts with "namespace_"
-      LPrefix := LNamespace + FNamespaceSeparator;
-      if AFullToolName.StartsWith(LPrefix) then
-      begin
-        ANamespace := LNamespace;
-        AToolName := Copy(AFullToolName, Length(LPrefix) + 1, MaxInt);
-        Result := True;
-        Exit;
-      end;
-    end;
-
-    // If no namespace matched, try default (empty namespace)
-    if FToolRegistry.ContainsKey('') then
-    begin
-      ANamespace := '';
-      AToolName := AFullToolName;
-      Result := True;
-    end;
-  finally
-    LNamespaceList.Free;
-  end;
+  Result := FServer;
 end;
 
 { TMCPListConfig }
 
 constructor TMCPListConfig.Create(AConfig: IMCPConfig);
 begin
-  FMCPConfig := AConfig;
+  inherited;
   FClasses := TObjectDictionary<string, TClass>.Create;
 end;
 
@@ -485,7 +380,7 @@ begin
   LIndex := 0;
   for LPair in FClasses do
   begin
-    Result[LIndex].Namespace := LPair.Key;
+    Result[LIndex].Scope := LPair.Key;
     Result[LIndex].MCPClass := LPair.Value;
     Inc(LIndex);
   end;
@@ -493,14 +388,8 @@ end;
 
 function TMCPListConfig.RegisterClass(AClass: TClass): TMCPListConfig;
 begin
-  // AddOrSetValue: if namespace exists, replaces the class (last wins)
-  FClasses.AddOrSetValue('', AClass);
+  FClasses.AddOrSetValue(AClass.ClassName, AClass);
   Result := Self;
-end;
-
-function TMCPListConfig.BackToMCP: IMCPConfig;
-begin
-  Result := FMCPConfig;
 end;
 
 function TMCPListConfig.CreateInstance(const ANamespace: string): TObject;
@@ -511,6 +400,388 @@ begin
     raise EJRPCException.CreateFmt('Tool class not found for namespace "%s"', [ANamespace]);
 
   Result := TRttiUtils.CreateInstance(LClass);
+end;
+
+constructor TMCPToolConfig.Create(AConfig: IMCPConfig);
+begin
+  inherited;
+  ToolRegistry := TMCPToolRegistry.Create([doOwnsValues]);
+end;
+
+function TMCPToolConfig.CreateInstance(const ATool: string): TObject;
+var
+  LTool: TMCPTool;
+begin
+  if not ToolRegistry.TryGetValue(ATool, LTool) then
+    raise EMCPException.CreateFmt('Tool [%s] not found', [ATool]);
+
+  Result := TRttiUtils.CreateInstance(LTool.Classe);
+end;
+
+destructor TMCPToolConfig.Destroy;
+begin
+  ToolRegistry.Free;
+
+  inherited;
+end;
+
+function TMCPToolConfig.ListEnabled: TListToolsResult;
+begin
+  Result := TListToolsResult.Create;
+  for var pair in ToolRegistry do
+    if not pair.Value.Disabled then
+      Result.Tools.Add(pair.Value);
+end;
+
+function TMCPToolConfig.RegisterClass(AClass: TClass): TMCPToolConfig;
+var
+  LScope: string;
+  LClassType: TRttiType;
+  LToolAttr: MCPToolAttribute;
+  LScopeAttr: MCPScopeAttribute;
+  LTool: TMCPTool;
+begin
+  LScope := '';
+  LClassType := TRttiUtils.Context.GetType(AClass);
+  LScopeAttr := TRttiUtils.FindAttribute<MCPScopeAttribute>(LClassType);
+  if Assigned(LScopeAttr) then
+    LScope := LScopeAttr.Name + FConfig.Server.ScopeSeparator;
+
+  // Registers all the tools found in AClass
+  for var LMethod in LClassType.GetMethods do
+  begin
+    LToolAttr := TRttiUtils.FindAttribute<MCPToolAttribute>(LMethod);
+    if not Assigned(LToolAttr) then
+      Continue;
+
+    LTool := TMCPTool.Create;
+    try
+      LTool.Name := LScope + LToolAttr.Name;
+      LTool.Description := LToolAttr.Description;
+      LTool.Classe := AClass;
+      LTool.Method := LMethod;
+
+      WriteTool(LTool, LToolAttr);
+
+
+      ToolRegistry.Add(LTool.Name, LTool);
+    except
+      LTool.Free;
+      raise;
+    end;
+  end;
+  Result := Self;
+end;
+
+function TMCPToolConfig.ListComplete: TListToolsResult;
+begin
+  Result := TListToolsResult.Create;
+  for var pair in ToolRegistry do
+    Result.Tools.Add(pair.Value);
+end;
+
+procedure TMCPToolConfig.FilterList(AList: TListToolsResult; AFilter: TMCPToolFilterFunc);
+begin
+  for var pair in ToolRegistry do
+    if AFilter(pair.Value) then
+      AList.Tools.Add(pair.Value);
+end;
+
+procedure TMCPToolConfig.WriteTool(ATool: TMCPTool; AAttr: MCPToolAttribute);
+begin
+  ATool.AddIcon(AAttr.Tags.GetValueAs<string>('icon'));
+  ATool.Category := AAttr.Tags.GetValueAs<string>('category');
+  ATool.Disabled := AAttr.Tags.GetBoolValue('disabled');
+
+  if AAttr.Tags.Exists('meta.ui') then
+    ATool.UI.ResourceUri := AAttr.Tags.GetValueAs<string>('meta.ui');
+
+  if AAttr.Tags.Exists('readonly') then
+    ATool.Annotations.ReadOnlyHint := AAttr.Tags.GetBoolValue('readonly');
+  if AAttr.Tags.Exists('destructive') then
+    ATool.Annotations.DestructiveHint := AAttr.Tags.GetBoolValue('destructive');
+  if AAttr.Tags.Exists('idempotent') then
+    ATool.Annotations.IdempotentHint := AAttr.Tags.GetBoolValue('idempotent');
+  if AAttr.Tags.Exists('openworld') then
+    ATool.Annotations.OpenWorldHint := AAttr.Tags.GetBoolValue('openworld');
+
+  WriteInputSchema(ATool);
+end;
+
+procedure TMCPToolConfig.WriteInputSchema(ATool: TMCPTool);
+var
+  LProps, LInputSchema: TJSONObject;
+  LRequired: TJSONArray;
+begin
+  LProps := TJSONObject.Create;
+  LRequired := TJSONArray.Create;
+  try
+    WriteParams(ATool.Method, LProps, LRequired);
+  except
+    LProps.Free;
+    LRequired.Free;
+    raise;
+  end;
+
+  LInputSchema := TJSONObject.Create
+    .AddPair('type', 'object')
+    .AddPair('properties', LProps);
+    //.AddPair('additionalProperties', False);
+    //.AddPair('$schema', 'http://json-schema.org/draft-07/schema#');
+
+  if LRequired.Count > 0 then
+    LInputSchema.AddPair('required', LRequired)
+  else
+    LRequired.Free;
+
+  ATool.ExchangeInputSchema(LInputSchema);
+end;
+
+procedure TMCPToolConfig.WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
+var
+  LJSONObj: TJSONObject;
+  LParam: TRttiParameter;
+  LAttr: MCPParamAttribute;
+begin
+  for LParam in AMethod.GetParameters do
+  begin
+    LAttr := LParam.GetAttribute<MCPParamAttribute>;
+      if not Assigned(LAttr) then
+        raise EJRPCException.Create('Non-annotated params are not permitted');
+
+    LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LParam.ParamType, MCPNeonConfig);
+
+    LJSONObj.AddPair('description', TJSONString.Create(LAttr.Description));
+    AProps.AddPair(LAttr.Name, LJSONObj);
+    ARequired.Add(LAttr.Name);
+  end;
+end;
+
+constructor TMCPServerConfig.Create(AConfig: IMCPConfig);
+begin
+  inherited;
+  WriterRegistry := TMCPWriterRegistry.Create;
+
+  ScopeSeparator := '_';  // Default separator (MCP requires ^[a-zA-Z0-9_-]{1,64}$)
+  Capabilities := [TMCPCapability.Tools, TMCPCapability.Resources, TMCPCapability.Prompts];
+end;
+
+destructor TMCPServerConfig.Destroy;
+begin
+  WriterRegistry.Free;
+  inherited;
+end;
+
+function TMCPServerConfig.RegisterWriter(AClass: TCustomWriterClass): TMCPServerConfig;
+begin
+  WriterRegistry.RegisterWriter(AClass);
+  Result := Self;
+end;
+
+function TMCPServerConfig.SetCapabilities(ACapabilities: TMCPCapabilities): TMCPServerConfig;
+begin
+  Capabilities := ACapabilities;
+  Result := Self;
+end;
+
+function TMCPServerConfig.SetDescription(const ADescription: string): TMCPServerConfig;
+begin
+  Description := ADescription;
+  Result := Self;
+end;
+
+function TMCPServerConfig.SetName(const AName: string): TMCPServerConfig;
+begin
+  Name := AName;
+  Result := Self;
+end;
+
+function TMCPServerConfig.SetScopeSeparator(const ASeparator: string): TMCPServerConfig;
+begin
+  ScopeSeparator := ASeparator;
+  Result := Self;
+end;
+
+function TMCPServerConfig.SetVersion(const AVersion: string): TMCPServerConfig;
+begin
+  Version := AVersion;
+  Result := Self;
+end;
+
+{ TMCPBaseConfig }
+
+function TMCPBaseConfig.BackToMCP: IMCPConfig;
+begin
+  Result := FConfig;
+end;
+
+constructor TMCPBaseConfig.Create(AConfig: IMCPConfig);
+begin
+  FConfig := AConfig;
+end;
+
+{ TMCPResourceConfig }
+
+constructor TMCPResourceConfig.Create(AConfig: IMCPConfig);
+begin
+  inherited;
+  BasePath := GetCurrentDir + '\data';
+  ForceDirectories(BasePath);
+  Registry := TMCPResourceRegistry.Create([doOwnsValues]);
+end;
+
+function TMCPResourceConfig.CreateInstance(const AUri: string): TObject;
+var
+  LResource: TMCPResource;
+begin
+  if not Registry.TryGetValue(AUri, LResource) then
+    raise EMCPException.CreateFmt('Resource [%s] not found', [AUri]);
+
+  Result := TRttiUtils.CreateInstance(LResource.Classe);
+end;
+
+destructor TMCPResourceConfig.Destroy;
+begin
+  Registry.Free;
+  inherited;
+end;
+
+function TMCPResourceConfig.ListEnabled: TListResourcesResult;
+begin
+  Result := TListResourcesResult.Create;
+  for var pair in Registry do
+    if not pair.Value.Disabled then
+      Result.Resources.Add(pair.Value);
+end;
+
+function TMCPResourceConfig.RegisterClass(AClass: TClass): TMCPResourceConfig;
+var
+  LClassType: TRttiType;
+  LRes: TMCPResource;
+  LResAttr: MCPResourceAttribute;
+begin
+  LClassType := TRttiUtils.Context.GetType(AClass);
+
+  // Registers all the resources found in AClass
+  for var LMethod in LClassType.GetMethods do
+  begin
+    LResAttr := TRttiUtils.FindAttribute<MCPResourceAttribute>(LMethod);
+    if not Assigned(LResAttr) then
+      Continue;
+
+    if Length(LMethod.GetParameters) > 0 then
+      raise EMCPException.CreateFmt('Standard method for resource [%s] cannot have parameters', [LResAttr.Name]);
+
+    LRes := TMCPResource.Create;
+    try
+      LRes.Name := LResAttr.Name;
+      LRes.Uri := LResAttr.Uri;
+      LRes.MimeType := LResAttr.MimeType;
+      LRes.Description := LResAttr.Description;
+      LRes.Classe := AClass;
+      LRes.Method := LMethod;
+
+      Registry.Add(LRes.Uri, LRes);
+    except
+      LRes.Free;
+      raise;
+    end;
+  end;
+  Result := Self;
+end;
+
+function TMCPResourceConfig.RegisterResource(AClass: TClass; const AMethod, AUri: string;
+  AConfig: TMCPResourceConfigurator): TMCPResourceConfig;
+var
+  LClassType: TRttiType;
+  LRes: TMCPResource;
+  LMethod: TRttiMethod;
+begin
+  LClassType := TRttiUtils.Context.GetType(AClass);
+  LMethod := LClassType.GetMethod(AMethod);
+  if not Assigned(LMethod) then
+    raise EMCPException.CreateFmt('Method [%s] not found in class [%s]', [AMethod, AClass.ClassName]);
+
+  if Length(LMethod.GetParameters) > 0 then
+    raise EMCPException.Create('Resource''s method cannot have parameters');
+
+  LRes := TMCPResource.Create;
+  try
+    Registry.Add(AUri, LRes);
+
+    AConfig(LRes);
+  except
+    LRes.Free;
+    raise;
+  end;
+
+  Result := Self;
+end;
+
+function TMCPResourceConfig.RegisterScheme(const AScheme, APath: string): TMCPResourceConfig;
+begin
+  Schemes.Add(AScheme, APath);
+end;
+
+function TMCPResourceConfig.RegisterStatic(const AFileName, AMime, ADescription: string): TMCPResourceConfig;
+const
+  RES_CLASS: TClass = TMCPStaticResource;
+  RES_METHOD = 'GetResource';
+var
+  LClassType: TRttiType;
+  LRes: TMCPResource;
+  LMethod: TRttiMethod;
+begin
+  LClassType := TRttiUtils.Context.GetType(RES_CLASS);
+  LMethod := LClassType.GetMethod(RES_METHOD);
+  if not Assigned(LMethod) then
+    raise EMCPException.CreateFmt('Method [%s] not found in class [%s]', [RES_METHOD, RES_CLASS.ClassName]);
+
+  LRes := TMCPResource.Create;
+  try
+    LRes.FileName := AFileName;
+    LRes.Name :=   ExtractFileName(AFileName);
+
+    { TODO -opaolo -c : Customize the URI (URI Schemes?) 16/02/2026 13:01:25 }
+    LRes.Uri := 'res://' + LRes.Name;
+    LRes.MimeType := AMime;
+    LRes.Description := ADescription;
+    LRes.Classe := RES_CLASS;
+    LRes.Method := LMethod;
+
+    Registry.Add(LRes.Uri, LRes);
+  except
+    LRes.Free;
+    raise;
+  end;
+
+  Result := Self;
+end;
+
+function TMCPResourceConfig.SetBasePath(const APath: string): TMCPResourceConfig;
+begin
+  BasePath := APath;
+  Result := Self;
+end;
+
+{ TMCPStaticResource }
+
+class procedure TMCPStaticResource.GetResource(AConfig: IMCPConfig; AResource:
+    TMCPResource; AResult: TReadResourceResult);
+var
+  LFileName: string;
+begin
+  if AResource.FileName.IsEmpty then
+    raise EMCPException.CreateFmt('No filename specified for static resource [%s]', [AResource.Name]);
+
+  LFileName := TPath.Combine(AConfig.Resources.BasePath, AResource.FileName);
+
+  if not FileExists(LFileName) then
+    raise EMCPException.CreateFmt('File [%s] not found for resource [%s]', [LFileName, AResource.Name]);
+
+  { TODO -opaolo -c : check the mime type and serve accordingly 16/02/2026 12:44:47 }
+
+  AResult.AddTextContent(AResource.Uri, AResource.MimeType, TFile.ReadAllText(LFileName));
 end;
 
 initialization

@@ -16,10 +16,8 @@ uses
 
 type
   TWeatherResource = class
-  private
-    [Context] FGC: IGarbageCollector;
   public
-    [McpResource('get_weather', 'ui://weather/info', 'text/html', 'Shows the weather for the DelphiDay event')]
+    [McpResource('weather', 'ui://weather/info', 'text/html', 'Shows the weather for the DelphiDay event')]
     function GetWeatherInfo: string;
   end;
 
@@ -30,7 +28,7 @@ implementation
 
 function TWeatherResource.GetWeatherInfo: string;
 begin
-
+  Result := 'For the Delphi Day is expected a sunny day!';
 end;
 
 end.

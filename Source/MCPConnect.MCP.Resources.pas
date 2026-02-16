@@ -18,7 +18,7 @@ interface
 {$SCOPEDENUMS ON}
 
 uses
-  System.SysUtils, System.Generics.Collections, System.JSON, System.Rtti,
+  System.SysUtils, System.Classes, System.Generics.Collections, System.JSON, System.Rtti,
 
   Neon.Core.Types,
   Neon.Core.Attributes,
@@ -107,7 +107,7 @@ type
     /// <summary>
     /// The MIME type of this resource, if known.
     /// </summary>
-    MIMEType: NullString;
+    MimeType: NullString;
 
     /// <summary>
     ///   Optional set of sized icons that the client can display in a user interface
@@ -121,36 +121,22 @@ type
   /// </summary>
   TMCPResource = class(TMCPResourceBase)
   public
-
+    [NeonIgnore] FileName: string;
+    [NeonIgnore] Classe: TClass;
+    [NeonIgnore] Method: TRttiMethod;
+    [NeonIgnore] Category: string;
+    [NeonIgnore] Disabled: Boolean;
+  public
     /// <summary>
     /// The URI of this resource.
     /// </summary>
     Uri: string;
-
-    /// <summary>
-    /// A human-readable name for this resource.
-    /// </summary>
-    /// <remarks>This can be used by clients to populate UI elements.</remarks>
-    Name: string;
-
-    /// <summary>
-    /// A description of what this resource represents.
-    /// </summary>
-    /// <remarks>This can be used by clients to improve the LLM's understanding of available resources. It can be thought of like a 'hint' to the model.</remarks>
-    Description: NullString;
-
-    /// <summary>
-    /// The MIME type of this resource, if known.
-    /// </summary>
-    MimeType: NullString;
-
-    /// <summary>
-    ///   Optional set of sized icons that the client can display in a user interface
-    /// </summary>
-    [NeonInclude(IncludeIf.NotEmpty)] Icons: TIconList;
   end;
 
   TMCPResources = class(TObjectList<TMCPResource>);
+  TMCPResourceRegistry = class(TObjectDictionary<string, TMCPResource>);
+  TMCPResourceConfigurator = reference to procedure(AResource: TMCPResource);
+  TMCPResourceFilterFunc = reference to function (ATool: TMCPResource): Boolean;
 
   /// <summary>
   /// Represents a template description for resources available on the server.
@@ -294,6 +280,7 @@ type
     Uri: string;
   end;
 
+
   /// <summary>
   ///   MCP Resources List Generator
   /// </summary>
@@ -387,7 +374,7 @@ end;
 constructor TListResourcesResult.Create;
 begin
   inherited;
-  Resources := TMCPResources.Create;
+  Resources := TMCPResources.Create(False);
 end;
 
 destructor TListResourcesResult.Destroy;

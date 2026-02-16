@@ -110,9 +110,13 @@ type
     ///   App: callable by the app from this server only
     /// </summary>
     ToolVisibility = (Model, App);
-  private
-    FVisibility: ToolVisibility;
-    FUI: TMCPUIApp;
+  public
+    [NeonIgnore] Classe: TClass;
+    [NeonIgnore] Method: TRttiMethod;
+    [NeonIgnore] Category: string;
+    [NeonIgnore] Disabled: Boolean;
+    [NeonIgnore] UI: TMCPUIApp;
+    [NeonIgnore] Visibility: ToolVisibility;
   public
     /// <summary>
     /// The name of the tool
@@ -150,13 +154,13 @@ type
 
     procedure ExchangeInputSchema(ASchema: TJSONObject);
     function ToJSON(APrettyPrint: Boolean = False): string;
-
-
-    property Visibility: ToolVisibility read FVisibility write FVisibility;
-    property UI: TMCPUIApp read FUI write FUI;
+    procedure AddIcon(const ASrc: string);
   end;
 
   TMCPTools = class(TObjectList<TMCPTool>);
+  TMCPToolRegistry = class(TObjectDictionary<string, TMCPTool>);
+  TMCPToolConfigurator = reference to procedure(ATool: TMCPTool);
+  TMCPToolFilterFunc = reference to function (ATool: TMCPTool): Boolean;
 
   TListToolsResult = class(TMetaClass)
   public
@@ -211,45 +215,26 @@ type
     procedure AddContent(AContent: TToolContent);
   end;
 
-type
-  /// <summary>
-  ///   MCP Tools List Generator
-  /// </summary>
-  TMCPToolsListGenerator = class
-  protected
-    /// <summary>
-    ///   Writer for a method's params
-    /// </summary>
-    procedure WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
-
-    function WriteMethod(AMethod: TRttiMethod): TMCPTool;
-    procedure WriteMethods(AType: TRttiType; AList: TMCPTools);
-  public
-    /// <summary>
-    ///   Serialize a Delphi method as a MCP tool
-    ///   The Delphi method must be marked with the MCP attributes
-    /// </summary>
-    class function MethodToTool(AMethod: TRttiMethod): TMCPTool;
-
-    /// <summary>
-    ///   Loops through the methods of a class/record and populate a structure
-    ///   in response to the tools/list from a LLM client
-    /// </summary>
-    class procedure ListTools(AType: TRttiType; AList: TListToolsResult); overload;
-    class procedure ListTools(AClass: TClass; AList: TListToolsResult); overload;
-  end;
-
 implementation
 
 uses
   MCPConnect.JRPC.Core;
 
-{ TMCPTool }
+procedure TMCPTool.AddIcon(const ASrc: string);
+var
+  LIcon: TMCPIcon;
+begin
+  if not ASrc.IsEmpty then
+  begin
+    LIcon.Src := ASrc;
+    Icons := Icons + [LIcon];
+  end;
+end;
 
 constructor TMCPTool.Create;
 begin
   inherited;
-  FUI := TMCPUIApp.Create(Meta);
+  UI := TMCPUIApp.Create(Meta);
 
   InputSchema := TJSONObject.Create;
   Annotations := TToolAnnotation.Create;
@@ -261,7 +246,7 @@ begin
   InputSchema.Free;
   Annotations.Free;
   OutputSchema.Free;
-  FUI.Free;
+  UI.Free;
   inherited;
 end;
 
@@ -284,7 +269,7 @@ end;
 constructor TListToolsResult.Create;
 begin
   inherited;
-  Tools := TMCPTools.Create(True);
+  Tools := TMCPTools.Create(False);
 end;
 
 destructor TListToolsResult.Destroy;
@@ -296,136 +281,6 @@ end;
 function TListToolsResult.ToJSON(APrettyPrint: Boolean = False): string;
 begin
   Result := TNeon.ObjectToJSONString(Self, MCPNeonConfig.SetPrettyPrint(APrettyPrint));
-end;
-
-class procedure TMCPToolsListGenerator.ListTools(AClass: TClass; AList: TListToolsResult);
-begin
-  ListTools(TRttiUtils.Context.GetType(AClass), AList);
-end;
-
-class procedure TMCPToolsListGenerator.ListTools(AType: TRttiType; AList: TListToolsResult);
-var
-  LGenerator: TMCPToolsListGenerator;
-begin
-  LGenerator := TMCPToolsListGenerator.Create();
-  try
-    LGenerator.WriteMethods(AType, AList.Tools);
-  finally
-    LGenerator.Free;
-  end;
-end;
-
-class function TMCPToolsListGenerator.MethodToTool(AMethod: TRttiMethod): TMCPTool;
-var
-  LGenerator: TMCPToolsListGenerator;
-begin
-  LGenerator := TMCPToolsListGenerator.Create();
-  try
-    Result := LGenerator.WriteMethod(AMethod);
-  finally
-    LGenerator.Free;
-  end;
-end;
-
-function TMCPToolsListGenerator.WriteMethod(AMethod: TRttiMethod): TMCPTool;
-var
-  LToolName, LToolDesc: string;
-  LProps, LInputSchema: TJSONObject;
-  LAttr: MCPToolAttribute;
-  LRequired: TJSONArray;
-begin
-  LProps := TJSONObject.Create;
-  LRequired := TJSONArray.Create;
-  try
-    WriteParams(AMethod, LProps, LRequired);
-  except
-    LProps.Free;
-    LRequired.Free;
-    raise;
-  end;
-
-  LInputSchema := TJSONObject.Create
-    .AddPair('type', 'object')
-    .AddPair('properties', LProps);
-    //.AddPair('additionalProperties', False);
-    //.AddPair('$schema', 'http://json-schema.org/draft-07/schema#');
-
-  if LRequired.Count > 0 then
-    LInputSchema.AddPair('required', LRequired)
-  else
-    LRequired.Free;
-
-  LToolName := AMethod.Name;
-  LToolDesc := AMethod.Name;
-
-  LAttr := AMethod.GetAttribute<MCPToolAttribute>;
-  if Assigned(LAttr) then
-  begin
-    if LAttr.Name <> '' then
-      LToolName := LAttr.Name;
-
-    if LAttr.Description <> '' then
-      LToolDesc := LAttr.Description;
-  end;
-
-  Result := TMCPTool.Create;
-  try
-    Result.Name := LToolName;
-    Result.Description := LToolDesc;
-    Result.ExchangeInputSchema(LInputSchema);
-
-    //LAttr.Tags.ApplyToFields(Result.Annotations);
-
-    if LAttr.Tags.Exists('readonly') then
-      Result.Annotations.ReadOnlyHint := True;
-
-    if LAttr.Tags.Exists('destructive') then
-      Result.Annotations.DestructiveHint := True;
-
-    if LAttr.Tags.Exists('idempotent') then
-      Result.Annotations.IdempotentHint := True;
-
-    if LAttr.Tags.Exists('openworld') then
-      Result.Annotations.OpenWorldHint := True;
-  except
-    Result.Free;
-    raise;
-  end;
-end;
-
-procedure TMCPToolsListGenerator.WriteMethods(AType: TRttiType; AList: TMCPTools);
-var
-  LMethod: TRttiMethod;
-  LMethods: TArray<TRttiMethod>;
-  LTool: TMCPTool;
-begin
-  LMethods := AType.GetMethods;
-  for LMethod in LMethods do
-    if Assigned(LMethod.GetAttribute(MCPToolAttribute)) then
-    begin
-      LTool := WriteMethod(LMethod);
-      AList.Add(LTool);
-    end;
-end;
-
-procedure TMCPToolsListGenerator.WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
-var
-  LJSONObj: TJSONObject;
-  LParam: TRttiParameter;
-  LAttr: MCPParamAttribute;
-begin
-  for LParam in AMethod.GetParameters do
-  begin
-    LAttr := LParam.GetAttribute<MCPParamAttribute>;
-      if not Assigned(LAttr) then
-        raise EJRPCException.Create('Non-annotated params are not permitted');
-
-    LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LParam.ParamType, MCPNeonConfig);
-
-    LJSONObj.AddPair('description', TJSONString.Create(LAttr.Description));
-    AProps.AddPair(LAttr.Name, LJSONObj);
-    ARequired.Add(LAttr.Name);
-  end;
 end;
 
 constructor TCallToolParams.Create;

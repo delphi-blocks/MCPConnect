@@ -98,7 +98,7 @@ type
     function GetNeonConfig: INeonConfiguration;
     procedure SetNeonConfig(AConfig: INeonConfiguration);
 
-    constructor Create(AInstance: TObject);
+    constructor Create(AApiInstance: TObject);
 
   public
     class procedure HandleException(E: Exception; AId: TJRPCID; AResponse: TJRPCResponse); static;
@@ -293,12 +293,12 @@ end;
 
 { TJRPCObjectInvoker }
 
-constructor TJRPCObjectInvoker.Create(AInstance: TObject);
+constructor TJRPCObjectInvoker.Create(AApiInstance: TObject);
 begin
   inherited Create;
   FSeparator := '/';
-  FInstance := AInstance;
-  FRttiType := TRttiUtils.GetType(AInstance);
+  FInstance := AApiInstance;
+  FRttiType := TRttiUtils.GetType(FInstance);
 
   TRttiUtils.HasAttribute<JRPCAttribute>(FRttiType,
     procedure (LAttrib: JRPCAttribute)

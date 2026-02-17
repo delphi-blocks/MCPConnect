@@ -191,7 +191,9 @@ begin
   try
     // If it's a static resource serve the file directly
     if not LRes.FileName.IsEmpty then
-      TMCPStaticResource.GetResource(MCPConfig, LRes, Result)
+    begin
+      TMCPStaticResource.GetResource(MCPConfig, LRes, Result);
+    end
     else
     begin
       // Create an instance of the resource class

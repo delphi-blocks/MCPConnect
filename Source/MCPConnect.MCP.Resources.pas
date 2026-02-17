@@ -116,6 +116,8 @@ type
   end;
 
 
+  TMimeEncoding = (Plain, Base64);
+
   /// <summary>
   /// Represents a known resource that the server is capable of reading.
   /// </summary>
@@ -242,7 +244,8 @@ type
 
     procedure AddContent(AContent: TResourceContents);
     procedure AddTextContent(const AUri, AMime, AText: string);
-    procedure AddBlobContent(const AUri, AMime, ABlob: string);
+    procedure AddBlobContent(const AUri, AMime, AText: string);
+    procedure AddBase64Content(const AUri, AMime, ABase64: string);
   end;
 
   /// <summary>
@@ -321,6 +324,7 @@ type
 implementation
 
 uses
+  System.NetEncoding,
   MCPConnect.JRPC.Core;
 
 { TReadResourceResult }
@@ -330,12 +334,21 @@ begin
   Contents.Add(AContent);
 end;
 
-procedure TReadResourceResult.AddBlobContent(const AUri, AMime, ABlob: string);
+procedure TReadResourceResult.AddBase64Content(const AUri, AMime, ABase64: string);
 begin
   var blob := TBlobResourceContents.Create;
   blob.Uri := AUri;
   blob.MimeType := AMime;
-  blob.Blob := ABlob;
+  blob.Blob := ABase64;
+  Contents.Add(blob);
+end;
+
+procedure TReadResourceResult.AddBlobContent(const AUri, AMime, AText: string);
+begin
+  var blob := TBlobResourceContents.Create;
+  blob.Uri := AUri;
+  blob.MimeType := AMime;
+  blob.Blob := TNetEncoding.Base64String.Encode(AText);
   Contents.Add(blob);
 end;
 

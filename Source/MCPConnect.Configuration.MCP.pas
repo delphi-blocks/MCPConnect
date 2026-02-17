@@ -252,7 +252,6 @@ type
     class procedure GetResource(AConfig: IMCPConfig; AResource: TMCPResource; AResult: TReadResourceResult);
   end;
 
-  TMimeEncoding = (Plain, Base64);
   TMCPMimeTypes = class
   private type
     TMimeInfo = record
@@ -289,6 +288,7 @@ type
     constructor Create(AConfig: IMCPConfig);
     destructor Destroy; override;
 
+    function AddMimeType(AEncoding: TMimeEncoding; const AMime: string; const AExt: string = ''): TMCPResourceConfig;
     function SetBasePath(const APath: string): TMCPResourceConfig;
     function RegisterScheme(const AScheme, APath: string): TMCPResourceConfig;
 
@@ -651,6 +651,12 @@ end;
 
 { TMCPResourceConfig }
 
+function TMCPResourceConfig.AddMimeType(AEncoding: TMimeEncoding; const AMime: string; const AExt: string): TMCPResourceConfig;
+begin
+  MimeTypes.AddMime(AEncoding, AMime, AExt);
+  Result := Self;
+end;
+
 constructor TMCPResourceConfig.Create(AConfig: IMCPConfig);
 begin
   inherited;
@@ -785,7 +791,7 @@ begin
     LRes.Name :=   ExtractFileName(AFileName);
 
     { TODO -opaolo -c : Customize the URI (URI Schemes?) 16/02/2026 13:01:25 }
-    LRes.Uri := 'res://' + LRes.Name;
+    LRes.Uri := 'res://' + StringReplace(LRes.FileName, '\', '/', [rfReplaceAll]);
     LRes.MimeType := LMime;
     LRes.Description := ADescription;
     LRes.Classe := RES_CLASS;
@@ -812,6 +818,7 @@ class procedure TMCPStaticResource.GetResource(AConfig: IMCPConfig; AResource:
     TMCPResource; AResult: TReadResourceResult);
 var
   LFileName: string;
+  LEncoding: TMimeEncoding;
 begin
   if AResource.FileName.IsEmpty then
     raise EMCPException.CreateFmt('No filename specified for static resource [%s]', [AResource.Name]);
@@ -822,8 +829,13 @@ begin
     raise EMCPException.CreateFmt('File [%s] not found for resource [%s]', [LFileName, AResource.Name]);
 
   { TODO -opaolo -c : check the mime type and serve accordingly 16/02/2026 12:44:47 }
+  LEncoding := AConfig.Resources.MimeTypes.EncodingByMedia(AResource.MimeType);
 
-  AResult.AddTextContent(AResource.Uri, AResource.MimeType, TFile.ReadAllText(LFileName));
+  if LEncoding = TMimeEncoding.Plain then
+    AResult.AddTextContent(AResource.Uri, AResource.MimeType, TFile.ReadAllText(LFileName))
+  else
+    AResult.AddBlobContent(AResource.Uri, AResource.MimeType, TFile.ReadAllText(LFileName));
+
 end;
 
 { TMCPMimeTypes }
@@ -1038,7 +1050,12 @@ end;
 
 function TMCPMimeTypes.EncodingByMedia(const AMime: string): Nullable<TMimeEncoding>;
 begin
-
+  Result := TMimeEncoding.Base64;
+  for var m in FList do
+  begin
+    if AMime = m.Mime then
+      Exit(m.Encoding);
+  end;
 end;
 
 function TMCPMimeTypes.ExtExists(const AExtension, AList: string): Boolean;

@@ -96,8 +96,8 @@ begin
 
       .Resources
         .RegisterClass(TWeatherResource)
-        .RegisterStatic('index.md', 'text/markdown', 'Indice Documentazione')
-        .RegisterStatic('mcpconnect.pdf', 'application/pdf', 'MCPConnect Introduction')
+        .RegisterStatic('index.md', 'Indice Documentazione')
+        .RegisterStatic('mcpconnect.pdf', 'MCPConnect Introduction')
       .BackToMCP
 
   ;

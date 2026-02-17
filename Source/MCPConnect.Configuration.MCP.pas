@@ -293,7 +293,7 @@ type
     function RegisterScheme(const AScheme, APath: string): TMCPResourceConfig;
 
     function RegisterClass(AClass: TClass): TMCPResourceConfig;
-    function RegisterStatic(const AFileName, AMime, ADescription: string): TMCPResourceConfig;
+    function RegisterStatic(const AFileName, ADescription: string; const AMime: string = ''): TMCPResourceConfig;
     //function RegisterStatic(const AScheme, APath, AMime, ADescription: string): TMCPResourceConfig;
 
     function RegisterResource(AClass: TClass; const AMethod, AUri: string; AConfig: TMCPResourceConfigurator): TMCPResourceConfig;
@@ -756,11 +756,12 @@ begin
   Result := Self;
 end;
 
-function TMCPResourceConfig.RegisterStatic(const AFileName, AMime, ADescription: string): TMCPResourceConfig;
+function TMCPResourceConfig.RegisterStatic(const AFileName, ADescription: string; const AMime: string): TMCPResourceConfig;
 const
   RES_CLASS: TClass = TMCPStaticResource;
   RES_METHOD = 'GetResource';
 var
+  LMime, LExt: string;
   LClassType: TRttiType;
   LRes: TMCPResource;
   LMethod: TRttiMethod;
@@ -770,6 +771,14 @@ begin
   if not Assigned(LMethod) then
     raise EMCPException.CreateFmt('Method [%s] not found in class [%s]', [RES_METHOD, RES_CLASS.ClassName]);
 
+  LMime := AMime;
+  LExt := ExtractFileExt(AFileName);
+
+  if LMime = '' then
+    LMime := MimeTypes.MediaByExtension(LExt);
+  if LMime = '' then
+    raise EMCPException.CreateFmt('No MIME type found for [%s] extension, please specify a MIME type', [LExt]);
+
   LRes := TMCPResource.Create;
   try
     LRes.FileName := AFileName;
@@ -777,7 +786,7 @@ begin
 
     { TODO -opaolo -c : Customize the URI (URI Schemes?) 16/02/2026 13:01:25 }
     LRes.Uri := 'res://' + LRes.Name;
-    LRes.MimeType := AMime;
+    LRes.MimeType := LMime;
     LRes.Description := ADescription;
     LRes.Classe := RES_CLASS;
     LRes.Method := LMethod;

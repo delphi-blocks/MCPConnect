@@ -230,7 +230,7 @@ begin
   Result := nil;
   ASessionCreated := False;
 
-  if not Assigned(FSessionConfig) then
+  if not Assigned(FSessionConfig) or (not FSessionConfig.IsApplied) then
     Exit;
 
   LSessionId := ExtractSessionId(ARequestInfo);

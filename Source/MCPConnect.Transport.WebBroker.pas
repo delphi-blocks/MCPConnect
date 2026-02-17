@@ -143,14 +143,14 @@ var
 begin
   if not Assigned(FServer) then
     raise EJRPCException.Create('Server not found');
-  {
+
   if not CheckAuthorization(Request, Response) then
   begin
     Response.StatusCode := 403;
     Response.Content := '';
     Exit(True);
   end;
-  }
+
   LGarbageCollector := TGarbageCollector.CreateInstance;
   LSession := nil;
   LSessionCreated := False;
@@ -254,7 +254,7 @@ begin
   Result := nil;
   ASessionCreated := False;
 
-  if not Assigned(FSessionConfig) then
+  if not Assigned(FSessionConfig) or (not FSessionConfig.IsApplied) then
     Exit;
 
   LSessionId := ExtractSessionId(Request);

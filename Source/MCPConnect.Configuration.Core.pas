@@ -92,6 +92,18 @@ type
     /// </summary>
     /// <returns>The parent IJRPCApplication instance for further configuration</returns>
     function ApplyConfig: IJRPCApplication;
+
+    /// <summary>
+    ///   See **IsApplied* property. 
+    /// </summary>
+    function GetIsApplied: Boolean;
+
+    /// <summary>
+    ///   Indicates whether the configuration has been applied. This can be used
+    ///   to track whether changes have been committed.
+    /// </summary>
+    property IsApplied: Boolean read GetIsApplied;
+
   end;
 
   /// <summary>
@@ -100,14 +112,18 @@ type
   TJRPCConfiguration = class(TNoRefCountObject, IJRPCConfiguration)
   protected
     FApplication: IJRPCApplication;
+    FIsApplied: Boolean;
   public
     constructor Create(AApp: IJRPCApplication); virtual;
     destructor Destroy; override;
 
-    property Application: IJRPCApplication read FApplication;
-
     function BackToApp: IJRPCApplication;
     function ApplyConfig: IJRPCApplication; virtual;
+    function GetIsApplied: Boolean; virtual;
+
+    property Application: IJRPCApplication read FApplication;
+    property IsApplied: Boolean read GetIsApplied;
+
   end;
   {$M-}
 
@@ -150,13 +166,14 @@ uses
 
 function TJRPCConfiguration.BackToApp: IJRPCApplication;
 begin
-  Result := FApplication;
+  Result := ApplyConfig;
 end;
 
 constructor TJRPCConfiguration.Create(AApp: IJRPCApplication);
 begin
   inherited Create;
   FApplication := AApp;
+  FIsApplied := False;
 end;
 
 destructor TJRPCConfiguration.Destroy;
@@ -164,8 +181,14 @@ begin
   inherited;
 end;
 
+function TJRPCConfiguration.GetIsApplied: Boolean;
+begin
+  Result := FIsApplied;
+end;
+
 function TJRPCConfiguration.ApplyConfig: IJRPCApplication;
 begin
+  FIsApplied := True;
   Result := FApplication;
 end;
 

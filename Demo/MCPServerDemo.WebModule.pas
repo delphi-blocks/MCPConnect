@@ -64,16 +64,16 @@ begin
 
   FJRPCServer
 
-    .Plugin.Configure<IAuthTokenConfig>
-      .SetToken('my-secret-token')
-    .ApplyConfig
-
-    .Plugin.Configure<ISessionConfig>
-      .SetLocation(TSessionIdLocation.Header)
-      .SetHeaderName('Mcp-Session-Id')
-      .SetTimeout(30)  // 30 minutes timeout
-      .SetSessionClass(TShoppingSession)  // Use custom typed session
-    .ApplyConfig
+//    .Plugin.Configure<IAuthTokenConfig>
+//      .SetToken('my-secret-token')
+//    .ApplyConfig
+//
+//    .Plugin.Configure<ISessionConfig>
+//      .SetLocation(TSessionIdLocation.Header)
+//      .SetHeaderName('Mcp-Session-Id')
+//      .SetTimeout(30)  // 30 minutes timeout
+//      .SetSessionClass(TShoppingSession)  // Use custom typed session
+//    .ApplyConfig
 
     .Plugin.Configure<IMCPConfig>
       .Server

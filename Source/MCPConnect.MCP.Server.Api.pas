@@ -183,7 +183,6 @@ var
   LInvoker: IMCPInvokable;
   LRes: TMCPResource;
   LResObj: TObject;
-  LToolName: string;
 begin
   if not MCPConfig.Resources.Registry.TryGetValue(AParams.Uri, LRes) then
     raise EMCPException.CreateFmt('Resource [%s] not found', [AParams.Uri]);
@@ -199,9 +198,9 @@ begin
       LResObj := TRttiUtils.CreateInstance(LRes.Classe);
       RPCContext.Inject(LResObj);
       try
-        LInvoker.InvokeResource(AParams, Result);
         LInvoker := TMCPMethodInvoker.Create(LResObj, LRes.Method);
         RPCContext.Inject(LInvoker);
+        LInvoker.InvokeResource(AParams, Result);
       finally
         LResObj.Free;
       end;

@@ -79,50 +79,6 @@ object Form1: TForm1
     TabOrder = 5
     OnClick = btnConfigClick
   end
-  object Button1: TButton
-    Left = 504
-    Top = 32
-    Width = 75
-    Height = 25
-    Caption = 'Button1'
-    TabOrder = 6
-  end
-  object btnListResource: TButton
-    Left = 504
-    Top = 73
-    Width = 75
-    Height = 25
-    Caption = 'btnListResource'
-    TabOrder = 7
-    OnClick = btnListResourceClick
-  end
-  object btnTemplates: TButton
-    Left = 585
-    Top = 32
-    Width = 75
-    Height = 25
-    Caption = 'btnTemplates'
-    TabOrder = 8
-    OnClick = btnTemplatesClick
-  end
-  object Button2: TButton
-    Left = 585
-    Top = 73
-    Width = 75
-    Height = 25
-    Caption = 'Button2'
-    TabOrder = 9
-    OnClick = Button2Click
-  end
-  object Button3: TButton
-    Left = 288
-    Top = 73
-    Width = 75
-    Height = 25
-    Caption = 'Button3'
-    TabOrder = 10
-    OnClick = Button3Click
-  end
   object ApplicationEvents1: TApplicationEvents
     OnIdle = ApplicationEvents1Idle
     Left = 720

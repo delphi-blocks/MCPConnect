@@ -525,8 +525,8 @@ begin
   ATool.Category := AAttr.Tags.GetValueAs<string>('category');
   ATool.Disabled := AAttr.Tags.GetBoolValue('disabled');
 
-  if AAttr.Tags.Exists('meta.ui') then
-    ATool.UI.ResourceUri := AAttr.Tags.GetValueAs<string>('meta.ui');
+  if AAttr.Tags.Exists('app') then
+    ATool.UI.ResourceUri := AAttr.Tags.GetValueAs<string>('app');
 
   if AAttr.Tags.Exists('readonly') then
     ATool.Annotations.ReadOnlyHint := AAttr.Tags.GetBoolValue('readonly');

@@ -89,19 +89,20 @@ begin
         .RegisterWriter(TMCPStringListWriter)
       .BackToMCP
 
-      .Tools
-        .RegisterClass(TTestTool)
-        //.RegisterClass(TDelphiDayTool)
-        //.RegisterClass(TShoppingCartTool)  // Session-based shopping cart
-      .BackToMCP
-
 
       .Resources
         .SetBasePath(GetCurrentDir + '\data')
+
         .RegisterClass(TWeatherResource)
         .RegisterClass(TWeatherApp)
         .RegisterFile('index.md', 'Indice Documentazione')
         .RegisterFile('documentation\mcp\mcpconnect.pdf', 'MCPConnect Introduction')
+      .BackToMCP
+
+      .Tools
+        .RegisterClass(TTestTool)
+        .RegisterClass(TDelphiDayTool)
+        .RegisterClass(TShoppingCartTool)  // Session-based shopping cart
       .BackToMCP
 
   ;

@@ -17,7 +17,7 @@ uses
 type
   TWeatherApp = class
   public
-    [McpApp('weather-app', 'ui://weather/info', 'Shows the weather for the DelphiDay event')]
+    [McpApp('weather-app', 'ui://weather/app', 'Shows the weather for the DelphiDay event')]
     function GetWeatherUI: string;
   end;
 

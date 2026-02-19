@@ -55,18 +55,9 @@ type
     ApplicationEvents1: TApplicationEvents;
     ButtonOpenBrowser: TButton;
     btnConfig: TButton;
-    Button1: TButton;
-    btnListResource: TButton;
-    btnTemplates: TButton;
-    Button2: TButton;
-    Button3: TButton;
     procedure FormCreate(Sender: TObject);
     procedure ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
     procedure btnConfigClick(Sender: TObject);
-    procedure btnListResourceClick(Sender: TObject);
-    procedure btnTemplatesClick(Sender: TObject);
-    procedure Button2Click(Sender: TObject);
-    procedure Button3Click(Sender: TObject);
     procedure ButtonStartClick(Sender: TObject);
     procedure ButtonStopClick(Sender: TObject);
     procedure ButtonOpenBrowserClick(Sender: TObject);
@@ -135,78 +126,6 @@ begin
   memoLog.Lines.Add(s);
 
   mcp.Free;
-end;
-
-procedure TForm1.btnListResourceClick(Sender: TObject);
-begin
-  var list := TListResourcesResult.Create;
-
-  TMCPResourcesListGenerator.ListResources(TWeatherResource, list);
-
-  var s := TNeon.ObjectToJSONString(list, MCPNeonConfig);
-  memoLog.Lines.Text := s;
-
-  list.Free;
-end;
-
-procedure TForm1.btnTemplatesClick(Sender: TObject);
-begin
-  var list := TListResourceTemplatesResult.Create;
-
-  TMCPResourcesListGenerator.ListTemplates(TWeatherResource, list);
-
-  var s := TNeon.ObjectToJSONString(list, MCPNeonConfig);
-  memoLog.Lines.Text := s;
-
-  list.Free;
-end;
-
-procedure TForm1.Button2Click(Sender: TObject);
-var
-  LBool: Boolean;
-  LNum: Integer;
-begin
-  var tags := TAttributeTags.Create;
-  tags.Parse('complete=true,onlyname,default=false,count=12,num=');
-
-  LBool := tags.GetBoolValue('complete');
-  memoLog.Lines.Add(BoolToStr(LBool, True));
-
-  LBool := tags.GetBoolValue('onlyname');
-  memoLog.Lines.Add(BoolToStr(LBool, True));
-
-  LBool := tags.GetBoolValue('default');
-  memoLog.Lines.Add(BoolToStr(LBool, True));
-
-  LNum := tags.GetValueAs<Integer>('count');
-  memoLog.Lines.Add(LNum.ToString);
-
-  LNum := tags.GetValueAs<Integer>('num');
-  memoLog.Lines.Add(LNum.ToString);
-
-  LNum := tags.GetValueAs<Integer>('xxx');
-  memoLog.Lines.Add(LNum.ToString);
-
-  tags.Free;
-end;
-
-procedure TForm1.Button3Click(Sender: TObject);
-begin
-  var app := TMCPResource.Create;
-  app.Name := 'app1';
-  app.Uri := 'ui://test.app';
-  app.Description := 'Test App';
-  app.MimeType := 'text/html';
-
-  //app.Meta.Ui.Csp.AddSiteException('https://www.google.it');
-  //app.Meta.CustomMeta.AddPair('custom', 'Custom Value');
-
-  var s := TNeon.ObjectToJSONString(app, MCPNeonConfig.SetPrettyPrint(True));
-
-
-  memoLog.Lines.Add(s);
-
-  app.Free;
 end;
 
 procedure TForm1.ButtonOpenBrowserClick(Sender: TObject);

@@ -11,6 +11,7 @@ uses
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
 
+  MCPConnect.Configuration.MCP,
   MCPConnect.JRPC.Core,
   MCPConnect.MCP.Types,
   MCPConnect.MCP.Attributes,
@@ -80,7 +81,7 @@ type
     [Context] FGC: IGarbageCollector;
   public
     [McpTool('get_tickets', 'Get the list of available tickets for the DelphiDay event in Padova',
-    'meta.ui=ui://weather.info')]
+    'app=ui://weather.app')]
     function GetTickets: TTickets;
 
     [McpTool('buy_ticket', 'Get the list of available tickets for the DelphiDay event in Padova')]
@@ -102,8 +103,7 @@ type
 
     [McpTool('discounted_items', 'Retrieves a list of discounted items on Wintech-Italia based on the specified item type')]
     function GetDiscountedItems(
-      [McpParam('itemType', 'The type of item to filter. Valid values: ''courses'', ''product'', ''consulting''')]
-      const AItemType: string
+      [McpParam('itemType', 'The type of item to filter. Valid values: ''courses'', ''product'', ''consulting''')] const AItemType: string
     ): string;
 
 
@@ -114,14 +114,12 @@ type
 
     [McpTool('splitstring', 'Gets the content by splitting the string (e.g. "hello,world" -> ["hello", "world"])')]
     function GetSplitString(
-      [McpParam('value', 'The string to work with')]
-      const AValue: string
+      [McpParam('value', 'The string to work with')] const AValue: string
     ): TContentList;
 
     [McpTool('getperson', 'Get a person from his name')]
     function GetPerson(
-      [McpParam('name', 'The name of the person to get')]
-      const AName: string
+      [McpParam('name', 'The name of the person to get')] const AName: string
     ): TPerson;
 
   end;
@@ -131,8 +129,7 @@ type
   /// </summary>
   TShoppingCartTool = class
   private
-    [Context]
-    FSession: TShoppingSession;
+    [Context] FSession: TShoppingSession;
   public
     [McpTool('cart_add', 'Add an item to the shopping cart')]
     function AddToCart(
@@ -209,7 +206,7 @@ end;
 function TTestTool.GetImage(const AName: string): TPicture;
 begin
   Result := TPicture.Create;
-  Result.LoadFromFile('..\..\media\italy.bmp');
+  Result.LoadFromFile(TPath.Combine(GetCurrentDir, 'data\italy.bmp'));
 end;
 
 function TTestTool.GetPerson(const AName: string): TPerson;
@@ -257,7 +254,7 @@ begin
   var LResultBuilder := TToolResultBuilder.CreateInstance;
   LResultBuilder.AddText('Purchase completed successfully. Since you made the reservation through an LLM, you will be offered an aperitif at the end of the conference!');
 
-  var LStream := TFileStream.Create(TPath.Combine(LExePath, '..\..\ticket.png'), fmOpenRead or fmShareDenyWrite);
+  var LStream := TFileStream.Create(TPath.Combine(GetCurrentDir, 'data\ticket.png'), fmOpenRead or fmShareDenyWrite);
   try
     LResultBuilder.AddImage('image/png', LStream);
   finally

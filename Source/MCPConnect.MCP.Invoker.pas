@@ -36,83 +36,115 @@ uses
   MCPConnect.MCP.Resources;
 
 type
-  /// <summary>
-  ///   This interface define a standard method to handle MCP call
-  /// </summary>
-  IMCPInvokable = interface
-  ['{3E475D9B-6863-4260-8789-74014419A52B}']
-    function InvokeTool(AParams: TCallToolParams; AResult: TCallToolResult): Boolean;
-    function InvokeResource(AParams: TReadResourceParams; AResult: TReadResourceResult): Boolean;
-  end;
-
-  TMCPMethodInvoker = class(TInterfacedObject, IMCPInvokable)
-  private
-    //[Context] FContext: TJRPCContext;
-    [Context] FConfig: TMCPConfig;
-    [Context] FGarbageCollector: IGarbageCollector;
-  private
-    FInstance: TObject;
-    FMethod: TRttiMethod;
-    function ArgumentsToRttiParams(AArguments: TJSONObject): TArray<TValue>;
-    function GetParamName(LParam: TRttiParameter): string;
+  TMCPInvoker = class
   protected
-    procedure ResultToTool(const AToolResult: TValue; AContentList: TContentList);
-    procedure ResultToResource(const AMethodResult: TValue; AContentList: TResourceContentsList);
-  public
-    { IMCPInvokable }
-    function InvokeTool(AParams: TCallToolParams; AResult: TCallToolResult): Boolean;
-    function InvokeResource(AParams: TReadResourceParams; AResult: TReadResourceResult): Boolean;
+    FInstance: TObject;
 
-    constructor Create(AInstance: TObject; AMethod: TRttiMethod);
+    [Context] FConfig: TMCPConfig;
+    [Context] FGC: IGarbageCollector;
+
+    function GetParamName(LParam: TRttiParameter): string;
+    function ArgumentsToRttiParams(AArguments: TJSONObject; const AParams: TArray<TRttiParameter>): TArray<TValue>;
+
+    constructor Create(AInstance: TObject);
   end;
+
+  TMCPToolInvoker = class(TMCPInvoker)
+  protected
+    FTool: TMCPTool;
+    procedure ResultToTool(const AToolResult: TValue; AContentList: TContentList);
+  public
+    constructor Create(AInstance: TObject; ATool: TMCPTool);
+
+    function Invoke(AParams: TCallToolParams; AResult: TCallToolResult): Boolean;
+  end;
+
+  TMCPResourceInvoker = class(TMCPInvoker)
+  protected
+    FResource: TMCPResource;
+    procedure ResultToResource(const AMethodResult: TValue; AContentList: TResourceContentsList; AResource: TMCPResource);
+  public
+    constructor Create(AInstance: TObject; AResource: TMCPResource);
+
+    function Invoke(AParams: TReadResourceParams; AResult: TReadResourceResult): Boolean;
+  end;
+
+
 
 implementation
 
 uses
   MCPConnect.Content.Writers;
 
-{ TMCPMethodInvoker }
+function TMCPInvoker.ArgumentsToRttiParams(AArguments: TJSONObject; const AParams: TArray<TRttiParameter>): TArray<TValue>;
 
-constructor TMCPMethodInvoker.Create(AInstance: TObject; AMethod: TRttiMethod);
-begin
-  inherited Create;
-  FInstance := AInstance;
-  FMethod := AMethod;
-end;
-
-function TMCPMethodInvoker.InvokeResource(AParams: TReadResourceParams; AResult: TReadResourceResult): Boolean;
-var
-  LResult: TValue;
-begin
-  Result := True;
-
-
-
-  LResult := FMethod.Invoke(FInstance, []);
-  try
-    // If the result is already a TResourceContents just assign it
-    if LResult.IsType<TResourceContents> then
+  function CastJSONValue(AParam: TRttiParameter; AValue: TJSONValue): TValue;
+  begin
+    if not Assigned(AValue) then
     begin
-      AResult.Contents.Free;
-      AResult.Contents := TResourceContentsList(LResult.AsObject);
-      LResult := nil;
-    end
+      Result := CreateNewValue(AParam.ParamType);
+      Exit;
+    end;
+
+    //CheckCompatibility(AParam, AValue);
+    if AParam.ParamType.IsInstance then
+      Result := TNeon.JSONToObject(AParam.ParamType, AValue)
     else
-      ResultToResource(LResult, AResult.Contents);
-  finally
-    FGarbageCollector.Add(LResult);
+      Result := TNeon.JSONToValue(AParam.ParamType, AValue);
+  end;
+
+  function CastParamValue(AParam: TRttiParameter; AValue: TValue): TValue;
+  begin
+    if AValue.IsObject and (AValue.AsObject is TJSONValue) then
+      Result := CastJSONValue(AParam, TJSONValue(AValue.AsObject))
+    else
+      Result := AValue.Cast(AParam.ParamType.Handle);
+  end;
+
+var
+  LParam: TRttiParameter;
+  LParamJSON: TJSONValue;
+begin
+  Result := [];
+
+  for LParam in AParams do
+  begin
+    LParamJSON := AArguments.GetValue(GetParamName(LParam));
+    Result := Result + [CastJSONValue(LParam, LParamJSON)];
   end;
 end;
 
-function TMCPMethodInvoker.InvokeTool(AParams: TCallToolParams; AResult: TCallToolResult): Boolean;
+constructor TMCPInvoker.Create(AInstance: TObject);
+begin
+  FInstance := AInstance;
+end;
+
+function TMCPInvoker.GetParamName(LParam: TRttiParameter): string;
+var
+  LParamAttrib: MCPParamAttribute;
+begin
+  LParamAttrib := TRttiUtils.FindAttribute<MCPParamAttribute>(LParam);
+  if Assigned(LParamAttrib) then
+    Result := LParamAttrib.Name
+  else
+    Result := LParam.Name;
+end;
+
+constructor TMCPToolInvoker.Create(AInstance: TObject; ATool: TMCPTool);
+begin
+  inherited Create(AInstance);
+  FTool := ATool;
+end;
+
+function TMCPToolInvoker.Invoke(AParams: TCallToolParams; AResult: TCallToolResult): Boolean;
 var
   LArgs: TArray<TValue>;
   LResult: TValue;
 begin
   Result := True;
-  LArgs := ArgumentsToRttiParams(AParams.Arguments);
-  FGarbageCollector.Add(LArgs);
-  LResult := FMethod.Invoke(FInstance, LArgs);
+  LArgs := ArgumentsToRttiParams(AParams.Arguments, FTool.Method.GetParameters);
+  FGC.Add(LArgs);
+  LResult := FTool.Method.Invoke(FInstance, LArgs);
   try
     // If the result is already a TContentList just assign it
     if LResult.IsType<TContentList> then
@@ -124,11 +156,12 @@ begin
     else
       ResultToTool(LResult, AResult.Content);
   finally
-    FGarbageCollector.Add(LResult);
+    FGC.Add(LResult);
   end;
 end;
 
-procedure TMCPMethodInvoker.ResultToTool(const AToolResult: TValue; AContentList: TContentList);
+procedure TMCPToolInvoker.ResultToTool(const AToolResult: TValue; AContentList:
+    TContentList);
 var
   LResult: string;
   LWriter: TMCPCustomWriter;
@@ -145,7 +178,7 @@ begin
   if Assigned(LWriter) then
   begin
     LContext.Result := AContentList;
-    LContext.Attributes := FMethod.GetAttributes;
+    LContext.Attributes := FTool.Method.GetAttributes;
 
     LWriter.WriteTool(AToolResult, LContext);
     Exit;
@@ -173,7 +206,7 @@ begin
     tkRecord, tkMRecord:
     begin
       // Check if the tool is configured to return an embedded resource
-      var LMCPTool := TRttiUtils.FindAttribute<MCPToolAttribute>(FMethod);
+      var LMCPTool := TRttiUtils.FindAttribute<MCPToolAttribute>(FTool.Method);
       if Assigned(LMCPTool) and (LMCPTool.Tags.Exists('embedded')) then
       begin
         LResText := TEmbeddedResourceText.Create;
@@ -205,7 +238,41 @@ begin
   AContentList.Add(LContent);
 end;
 
-procedure TMCPMethodInvoker.ResultToResource(const AMethodResult: TValue; AContentList: TResourceContentsList);
+
+{ TMCPResourceInvoker }
+
+constructor TMCPResourceInvoker.Create(AInstance: TObject; AResource: TMCPResource);
+begin
+  inherited Create(AInstance);
+  FResource := AResource;
+end;
+
+function TMCPResourceInvoker.Invoke(AParams: TReadResourceParams; AResult: TReadResourceResult): Boolean;
+var
+  LResult: TValue;
+begin
+  Result := True;
+
+  LResult := FResource.Method.Invoke(FInstance, []);
+  try
+    // If the result is already a TResourceContents just assign it
+    if LResult.IsType<TResourceContents> then
+    begin
+      AResult.Contents.Free;
+      AResult.Contents := TResourceContentsList(LResult.AsObject);
+      LResult := nil;
+    end
+    else
+    begin
+      ResultToResource(LResult, AResult.Contents, FResource);
+    end;
+  finally
+    FGC.Add(LResult);
+  end;
+end;
+
+procedure TMCPResourceInvoker.ResultToResource(const AMethodResult: TValue;
+    AContentList: TResourceContentsList; AResource: TMCPResource);
 var
   LResult: string;
   LWriter: TMCPCustomWriter;
@@ -221,7 +288,7 @@ begin
   if Assigned(LWriter) then
   begin
     LContext.Result := AContentList;
-    LContext.Attributes := FMethod.GetAttributes;
+    LContext.Attributes := FResource.Method.GetAttributes;
 
     LWriter.WriteResource(AMethodResult, LContext);
     Exit;
@@ -236,7 +303,11 @@ begin
     begin
       LResText := TTextResourceContents.Create();
       LResText.Text := LResult;
-      LResText.MimeType := 'text/text';
+      if AResource.MimeType.HasValue and AResource.MimeType.Value.IsEmpty then
+        LResText.MimeType := 'text/plain'
+      else
+        LResText.MimeType := AResource.MimeType;
+
       LResText.Uri := FInstance.ClassName;
     end;
 
@@ -251,7 +322,10 @@ begin
     begin
       LResText := TTextResourceContents.Create;
       LResText.Text := LResult.DeQuotedString('"');
-      LResText.MimeType := 'text/text';
+      if AResource.MimeType.HasValue and AResource.MimeType.Value.IsEmpty then
+        LResText.MimeType := 'text/plain'
+      else
+        LResText.MimeType := AResource.MimeType;
       LResText.Uri := FInstance.ClassName;
     end;
     {
@@ -261,10 +335,10 @@ begin
     tkRecord, tkMRecord:
     begin
       // Check if the tool is configured to return an embedded resource
-      var LMCPTool := TRttiUtils.FindAttribute<MCPToolAttribute>(FMethod);
-      if Assigned(LMCPTool) and (LMCPTool.Tags.Exists('embedded')) then
+      var LToolAttr := TRttiUtils.FindAttribute<MCPToolAttribute>(FMethod);
+      if Assigned(LToolAttr) and (LToolAttr.Tags.Exists('embedded')) then
       begin
-        LResText := TEmbeddedResourceText.Create;
+        LResText := TTextResourceContents.Create;
         LResText.Resource.MIMEType := 'application/json';
         LResText.Resource.URI := '';
         LResText.Resource.Text := LResult;
@@ -293,58 +367,5 @@ begin
 
   AContentList.Add(LContent);
 end;
-
-function TMCPMethodInvoker.GetParamName(LParam: TRttiParameter): string;
-var
-  LParamAttrib: MCPParamAttribute;
-begin
-  LParamAttrib := TRttiUtils.FindAttribute<MCPParamAttribute>(LParam);
-  if Assigned(LParamAttrib) then
-    Result := LParamAttrib.Name
-  else
-    Result := LParam.Name;
-end;
-
-function TMCPMethodInvoker.ArgumentsToRttiParams(AArguments: TJSONObject): TArray<TValue>;
-
-  function CastJSONValue(AParam: TRttiParameter; AValue: TJSONValue): TValue;
-  begin
-    if not Assigned(AValue) then
-    begin
-      Result := CreateNewValue(AParam.ParamType);
-      Exit;
-    end;
-
-    //CheckCompatibility(AParam, AValue);
-    if AParam.ParamType.IsInstance then
-      Result := TNeon.JSONToObject(AParam.ParamType, AValue)
-    else
-      Result := TNeon.JSONToValue(AParam.ParamType, AValue);
-  end;
-
-  function CastParamValue(AParam: TRttiParameter; AValue: TValue): TValue;
-  begin
-    if AValue.IsObject and (AValue.AsObject is TJSONValue) then
-      Result := CastJSONValue(AParam, TJSONValue(AValue.AsObject))
-    else
-      Result := AValue.Cast(AParam.ParamType.Handle);
-  end;
-
-var
-  LParam: TRttiParameter;
-  LParamJSON: TJSONValue;
-  LRttiParams: TArray<TRttiParameter>;
-begin
-  Result := [];
-
-  LRttiParams := FMethod.GetParameters;
-
-  for LParam in LRttiParams do
-  begin
-    LParamJSON := AArguments.GetValue(GetParamName(LParam));
-    Result := Result + [CastJSONValue(LParam, LParamJSON)];
-  end;
-end;
-
 
 end.

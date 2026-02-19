@@ -17,7 +17,7 @@ uses
 type
   TWeatherResource = class
   public
-    [McpResource('weather', 'ui://weather/info', 'text/html', 'Shows the weather for the DelphiDay event')]
+    [McpResource('weather-resource', 'text://weather', 'text/csv', 'Shows the weather for the DelphiDay event')]
     function GetWeatherInfo: string;
   end;
 

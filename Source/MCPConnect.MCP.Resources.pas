@@ -154,6 +154,44 @@ type
   TMCPResourceTemplates = class(TObjectList<TMCPResourceTemplate>);
 
 
+  TUIResourceCSP = class
+  public
+    [NeonInclude(IncludeIf.NotEmpty)] ConnectDomains: TArray<string>;
+    [NeonInclude(IncludeIf.NotEmpty)] ResourceDomains: TArray<string>;
+    [NeonInclude(IncludeIf.NotEmpty)] FrameDomains: TArray<string>;
+    [NeonInclude(IncludeIf.NotEmpty)] BaseUriDomains: TArray<string>;
+  public
+    procedure AddSiteException(const ASite: string);
+  end;
+
+  TUIResourcePermissions = class
+  public
+    [NeonInclude(IncludeIf.NotEmpty)] Camera: TJSONObject;
+    [NeonInclude(IncludeIf.NotEmpty)] Microphone: TJSONObject;
+    [NeonInclude(IncludeIf.NotEmpty)] Geolocation: TJSONObject;
+    [NeonInclude(IncludeIf.NotEmpty)] ClipboardWrite: TJSONObject;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+  end;
+
+  TUIResourceUI = class
+  public
+    [NeonInclude(IncludeIf.NotEmpty)] Csp: TUIResourceCSP;
+    [NeonInclude(IncludeIf.NotEmpty)] Permissions: TUIResourcePermissions;
+    Domain: NullString;
+    PrefersBorder: NullBoolean;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    function ToJSON: TJSONObject;
+  end;
+
+  TMCPUIResourceConfigurator = reference to procedure(AResource: TMCPResource; AUI: TUIResourceUI);
+
+
   /// <summary>
   /// Sent from the client to request a list of resources the server has.
   /// </summary>
@@ -512,6 +550,55 @@ begin
     AProps.AddPair(LAttr.Name, LJSONObj);
     ARequired.Add(LAttr.Name);
   end;
+end;
+
+constructor TUIResourcePermissions.Create;
+begin
+  Camera := TJSONObject.Create;
+  Microphone := TJSONObject.Create;
+  Geolocation := TJSONObject.Create;
+  ClipboardWrite := TJSONObject.Create;
+end;
+
+destructor TUIResourcePermissions.Destroy;
+begin
+  Camera.Free;
+  Microphone.Free;
+  Geolocation.Free;
+  ClipboardWrite.Free;
+
+  inherited;
+end;
+
+{ TUIResourceUI }
+
+constructor TUIResourceUI.Create;
+begin
+  Csp := TUIResourceCSP.Create;
+  Permissions := TUIResourcePermissions.Create;
+end;
+
+destructor TUIResourceUI.Destroy;
+begin
+  Permissions.Free;
+  Csp.Free;
+
+  inherited;
+end;
+
+function TUIResourceUI.ToJSON: TJSONObject;
+begin
+  Result := TNeon.ObjectToJSON(Self, MCPNeonConfig) as TJSONObject;
+end;
+
+{ TUIResourceCSP }
+
+procedure TUIResourceCSP.AddSiteException(const ASite: string);
+begin
+  ConnectDomains := ConnectDomains + [ASite];
+  ResourceDomains := ResourceDomains + [ASite];
+  FrameDomains := FrameDomains + [ASite];
+  BaseUriDomains := BaseUriDomains + [ASite];
 end;
 
 end.

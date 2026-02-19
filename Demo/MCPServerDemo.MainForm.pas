@@ -12,6 +12,7 @@ uses
 
   Neon.Core.Nullables,
   Neon.Core.Tags,
+  Neon.Core.Attributes,
 
   MCPConnect.MCP.Tools,
   MCPConnect.MCP.Prompts,
@@ -23,6 +24,28 @@ uses
   MCPConnect.MCP.Attributes;
 
 type
+   THeaderTest = class
+  private
+    Fresults: string;
+    procedure Setresults(const Value: string);
+  public
+     [NeonProperty('results')]
+     property results: string read Fresults write Setresults;
+   end;
+
+
+   TTest = class
+  private
+    Fd: THeaderTest;
+    procedure Setd(const Value: THeaderTest);
+  public
+     constructor Create;
+     destructor Destroy; override;
+
+     [NeonProperty('d')]
+     property d: THeaderTest read Fd write Setd;
+   end;
+
   TForm1 = class(TForm)
     ButtonStart: TButton;
     ButtonStop: TButton;
@@ -36,12 +59,14 @@ type
     btnListResource: TButton;
     btnTemplates: TButton;
     Button2: TButton;
+    Button3: TButton;
     procedure FormCreate(Sender: TObject);
     procedure ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
     procedure btnConfigClick(Sender: TObject);
     procedure btnListResourceClick(Sender: TObject);
     procedure btnTemplatesClick(Sender: TObject);
     procedure Button2Click(Sender: TObject);
+    procedure Button3Click(Sender: TObject);
     procedure ButtonStartClick(Sender: TObject);
     procedure ButtonStopClick(Sender: TObject);
     procedure ButtonOpenBrowserClick(Sender: TObject);
@@ -165,6 +190,25 @@ begin
   tags.Free;
 end;
 
+procedure TForm1.Button3Click(Sender: TObject);
+begin
+  var app := TMCPResource.Create;
+  app.Name := 'app1';
+  app.Uri := 'ui://test.app';
+  app.Description := 'Test App';
+  app.MimeType := 'text/html';
+
+  //app.Meta.Ui.Csp.AddSiteException('https://www.google.it');
+  //app.Meta.CustomMeta.AddPair('custom', 'Custom Value');
+
+  var s := TNeon.ObjectToJSONString(app, MCPNeonConfig.SetPrettyPrint(True));
+
+
+  memoLog.Lines.Add(s);
+
+  app.Free;
+end;
+
 procedure TForm1.ButtonOpenBrowserClick(Sender: TObject);
 {$IFDEF MSWINDOWS}
 var
@@ -212,6 +256,31 @@ begin
     FServer.DefaultPort := StrToInt(EditPort.Text);
     FServer.Active := True;
   end;
+end;
+
+{ THeaderTest }
+
+procedure THeaderTest.Setresults(const Value: string);
+begin
+  Fresults := Value;
+end;
+
+{ TTest }
+
+constructor TTest.Create;
+begin
+  fd := THeaderTest.Create;
+end;
+
+destructor TTest.Destroy;
+begin
+  d.Free;
+  inherited;
+end;
+
+procedure TTest.Setd(const Value: THeaderTest);
+begin
+  Fd := Value;
 end;
 
 end.

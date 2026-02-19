@@ -98,15 +98,15 @@ type
 
 implementation
 
-{ TMCPToolApi }
-
 uses
   Neon.Core.Utils,
   MCPConnect.MCP.Invoker;
 
+{ TMCPToolApi }
+
 function TMCPToolsApi.CallTool(const AParams: TCallToolParams): TCallToolResult;
 var
-  LInvoker: IMCPInvokable;
+  LInvoker: TMCPToolInvoker;
   LTool: TMCPTool;
   LToolObj: TObject;
 begin
@@ -116,21 +116,34 @@ begin
   // Create an instance of the tool class
   LToolObj := TRttiUtils.CreateInstance(LTool.Classe);
   try
-    LInvoker := TMCPMethodInvoker.Create(LToolObj, LTool.Method);
     RPCContext.Inject(LToolObj);
-    RPCContext.Inject(LInvoker);
 
-    Result := TCallToolResult.Create;
+    LInvoker := TMCPToolInvoker.Create(LToolObj, LTool);
     try
-      LInvoker.InvokeTool(AParams, Result);
-    except
-      Result.Free;
-      raise;
+      RPCContext.Inject(LInvoker);
+
+      Result := TCallToolResult.Create;
+      try
+        LInvoker.Invoke(AParams, Result);
+      except
+        Result.Free;
+        raise;
+      end;
+    finally
+      LInvoker.Free;
     end;
   finally
     LToolObj.Free;
   end;
 end;
+
+
+function TMCPToolsApi.ToolsList: TListToolsResult;
+begin
+  Result := MCPConfig.Tools.ListEnabled;
+end;
+
+{ TMCPNotificationsApi }
 
 procedure TMCPNotificationsApi.Cancelled(ACancelledParams: TCancelledNotificationParams);
 begin
@@ -142,10 +155,6 @@ begin
 
 end;
 
-function TMCPToolsApi.ToolsList: TListToolsResult;
-begin
-  Result := MCPConfig.Tools.ListEnabled;
-end;
 
 { TMCPInitializeApi }
 
@@ -180,7 +189,7 @@ end;
 
 function TMCPResourcesApi.ReadResource([JRPCParams] const AParams: TReadResourceParams): TReadResourceResult;
 var
-  LInvoker: IMCPInvokable;
+  LInvoker: TMCPResourceInvoker;
   LRes: TMCPResource;
   LResObj: TObject;
 begin
@@ -198,11 +207,16 @@ begin
     begin
       // Create an instance of the resource class
       LResObj := TRttiUtils.CreateInstance(LRes.Classe);
-      RPCContext.Inject(LResObj);
       try
-        LInvoker := TMCPMethodInvoker.Create(LResObj, LRes.Method);
-        RPCContext.Inject(LInvoker);
-        LInvoker.InvokeResource(AParams, Result);
+        RPCContext.Inject(LResObj);
+
+        LInvoker := TMCPResourceInvoker.Create(LResObj, LRes);
+        try
+          RPCContext.Inject(LInvoker);
+          LInvoker.Invoke(AParams, Result);
+        finally
+          LInvoker.Free;
+        end;
       finally
         LResObj.Free;
       end;
@@ -215,7 +229,13 @@ end;
 
 function TMCPResourcesApi.ResourcesList: TListResourcesResult;
 begin
-  Result := MCPConfig.Resources.ListEnabled;
+  Result := TListResourcesResult.Create;
+  try
+    MCPConfig.Resources.CompileList(Result);
+  except
+    Result.Free;
+    raise;
+  end;
 end;
 
 function TMCPResourcesApi.TemplatesList: TListResourceTemplatesResult;
@@ -242,7 +262,6 @@ initialization
   TJRPCRegistry.Instance.RegisterClass(TMCPInitializeApi, MCPNeonConfig);
   TJRPCRegistry.Instance.RegisterClass(TMCPToolsApi, MCPNeonConfig);
   TJRPCRegistry.Instance.RegisterClass(TMCPResourcesApi, MCPNeonConfig);
-
   TJRPCRegistry.Instance.RegisterClass(TMCPNotificationsApi, MCPNeonConfig);
   TJRPCRegistry.Instance.RegisterClass(TMCPLoggingApi, MCPNeonConfig);
   TJRPCRegistry.Instance.RegisterClass(TMCPPingApi, MCPNeonConfig);

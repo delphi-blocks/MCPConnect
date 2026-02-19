@@ -44,10 +44,10 @@ type
 
   TMCPBaseConfig = class;
   TMCPListConfig = class;
-  TMCPToolConfig = class;
+  TMCPToolsConfig = class;
   TMCPServerConfig = class;
-  TMCPResourceConfig = class;
-  
+  TMCPResourcesConfig = class;
+
   /// <summary>
   ///   Primary configuration interface for Model Context Protocol (MCP) servers.
   ///   Configures server metadata, tool classes, and custom content writers for
@@ -102,12 +102,12 @@ type
     /// <summary>
     ///   Tools configuration
     /// </summary>
-    function Tools: TMCPToolConfig;
+    function Tools: TMCPToolsConfig;
 
     /// <summary>
     ///   Resources configuration
     /// </summary>
-    function Resources: TMCPResourceConfig;
+    function Resources: TMCPResourcesConfig;
 
     /// <summary>
     ///   Prompts configuration
@@ -219,7 +219,7 @@ type
   end;
 
 
-  TMCPToolConfig = class(TMCPBaseConfig)
+  TMCPToolsConfig = class(TMCPBaseConfig)
   private
     procedure WriteInputSchema(ATool: TMCPTool);
     procedure WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
@@ -230,7 +230,7 @@ type
     constructor Create(AConfig: IMCPConfig);
     destructor Destroy; override;
 
-    function RegisterClass(AClass: TClass): TMCPToolConfig;
+    function RegisterClass(AClass: TClass): TMCPToolsConfig;
 
     /// <summary>
     ///   Creates an instance of a class by namespace.
@@ -277,26 +277,27 @@ type
   end;
 
 
-  TMCPResourceConfig = class(TMCPBaseConfig)
+  TMCPResourcesConfig = class(TMCPBaseConfig)
   public
     Registry: TMCPResourceRegistry;
     MimeTypes: TMCPMimeTypes;
     Schemes: TDictionary<string, string>;
     BasePath: string;
   private
+    procedure RegisterAppMethod(AClass: TClass; AMethod: TRttiMethod; AAttr: MCPAppAttribute);
+    procedure RegisterResMethod(AClass: TClass; AMethod: TRttiMethod; AAttr: MCPResourceAttribute);
   public
     constructor Create(AConfig: IMCPConfig);
     destructor Destroy; override;
 
-    function AddMimeType(AEncoding: TMimeEncoding; const AMime: string; const AExt: string = ''): TMCPResourceConfig;
-    function SetBasePath(const APath: string): TMCPResourceConfig;
-    function RegisterScheme(const AScheme, APath: string): TMCPResourceConfig;
+    function AddMimeType(AEncoding: TMimeEncoding; const AMime: string; const AExt: string = ''): TMCPResourcesConfig;
+    function SetBasePath(const APath: string): TMCPResourcesConfig;
+    function RegisterScheme(const AScheme, APath: string): TMCPResourcesConfig;
 
-    function RegisterClass(AClass: TClass): TMCPResourceConfig;
-    function RegisterStatic(const AFileName, ADescription: string; const AMime: string = ''): TMCPResourceConfig;
-    //function RegisterStatic(const AScheme, APath, AMime, ADescription: string): TMCPResourceConfig;
-
-    function RegisterResource(AClass: TClass; const AMethod, AUri: string; AConfig: TMCPResourceConfigurator): TMCPResourceConfig;
+    function RegisterClass(AClass: TClass): TMCPResourcesConfig;
+    function RegisterFile(const AFileName, ADescription: string; const AMime: string = ''): TMCPResourcesConfig;
+    function RegisterResource(AClass: TClass; const AMethod, AUri: string; AConfig: TMCPResourceConfigurator): TMCPResourcesConfig;
+    function RegisterApp(AClass: TClass; const AMethod, AUri: string; AConfig: TMCPUIResourceConfigurator): TMCPResourcesConfig;
 
     /// <summary>
     ///   Creates an instance of a class by namespace.
@@ -307,7 +308,7 @@ type
     /// <exception cref="EJRPCException">Raised if namespace not found</exception>
     function CreateInstance(const AUri: string): TObject;
 
-    function ListEnabled: TListResourcesResult;
+    procedure CompileList(AList: TListResourcesResult);
   end;
 
 
@@ -315,8 +316,9 @@ type
   TMCPConfig = class(TJRPCConfiguration, IMCPConfig)
   private
     FServer: TMCPServerConfig;
-    FTools: TMCPToolConfig;
-    FResources: TMCPResourceConfig;
+    FTools: TMCPToolsConfig;
+    FResources: TMCPResourcesConfig;
+
     FTemplates: TMCPListConfig;
     FPrompts: TMCPListConfig;
   public
@@ -325,8 +327,9 @@ type
 
     { IMCPConfig }
     function Server: TMCPServerConfig;
-    function Tools: TMCPToolConfig;
-    function Resources: TMCPResourceConfig;
+    function Tools: TMCPToolsConfig;
+    function Resources: TMCPResourcesConfig;
+
     function Templates: TMCPListConfig;
     function Prompts: TMCPListConfig;
   end;
@@ -344,8 +347,8 @@ begin
   inherited;
 
   FServer := TMCPServerConfig.Create(Self);
-  FTools := TMCPToolConfig.Create(Self);
-  FResources := TMCPResourceConfig.Create(Self);
+  FTools := TMCPToolsConfig.Create(Self);
+  FResources := TMCPResourcesConfig.Create(Self);
   FTemplates := TMCPListConfig.Create(Self);
   FPrompts := TMCPListConfig.Create(Self);
 end;
@@ -366,7 +369,7 @@ begin
   Result := FPrompts;
 end;
 
-function TMCPConfig.Resources: TMCPResourceConfig;
+function TMCPConfig.Resources: TMCPResourcesConfig;
 begin
   Result := FResources;
 end;
@@ -376,7 +379,7 @@ begin
   Result := FTemplates;
 end;
 
-function TMCPConfig.Tools: TMCPToolConfig;
+function TMCPConfig.Tools: TMCPToolsConfig;
 begin
   Result := FTools;
 end;
@@ -431,13 +434,13 @@ begin
   Result := TRttiUtils.CreateInstance(LClass);
 end;
 
-constructor TMCPToolConfig.Create(AConfig: IMCPConfig);
+constructor TMCPToolsConfig.Create(AConfig: IMCPConfig);
 begin
   inherited;
   ToolRegistry := TMCPToolRegistry.Create([doOwnsValues]);
 end;
 
-function TMCPToolConfig.CreateInstance(const ATool: string): TObject;
+function TMCPToolsConfig.CreateInstance(const ATool: string): TObject;
 var
   LTool: TMCPTool;
 begin
@@ -447,14 +450,14 @@ begin
   Result := TRttiUtils.CreateInstance(LTool.Classe);
 end;
 
-destructor TMCPToolConfig.Destroy;
+destructor TMCPToolsConfig.Destroy;
 begin
   ToolRegistry.Free;
 
   inherited;
 end;
 
-function TMCPToolConfig.ListEnabled: TListToolsResult;
+function TMCPToolsConfig.ListEnabled: TListToolsResult;
 begin
   Result := TListToolsResult.Create;
   for var pair in ToolRegistry do
@@ -462,7 +465,7 @@ begin
       Result.Tools.Add(pair.Value);
 end;
 
-function TMCPToolConfig.RegisterClass(AClass: TClass): TMCPToolConfig;
+function TMCPToolsConfig.RegisterClass(AClass: TClass): TMCPToolsConfig;
 var
   LScope: string;
   LClassType: TRttiType;
@@ -502,21 +505,21 @@ begin
   Result := Self;
 end;
 
-function TMCPToolConfig.ListComplete: TListToolsResult;
+function TMCPToolsConfig.ListComplete: TListToolsResult;
 begin
   Result := TListToolsResult.Create;
   for var pair in ToolRegistry do
     Result.Tools.Add(pair.Value);
 end;
 
-procedure TMCPToolConfig.FilterList(AList: TListToolsResult; AFilter: TMCPToolFilterFunc);
+procedure TMCPToolsConfig.FilterList(AList: TListToolsResult; AFilter: TMCPToolFilterFunc);
 begin
   for var pair in ToolRegistry do
     if AFilter(pair.Value) then
       AList.Tools.Add(pair.Value);
 end;
 
-procedure TMCPToolConfig.WriteTool(ATool: TMCPTool; AAttr: MCPToolAttribute);
+procedure TMCPToolsConfig.WriteTool(ATool: TMCPTool; AAttr: MCPToolAttribute);
 begin
   ATool.AddIcon(AAttr.Tags.GetValueAs<string>('icon'));
   ATool.Category := AAttr.Tags.GetValueAs<string>('category');
@@ -537,7 +540,7 @@ begin
   WriteInputSchema(ATool);
 end;
 
-procedure TMCPToolConfig.WriteInputSchema(ATool: TMCPTool);
+procedure TMCPToolsConfig.WriteInputSchema(ATool: TMCPTool);
 var
   LProps, LInputSchema: TJSONObject;
   LRequired: TJSONArray;
@@ -566,7 +569,7 @@ begin
   ATool.ExchangeInputSchema(LInputSchema);
 end;
 
-procedure TMCPToolConfig.WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
+procedure TMCPToolsConfig.WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
 var
   LJSONObj: TJSONObject;
   LParam: TRttiParameter;
@@ -649,25 +652,32 @@ begin
   FConfig := AConfig;
 end;
 
-{ TMCPResourceConfig }
+{ TMCPResourcesConfig }
 
-function TMCPResourceConfig.AddMimeType(AEncoding: TMimeEncoding; const AMime: string; const AExt: string): TMCPResourceConfig;
+function TMCPResourcesConfig.AddMimeType(AEncoding: TMimeEncoding; const AMime: string; const AExt: string): TMCPResourcesConfig;
 begin
   MimeTypes.AddMime(AEncoding, AMime, AExt);
   Result := Self;
 end;
 
-constructor TMCPResourceConfig.Create(AConfig: IMCPConfig);
+procedure TMCPResourcesConfig.CompileList(AList: TListResourcesResult);
+begin
+  for var pair in Registry do
+    if not pair.Value.Disabled then
+      AList.Resources.Add(pair.Value);
+end;
+
+constructor TMCPResourcesConfig.Create(AConfig: IMCPConfig);
 begin
   inherited;
-  BasePath := GetCurrentDir + '\data';
+  BasePath := GetCurrentDir;
   ForceDirectories(BasePath);
   MimeTypes := TMCPMimeTypes.Create;
   MimeTypes.SetStandard;
   Registry := TMCPResourceRegistry.Create([doOwnsValues]);
 end;
 
-function TMCPResourceConfig.CreateInstance(const AUri: string): TObject;
+function TMCPResourcesConfig.CreateInstance(const AUri: string): TObject;
 var
   LResource: TMCPResource;
 begin
@@ -677,59 +687,93 @@ begin
   Result := TRttiUtils.CreateInstance(LResource.Classe);
 end;
 
-destructor TMCPResourceConfig.Destroy;
+destructor TMCPResourcesConfig.Destroy;
 begin
   MimeTypes.Free;
   Registry.Free;
   inherited;
 end;
 
-function TMCPResourceConfig.ListEnabled: TListResourcesResult;
+procedure TMCPResourcesConfig.RegisterAppMethod(AClass: TClass; AMethod:
+    TRttiMethod; AAttr: MCPAppAttribute);
+var
+  LRes: TMCPResource;
 begin
-  Result := TListResourcesResult.Create;
-  for var pair in Registry do
-    if not pair.Value.Disabled then
-      Result.Resources.Add(pair.Value);
+  if Length(AMethod.GetParameters) > 0 then
+    raise EMCPException.CreateFmt('Standard method for resource [%s] cannot have parameters', [AAttr.Name]);
+
+  if not AAttr.Uri.StartsWith('ui://') then
+    raise EMCPException.Create('Apps UI uri must use the "ui://" scheme');
+
+  LRes := TMCPResource.Create;
+  try
+    LRes.Name := AAttr.Name;
+    LRes.Uri := AAttr.Uri;
+    LRes.MimeType := 'text/html;profile=mcp-app';
+    LRes.Description := AAttr.Description;
+    LRes.Classe := AClass;
+    LRes.Method := AMethod;
+
+    Registry.Add(LRes.Uri, LRes);
+  except
+    LRes.Free;
+    raise;
+  end;
 end;
 
-function TMCPResourceConfig.RegisterClass(AClass: TClass): TMCPResourceConfig;
+procedure TMCPResourcesConfig.RegisterResMethod(AClass: TClass; AMethod: TRttiMethod; AAttr: MCPResourceAttribute);
+var
+  LRes: TMCPResource;
+begin
+  if Length(AMethod.GetParameters) > 0 then
+    raise EMCPException.CreateFmt('Standard method for resource [%s] cannot have parameters', [AAttr.Name]);
+
+  LRes := TMCPResource.Create;
+  try
+    LRes.Name := AAttr.Name;
+    LRes.Uri := AAttr.Uri;
+    LRes.MimeType := AAttr.MimeType;
+    LRes.Description := AAttr.Description;
+    LRes.Classe := AClass;
+    LRes.Method := AMethod;
+    Registry.Add(LRes.Uri, LRes);
+  except
+    LRes.Free;
+    raise;
+  end;
+
+end;
+
+function TMCPResourcesConfig.RegisterClass(AClass: TClass): TMCPResourcesConfig;
 var
   LClassType: TRttiType;
-  LRes: TMCPResource;
+  LAppAttr: MCPAppAttribute;
   LResAttr: MCPResourceAttribute;
 begin
+  Result := Self;
   LClassType := TRttiUtils.Context.GetType(AClass);
 
-  // Registers all the resources found in AClass
+  // Registers all the Resources and UIResources found in AClass
   for var LMethod in LClassType.GetMethods do
   begin
     LResAttr := TRttiUtils.FindAttribute<MCPResourceAttribute>(LMethod);
-    if not Assigned(LResAttr) then
+    if Assigned(LResAttr) then
+    begin
+      RegisterResMethod(AClass, LMethod, LResAttr);
       Continue;
+    end;
 
-    if Length(LMethod.GetParameters) > 0 then
-      raise EMCPException.CreateFmt('Standard method for resource [%s] cannot have parameters', [LResAttr.Name]);
-
-    LRes := TMCPResource.Create;
-    try
-      LRes.Name := LResAttr.Name;
-      LRes.Uri := LResAttr.Uri;
-      LRes.MimeType := LResAttr.MimeType;
-      LRes.Description := LResAttr.Description;
-      LRes.Classe := AClass;
-      LRes.Method := LMethod;
-
-      Registry.Add(LRes.Uri, LRes);
-    except
-      LRes.Free;
-      raise;
+    LAppAttr := TRttiUtils.FindAttribute<MCPAppAttribute>(LMethod);
+    if Assigned(LAppAttr) then
+    begin
+      RegisterAppMethod(AClass, LMethod, LAppAttr);
+      Continue;
     end;
   end;
-  Result := Self;
 end;
 
-function TMCPResourceConfig.RegisterResource(AClass: TClass; const AMethod, AUri: string;
-  AConfig: TMCPResourceConfigurator): TMCPResourceConfig;
+function TMCPResourcesConfig.RegisterResource(AClass: TClass; const AMethod, AUri: string;
+  AConfig: TMCPResourceConfigurator): TMCPResourcesConfig;
 var
   LClassType: TRttiType;
   LRes: TMCPResource;
@@ -756,13 +800,52 @@ begin
   Result := Self;
 end;
 
-function TMCPResourceConfig.RegisterScheme(const AScheme, APath: string): TMCPResourceConfig;
+function TMCPResourcesConfig.RegisterScheme(const AScheme, APath: string): TMCPResourcesConfig;
 begin
   Schemes.Add(AScheme, APath);
   Result := Self;
 end;
 
-function TMCPResourceConfig.RegisterStatic(const AFileName, ADescription: string; const AMime: string): TMCPResourceConfig;
+function TMCPResourcesConfig.RegisterApp(AClass: TClass; const AMethod, AUri:
+    string; AConfig: TMCPUIResourceConfigurator): TMCPResourcesConfig;
+var
+  LClassType: TRttiType;
+  LMethod: TRttiMethod;
+  LApp: TMCPResource;
+  LAppUI: TUIResourceUI;
+  LJSON: TJSONObject;
+begin
+  LClassType := TRttiUtils.Context.GetType(AClass);
+  LMethod := LClassType.GetMethod(AMethod);
+  if not Assigned(LMethod) then
+    raise EMCPException.CreateFmt('Method [%s] not found in class [%s]', [AMethod, AClass.ClassName]);
+
+  if Length(LMethod.GetParameters) > 0 then
+    raise EMCPException.Create('App''s method cannot have parameters');
+
+  LApp := TMCPResource.Create;
+  try
+    Registry.Add(AUri, LApp);
+
+    LAppUI := TUIResourceUI.Create;
+    try
+      AConfig(LApp, LAppUI);
+      LJSON := LAppUI.ToJSON;
+      if LJSON.Count > 0 then
+        LApp.Meta.AddPair('ui', LJSON);
+    finally
+      LAppUI.Free;
+    end;
+  except
+    LApp.Free;
+    raise;
+  end;
+
+  Result := Self;
+end;
+
+function TMCPResourcesConfig.RegisterFile(const AFileName, ADescription:
+    string; const AMime: string = ''): TMCPResourcesConfig;
 const
   RES_CLASS: TClass = TMCPStaticResource;
   RES_METHOD = 'GetResource';
@@ -806,7 +889,7 @@ begin
   Result := Self;
 end;
 
-function TMCPResourceConfig.SetBasePath(const APath: string): TMCPResourceConfig;
+function TMCPResourcesConfig.SetBasePath(const APath: string): TMCPResourcesConfig;
 begin
   BasePath := APath;
   Result := Self;
@@ -849,7 +932,7 @@ begin
   AddMime(TMimeEncoding.Plain, 'text/javascript', '.js');
   AddMime(TMimeEncoding.Plain, 'text/markdown', '.md,.markdown,.mdown,.markdn');
   AddMime(TMimeEncoding.Plain, 'text/mathml', '.mathml,.mml');
-  AddMime(TMimeEncoding.Plain, 'text/plain', '.conf,.def,.diff,.in,.ksh,.list,.log,.pl,.text,.txt');
+  AddMime(TMimeEncoding.Plain, 'text/plain', '.txt,.text,.ini,.conf,.def,.diff,.list,.log');
   AddMime(TMimeEncoding.Plain, 'text/prs.lines.tag', '.dsc');
   AddMime(TMimeEncoding.Plain, 'text/richtext', '.rtx');
   AddMime(TMimeEncoding.Plain, 'text/sgml', '.sgm,.sgml');
@@ -1074,7 +1157,7 @@ begin
   AddMime(TMimeEncoding.Plain, 'text/html', '.htm,.html');
   AddMime(TMimeEncoding.Plain, 'text/javascript', '.js');
   AddMime(TMimeEncoding.Plain, 'text/markdown', '.md,.markdown,.mdown,.markdn');
-  AddMime(TMimeEncoding.Plain, 'text/plain', '.conf,.def,.diff,.in,.ksh,.list,.log,.pl,.text,.txt');
+  AddMime(TMimeEncoding.Plain, 'text/plain', '.txt,.text,.ini,.conf,.def,.diff,.list,.log');
 
   AddMime(TMimeEncoding.Plain, 'application/json', '.json');
   AddMime(TMimeEncoding.Plain, 'application/xml', '.xml');

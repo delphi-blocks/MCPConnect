@@ -74,6 +74,19 @@ type
     constructor Create(const AName, AUri: string; const AMime: string = ''; const ADescription: string = ''; const AAdditionalTags: string = '');
   end;
 
+  MCPAppAttribute = class(McpBaseAttribute)
+  private
+    FName: string;
+    FDescription: string;
+    FUri: string;
+  public
+    property Uri: string read FUri;
+    property Name: string read FName;
+    property Description: string read FDescription;
+
+    constructor Create(const AName, AUri: string; const ADescription: string = ''; const AAdditionalTags: string = '');
+  end;
+
   MCPTemplateAttribute = class(MCPResourceBaseAttribute)
   private
     FUriTemplate: string;
@@ -165,6 +178,17 @@ end;
 constructor McpScopeAttribute.Create(const AName, AAdditionalTags: string);
 begin
   FName := AName;
+  FAdditionalTags := AAdditionalTags;
+end;
+
+{ MCPAppAttribute }
+
+constructor MCPAppAttribute.Create(const AName, AUri, ADescription, AAdditionalTags: string);
+begin
+  inherited Create;
+  FName := AName;
+  FUri := AUri;
+  FDescription := ADescription;
   FAdditionalTags := AAdditionalTags;
 end;
 

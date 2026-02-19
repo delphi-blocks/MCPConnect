@@ -28,7 +28,8 @@ uses
   MCPConnect.MCP.Types in '..\Source\MCPConnect.MCP.Types.pas',
   MCPConnect.Transport.WebBroker in '..\Source\MCPConnect.Transport.WebBroker.pas',
   MCPConnect.MCP.Config in '..\Source\MCPConnect.MCP.Config.pas',
-  MCPServerDemo.Resources in 'MCPServerDemo.Resources.pas';
+  MCPServerDemo.Resources in 'MCPServerDemo.Resources.pas',
+  MCPServerDemo.Apps in 'MCPServerDemo.Apps.pas';
 
 {$R *.res}
 

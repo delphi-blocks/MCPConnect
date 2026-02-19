@@ -43,6 +43,7 @@ uses
   // Implemetation of MCP API
   MCPConnect.MCP.Server.Api,
 
+  MCPServerDemo.Apps,
   MCPServerDemo.Tools,
   MCPServerDemo.Resources;
 
@@ -81,12 +82,12 @@ begin
         .SetVersion('2.0.0')
         .SetCapabilities([Tools, Resources])
 
+
         .RegisterWriter(TMCPImageWriter)
         .RegisterWriter(TMCPPictureWriter)
         .RegisterWriter(TMCPStreamWriter)
         .RegisterWriter(TMCPStringListWriter)
       .BackToMCP
-
 
       .Tools
         .RegisterClass(TTestTool)
@@ -94,10 +95,13 @@ begin
         //.RegisterClass(TShoppingCartTool)  // Session-based shopping cart
       .BackToMCP
 
+
       .Resources
+        .SetBasePath(GetCurrentDir + '\data')
         .RegisterClass(TWeatherResource)
-        .RegisterStatic('index.md', 'Indice Documentazione')
-        .RegisterStatic('mcpconnect.pdf', 'MCPConnect Introduction')
+        .RegisterClass(TWeatherApp)
+        .RegisterFile('index.md', 'Indice Documentazione')
+        .RegisterFile('documentation\mcp\mcpconnect.pdf', 'MCPConnect Introduction')
       .BackToMCP
 
   ;

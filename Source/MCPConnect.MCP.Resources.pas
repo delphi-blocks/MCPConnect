@@ -138,7 +138,7 @@ type
   TMCPResources = class(TObjectList<TMCPResource>);
   TMCPResourceRegistry = class(TObjectDictionary<string, TMCPResource>);
   TMCPResourceConfigurator = reference to procedure(AResource: TMCPResource);
-  TMCPResourceFilterFunc = reference to function (ATool: TMCPResource): Boolean;
+  TMCPResourceFilterFunc = reference to function (AResource: TMCPResource): Boolean;
 
   /// <summary>
   /// Represents a template description for resources available on the server.
@@ -151,7 +151,10 @@ type
     UriTemplate: NullString;
   end;
 
-  TMCPResourceTemplates = class(TObjectList<TMCPResourceTemplate>);
+  TMCPTemplates = class(TObjectList<TMCPResourceTemplate>);
+  TMCPTemplateRegistry = class(TObjectDictionary<string, TMCPResourceTemplate>);
+  TMCPTemplateConfigurator = reference to procedure(ATemplate: TMCPResourceTemplate);
+  TMCPTemplateFilterFunc = reference to function (ATemplate: TMCPResourceTemplate): Boolean;
 
 
   TUIResourceCSP = class
@@ -241,7 +244,7 @@ type
     /// <summary>
     /// A list of available resource templates.
     /// </summary>
-    ResourceTemplates: TMCPResourceTemplates;
+    ResourceTemplates: TMCPTemplates;
 
     /// <summary>
     ///   An opaque token representing the pagination position after the last returned result. If present, there may be more results available
@@ -448,7 +451,7 @@ end;
 constructor TListResourceTemplatesResult.Create;
 begin
   inherited;
-  ResourceTemplates := TMCPResourceTemplates.Create;
+  ResourceTemplates := TMCPTemplates.Create;
 end;
 
 destructor TListResourceTemplatesResult.Destroy;

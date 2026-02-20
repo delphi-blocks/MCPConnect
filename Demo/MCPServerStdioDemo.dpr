@@ -48,16 +48,24 @@ begin
         .ApplyConfig
 
       .Plugin.Configure<IMCPConfig>
-        .SetServerName('delphi-mcp-server')
-        .SetServerVersion('2.0.0')
-        .RegisterToolClass('test', TTestTool)
-        .RegisterToolClass('delphi_day', TDelphiDayTool)
-        .RegisterToolClass(TShoppingCartTool)  // Session-based shopping cart
-        .RegisterWriter(TMCPImageWriter)
-        .RegisterWriter(TMCPPictureWriter)
-        .RegisterWriter(TMCPStreamWriter)
-        .RegisterWriter(TMCPStringListWriter)
-        .ApplyConfig;
+        .Server
+          .SetName('delphi-mcp-server')
+          .SetVersion('2.0.0')
+          .SetCapabilities([Tools, Resources])
+
+
+          .RegisterWriter(TMCPImageWriter)
+          .RegisterWriter(TMCPPictureWriter)
+          .RegisterWriter(TMCPStreamWriter)
+          .RegisterWriter(TMCPStringListWriter)
+        .BackToMCP
+
+      .Tools
+        .RegisterClass(TTestTool)
+        .RegisterClass(TDelphiDayTool)
+        .RegisterClass(TShoppingCartTool)  // Session-based shopping cart
+      .BackToMCP
+    ;
 
     LStdioServer := TJRPCStdioServer.Create(nil);
     try

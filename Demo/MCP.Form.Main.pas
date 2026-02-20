@@ -365,30 +365,13 @@ end;
 
 procedure TfrmMain.actToolListExecute(Sender: TObject);
 begin
-  var tools := TMCPSchemaGenerator.ListTools(Self.ClassType);
-
-  mmoLog.Lines.Add(tools.ToJSON(True));
-
-  tools.Free;
+  //
 end;
 
 procedure TfrmMain.actToolSingleExecute(Sender: TObject);
 begin
-  var typ := ctx.GetType(Self.ClassType);
-  var m := typ.GetMethod('TestParam');
+  //
 
-  var schema := TMCPSchemaGenerator.MethodToTool(m);
-  {
-  var j := TNeon.ObjectToJSON(t, GetNeonConfig2) as TJSONObject;
-
-  j.RemovePair('inputSchema');
-  j.AddPair('inputSchema', schema);
-  }
-  //mmoLog.Lines.Add(TNeon.Print(schema, true));
-
-  mmoLog.Lines.Add(schema.ToJSON(True));
-
-  schema.Free;
 end;
 
 procedure TfrmMain.actCallToolParamsExecute(Sender: TObject);

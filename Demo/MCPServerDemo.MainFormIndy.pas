@@ -89,26 +89,36 @@ begin
   FJRPCServer
     .Plugin.Configure<IAuthTokenConfig>
       .SetToken('my-secret-token')
-      .ApplyConfig
+    .ApplyConfig
 
     .Plugin.Configure<ISessionConfig>
       .SetLocation(TSessionIdLocation.Header)
       .SetHeaderName('Mcp-Session-Id')
       .SetTimeout(30)  // 30 minutes timeout
       .SetSessionClass(TShoppingSession)  // Use custom typed session
-      .ApplyConfig
+    .ApplyConfig
 
     .Plugin.Configure<IMCPConfig>
-      .SetServerName('delphi-mcp-server')
-      .SetServerVersion('2.0.0')
-      .RegisterToolClass('test', TTestTool)
-      .RegisterToolClass('delphi_day', TDelphiDayTool)
-      .RegisterToolClass('shopping', TShoppingCartTool)  // Session-based shopping cart
-      .ApplyConfig;
+      .Server
+        .SetName('delphi-mcp-server')
+        .SetVersion('2.0.0')
+        .SetCapabilities([Tools, Resources])
 
-//    .Plugin.Configure<IJRPCNeonConfig>
-//      .SetNeonConfig(MCPNeonConfig)
-//      .ApplyConfig;
+
+        .RegisterWriter(TMCPImageWriter)
+        .RegisterWriter(TMCPPictureWriter)
+        .RegisterWriter(TMCPStreamWriter)
+        .RegisterWriter(TMCPStringListWriter)
+      .BackToMCP
+
+
+      .Tools
+        .RegisterClass(TTestTool)
+        .RegisterClass(TDelphiDayTool)
+        .RegisterClass(TShoppingCartTool)  // Session-based shopping cart
+      .BackToMCP
+
+  ;
 
   IdHTTPServer1.Server := FJRPCServer;
 

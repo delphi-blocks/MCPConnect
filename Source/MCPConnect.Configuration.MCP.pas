@@ -311,7 +311,6 @@ type
     procedure CompileList(AList: TListResourcesResult);
   end;
 
-
   [Implements(IMCPConfig)]
   TMCPConfig = class(TJRPCConfiguration, IMCPConfig)
   private

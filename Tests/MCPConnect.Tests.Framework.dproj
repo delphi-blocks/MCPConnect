@@ -154,7 +154,6 @@
         <DCCReference Include="MCPConnect.Tests.JRPC.Core.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Tools.pas"/>
         <DCCReference Include="MCPConnect.Tests.JRPC.Invoker.pas"/>
-        <DCCReference Include="MCPConnect.Tests.MCP.Invoker.pas"/>
         <DCCReference Include="MCPConnect.Tests.Session.Core.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>

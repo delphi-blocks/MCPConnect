@@ -81,7 +81,7 @@ type
     [Context] FGC: IGarbageCollector;
   public
     [McpTool('get_tickets', 'Get the list of available tickets for the DelphiDay event in Padova',
-    'app=ui://weather.app')]
+    'app=ui://get-tickets/mcp-app.html')]
     function GetTickets: TTickets;
 
     [McpTool('buy_ticket', 'Get the list of available tickets for the DelphiDay event in Padova')]
@@ -127,6 +127,7 @@ type
   /// <summary>
   ///   Shopping cart tool that uses typed session to maintain state across requests
   /// </summary>
+  //[McpScope('shopping')]
   TShoppingCartTool = class
   private
     [Context] FSession: TShoppingSession;

@@ -1132,10 +1132,14 @@ end;
 
 function TMCPMimeTypes.EncodingByMedia(const AMime: string): Nullable<TMimeEncoding>;
 begin
+  var LMime := AMime;
+  var LMimeParts := LMime.Split([';']);
+  if Length(LMimeParts) > 1 then
+    LMime := LMimeParts[0];
   Result := TMimeEncoding.Base64;
   for var m in FList do
   begin
-    if AMime = m.Mime then
+    if LMime = m.Mime then
       Exit(m.Encoding);
   end;
 end;

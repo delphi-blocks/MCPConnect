@@ -292,7 +292,6 @@ begin
   if not LMime.IsEmpty then
     LEncoding := FConfig.Resources.MimeTypes.EncodingByMedia(LMime);
 
-  LResult := TNeon.ValueToJSONString(AMethodResult, TNeonConfiguration.Default);
   LWriter := FConfig.Server.WriterRegistry.GetWriter(AMethodResult);
   if Assigned(LWriter) then
   begin
@@ -315,19 +314,18 @@ begin
         LResText := TTextResourceContents.Create();
         LResText.Uri := AResource.Uri;
         LResText.MimeType := IfThen(LMime.IsEmpty, 'text/plain', LMime);
-        LResText.Text := LResult;
+        LResText.Text := AMethodResult.ToString;
       end
       else
       begin
         LResBlob := TBlobResourceContents.Create();
         LResBlob.Uri := AResource.Uri;
         LResBlob.MimeType := LMime;
-        LResBlob.Blob := TNetEncoding.Base64.Encode(LResult);
+        LResBlob.Blob := TNetEncoding.Base64.Encode(AMethodResult.ToString);
       end
     end;
 
     // Dequote
-    tkEnumeration,
     tkChar,
     tkWChar,
     tkString,
@@ -340,23 +338,25 @@ begin
         LResText := TTextResourceContents.Create();
         LResText.Uri := AResource.Uri;
         LResText.MimeType := IfThen(LMime.IsEmpty, 'text/plain', LMime);
-        LResText.Text := LResult.DeQuotedString('"');
+        LResText.Text := AMethodResult.ToString;
       end
       else
       begin
         LResBlob := TBlobResourceContents.Create();
         LResBlob.Uri := AResource.Uri;
         LResBlob.MimeType := LMime;
-        LResBlob.Blob := TNetEncoding.Base64.Encode(LResult);
+        LResBlob.Blob := TNetEncoding.Base64.Encode(AMethodResult.ToString);
       end;
     end;
 
     // JSON response
+    tkEnumeration,
     tkSet,
     tkClass,
     tkRecord, tkMRecord,
     tkArray, tkDynArray:
     begin
+      LResult := TNeon.ValueToJSONString(AMethodResult, TNeonConfiguration.Default);
       if LEncoding = TMimeEncoding.Plain then
       begin
         LResText := TTextResourceContents.Create();
@@ -374,22 +374,7 @@ begin
     end;
 
   else
-    begin
-      if LEncoding = TMimeEncoding.Plain then
-      begin
-        LResText := TTextResourceContents.Create();
-        LResText.Uri := AResource.Uri;
-        LResText.MimeType := IfThen(LMime.IsEmpty, 'application/json', LMime);
-        LResText.Text := LResult;
-      end
-      else
-      begin
-        LResBlob := TBlobResourceContents.Create();
-        LResBlob.Uri := AResource.Uri;
-        LResBlob.MimeType := LMime;
-        LResBlob.Blob := TNetEncoding.Base64.Encode(LResult);
-      end;
-    end;
+    raise EMCPException.Create('Type kind not supported');
 
   end;
 

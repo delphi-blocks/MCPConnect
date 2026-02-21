@@ -94,7 +94,7 @@ begin
         .SetBasePath(GetCurrentDir + '\data')
 
         .RegisterClass(TWeatherResource)
-        .RegisterClass(TWeatherApp)
+        .RegisterClass(TDeplphiDayApp)
         .RegisterFile('index.md', 'Indice Documentazione')
         .RegisterFile('documentation\mcp\mcpconnect.pdf', 'MCPConnect Introduction')
       .BackToMCP

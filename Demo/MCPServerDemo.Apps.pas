@@ -3,7 +3,8 @@ unit MCPServerDemo.Apps;
 interface
 
 uses
-  System.Classes, System.SysUtils, System.JSON, System.Generics.Collections,
+  System.Classes, System.SysUtils, System.JSON, System.IOUtils,
+  System.Generics.Collections,
 
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
@@ -15,19 +16,22 @@ uses
   MCPConnect.Session.Core;
 
 type
-  TWeatherApp = class
+  TDeplphiDayApp = class
   public
-    [McpApp('weather-app', 'ui://weather/app', 'Shows the weather for the DelphiDay event')]
-    function GetWeatherUI: string;
+    [McpApp('ui://get-tickets/mcp-app.html', 'ui://get-tickets/mcp-app.html', 'Shows some info about the DelphiDay event and tickets')]
+    function GetUI: string;
   end;
 
 implementation
 
-{ TWeatherApp }
+{ TDeplphiDayApp }
 
-function TWeatherApp.GetWeatherUI: string;
+function TDeplphiDayApp.GetUI: string;
+var
+  LFileName: string;
 begin
-  Result := '<html><body><h1>Weather App UI</h1></body></html>';
+  LFileName := TPath.Combine(TPath.GetAppPath, 'data', 'delphi-mcp-app.html');
+  Result := TFile.ReadAllText(LFileName);
 end;
 
 end.

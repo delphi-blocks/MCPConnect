@@ -202,15 +202,19 @@ begin
   LResult := TListToolsResult.Create;
   try
     LTool := TMCPTool.Create;
-    LTool.Name := 'test_tool';
-    LTool.Description := 'Test';
-    LResult.Tools.Add(LTool);
+    try
+      LTool.Name := 'test_tool';
+      LTool.Description := 'Test';
+      LResult.Tools.Add(LTool);
 
-    LJson := LResult.ToJSON(True);
+      LJson := LResult.ToJSON(True);
 
-    Assert.IsNotEmpty(LJson, 'JSON should not be empty');
-    Assert.IsTrue(LJson.Contains('"tools"'), 'JSON should contain tools array');
-    Assert.IsTrue(LJson.Contains('test_tool'), 'JSON should contain tool name');
+      Assert.IsNotEmpty(LJson, 'JSON should not be empty');
+      Assert.IsTrue(LJson.Contains('"tools"'), 'JSON should contain tools array');
+      Assert.IsTrue(LJson.Contains('test_tool'), 'JSON should contain tool name');
+    finally
+      LTool.Free;
+    end;
   finally
     LResult.Free;
   end;

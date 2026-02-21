@@ -51,7 +51,6 @@ uses
   MCPConnect.Tests.JRPC.Core in 'MCPConnect.Tests.JRPC.Core.pas',
   MCPConnect.Tests.MCP.Tools in 'MCPConnect.Tests.MCP.Tools.pas',
   MCPConnect.Tests.JRPC.Invoker in 'MCPConnect.Tests.JRPC.Invoker.pas',
-  MCPConnect.Tests.MCP.Invoker in 'MCPConnect.Tests.MCP.Invoker.pas',
   MCPConnect.Tests.Session.Core in 'MCPConnect.Tests.Session.Core.pas';
 
 var

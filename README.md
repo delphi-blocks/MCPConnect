@@ -102,27 +102,53 @@ In your WebModule's `OnCreate` event or constructor, create and configure the `T
 
 ```delphi
 uses
-  MCPConnect.JRPC.Server, 
-  MCPConnect.MCP.Server.Api, // This register the standard MCP API
-  MCPConnect.Transport.WebBroker, 
+  MCPConnect.JRPC.Server,
+  MCPConnect.MCP.Server.Api, // This registers the standard MCP API
+  MCPConnect.Transport.WebBroker,
   MCPConnect.Configuration.MCP,
-  
+  MCPConnect.Content.Writers.RTL,
+  MCPConnect.Content.Writers.VCL,
+
   Demo.HelpDeskService; // Unit with your MCP classes
 
 // Create the JSON-RPC Server
 FJRPCServer := TJRPCServer.Create(Self);
+
 FJRPCServer
   .Plugin.Configure<IMCPConfig>
-    .SetServerName('delphi-mcp-server')
-    .SetServerVersion('2.0.0')
-    .RegisterToolClass(THelpDeskService)  // Register your tool class here
-    .ApplyConfig;
+
+    .Server
+      .SetName('delphi-mcp-server')
+      .SetVersion('2.0.0')
+      .SetCapabilities([Tools, Resources])  // Declare which capabilities to expose
+      .RegisterWriter(TMCPImageWriter)       // Register content writers for complex types
+      .RegisterWriter(TMCPStreamWriter)
+    .BackToMCP
+
+    .Resources
+      .SetBasePath(GetCurrentDir + '\data')  // Base path for static file resources
+      .RegisterClass(TWeatherResource)        // Classes with [McpResource] methods
+      .RegisterClass(TMyApp)                  // Classes with [McpApp] methods
+      .RegisterFile('docs\readme.md', 'Documentation')  // Static file resources
+    .BackToMCP
+
+    .Tools
+      .RegisterClass(THelpDeskService)  // Classes with [McpTool] methods
+    .BackToMCP;
 
 // Create and configure the Dispatcher
 FJRPCDispatcher := TJRPCDispatcher.Create(Self); // Self should be the TWebModule
 FJRPCDispatcher.PathInfo := '/mcp';  // Set the endpoint path
 FJRPCDispatcher.Server := FJRPCServer;  // Connect to the server
 ```
+
+The configuration is split into three sections:
+
+- **`.Server`** — server identity, declared capabilities, and content writers
+- **`.Resources`** — resource classes and static files
+- **`.Tools`** — tool classes
+
+Each section ends with `.BackToMCP` to return to the root config builder.
 
 #### Step 3: Understand the Automatic Integration
 
@@ -184,22 +210,26 @@ Add session configuration to your server setup:
 ```delphi
 uses
   MCPConnect.Configuration.Session,
+  MCPConnect.Configuration.MCP,
   MCPConnect.Session.Core;
 
-// Configure session support
 FJRPCServer
   .Plugin.Configure<ISessionConfig>
     .SetLocation(TSessionIdLocation.Header)  // or Cookie
     .SetHeaderName('Mcp-Session-Id')         // Default for MCP
     .SetTimeout(30)                           // Minutes
     .SetSessionClass(TSessionData)            // Or your custom class
-    .ApplyConfig
+  .ApplyConfig
 
   .Plugin.Configure<IMCPConfig>
-    .SetServerName('delphi-mcp-server')
-    .SetServerVersion('2.0.0')
-    .RegisterToolClass(TShoppingCartTool)  // Your session-aware tool
-    .ApplyConfig;
+    .Server
+      .SetName('delphi-mcp-server')
+      .SetVersion('2.0.0')
+      .SetCapabilities([Tools])
+    .BackToMCP
+    .Tools
+      .RegisterClass(TShoppingCartTool)  // Your session-aware tool
+    .BackToMCP;
 ```
 
 **Session Behavior by Transport:**
@@ -316,62 +346,147 @@ Don't forget to register your custom session class in the configuration:
 
 -----------------------------
 
-### 4. Organizing Tools with Namespaces
+### 4. Resources
 
-When building larger MCP servers with multiple tool classes, you can organize them using **namespaces** to avoid name conflicts and improve API structure.
+Resources let you expose data that an LLM can read. MCPConnect supports three kinds:
 
-#### Why Use Namespaces?
+- **Class-based resources** — methods decorated with `[McpResource]` that return dynamic content
+- **Class-based MCP Apps** — methods decorated with `[McpApp]` that return a UI (e.g. HTML) rendered by the client
+- **Static file resources** — files served directly from disk
 
-- **Avoid conflicts**: Multiple tool classes can have methods with the same name
-- **Clear organization**: Group related tools together logically
-- **Better API structure**: Tools are exposed as `namespace_toolname` (e.g., `auth_login`, `user_get`)
-- **Scalability**: Easy to add/remove entire feature sets
-
-#### Basic Namespace Usage
+#### Defining a Resource Class
 
 ```delphi
-// Multiple tool classes with namespaces
+type
+  TWeatherResource = class
+  public
+    [McpResource('weather-resource', 'text://weather', 'text/csv', 'Current weather data')]
+    function GetWeatherInfo: string;
+  end;
+```
+
+The `[McpResource]` attribute takes `(name, uri, mimeType, description)`.
+
+#### Defining an MCP App
+
+MCP Apps are UI resources served via a `ui://` URI scheme. The client (if it supports it) renders the returned content as an interactive widget.
+
+```delphi
+type
+  TMyApp = class
+  public
+    [McpApp('ui://my-app/index.html', 'ui://my-app/index.html', 'An interactive UI panel')]
+    function GetUI: string;
+  end;
+
+function TMyApp.GetUI: string;
+begin
+  Result := TFile.ReadAllText(TPath.Combine(TPath.GetAppPath, 'data', 'my-app.html'));
+end;
+```
+
+The `[McpApp]` attribute takes `(name, uri, description)`.
+
+#### Linking a Tool to an App
+
+A tool can declare that it has an associated MCP App using the `app=` annotation in `[McpTool]`:
+
+```delphi
+[McpTool('get_tickets', 'List available tickets', 'app=ui://my-app/index.html')]
+function GetTickets: TTickets;
+```
+
+This tells the client that the tool result can be rendered inside the specified app UI.
+
+#### Registering Resources and Static Files
+
+Resources (both class-based and app-based) and static files are all registered in the `.Resources` section:
+
+```delphi
+.Resources
+  .SetBasePath(GetCurrentDir + '\data')
+  .RegisterClass(TWeatherResource)   // [McpResource] class
+  .RegisterClass(TMyApp)             // [McpApp] class
+  .RegisterFile('readme.md', 'Documentation')         // static text file
+  .RegisterFile('docs\guide.pdf', 'User Guide')       // static binary file
+.BackToMCP
+```
+
+Remember to declare `Resources` in `.SetCapabilities`:
+
+```delphi
+.Server
+  .SetCapabilities([Tools, Resources])
+.BackToMCP
+```
+
+-----------------------------
+
+### 5. Organizing Tools with Scopes
+
+When building larger MCP servers with multiple tool classes, you can assign a **scope** (namespace prefix) to a class using the `[McpScope]` attribute. This avoids name conflicts and produces a cleaner, more organized API.
+
+#### Why Use Scopes?
+
+- **Avoid conflicts**: Multiple tool classes can have methods with the same name
+- **Clear organization**: Group related tools logically
+- **Better API structure**: Tools are exposed as `scope_toolname` (e.g., `test_double_or_nothing`)
+
+#### Defining a Scoped Tool Class
+
+```delphi
+[McpScope('auth')]
+TAuthService = class
+public
+  [McpTool('login', 'Authenticate user')]
+  function Login([McpParam('username')] AUser: string): Boolean;
+
+  [McpTool('logout', 'Logout user')]
+  function Logout: Boolean;
+end;
+```
+
+Exposed tool names will be `auth_login` and `auth_logout`.
+
+#### Multiple Scoped Classes
+
+```delphi
+// Classes
+[McpScope('auth')]    TAuthService    = class ... end;
+[McpScope('tickets')] TTicketService  = class ... end;
+[McpScope('users')]   TUserService    = class ... end;
+
+// Registration (no namespace parameter needed)
 FJRPCServer
   .Plugin.Configure<IMCPConfig>
-    .SetServerName('multi-service-server')
-    .RegisterToolClass('auth', TAuthService)       // auth_login, auth_logout
-    .RegisterToolClass('tickets', TTicketService)  // tickets_list, tickets_create
-    .RegisterToolClass('users', TUserService)      // users_get, users_update
-    .ApplyConfig;
+    .Tools
+      .RegisterClass(TAuthService)     // auth_login, auth_logout
+      .RegisterClass(TTicketService)   // tickets_list, tickets_create
+      .RegisterClass(TUserService)     // users_get, users_update
+    .BackToMCP;
 ```
 
 **Important**: Tool names must match the MCP pattern `^[a-zA-Z0-9_-]{1,64}$` (only alphanumeric, underscore, hyphen).
 
-#### Custom Separator
+#### Tool Annotations
 
-The default separator is `_` (underscore), but you can change it to `-` (hyphen):
-
-```delphi
-FJRPCServer
-  .Plugin.Configure<IMCPConfig>
-    .SetNamespaceSeparator('-')  // Use hyphen instead of underscore
-    .RegisterToolClass('auth', TAuthService)
-    .ApplyConfig;
-// Tools exposed as: auth-login, auth-logout
-```
-
-#### Mixed Approach
-
-You can mix namespaced and non-namespaced tools:
+`[McpTool]` accepts an optional third string parameter for key-value annotations:
 
 ```delphi
-FJRPCServer
-  .Plugin.Configure<IMCPConfig>
-    .RegisterToolClass(TGeneralTools)        // health_check, version (no namespace)
-    .RegisterToolClass('admin', TAdminTools) // admin_restart, admin_config
-    .ApplyConfig;
+[McpTool('my_tool', 'Description', 'app=ui://my-app/index.html,category=demo')]
+function MyTool: string;
 ```
 
-**Note**: If you have overlapping namespaces (e.g., `delphi` and `delphi_day`), the framework matches the **longest/most specific** namespace first.
+Supported built-in annotations:
+
+| Key | Example | Meaning |
+|-----|---------|---------|
+| `app` | `app=ui://my-app/index.html` | Links tool to an MCP App UI |
+| `disabled` | `disabled` | Hides the tool from the tools list |
 
 -----------------------------
 
-### 5. Connecting LLM Clients to Your MCP Server
+### 6. Connecting LLM Clients to Your MCP Server
 
 Once your MCP server is running, you need to configure your LLM client to connect to it. Below are configuration examples for popular clients.
 

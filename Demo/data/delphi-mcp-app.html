@@ -15,15 +15,15 @@
 let _hostOrigin = '*';
 let _reqId = 1;
 
-// 1. Ascolta i messaggi dal host
+// 1. Listen for messages from the host
 window.addEventListener('message', (event) => {
   const msg = event.data;
   if (!msg || msg.jsonrpc !== '2.0') return;
 
-  // Risposta a ui/initialize
+  // Response to ui/initialize
   if (msg.id === 'init') {
-    // host ci ha risposto con le sue capabilities
-    // ora mandiamo la notification "initialized"
+    // host replied with its capabilities
+    // now send the "initialized" notification
     window.parent.postMessage({
       jsonrpc: '2.0',
       method: 'ui/notifications/initialized',
@@ -31,14 +31,14 @@ window.addEventListener('message', (event) => {
     }, '*');
   }
 
-  // Risultato del tool
+  // Tool result
   if (msg.method === 'ui/notifications/tool-result') {
     const result = msg.params;
-    // usa result.content o result.structuredContent
+    // use result.content or result.structuredContent
   }
 });
 
-// 2. Manda ui/initialize
+// 2. Send ui/initialize
 window.parent.postMessage({
   jsonrpc: '2.0',
   id: 'init',

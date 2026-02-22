@@ -1,7 +1,7 @@
 meta {
-  name: MCP - tools/call Image
+  name: MCP - tools/call string
   type: http
-  seq: 11
+  seq: 13
 }
 
 post {
@@ -14,10 +14,7 @@ body:json {
   {
       "method": "tools/call",
       "params": {
-          "name": "test_course_image",
-          "arguments": {
-              "name": "OOP"
-          }
+          "name": "test_bytes"
       },
       "jsonrpc": "2.0",
       "id": 3

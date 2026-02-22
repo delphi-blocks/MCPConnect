@@ -1,7 +1,7 @@
 meta {
-  name: MCP - tools/call Image
+  name: MCP - tools/call double or nothing
   type: http
-  seq: 11
+  seq: 14
 }
 
 post {
@@ -14,9 +14,10 @@ body:json {
   {
       "method": "tools/call",
       "params": {
-          "name": "test_course_image",
+          "name": "test_double_or_nothing",
           "arguments": {
-              "name": "OOP"
+              "value1": 12,
+              "value2": true
           }
       },
       "jsonrpc": "2.0",

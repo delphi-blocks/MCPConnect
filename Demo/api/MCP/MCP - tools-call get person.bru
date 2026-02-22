@@ -1,7 +1,7 @@
 meta {
-  name: MCP - tools/call Image
+  name: MCP - tools/call get person
   type: http
-  seq: 11
+  seq: 15
 }
 
 post {
@@ -14,9 +14,9 @@ body:json {
   {
       "method": "tools/call",
       "params": {
-          "name": "test_course_image",
+          "name": "test_getperson",
           "arguments": {
-              "name": "OOP"
+              "name": "Luca"
           }
       },
       "jsonrpc": "2.0",

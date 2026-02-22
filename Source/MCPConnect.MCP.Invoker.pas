@@ -165,7 +165,6 @@ end;
 procedure TMCPToolInvoker.ResultToTool(const AToolResult: TValue; AContentList:
     TContentList);
 var
-  LResult: string;
   LWriter: TMCPCustomWriter;
   LContext: TMCPToolContext;
   LContent: TToolContent;
@@ -173,9 +172,6 @@ var
   LResText: TEmbeddedResourceText absolute LContent;
   LResBlob: TEmbeddedResourceBlob absolute LContent;
 begin
-  { TODO -opaolo -c : Change the Neon configuration!!! 14/11/2025 10:25:55 }
-  LResult := TNeon.ValueToJSONString(AToolResult, TNeonConfiguration.Default);
-
   LWriter := FConfig.Server.WriterRegistry.GetWriter(AToolResult);
   if Assigned(LWriter) then
   begin
@@ -191,7 +187,7 @@ begin
     // As it is
     tkInt64,
     tkInteger,
-    tkFloat: LText := TTextContent.Create(LResult);
+    tkFloat: LText := TTextContent.Create(AToolResult.ToString);
 
     // Dequote
     tkEnumeration,
@@ -200,7 +196,7 @@ begin
     tkString,
     tkLString,
     tkWString,
-    tkUString: LText := TTextContent.Create(LResult.DeQuotedString('"'));
+    tkUString: LText := TTextContent.Create(AToolResult.ToString);
 
     // JSON response
     tkSet,
@@ -208,6 +204,8 @@ begin
     tkRecord, tkMRecord:
     begin
       // Check if the tool is configured to return an embedded resource
+      //  { TODO -opaolo -c : Change the Neon configuration!!! 14/11/2025 10:25:55 }
+      var LResult := TNeon.ValueToJSONString(AToolResult, TNeonConfiguration.Default);
       var LMCPTool := TRttiUtils.FindAttribute<MCPToolAttribute>(FTool.Method);
       if Assigned(LMCPTool) and (LMCPTool.Tags.Exists('embedded')) then
       begin
@@ -225,16 +223,22 @@ begin
     tkArray, tkDynArray:
     begin
       LResBlob := TEmbeddedResourceBlob.Create;
-      LResBlob.Resource.Blob := LResult;
 
       if AToolResult.TypeInfo = TypeInfo(TBytes) then
+      begin
+        LResBlob.Resource.Blob := TNetEncoding.Base64String.EncodeBytesToString(AToolResult.AsType<TBytes>);
         LResBlob.Resource.MIMEType := 'application/octect-stream'
+      end
       else
+      begin
+        var LResult := TNeon.ValueToJSONString(AToolResult, TNeonConfiguration.Default);
         LResBlob.Resource.MIMEType := 'application/json';
+        LResBlob.Resource.Blob := LResult;
+    end;
     end;
 
   else
-    LText := TTextContent.Create(LResult);
+    raise EMCPException.Create('Type kind not supported');
   end;
 
   AContentList.Add(LContent);

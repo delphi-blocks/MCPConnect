@@ -107,10 +107,21 @@ type
     ): string;
 
 
+    [McpTool('course_description', 'Retrieves the full course description', 'disabled')]
+    function GetCourseDescription(
+      [McpParam('name', 'Course name')] const AName: string
+    ): string;
+
     [McpTool('course_image', 'Retrieves the image for the selected course', 'disabled')]
     function GetImage(
       [McpParam('name', 'Course name')] const AName: string
     ): TPicture;
+
+    [McpTool('stream', 'Retrieves some binary data as a stream', 'disabled')]
+    function GetStream: TStream;
+
+    [McpTool('bytes', 'Retrieves some binary data as a TBytes', 'disabled')]
+    function GetBytes: TBytes;
 
     [McpTool('splitstring', 'Gets the content by splitting the string (e.g. "hello,world" -> ["hello", "world"])')]
     function GetSplitString(
@@ -180,6 +191,21 @@ end;
 
 { TTestTool }
 
+function TTestTool.GetBytes: TBytes;
+begin
+  SetLength(Result, 100);
+  for var I := 0 to 99 do
+    Result[I] := I;
+end;
+
+function TTestTool.GetCourseDescription(const AName: string): string;
+begin
+  Result :=
+    'This is a course' + sLineBreak +
+    'with a long description' + sLineBreak +
+    'that requires many lines' + sLineBreak;
+end;
+
 function TTestTool.GetDiscountedItems(const AItemType: string): string;
 begin
   //'courses'', ''product'', ''consulting';
@@ -224,6 +250,13 @@ begin
     LResultBuilder.AddText(LString);
   end;
   Result := LResultBuilder.Build;
+end;
+
+function TTestTool.GetStream: TStream;
+begin
+  Result := TMemoryStream.Create;
+  for var I := 0 to 100 do
+    Result.WriteData<Byte>(I);
 end;
 
 function TTestTool.TestParam(AValue: Int64; ADouble: Boolean): Integer;

@@ -89,7 +89,7 @@ type
     ///   Optional set of sized icons that the client can display in a user interface. Clients that
     ///   support rendering icons MUST support at least the following MIME types:
     /// </summary>
-    [NeonInclude(IncludeIf.NotEmpty)] Icons: TIconList;
+    [NeonInclude(IncludeIf.NotEmpty)] Icons: TMCPIconList;
 
     /// <summary>
     ///   A list of arguments to use for templating the prompt

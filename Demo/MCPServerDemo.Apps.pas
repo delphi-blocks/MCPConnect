@@ -16,17 +16,17 @@ uses
   MCPConnect.Session.Core;
 
 type
-  TDeplphiDayApp = class
+  TDeplphiDayAppUI = class
   public
-    [McpApp('ui://get-tickets/mcp-app.html', 'ui://get-tickets/mcp-app.html', 'Shows some info about the DelphiDay event and tickets')]
+    [McpAppUI('ticket-app', 'ui://delphiday/ticket-app', 'Shows some info about the DelphiDay event and tickets')]
     function GetUI: string;
   end;
 
 implementation
 
-{ TDeplphiDayApp }
+{ TDeplphiDayAppUI }
 
-function TDeplphiDayApp.GetUI: string;
+function TDeplphiDayAppUI.GetUI: string;
 var
   LFileName: string;
 begin

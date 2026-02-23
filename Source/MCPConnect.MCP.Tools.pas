@@ -146,7 +146,7 @@ type
     /// <summary>
     ///   Optional set of sized icons that the client can display in a user interface
     /// </summary>
-    [NeonInclude(IncludeIf.NotEmpty)] Icons: TIconList;
+    [NeonInclude(IncludeIf.NotEmpty)] Icons: TMCPIconList;
 
   public
     constructor Create;
@@ -154,7 +154,6 @@ type
 
     procedure ExchangeInputSchema(ASchema: TJSONObject);
     function ToJSON(APrettyPrint: Boolean = False): string;
-    procedure AddIcon(const ASrc: string);
   end;
 
   TMCPTools = class(TObjectList<TMCPTool>);
@@ -219,17 +218,6 @@ implementation
 
 uses
   MCPConnect.JRPC.Core;
-
-procedure TMCPTool.AddIcon(const ASrc: string);
-var
-  LIcon: TMCPIcon;
-begin
-  if not ASrc.IsEmpty then
-  begin
-    LIcon.Src := ASrc;
-    Icons := Icons + [LIcon];
-  end;
-end;
 
 constructor TMCPTool.Create;
 begin

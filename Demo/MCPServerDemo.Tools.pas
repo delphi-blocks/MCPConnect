@@ -80,55 +80,44 @@ type
   private
     [Context] FGC: IGarbageCollector;
   public
-    [McpTool('get_tickets', 'Get the list of available tickets for the DelphiDay event in Padova',
-    'app=ui://get-tickets/mcp-app.html')]
+    [McpTool('get_tickets', 'Get the list of available tickets for the DelphiDay', 'icon=badge.png')]
+    [McpApp('ui://delphiday/ticket-app')]
     function GetTickets: TTickets;
 
-    [McpTool('buy_ticket', 'Get the list of available tickets for the DelphiDay event in Padova')]
+    [McpTool('buy_ticket', 'Buy tickets for the DelphiDay', 'icon=cart-full.png')]
     function BuyTicket(
       [McpParam('id', 'ID of the ticket to buy')] AId: Integer;
       [McpParam('quantity', 'Number of tickets to buy')] AQuantity: Integer
     ): TContentList;
   end;
 
-  [McpScope('test')]
+  //[McpScope('test')]
   TTestTool = class
   public
     [McpTool('double_or_nothing', 'Doubles or zeroes the param value',
-      'category=group1,meta.ui=ui://weather.info,icon=https://www.wintech-italia.it/assets/images/favicon/favicon-32x32.png')]
+      'category=group1,app=ui://delphiday/ticket-app,icon=money.png')]
     function TestParam(
       [McpParam('value1', 'Test Parameter 1 for MCP')] AValue: Int64;
       [McpParam('value2', 'Test Parameter 2 for MCP')] ADouble: Boolean
     ): Integer;
 
-    [McpTool('discounted_items', 'Retrieves a list of discounted items on Wintech-Italia based on the specified item type')]
+    [McpTool('discounted_items', 'Retrieves a list of discounted items on Wintech-Italia based on the specified item type', 'icon=discount.png')]
     function GetDiscountedItems(
       [McpParam('itemType', 'The type of item to filter. Valid values: ''courses'', ''product'', ''consulting''')] const AItemType: string
     ): string;
 
 
-    [McpTool('course_description', 'Retrieves the full course description', 'disabled')]
-    function GetCourseDescription(
-      [McpParam('name', 'Course name')] const AName: string
-    ): string;
-
-    [McpTool('course_image', 'Retrieves the image for the selected course', 'disabled')]
+    [McpTool('course_image', 'Retrieves the image for the selected course', 'disabled, icon=photo.png')]
     function GetImage(
       [McpParam('name', 'Course name')] const AName: string
     ): TPicture;
 
-    [McpTool('stream', 'Retrieves some binary data as a stream', 'disabled')]
-    function GetStream: TStream;
-
-    [McpTool('bytes', 'Retrieves some binary data as a TBytes', 'disabled')]
-    function GetBytes: TBytes;
-
-    [McpTool('splitstring', 'Gets the content by splitting the string (e.g. "hello,world" -> ["hello", "world"])')]
+    [McpTool('splitstring', 'Gets the content by splitting the string (e.g. "hello,world" -> ["hello", "world"])', 'icon=tags.png')]
     function GetSplitString(
       [McpParam('value', 'The string to work with')] const AValue: string
     ): TContentList;
 
-    [McpTool('getperson', 'Get a person from his name')]
+    [McpTool('get-person', 'Get a person info given his name', 'icon=person.png')]
     function GetPerson(
       [McpParam('name', 'The name of the person to get')] const AName: string
     ): TPerson;
@@ -138,29 +127,29 @@ type
   /// <summary>
   ///   Shopping cart tool that uses typed session to maintain state across requests
   /// </summary>
-  //[McpScope('shopping')]
+  [McpScope('shopping')]
   TShoppingCartTool = class
   private
     [Context] FSession: TShoppingSession;
   public
-    [McpTool('cart_add', 'Add an item to the shopping cart')]
+    [McpTool('cart_add', 'Add an item to the shopping cart', 'icon=cart-add.png')]
     function AddToCart(
       [McpParam('item_id', 'ID of the item to add')] const AItemId: string;
       [McpParam('quantity', 'Quantity to add')] AQuantity: Integer
     ): string;
 
-    [McpTool('cart_get', 'Get all items in the shopping cart')]
+    [McpTool('cart_get', 'Get all items in the shopping cart', 'icon=cart-full.png')]
     function GetCart: string;
 
-    [McpTool('cart_remove', 'Remove an item from the shopping cart')]
+    [McpTool('cart_remove', 'Remove an item from the shopping cart', 'icon=cart-remove.png')]
     function RemoveFromCart(
       [McpParam('item_id', 'ID of the item to remove')] const AItemId: string
     ): string;
 
-    [McpTool('cart_clear', 'Clear all items from the shopping cart')]
+    [McpTool('cart_clear', 'Clear all items from the shopping cart', 'icon=cart.png')]
     function ClearCart: string;
 
-    [McpTool('session_info', 'Get session information (ID, created time, last accessed)')]
+    [McpTool('session_info', 'Get session information (ID, created time, last accessed)', 'icon=gear.png')]
     function GetSessionInfo: string;
   end;
 
@@ -190,21 +179,6 @@ begin
 end;
 
 { TTestTool }
-
-function TTestTool.GetBytes: TBytes;
-begin
-  SetLength(Result, 100);
-  for var I := 0 to 99 do
-    Result[I] := I;
-end;
-
-function TTestTool.GetCourseDescription(const AName: string): string;
-begin
-  Result :=
-    'This is a course' + sLineBreak +
-    'with a long description' + sLineBreak +
-    'that requires many lines' + sLineBreak;
-end;
 
 function TTestTool.GetDiscountedItems(const AItemType: string): string;
 begin
@@ -250,13 +224,6 @@ begin
     LResultBuilder.AddText(LString);
   end;
   Result := LResultBuilder.Build;
-end;
-
-function TTestTool.GetStream: TStream;
-begin
-  Result := TMemoryStream.Create;
-  for var I := 0 to 100 do
-    Result.WriteData<Byte>(I);
 end;
 
 function TTestTool.TestParam(AValue: Int64; ADouble: Boolean): Integer;

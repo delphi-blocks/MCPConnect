@@ -41,6 +41,8 @@ type
     destructor Destroy; override;
   end;
 
+
+
   TMetaClass = class
   public
     /// <summary>
@@ -100,6 +102,15 @@ type
   ///   An optionally-sized icon that can be displayed in a user interface
   /// </summary>
   TMCPIcon = record
+  private
+    function ReadMWord(AStream: TFileStream): Word;
+    procedure GetJPGSize(const sFile: string; var wWidth, wHeight: Word);
+    procedure GetPNGSize(const AFileName: string; var AWidth, AHeight: Word);
+    procedure GetGIFSize(const sGIFFile: string; var wWidth, wHeight: Word);
+
+    function GetPNGSizeString(const AFileName: string): string;
+
+  public
 
     /// <summary>
     ///   A standard URI pointing to an icon resource. May be an HTTP/HTTPS URL or a data: URI with
@@ -144,9 +155,11 @@ type
     /// </remarks>
     Theme: NullString;
 
+
+    procedure FromFile(const AIcon: string);
   end;
 
-  TIconList = TArray<TMCPIcon>;
+  TMCPIconList = TArray<TMCPIcon>;
 
 
   /// <summary>
@@ -193,7 +206,7 @@ type
     /// <summary>
     ///   Optional set of sized icons that the client can display in a user interface
     /// </summary>
-    [NeonInclude(IncludeIf.NotEmpty)] Icons: TIconList;
+    [NeonInclude(IncludeIf.NotEmpty)] Icons: TMCPIconList;
   end;
 
   /// <summary>
@@ -692,12 +705,42 @@ type
     function Build(): TContentList;
   end;
 
+
+  TMimeList = (Standard, Complete);
+  TMimeEncoding = (Plain, Base64);
+  TMCPMimeTypes = class
+  private type
+    TMimeInfo = record
+      Ext: string;
+      Mime: string;
+      Encoding: TMimeEncoding;
+    end;
+  private
+    FList: TList<TMimeInfo>;
+    function ExtExists(const AExtension, AList: string): Boolean;
+  public
+    constructor Create(AList: TMimeList = TMimeList.Standard);
+    destructor Destroy; override;
+
+    procedure SetStandard;
+    procedure SetComplete;
+
+    procedure AddMime(AEncoding: TMimeEncoding; const AMime: string; const AExt: string = '');
+    function MediaByExtension(const AExtension: string): string;
+    function EncodingByMedia(const AMime: string): Nullable<TMimeEncoding>;
+    function DataUri(const AFileName: string): string; overload;
+    function DataUri(const AFileName, AMimeType: string): string; overload;
+
+    function Count: NativeInt;
+  end;
+
 function MCPNeonConfig: INeonConfiguration;
 
 
 implementation
 
 uses
+  system.IOUtils,
   System.NetEncoding;
 
 
@@ -988,6 +1031,437 @@ destructor TEmbeddedResourceText.Destroy;
 begin
   Resource.Free;
   inherited;
+end;
+
+{ TMCPIcon }
+
+procedure TMCPIcon.FromFile(const AIcon: string);
+begin
+
+  var mm := TMCPMimeTypes.Create;
+  try
+    var ext := TPath.GetExtension(AIcon);
+    MimeType := mm.MediaByExtension(ext);
+    if MimeType.Value.IsEmpty then
+      raise EMCPException.CreateFmt('MediaType for extension [%s] not found', [ext]);
+
+    Src := mm.DataUri(AIcon, MimeType);
+    if MimeType = 'image/png' then
+      Sizes := Sizes + [GetPNGSizeString(AIcon)];
+
+  finally
+    mm.Free;
+  end;
+
+end;
+
+procedure TMCPIcon.GetGIFSize(const sGIFFile: string; var wWidth, wHeight: word);
+begin
+
+end;
+
+procedure TMCPIcon.GetJPGSize(const sFile: string; var wWidth, wHeight: word);
+begin
+
+end;
+
+procedure TMCPIcon.GetPNGSize(const AFileName: string; var AWidth, AHeight: Word);
+type
+  TPNGSig = array[0..7] of Byte;
+const
+  VALID_SIG: TPNGSig = (137, 80, 78, 71, 13, 10, 26, 10);
+var
+  LSig: TPNGSig;
+  LStream: tFileStream;
+  LIndex: integer;
+begin
+  FillChar(LSig, SizeOf(LSig), #0);
+  LStream := TFileStream.Create(AFileName, fmOpenRead);
+  try
+    LStream.Read(LSig[0], SizeOf(LSig));
+
+    for LIndex := Low(LSig) to High(LSig) do
+      if LSig[LIndex] <> VALID_SIG[LIndex] then
+        Exit;
+
+      LStream.Seek(18, 0);
+      AWidth := ReadMWord(LStream);
+      LStream.Seek(22, 0);
+      AHeight := ReadMWord(LStream);
+  finally
+    LStream.Free;
+  end;
+end;
+
+function TMCPIcon.GetPNGSizeString(const AFileName: string): string;
+begin
+  var width, height: Word;
+  GetPNGSize(AFileName, width, height);
+
+  Result := width.ToString + 'x' + height.ToString;
+end;
+
+function TMCPIcon.ReadMWord(AStream: TFileStream): Word;
+
+type
+  TMotorolaWord = record
+  case Byte of
+    0: (Value: word);
+    1: (Byte1, Byte2: byte);
+  end;
+
+var
+  LWord: TMotorolaWord;
+begin
+  // It would probably be better to just read these two bytes in normally and
+  // then do a small ASM routine to swap them. But we aren't talking about
+  // reading entire files, so I doubt the performance gain would be worth the trouble.
+  AStream.Read(LWord.Byte2, SizeOf(Byte));
+  AStream.Read(LWord.Byte1, SizeOf(Byte));
+  Result := LWord.Value;
+end;
+
+{ TMCPMimeTypes }
+
+procedure TMCPMimeTypes.SetComplete;
+begin
+  AddMime(TMimeEncoding.Plain, 'text/calendar', '.ics,.ifb');
+  AddMime(TMimeEncoding.Plain, 'text/css', '.css');
+  AddMime(TMimeEncoding.Plain, 'text/csv', '.csv');
+  AddMime(TMimeEncoding.Plain, 'text/html', '.htm,.html');
+  AddMime(TMimeEncoding.Plain, 'text/javascript', '.js');
+  AddMime(TMimeEncoding.Plain, 'text/markdown', '.md,.markdown,.mdown,.markdn');
+  AddMime(TMimeEncoding.Plain, 'text/mathml', '.mathml,.mml');
+  AddMime(TMimeEncoding.Plain, 'text/plain', '.txt,.text,.ini,.conf,.def,.diff,.list,.log');
+  AddMime(TMimeEncoding.Plain, 'text/prs.lines.tag', '.dsc');
+  AddMime(TMimeEncoding.Plain, 'text/richtext', '.rtx');
+  AddMime(TMimeEncoding.Plain, 'text/sgml', '.sgm,.sgml');
+  AddMime(TMimeEncoding.Plain, 'text/tab-separated-values', '.tsv');
+  AddMime(TMimeEncoding.Plain, 'text/troff', '.man,.me,.ms,.roff,.t,.tr');
+  AddMime(TMimeEncoding.Plain, 'text/uri-list', '.uri,.uris,.urls');
+  AddMime(TMimeEncoding.Plain, 'text/vnd.curl', '.curl');
+  AddMime(TMimeEncoding.Plain, 'text/vnd.graphviz', '.gv');
+  AddMime(TMimeEncoding.Plain, 'text/vnd.wap.wml', '.wml');
+  AddMime(TMimeEncoding.Plain, 'text/x-asm', '.asm,.s');
+  AddMime(TMimeEncoding.Plain, 'text/x-c', '.c,.cc,.cpp,.cxx,.dic,.h,.hh');
+  AddMime(TMimeEncoding.Plain, 'text/x-fortran', '.f,.f77,.f90,.for');
+  AddMime(TMimeEncoding.Plain, 'text/x-java-source', '.java');
+  AddMime(TMimeEncoding.Plain, 'text/x-pascal', '.p,.pas,.pp,.inc');
+  AddMime(TMimeEncoding.Plain, 'text/x-python', '.py,.pyc,.pyo,.pyd,.whl');
+  AddMime(TMimeEncoding.Plain, 'text/x-setext', '.etx');
+  AddMime(TMimeEncoding.Plain, 'text/x-uuencode', '.uu');
+  AddMime(TMimeEncoding.Plain, 'text/x-vcalendar', '.vcs');
+  AddMime(TMimeEncoding.Plain, 'text/x-vcard', '.vcf');
+
+  AddMime(TMimeEncoding.Plain, 'application/json', '.json');
+  AddMime(TMimeEncoding.Plain, 'application/xml', '.xml');
+  AddMime(TMimeEncoding.Plain, 'application/yaml', '.yaml,.yml');
+  AddMime(TMimeEncoding.Plain, 'application/toml', '.toml');
+  AddMime(TMimeEncoding.Plain, 'application/rss+xml', '.rss');
+  AddMime(TMimeEncoding.Plain, 'application/x-shellscript', '.sh');
+  AddMime(TMimeEncoding.Plain, 'application/xml', '.xml,.xpdl,.xsl');
+  AddMime(TMimeEncoding.Plain, 'application/xml-dtd', '.dtd');
+  AddMime(TMimeEncoding.Plain, 'application/xop+xml', '.xop');
+  AddMime(TMimeEncoding.Plain, 'application/xslt+xml', '.xslt');
+  AddMime(TMimeEncoding.Plain, 'application/xspf+xml', '.xspf');
+
+  AddMime(TMimeEncoding.Base64, 'application/pdf', '.pdf');
+  AddMime(TMimeEncoding.Base64, 'application/octet-stream', '.dat,.a,.bin,.bpk,.deploy,.dist,.dmg,.dms,.dump,.lha,.lrf,.lzh,.o,.obj,.pkg,.so');
+  AddMime(TMimeEncoding.Base64, 'application/pgp-encrypted', '.pgp');
+  AddMime(TMimeEncoding.Base64, 'application/pgp-signature', '.asc,.sig');
+  AddMime(TMimeEncoding.Base64, 'application/pkcs10', '.p10');
+  AddMime(TMimeEncoding.Base64, 'application/pkcs7-mime', '.p7c,.p7m');
+  AddMime(TMimeEncoding.Base64, 'application/pkcs7-signature', '.p7s');
+  AddMime(TMimeEncoding.Base64, 'application/postscript', '.ai,.eps,.ps');
+  AddMime(TMimeEncoding.Base64, 'application/rtf', '.rtf');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.amazon.ebook', '.azw');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.android.package-archive', '.apk');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.lotus-1-2-3', '.123');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.ms-excel', '.xla,.xlb,.xlc,.xlm,.xls,.xlt,.xlw');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.ms-excel.addin.macroenabled.12', '.xlam');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.ms-excel.sheet.binary.macroenabled.12', '.xlsb');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.ms-excel.sheet.macroenabled.12', '.xlsm');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.ms-excel.template.macroenabled.12', '.xltm');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.ms-htmlhelp', '.chm');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.ms-powerpoint', '.pot,.ppa,.pps,.ppt,.pwz');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.ms-powerpoint.addin.macroenabled.12', '.ppam');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.ms-project', '.mpp,.mpt');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.oasis.opendocument.chart', '.odc');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.oasis.opendocument.chart-template', '.otc');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.oasis.opendocument.database', '.odb');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.oasis.opendocument.formula', '.odf');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.oasis.opendocument.formula-template', '.odft');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.oasis.opendocument.graphics', '.odg');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.oasis.opendocument.graphics-template', '.otg');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.oasis.opendocument.image', '.odi');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.oasis.opendocument.image-template', '.oti');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.oasis.opendocument.presentation', '.odp');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.oasis.opendocument.presentation-template', '.otp');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.oasis.opendocument.spreadsheet', '.ods');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.oasis.opendocument.spreadsheet-template', '.ots');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.oasis.opendocument.text', '.odt');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.oasis.opendocument.text-master', '.otm');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.oasis.opendocument.text-template', '.ott');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.oasis.opendocument.text-web', '.oth');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.openxmlformats-officedocument.presentationml.presentation', '.pptx');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.openxmlformats-officedocument.presentationml.slide', '.sldx');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.openxmlformats-officedocument.presentationml.slideshow', '.ppsx');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.openxmlformats-officedocument.presentationml.template', '.potx');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '.xlsx');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.openxmlformats-officedocument.spreadsheetml.template', '.xltx');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '.docx');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.openxmlformats-officedocument.wordprocessingml.template', '.dotx');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.sqlite3', '.db,.sqlite,.sqlite3,.db-wal,.sqlite-wal,.db-shm,.sqlite-shm');
+  AddMime(TMimeEncoding.Base64, 'application/wasm', '.wasm');
+  AddMime(TMimeEncoding.Base64, 'application/x-7z-compressed', '.7z');
+  AddMime(TMimeEncoding.Base64, 'application/x-ace-compressed', '.ace');
+  AddMime(TMimeEncoding.Base64, 'application/x-bittorrent', '.torrent');
+  AddMime(TMimeEncoding.Base64, 'application/x-bzip', '.bz');
+  AddMime(TMimeEncoding.Base64, 'application/x-bzip2', '.boz,.bz2');
+  AddMime(TMimeEncoding.Base64, 'application/x-debian-package', '.deb,.udeb');
+  AddMime(TMimeEncoding.Base64, 'application/x-font-bdf', '.bdf');
+  AddMime(TMimeEncoding.Base64, 'application/x-font-ghostscript', '.gsf');
+  AddMime(TMimeEncoding.Base64, 'application/x-font-linux-psf', '.psf');
+  AddMime(TMimeEncoding.Base64, 'application/x-font-otf', '.otf');
+  AddMime(TMimeEncoding.Base64, 'application/x-font-pcf', '.pcf');
+  AddMime(TMimeEncoding.Base64, 'application/x-font-snf', '.snf');
+  AddMime(TMimeEncoding.Base64, 'application/x-font-ttf', '.ttc,.ttf');
+  AddMime(TMimeEncoding.Base64, 'application/x-font-type1', '.afm,.pfa,.pfb,.pfm');
+  AddMime(TMimeEncoding.Base64, 'application/x-latex', '.latex');
+  AddMime(TMimeEncoding.Base64, 'application/x-msaccess', '.mdb');
+  AddMime(TMimeEncoding.Base64, 'application/x-mspublisher', '.pub');
+  AddMime(TMimeEncoding.Base64, 'application/x-pkcs12', '.p12,.pfx');
+  AddMime(TMimeEncoding.Base64, 'application/x-pkcs7-certificates', '.p7b,.spc');
+  AddMime(TMimeEncoding.Base64, 'application/x-pkcs7-certreqresp', '.p7r');
+  AddMime(TMimeEncoding.Base64, 'application/x-rar-compressed', '.rar');
+  AddMime(TMimeEncoding.Base64, 'application/x-rpm', '.rpm');
+  AddMime(TMimeEncoding.Base64, 'application/zip', '.zip');
+
+  AddMime(TMimeEncoding.Base64, 'audio/3gpp2', '.3g2');
+  AddMime(TMimeEncoding.Base64, 'audio/aac', '.aac,.m4a');
+  AddMime(TMimeEncoding.Base64, 'audio/aacp', '.aacp');
+  AddMime(TMimeEncoding.Base64, 'audio/adpcm', '.adp');
+  AddMime(TMimeEncoding.Base64, 'audio/aiff', '.aiff,.aif,.aff');
+  AddMime(TMimeEncoding.Base64, 'audio/basic', '.au,.snd');
+  AddMime(TMimeEncoding.Base64, 'audio/flac', '.flac');
+  AddMime(TMimeEncoding.Base64, 'audio/midi', '.kar,.mid,.midi,.rmi');
+  AddMime(TMimeEncoding.Base64, 'audio/mp4', '.mp4,.m4a,.m4b,.m4p,.m4r,.m4v,.mp4v,.3gp,.3g2,.3ga,.3gpa,.3gpp,.3gpp2,.3gp2');
+  AddMime(TMimeEncoding.Base64, 'audio/mpeg', '.m2a,.m3a,.mp2,.mp2a,.mp3,.mpga');
+  AddMime(TMimeEncoding.Base64, 'audio/ogg', '.oga,.ogg,.spx');
+  AddMime(TMimeEncoding.Base64, 'audio/vnd.wav', '.wav');
+  AddMime(TMimeEncoding.Base64, 'audio/webm', '.weba');
+  AddMime(TMimeEncoding.Base64, 'audio/x-matroska', '.mka');
+  AddMime(TMimeEncoding.Base64, 'audio/x-mpegurl', '.m3u');
+  AddMime(TMimeEncoding.Base64, 'audio/x-ms-wax', '.wax');
+  AddMime(TMimeEncoding.Base64, 'audio/x-ms-wma', '.wma');
+  AddMime(TMimeEncoding.Base64, 'font/otf', '.otf');
+  AddMime(TMimeEncoding.Base64, 'font/woff', '.woff');
+  AddMime(TMimeEncoding.Base64, 'font/woff2', '.woff2');
+  AddMime(TMimeEncoding.Base64, 'image/avif', '.avif');
+  AddMime(TMimeEncoding.Base64, 'image/bmp', '.bmp');
+  AddMime(TMimeEncoding.Base64, 'image/cgm', '.cgm');
+  AddMime(TMimeEncoding.Base64, 'image/gif', '.gif');
+  AddMime(TMimeEncoding.Base64, 'image/jpeg', '.jpe,.jpeg,.jpg,.pjpg,.jfif,.jfif-tbnl,.jif');
+  AddMime(TMimeEncoding.Base64, 'image/png', '.png');
+  AddMime(TMimeEncoding.Base64, 'image/svg+xml', '.svg,.svgz');
+  AddMime(TMimeEncoding.Base64, 'image/tiff', '.tif,.tiff');
+  AddMime(TMimeEncoding.Base64, 'image/vnd.adobe.photoshop', '.psd');
+  AddMime(TMimeEncoding.Base64, 'image/vnd.djvu', '.djv,.djvu');
+  AddMime(TMimeEncoding.Base64, 'image/vnd.dwg', '.dwg');
+  AddMime(TMimeEncoding.Base64, 'image/vnd.dxf', '.dxf');
+  AddMime(TMimeEncoding.Base64, 'image/vnd.wap.wbmp', '.wbmp');
+  AddMime(TMimeEncoding.Base64, 'image/vnd.xiff', '.xif');
+  AddMime(TMimeEncoding.Base64, 'image/webp', '.webp');
+  AddMime(TMimeEncoding.Base64, 'image/x-icns', '.icns');
+  AddMime(TMimeEncoding.Base64, 'image/x-icon', '.ico');
+  AddMime(TMimeEncoding.Base64, 'image/x-pcx', '.pcx');
+  AddMime(TMimeEncoding.Base64, 'image/x-pict', '.pct,.pic');
+
+  AddMime(TMimeEncoding.Base64, 'video/3gpp', '.3gp');
+  AddMime(TMimeEncoding.Base64, 'video/3gpp2', '.3g2');
+  AddMime(TMimeEncoding.Base64, 'video/h261', '.h261');
+  AddMime(TMimeEncoding.Base64, 'video/h263', '.h263');
+  AddMime(TMimeEncoding.Base64, 'video/h264', '.h264');
+  AddMime(TMimeEncoding.Base64, 'video/jpeg', '.jpgv');
+  AddMime(TMimeEncoding.Base64, 'video/jpm', '.jpgm,.jpm');
+  AddMime(TMimeEncoding.Base64, 'video/mj2', '.mj2,.mjp2');
+  AddMime(TMimeEncoding.Base64, 'video/mp4', '.mp4,.mp4v,.mpg4');
+  AddMime(TMimeEncoding.Base64, 'video/mpeg', '.m1v,.m2v,.mpa,.mpe,.mpeg,.mpg');
+  AddMime(TMimeEncoding.Base64, 'video/ogg', '.ogv');
+  AddMime(TMimeEncoding.Base64, 'video/quicktime', '.mov,.qt');
+  AddMime(TMimeEncoding.Base64, 'video/webm', '.webm');
+  AddMime(TMimeEncoding.Base64, 'video/x-f4v', '.f4v');
+  AddMime(TMimeEncoding.Base64, 'video/x-fli', '.fli');
+  AddMime(TMimeEncoding.Base64, 'video/x-flv', '.flv');
+  AddMime(TMimeEncoding.Base64, 'video/x-m4v', '.m4v');
+  AddMime(TMimeEncoding.Base64, 'video/x-matroska', '.mkv');
+  AddMime(TMimeEncoding.Base64, 'video/x-ms-asf', '.asf,.asx');
+  AddMime(TMimeEncoding.Base64, 'video/x-ms-wm', '.wm');
+  AddMime(TMimeEncoding.Base64, 'video/x-ms-wmv', '.wmv');
+  AddMime(TMimeEncoding.Base64, 'video/x-ms-wmx', '.wmx');
+  AddMime(TMimeEncoding.Base64, 'video/x-ms-wvx', '.wvx');
+  AddMime(TMimeEncoding.Base64, 'video/x-msvideo', '.avi');
+  AddMime(TMimeEncoding.Base64, 'video/x-sgi-movie', '.movie');
+end;
+
+function TMCPMimeTypes.Count: NativeInt;
+begin
+  Result := FList.Count;
+end;
+
+constructor TMCPMimeTypes.Create(AList: TMimeList = TMimeList.Standard);
+begin
+  FList := TList<TMimeInfo>.Create;
+  case AList of
+    TMimeList.Standard: SetStandard;
+    TMimeList.Complete: SetComplete;
+  end;
+end;
+
+function TMCPMimeTypes.DataUri(const AFileName: string): string;
+begin
+  var ext := TPath.GetExtension(AFileName);
+  var mime := MediaByExtension(ext);
+  if mime.IsEmpty then
+    raise EMCPException.CreateFmt('MediaType for extension [%s] not found', [ext]);
+
+  Result := DataUri(AFileName, mime);
+end;
+
+function TMCPMimeTypes.DataUri(const AFileName, AMimeType: string): string;
+begin
+  if not TFile.Exists(AFileName) then
+    raise EMCPException.CreateFmt('Building data uri: file [%s] not found', [AFileName]);
+
+  var input := TFileStream.Create(AFileName, fmOpenRead);
+  var output := TStringStream.Create;
+  try
+    TNetEncoding.Base64.Encode(input, output);
+    Result := 'data:' + AMimeType + ';base64,' + output.DataString;
+  finally
+    input.Free;
+    output.Free;
+  end;
+
+end;
+
+destructor TMCPMimeTypes.Destroy;
+begin
+  FList.Free;
+  inherited;
+end;
+
+procedure TMCPMimeTypes.AddMime(AEncoding: TMimeEncoding; const AMime, AExt: string);
+var
+  LInfo: TMimeInfo;
+begin
+  LInfo.Encoding := AEncoding;
+  LInfo.Mime := AMime;
+  LInfo.Ext := AExt;
+
+  FList.Add(LInfo);
+end;
+
+function TMCPMimeTypes.EncodingByMedia(const AMime: string): Nullable<TMimeEncoding>;
+begin
+  var LMime := AMime;
+  var LMimeParts := LMime.Split([';']);
+  if Length(LMimeParts) > 1 then
+    LMime := LMimeParts[0];
+  Result := TMimeEncoding.Base64;
+  for var m in FList do
+  begin
+    if LMime = m.Mime then
+      Exit(m.Encoding);
+  end;
+end;
+
+function TMCPMimeTypes.ExtExists(const AExtension, AList: string): Boolean;
+begin
+  Result := False;
+  var lst := AList.Split([',']);
+  for var ext in lst do
+    if SameText(AExtension, ext) then
+      Exit(True);
+end;
+
+procedure TMCPMimeTypes.SetStandard;
+begin
+  FList.Clear;
+  AddMime(TMimeEncoding.Plain, 'text/css', '.css');
+  AddMime(TMimeEncoding.Plain, 'text/csv', '.csv');
+  AddMime(TMimeEncoding.Plain, 'text/html', '.htm,.html');
+  AddMime(TMimeEncoding.Plain, 'text/javascript', '.js');
+  AddMime(TMimeEncoding.Plain, 'text/markdown', '.md,.markdown,.mdown,.markdn');
+  AddMime(TMimeEncoding.Plain, 'text/plain', '.txt,.text,.ini,.conf,.def,.diff,.list,.log');
+
+  AddMime(TMimeEncoding.Plain, 'application/json', '.json');
+  AddMime(TMimeEncoding.Plain, 'application/xml', '.xml');
+  AddMime(TMimeEncoding.Plain, 'application/yaml', '.yaml,.yml');
+  AddMime(TMimeEncoding.Plain, 'application/toml', '.toml');
+  AddMime(TMimeEncoding.Plain, 'application/rss+xml', '.rss');
+  AddMime(TMimeEncoding.Plain, 'application/xml', '.xml,.xsl');
+  AddMime(TMimeEncoding.Plain, 'application/xslt+xml', '.xslt');
+
+  AddMime(TMimeEncoding.Base64, 'application/octet-stream', '.dat,.a,.bin,.bpk,.dist,.dmg,.dms,.dump,.o,.obj,.pkg,.so');
+  AddMime(TMimeEncoding.Base64, 'application/pdf', '.pdf');
+  AddMime(TMimeEncoding.Base64, 'application/rtf', '.rtf');
+  AddMime(TMimeEncoding.Base64, 'application/x-msaccess', '.mdb');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.ms-excel', '.xla,.xlb,.xlc,.xlm,.xls,.xlt,.xlw');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '.xlsx');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '.docx');
+  AddMime(TMimeEncoding.Base64, 'application/vnd.sqlite3', '.db,.sqlite,.sqlite3');
+  AddMime(TMimeEncoding.Base64, 'application/x-7z-compressed', '.7z');
+  AddMime(TMimeEncoding.Base64, 'application/x-rar-compressed', '.rar');
+  AddMime(TMimeEncoding.Base64, 'application/zip', '.zip');
+
+  AddMime(TMimeEncoding.Base64, 'audio/flac', '.flac');
+  AddMime(TMimeEncoding.Base64, 'audio/mp4', '.mp4,.m4a,.m4b,.m4p,.m4r,.m4v,.mp4v,.3gp,.3g2,.3ga,.3gpa,.3gpp,.3gpp2,.3gp2');
+  AddMime(TMimeEncoding.Base64, 'audio/mpeg', '.m2a,.m3a,.mp2,.mp2a,.mp3,.mpga');
+  AddMime(TMimeEncoding.Base64, 'audio/ogg', '.oga,.ogg,.spx');
+  AddMime(TMimeEncoding.Base64, 'audio/vnd.wav', '.wav');
+  AddMime(TMimeEncoding.Base64, 'audio/webm', '.weba');
+  AddMime(TMimeEncoding.Base64, 'audio/x-matroska', '.mka');
+
+  AddMime(TMimeEncoding.Base64, 'image/avif', '.avif');
+  AddMime(TMimeEncoding.Base64, 'image/bmp', '.bmp');
+  AddMime(TMimeEncoding.Base64, 'image/cgm', '.cgm');
+  AddMime(TMimeEncoding.Base64, 'image/gif', '.gif');
+  AddMime(TMimeEncoding.Base64, 'image/jpeg', '.jpe,.jpeg,.jpg,.pjpg');
+  AddMime(TMimeEncoding.Base64, 'image/png', '.png');
+  AddMime(TMimeEncoding.Base64, 'image/svg+xml', '.svg,.svgz');
+  AddMime(TMimeEncoding.Base64, 'image/tiff', '.tif,.tiff');
+  AddMime(TMimeEncoding.Base64, 'image/vnd.adobe.photoshop', '.psd');
+  AddMime(TMimeEncoding.Base64, 'image/vnd.djvu', '.djv,.djvu');
+  AddMime(TMimeEncoding.Base64, 'image/vnd.dwg', '.dwg');
+  AddMime(TMimeEncoding.Base64, 'image/vnd.dxf', '.dxf');
+  AddMime(TMimeEncoding.Base64, 'image/vnd.wap.wbmp', '.wbmp');
+  AddMime(TMimeEncoding.Base64, 'image/vnd.xiff', '.xif');
+  AddMime(TMimeEncoding.Base64, 'image/webp', '.webp');
+  AddMime(TMimeEncoding.Base64, 'image/x-icns', '.icns');
+  AddMime(TMimeEncoding.Base64, 'image/x-icon', '.ico');
+  AddMime(TMimeEncoding.Base64, 'image/x-pcx', '.pcx');
+  AddMime(TMimeEncoding.Base64, 'image/x-pict', '.pct,.pic');
+
+  AddMime(TMimeEncoding.Base64, 'video/mp4', '.mp4,.mp4v,.mpg4');
+  AddMime(TMimeEncoding.Base64, 'video/mpeg', '.m1v,.m2v,.mpa,.mpe,.mpeg,.mpg');
+  AddMime(TMimeEncoding.Base64, 'video/ogg', '.ogv');
+  AddMime(TMimeEncoding.Base64, 'video/quicktime', '.mov,.qt');
+  AddMime(TMimeEncoding.Base64, 'video/webm', '.webm');
+  AddMime(TMimeEncoding.Base64, 'video/x-matroska', '.mkv');
+  AddMime(TMimeEncoding.Base64, 'video/x-ms-wmv', '.wmv');
+  AddMime(TMimeEncoding.Base64, 'video/x-msvideo', '.avi');
+  AddMime(TMimeEncoding.Base64, 'video/x-sgi-movie', '.movie');
+end;
+
+function TMCPMimeTypes.MediaByExtension(const AExtension: string): string;
+begin
+  Result := '';
+  for var m in FList do
+  begin
+    if ExtExists(AExtension, m.Ext) then
+      Exit(m.Mime);
+  end;
 end;
 
 end.

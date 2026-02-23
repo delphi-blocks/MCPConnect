@@ -17,14 +17,25 @@ uses
 type
   TWeatherResource = class
   public
-    [McpResource('weather-resource', 'text://weather', 'text/csv', 'Shows the weather for the DelphiDay event')]
+    [McpResource('weather-resource', 'text://weather', 'text/plain', 'Shows the weather for the DelphiDay event')]
     function GetWeatherInfo: string;
+
+    [McpTemplate('weather-city', 'text://weather.city/{city}', 'text/plain', 'Shows the weather for the specified city')]
+    function GetWeatherCity(
+     [MCPParam('city', 'Forecast city')] const ACity: string): string;
+
+
   end;
 
 
 implementation
 
 { TWeatherResource }
+
+function TWeatherResource.GetWeatherCity(const ACity: string): string;
+begin
+  Result := 'Forecast for Piacenza is: Sunny!';
+end;
 
 function TWeatherResource.GetWeatherInfo: string;
 begin

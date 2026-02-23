@@ -162,8 +162,7 @@ begin
   end;
 end;
 
-procedure TMCPToolInvoker.ResultToTool(const AToolResult: TValue; AContentList:
-    TContentList);
+procedure TMCPToolInvoker.ResultToTool(const AToolResult: TValue; AContentList: TContentList);
 var
   LWriter: TMCPCustomWriter;
   LContext: TMCPToolContext;

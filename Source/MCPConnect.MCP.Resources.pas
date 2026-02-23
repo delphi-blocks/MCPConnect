@@ -112,11 +112,9 @@ type
     /// <summary>
     ///   Optional set of sized icons that the client can display in a user interface
     /// </summary>
-    [NeonInclude(IncludeIf.NotEmpty)] Icons: TIconList;
+    [NeonInclude(IncludeIf.NotEmpty)] Icons: TMCPIconList;
   end;
 
-
-  TMimeEncoding = (Plain, Base64);
 
   /// <summary>
   /// Represents a known resource that the server is capable of reading.
@@ -144,6 +142,11 @@ type
   /// Represents a template description for resources available on the server.
   /// </summary>
   TMCPResourceTemplate = class(TMCPResourceBase)
+  public
+    [NeonIgnore] Classe: TClass;
+    [NeonIgnore] Method: TRttiMethod;
+    [NeonIgnore] Category: string;
+    [NeonIgnore] Disabled: Boolean;
   public
     /// <summary>
     /// A URI template (according to RFC 6570) that can be used to construct resource URIs.

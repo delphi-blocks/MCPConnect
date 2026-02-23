@@ -231,7 +231,7 @@ function TMCPResourcesApi.ResourcesList: TListResourcesResult;
 begin
   Result := TListResourcesResult.Create;
   try
-    MCPConfig.Resources.CompileList(Result);
+    MCPConfig.Resources.ResourceList(Result);
   except
     Result.Free;
     raise;
@@ -240,8 +240,13 @@ end;
 
 function TMCPResourcesApi.TemplatesList: TListResourceTemplatesResult;
 begin
-  { TODO -opaolo -c : Finire 16/02/2026 11:59:38 }
   Result := TListResourceTemplatesResult.Create;
+  try
+    MCPConfig.Resources.TemplateList(Result);
+  except
+    Result.Free;
+    raise;
+  end;
 end;
 
 { TMCPLoggingApi }

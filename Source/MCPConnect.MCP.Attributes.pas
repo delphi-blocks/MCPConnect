@@ -55,6 +55,15 @@ type
   MCPToolAttribute = class(McpAttribute);
   MCPParamAttribute = class(McpAttribute);
 
+  MCPAppAttribute = class(McpBaseAttribute)
+  private
+    FUI: string;
+  public
+    property UI: string read FUI;
+
+    constructor Create(const AUI: string; const AAdditionalTags: string = '');
+  end;
+
   MCPResourceBaseAttribute = class(McpBaseAttribute)
   private
     FMimeType: string;
@@ -74,7 +83,7 @@ type
     constructor Create(const AName, AUri: string; const AMime: string = ''; const ADescription: string = ''; const AAdditionalTags: string = '');
   end;
 
-  MCPAppAttribute = class(McpBaseAttribute)
+  MCPAppUIAttribute = class(McpBaseAttribute)
   private
     FName: string;
     FDescription: string;
@@ -181,15 +190,23 @@ begin
   FAdditionalTags := AAdditionalTags;
 end;
 
-{ MCPAppAttribute }
+{ MCPAppUIAttribute }
 
-constructor MCPAppAttribute.Create(const AName, AUri, ADescription, AAdditionalTags: string);
+constructor MCPAppUIAttribute.Create(const AName, AUri, ADescription, AAdditionalTags: string);
 begin
   inherited Create;
   FName := AName;
   FUri := AUri;
   FDescription := ADescription;
   FAdditionalTags := AAdditionalTags;
+end;
+
+{ MCPAppAttribute }
+
+constructor MCPAppAttribute.Create(const AUI, AAdditionalTags: string);
+begin
+  inherited Create;
+  FUI := AUI;
 end;
 
 end.

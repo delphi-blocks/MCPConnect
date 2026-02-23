@@ -55,9 +55,11 @@ type
     ApplicationEvents1: TApplicationEvents;
     ButtonOpenBrowser: TButton;
     btnConfig: TButton;
+    Button1: TButton;
     procedure FormCreate(Sender: TObject);
     procedure ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
     procedure btnConfigClick(Sender: TObject);
+    procedure Button1Click(Sender: TObject);
     procedure ButtonStartClick(Sender: TObject);
     procedure ButtonStopClick(Sender: TObject);
     procedure ButtonOpenBrowserClick(Sender: TObject);
@@ -80,6 +82,7 @@ uses
   WinApi.Windows, Winapi.ShellApi,
 {$ENDIF}
   System.Generics.Collections,
+  System.RegularExpressions,
 
   Neon.Core.Types,
   Neon.Core.Serializers.RTL,
@@ -126,6 +129,19 @@ begin
   memoLog.Lines.Add(s);
 
   mcp.Free;
+end;
+
+procedure TForm1.Button1Click(Sender: TObject);
+begin
+  var res: TArray<string> := [];
+  var matches := TRegEx.Matches('demo://weather/dynamic/{city}/{celsius}', '[^{\}]+(?=})');
+
+  for var match in matches do
+  begin
+    res := res + [match.Value];
+    memoLog.Lines.Add(match.Value);
+  end;
+
 end;
 
 procedure TForm1.ButtonOpenBrowserClick(Sender: TObject);

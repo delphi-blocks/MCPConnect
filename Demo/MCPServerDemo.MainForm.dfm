@@ -79,6 +79,15 @@ object Form1: TForm1
     TabOrder = 5
     OnClick = btnConfigClick
   end
+  object Button1: TButton
+    Left = 456
+    Top = 56
+    Width = 75
+    Height = 25
+    Caption = 'Button1'
+    TabOrder = 6
+    OnClick = Button1Click
+  end
   object ApplicationEvents1: TApplicationEvents
     OnIdle = ApplicationEvents1Idle
     Left = 720

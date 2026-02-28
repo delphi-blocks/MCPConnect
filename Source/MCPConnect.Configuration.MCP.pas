@@ -315,7 +315,6 @@ type
     FTools: TMCPToolsConfig;
     FResources: TMCPResourcesConfig;
 
-    FTemplates: TMCPListConfig;
     FPrompts: TMCPListConfig;
   public
     constructor Create(AApp: IJRPCApplication); override;
@@ -326,7 +325,6 @@ type
     function Tools: TMCPToolsConfig;
     function Resources: TMCPResourcesConfig;
 
-    function Templates: TMCPListConfig;
     function Prompts: TMCPListConfig;
   end;
 
@@ -347,14 +345,12 @@ begin
   FServer := TMCPServerConfig.Create(Self);
   FTools := TMCPToolsConfig.Create(Self);
   FResources := TMCPResourcesConfig.Create(Self);
-  FTemplates := TMCPListConfig.Create(Self);
   FPrompts := TMCPListConfig.Create(Self);
 end;
 
 destructor TMCPConfig.Destroy;
 begin
   FPrompts.Free;
-  FTemplates.Free;
   FResources.Free;
   FTools.Free;
   FServer.Free;
@@ -370,11 +366,6 @@ end;
 function TMCPConfig.Resources: TMCPResourcesConfig;
 begin
   Result := FResources;
-end;
-
-function TMCPConfig.Templates: TMCPListConfig;
-begin
-  Result := FTemplates;
 end;
 
 function TMCPConfig.Tools: TMCPToolsConfig;
@@ -695,6 +686,13 @@ begin
       AList.Resources.Add(pair.Value);
 end;
 
+procedure TMCPResourcesConfig.TemplateList(AList: TListResourceTemplatesResult);
+begin
+  for var pair in TemplateRegistry do
+    if not pair.Value.Disabled then
+      AList.ResourceTemplates.Add(pair.Value);
+end;
+
 constructor TMCPResourcesConfig.Create(AConfig: IMCPConfig);
 begin
   inherited;
@@ -705,6 +703,14 @@ begin
   TemplateRegistry := TMCPTemplateRegistry.Create([doOwnsValues]);
 end;
 
+destructor TMCPResourcesConfig.Destroy;
+begin
+  MimeTypes.Free;
+  Registry.Free;
+  TemplateRegistry.Free;
+  inherited;
+end;
+
 function TMCPResourcesConfig.CreateInstance(const AUri: string): TObject;
 var
   LResource: TMCPResource;
@@ -713,14 +719,6 @@ begin
     raise EMCPException.CreateFmt('Resource [%s] not found', [AUri]);
 
   Result := TRttiUtils.CreateInstance(LResource.Classe);
-end;
-
-destructor TMCPResourcesConfig.Destroy;
-begin
-  MimeTypes.Free;
-  Registry.Free;
-  TemplateRegistry.Free;
-  inherited;
 end;
 
 function TMCPResourcesConfig.GetResource(const AUri: string): TMCPResource;
@@ -1034,13 +1032,6 @@ function TMCPResourcesConfig.SetBasePath(const APath: string): TMCPResourcesConf
 begin
   BasePath := APath;
   Result := Self;
-end;
-
-procedure TMCPResourcesConfig.TemplateList(AList: TListResourceTemplatesResult);
-begin
-  for var pair in TemplateRegistry do
-    if not pair.Value.Disabled then
-      AList.ResourceTemplates.Add(pair.Value);
 end;
 
 function TMCPResourcesConfig.ValidUriResource(const AUri: string): Boolean;

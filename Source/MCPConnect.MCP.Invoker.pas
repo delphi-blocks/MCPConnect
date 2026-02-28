@@ -71,7 +71,6 @@ type
 
   TMCPTemplateInvoker = class(TMCPInvoker)
   protected
-
     FTemplate: TMCPResourceTemplate;
     function BuildTemplateParams(const AUri: string; const AParams: TArray<TRttiParameter>): TArray<TValue>;
     procedure ResultToResource(const AMethodResult: TValue; AContentList: TResourceContentsList);

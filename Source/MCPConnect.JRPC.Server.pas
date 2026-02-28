@@ -82,8 +82,7 @@ begin
   Result := FAppConfigurator;
 end;
 
-function TJRPCServer.GetConfigByClassRef(
-  AClass: TJRPCConfigurationClass): TJRPCConfiguration;
+function TJRPCServer.GetConfigByClassRef(AClass: TJRPCConfigurationClass): TJRPCConfiguration;
 begin
   Result := FConfigRegistry.GetApplicationConfig(AClass, Self);
 end;

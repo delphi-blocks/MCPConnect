@@ -454,7 +454,7 @@ end;
 constructor TListResourceTemplatesResult.Create;
 begin
   inherited;
-  ResourceTemplates := TMCPTemplates.Create;
+  ResourceTemplates := TMCPTemplates.Create(False);
 end;
 
 destructor TListResourceTemplatesResult.Destroy;

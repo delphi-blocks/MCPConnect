@@ -17,7 +17,7 @@ interface
 
 uses
   System.Classes, System.SysUtils, System.Rtti, System.TypInfo,
-  System.Generics.Collections;
+  System.Generics.Collections, System.RegularExpressions;
 
 type
   /// <summary>
@@ -199,33 +199,82 @@ type
     procedure CollectGarbage();
   end;
 
-/// <summary>
-///   Creates a new TValue initialized with the default value for the specified
-///   RTTI type. Supports common Delphi type kinds including integers, floats,
-///   strings, classes, and records.
-/// </summary>
-/// <param name="AType">RTTI type information for which to create a default value</param>
-/// <returns>
-///   A TValue containing the default/zero value for the type:
-///   - Integers: 0
-///   - Floats: 0.0
-///   - Strings: empty string
-///   - Classes: nil
-///   - Records: zero-initialized memory
-/// </returns>
-/// <remarks>
-///   Used internally by the JRPC invoker to create default parameter values
-///   when arguments are omitted in JSON-RPC requests. For record types,
-///   allocates and zero-initializes memory temporarily to create the TValue.
-/// </remarks>
-/// <exception cref="EJRPCException">
-///   Raised if the type kind is not supported (e.g., interfaces, pointers, methods)
-/// </exception>
-function CreateNewValue(AType: TRttiType): TValue;
+
+  /// <summary>
+  ///   TRouteMatcher provides URI template matching and parameter extraction.
+  ///   It supports curly-bracket style templates (e.g., '/users/{id}') and
+  ///   automatically extracts and URL-decodes matched parameters.
+  /// </summary>
+  TRouteMatcher = class
+  public type
+    TRouteParams = TDictionary<string, string>;
+  private
+    FParams: TRouteParams;
+    FParamNames: TList<string>;
+    /// <summary>
+    ///   Converts a URI template into a regular expression with named capture groups.
+    /// </summary>
+    /// <param name="ATemplate">The URI template to convert (e.g., '/users/{id}')</param>
+    /// <returns>A regex string suitable for TRegEx matching</returns>
+    function BuildRegex(const ATemplate: string): string;
+  public
+    /// <summary>
+    ///   Initializes a new instance of the TRouteMatcher class.
+    /// </summary>
+    constructor Create;
+    /// <summary>
+    ///   Cleans up internal resources used by the matcher.
+    /// </summary>
+    destructor Destroy; override;
+  
+    /// <summary>
+    ///   Attempts to match an input string against a URI template.
+    ///   If successful, extracts parameters into the Params dictionary.
+    /// </summary>
+    /// <param name="ATemplate">The URI template (e.g., '/users/{id}')</param>
+    /// <param name="AInput">The actual URI or string to match</param>
+    /// <returns>True if the input matches the template; otherwise False</returns>
+    function Match(const ATemplate, AInput: string): Boolean;
+  
+    /// <summary>
+    ///   Dictionary containing the parameters extracted during the last
+    ///   successful Match operation. Keys are parameter names from the
+    ///   template, and values are URL-decoded strings from the input.
+    /// </summary>
+    property Params: TRouteParams read FParams;
+  end;
+
+
+  /// <summary>
+  ///   Creates a new TValue initialized with the default value for the specified
+  ///   RTTI type. Supports common Delphi type kinds including integers, floats,
+  ///   strings, classes, and records.
+  /// </summary>
+  /// <param name="AType">RTTI type information for which to create a default value</param>
+  /// <returns>
+  ///   A TValue containing the default/zero value for the type:
+  ///   - Integers: 0
+  ///   - Floats: 0.0
+  ///   - Strings: empty string
+  ///   - Classes: nil
+  ///   - Records: zero-initialized memory
+  /// </returns>
+  /// <remarks>
+  ///   Used internally by the JRPC invoker to create default parameter values
+  ///   when arguments are omitted in JSON-RPC requests. For record types,
+  ///   allocates and zero-initializes memory temporarily to create the TValue.
+  /// </remarks>
+  /// <exception cref="EJRPCException">
+  ///   Raised if the type kind is not supported (e.g., interfaces, pointers, methods)
+  /// </exception>
+  function CreateNewValue(AType: TRttiType): TValue;
+
+
 
 implementation
 
 uses
+  System.NetEncoding,
   MCPConnect.JRPC.Core;
 
 function CreateNewValue(AType: TRttiType): TValue;
@@ -341,6 +390,64 @@ begin
   CollectGarbage;
   FGarbage.Free;
   inherited;
+end;
+
+{ TRouteMatcher }
+
+constructor TRouteMatcher.Create;
+begin
+  FParams := TRouteParams.Create;
+  FParamNames := TList<string>.Create;
+end;
+
+destructor TRouteMatcher.Destroy;
+begin
+  FParams.Free;
+  FParamNames.Free;
+  inherited;
+end;
+
+function TRouteMatcher.BuildRegex(const ATemplate: string): string;
+var
+  LMatch: TMatch;
+begin
+  FParamNames.Clear;
+
+  // 1. Find the names inside { } before we escape the string
+  LMatch := TRegEx.Match(ATemplate, '\{([a-zA-Z0-9_]+)\}');
+  while LMatch.Success do
+  begin
+    FParamNames.Add(LMatch.Groups[1].Value);
+    LMatch := LMatch.NextMatch;
+  end;
+
+  // 2. Escape the template for Regex safety
+  Result := TRegEx.Escape(ATemplate);
+
+  // 3. Replace the escaped \{name\} with the named capture group (?P<name>[^/]+)
+  Result := TRegEx.Replace(Result, '\\\{([a-zA-Z0-9_]+)\\\}', '(?P<$1>[^/]+)');
+
+  Result := '^' + Result + '$';
+end;
+
+function TRouteMatcher.Match(const ATemplate, AInput: string): Boolean;
+var
+  LRegex: string;
+  LMatch: TMatch;
+  LName: string;
+begin
+  FParams.Clear;
+  LRegex := BuildRegex(ATemplate);
+
+  LMatch := TRegEx.Match(AInput, LRegex, [roIgnoreCase]);
+  Result := LMatch.Success;
+
+  if not Result then
+    Exit;
+
+  for LName in FParamNames do
+    if LMatch.Groups[LName].Success then
+      FParams.Add(LName, TNetEncoding.URL.Decode(LMatch.Groups[LName].Value));
 end;
 
 end.

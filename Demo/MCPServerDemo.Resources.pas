@@ -20,7 +20,7 @@ type
     [McpResource('weather-resource', 'text://weather', 'text/plain', 'Shows the weather for the DelphiDay event')]
     function GetWeatherInfo: string;
 
-    [McpTemplate('weather-city', 'text://weather.city/{city}', 'text/plain', 'Shows the weather for the specified city')]
+    [McpTemplate('weather-city', 'demo://weather.app/{city}', 'text/plain', 'Shows the weather for the specified city')]
     function GetWeatherCity(
      [MCPParam('city', 'Forecast city')] const ACity: string): string;
 
@@ -34,12 +34,12 @@ implementation
 
 function TWeatherResource.GetWeatherCity(const ACity: string): string;
 begin
-  Result := 'Forecast for Piacenza is: Sunny!';
+  Result := Format('Forecast for %s: It''s going to be a sunny day!!', [ACity]);
 end;
 
 function TWeatherResource.GetWeatherInfo: string;
 begin
-  Result := 'For the Delphi Day is expected a sunny day!';
+  Result := 'Cloudy skies early, followed by partial clearing. Slight chance of a rain shower. High 31°. Winds light and variable.';
 end;
 
 end.

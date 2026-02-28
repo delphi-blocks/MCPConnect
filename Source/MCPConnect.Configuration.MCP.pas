@@ -23,6 +23,7 @@ uses
 
   Neon.Core.Nullables,
 
+  MCPConnect.Core.Utils,
   MCPConnect.JRPC.Core,
   MCPConnect.MCP.Types,
   MCPConnect.MCP.Tools,
@@ -258,6 +259,8 @@ type
   end;
 
   TMCPResourcesConfig = class(TMCPBaseConfig)
+  private type
+    TypeKindSet = set of TTypeKind;
   private const
     URI_REGEX = '[^{\}]+(?=})';
   public
@@ -267,8 +270,8 @@ type
     Schemes: TDictionary<string, string>;
     BasePath: string;
   private
+    function ParamIsType(AParam: TRttiParameter; ATypes: TypeKindSet): Boolean;
     function ValidUriResource(const AUri: string): Boolean;
-    function ValidUriTemplate(const AUri: string): Boolean;
     function GetUriParams(const AUri: string): TArray<string>;
 
     procedure RegisterUIMethod(AClass: TClass; AMethod: TRttiMethod; AAttr: MCPAppUIAttribute);
@@ -287,6 +290,10 @@ type
     function RegisterResource(AClass: TClass; const AMethod, AUri: string; AConfig: TMCPResourceConfigurator): TMCPResourcesConfig;
     function RegisterTemplate(AClass: TClass; const AMethod, AUriTemplate: string; AConfig: TMCPTemplateConfigurator): TMCPResourcesConfig;
     function RegisterUI(AClass: TClass; const AMethod, AUri: string; AConfig: TMCPUIResourceConfigurator): TMCPResourcesConfig;
+
+    function GetResource(const AUri: string): TMCPResource;
+    function GetTemplate(const AUri: string): TMCPResourceTemplate;
+
 
     /// <summary>
     ///   Creates an instance of a class by namespace.
@@ -327,6 +334,7 @@ type
 implementation
 
 uses
+  System.TypInfo,
   System.IOUtils,
   System.RegularExpressions,
   Neon.Core.Utils,
@@ -715,6 +723,25 @@ begin
   inherited;
 end;
 
+function TMCPResourcesConfig.GetResource(const AUri: string): TMCPResource;
+begin
+  if not Registry.TryGetValue(AUri, Result) then
+    Exit(nil);
+end;
+
+function TMCPResourcesConfig.GetTemplate(const AUri: string): TMCPResourceTemplate;
+begin
+  Result := nil;
+  var router := TRouteMatcher.Create;
+  try
+    for var pair in TemplateRegistry do
+      if router.Match(pair.Key, AUri) then
+        Exit(pair.Value);
+  finally
+    router.Free;
+  end;
+end;
+
 function TMCPResourcesConfig.GetUriParams(const AUri: string): TArray<string>;
 begin
   Result := [];
@@ -722,6 +749,11 @@ begin
 
   for var match in matches do
     Result := Result + [match.Value];
+end;
+
+function TMCPResourcesConfig.ParamIsType(AParam: TRttiParameter; ATypes: TypeKindSet): Boolean;
+begin
+  Result := AParam.ParamType.TypeKind in ATypes;
 end;
 
 procedure TMCPResourcesConfig.RegisterUIMethod(AClass: TClass; AMethod:
@@ -891,6 +923,15 @@ begin
   if Length(AMethod.GetParameters) <> Length(uriParams) then
     raise EMCPException.CreateFmt('Parameters for template method [%s] must match uri parameters', [AMethod.Name]);
 
+  for var par in AMethod.GetParameters do
+  begin
+    if not par.HasAttribute<MCPParamAttribute> then
+      raise EMCPException.Create('Template method parameters must have the [MCPParam] attribute');
+
+    if not ParamIsType(par, [tkChar, tkWChar, tkString, tkLString, tkWString, tkUString]) then
+      raise EMCPException.Create('Parameter type is not supported');
+  end;
+
   LTpl := TMCPResourceTemplate.Create;
   try
     LTpl.Name := AAttr.Name;
@@ -1003,12 +1044,6 @@ begin
 end;
 
 function TMCPResourcesConfig.ValidUriResource(const AUri: string): Boolean;
-begin
-  var matches := TRegEx.Matches(AUri, URI_REGEX);
-  Result := matches.Count = 0;
-end;
-
-function TMCPResourcesConfig.ValidUriTemplate(const AUri: string): Boolean;
 begin
   var matches := TRegEx.Matches(AUri, URI_REGEX);
   Result := matches.Count = 0;

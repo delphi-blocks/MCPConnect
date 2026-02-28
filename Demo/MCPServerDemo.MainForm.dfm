@@ -80,13 +80,38 @@ object Form1: TForm1
     OnClick = btnConfigClick
   end
   object Button1: TButton
-    Left = 456
-    Top = 56
+    Left = 376
+    Top = 73
     Width = 75
     Height = 25
     Caption = 'Button1'
     TabOrder = 6
     OnClick = Button1Click
+  end
+  object Button2: TButton
+    Left = 496
+    Top = 64
+    Width = 75
+    Height = 25
+    Caption = 'Router'
+    TabOrder = 7
+    OnClick = Button2Click
+  end
+  object edtTemplate: TEdit
+    Left = 496
+    Top = 8
+    Width = 305
+    Height = 21
+    TabOrder = 8
+    Text = 'demo://weather/{city}/temp/{um}'
+  end
+  object edtURI: TEdit
+    Left = 496
+    Top = 35
+    Width = 305
+    Height = 21
+    TabOrder = 9
+    Text = 'demo://weather/rome/temp/celsius'
   end
   object ApplicationEvents1: TApplicationEvents
     OnIdle = ApplicationEvents1Idle

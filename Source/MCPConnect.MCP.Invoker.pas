@@ -62,13 +62,24 @@ type
   TMCPResourceInvoker = class(TMCPInvoker)
   protected
     FResource: TMCPResource;
-    procedure ResultToResource(const AMethodResult: TValue; AContentList: TResourceContentsList; AResource: TMCPResource);
+    procedure ResultToResource(const AMethodResult: TValue; AContentList: TResourceContentsList);
   public
     constructor Create(AInstance: TObject; AResource: TMCPResource);
 
     function Invoke(AParams: TReadResourceParams; AResult: TReadResourceResult): Boolean;
   end;
 
+  TMCPTemplateInvoker = class(TMCPInvoker)
+  protected
+
+    FTemplate: TMCPResourceTemplate;
+    function BuildTemplateParams(const AUri: string; const AParams: TArray<TRttiParameter>): TArray<TValue>;
+    procedure ResultToResource(const AMethodResult: TValue; AContentList: TResourceContentsList);
+  public
+    constructor Create(AInstance: TObject; ATemplate: TMCPResourceTemplate);
+
+    function Invoke(AParams: TReadResourceParams; AResult: TReadResourceResult): Boolean;
+  end;
 
 
 implementation
@@ -269,7 +280,7 @@ begin
     end
     else
     begin
-      ResultToResource(LResult, AResult.Contents, FResource);
+      ResultToResource(LResult, AResult.Contents);
     end;
   finally
     FGC.Add(LResult);
@@ -277,7 +288,7 @@ begin
 end;
 
 procedure TMCPResourceInvoker.ResultToResource(const AMethodResult: TValue;
-    AContentList: TResourceContentsList; AResource: TMCPResource);
+    AContentList: TResourceContentsList);
 var
   LMime: string;
   LEncoding: TMimeEncoding;
@@ -289,7 +300,7 @@ var
   LResText: TTextResourceContents absolute LContent;
   LResBlob: TBlobResourceContents absolute LContent;
 begin
-  LMime := AResource.MimeType;
+  LMime := FResource.MimeType;
   LEncoding := TMimeEncoding.Plain;
 
   if not LMime.IsEmpty then
@@ -315,14 +326,14 @@ begin
       if LEncoding = TMimeEncoding.Plain then
       begin
         LResText := TTextResourceContents.Create();
-        LResText.Uri := AResource.Uri;
+        LResText.Uri := FResource.Uri;
         LResText.MimeType := IfThen(LMime.IsEmpty, 'text/plain', LMime);
         LResText.Text := AMethodResult.ToString;
       end
       else
       begin
         LResBlob := TBlobResourceContents.Create();
-        LResBlob.Uri := AResource.Uri;
+        LResBlob.Uri := FResource.Uri;
         LResBlob.MimeType := LMime;
         LResBlob.Blob := TNetEncoding.Base64.Encode(AMethodResult.ToString);
       end
@@ -339,14 +350,14 @@ begin
       if LEncoding = TMimeEncoding.Plain then
       begin
         LResText := TTextResourceContents.Create();
-        LResText.Uri := AResource.Uri;
+        LResText.Uri := FResource.Uri;
         LResText.MimeType := IfThen(LMime.IsEmpty, 'text/plain', LMime);
         LResText.Text := AMethodResult.ToString;
       end
       else
       begin
         LResBlob := TBlobResourceContents.Create();
-        LResBlob.Uri := AResource.Uri;
+        LResBlob.Uri := FResource.Uri;
         LResBlob.MimeType := LMime;
         LResBlob.Blob := TNetEncoding.Base64.Encode(AMethodResult.ToString);
       end;
@@ -363,14 +374,182 @@ begin
       if LEncoding = TMimeEncoding.Plain then
       begin
         LResText := TTextResourceContents.Create();
-        LResText.Uri := AResource.Uri;
+        LResText.Uri := FResource.Uri;
         LResText.MimeType := IfThen(LMime.IsEmpty, 'application/json', LMime);
         LResText.Text := LResult;
       end
       else
       begin
         LResBlob := TBlobResourceContents.Create();
-        LResBlob.Uri := AResource.Uri;
+        LResBlob.Uri := FResource.Uri;
+        LResBlob.MimeType := LMime;
+        LResBlob.Blob := TNetEncoding.Base64.Encode(LResult);
+      end;
+    end;
+
+  else
+    raise EMCPException.Create('Type kind not supported');
+
+  end;
+
+  AContentList.Add(LContent);
+end;
+
+{ TMCPTemplateInvoker }
+
+function TMCPTemplateInvoker.BuildTemplateParams(const AUri: string;
+  const AParams: TArray<TRttiParameter>): TArray<TValue>;
+var
+  LParam: TRttiParameter;
+  LParamName, LParamUri: string;
+begin
+  Result := [];
+
+  var router := TRouteMatcher.Create;
+  try
+    if not router.Match(FTemplate.UriTemplate, AUri) then
+      raise EMCPException.Create('URI not compatible with the template');
+
+    if router.Params.Count <> Length(AParams) then
+      raise EMCPException.Create('Parameters count from method and URI are different');
+
+    for LParam in AParams do
+    begin
+      LParamName := GetParamName(LParam);
+      if router.Params.TryGetValue(LParamName, LParamUri) then
+        Result := Result + [LParamUri];
+    end;
+
+  finally
+    router.Free;
+  end;
+end;
+
+constructor TMCPTemplateInvoker.Create(AInstance: TObject; ATemplate: TMCPResourceTemplate);
+begin
+  inherited Create(AInstance);
+  FTemplate := ATemplate;
+end;
+
+function TMCPTemplateInvoker.Invoke(AParams: TReadResourceParams; AResult: TReadResourceResult): Boolean;
+var
+  LArgs: TArray<TValue>;
+  LResult: TValue;
+begin
+  Result := True;
+  LArgs := BuildTemplateParams(AParams.Uri, FTemplate.Method.GetParameters);
+  FGC.Add(LArgs);
+  LResult := FTemplate.Method.Invoke(FInstance, LArgs);
+  try
+    // If the result is already a TContentList just assign it
+    if LResult.IsType<TResourceContentsList> then
+    begin
+      AResult.Contents.Free;
+      AResult.Contents := TResourceContentsList(LResult.AsObject);
+      LResult := nil;
+    end
+    else
+      ResultToResource(LResult, AResult.Contents);
+  finally
+    FGC.Add(LResult);
+  end;
+
+end;
+
+procedure TMCPTemplateInvoker.ResultToResource(const AMethodResult: TValue; AContentList: TResourceContentsList);
+var
+  LMime: string;
+  LEncoding: TMimeEncoding;
+  LResult: string;
+  LWriter: TMCPCustomWriter;
+  LContext: TMCPResourceContext;
+
+  LContent: TResourceContents;
+  LResText: TTextResourceContents absolute LContent;
+  LResBlob: TBlobResourceContents absolute LContent;
+begin
+  LMime := FTemplate.MimeType;
+  LEncoding := TMimeEncoding.Plain;
+
+  if not LMime.IsEmpty then
+    LEncoding := FConfig.Resources.MimeTypes.EncodingByMedia(LMime);
+
+  LWriter := FConfig.Server.WriterRegistry.GetWriter(AMethodResult);
+  if Assigned(LWriter) then
+  begin
+    LContext.Result := AContentList;
+    LContext.Attributes := FTemplate.Method.GetAttributes;
+
+    LWriter.WriteResource(AMethodResult, LContext);
+    Exit;
+  end;
+
+  case AMethodResult.Kind of
+
+    // As it is
+    tkInt64,
+    tkInteger,
+    tkFloat:
+    begin
+      if LEncoding = TMimeEncoding.Plain then
+      begin
+        LResText := TTextResourceContents.Create();
+        LResText.Uri := FTemplate.UriTemplate;
+        LResText.MimeType := IfThen(LMime.IsEmpty, 'text/plain', LMime);
+        LResText.Text := AMethodResult.ToString;
+      end
+      else
+      begin
+        LResBlob := TBlobResourceContents.Create();
+        LResBlob.Uri := FTemplate.UriTemplate;
+        LResBlob.MimeType := LMime;
+        LResBlob.Blob := TNetEncoding.Base64.Encode(AMethodResult.ToString);
+      end
+    end;
+
+    // Dequote
+    tkChar,
+    tkWChar,
+    tkString,
+    tkLString,
+    tkWString,
+    tkUString:
+    begin
+      if LEncoding = TMimeEncoding.Plain then
+      begin
+        LResText := TTextResourceContents.Create();
+        LResText.Uri := FTemplate.UriTemplate;
+        LResText.MimeType := IfThen(LMime.IsEmpty, 'text/plain', LMime);
+        LResText.Text := AMethodResult.ToString;
+      end
+      else
+      begin
+        LResBlob := TBlobResourceContents.Create();
+        LResBlob.Uri := FTemplate.UriTemplate;
+        LResBlob.MimeType := LMime;
+        LResBlob.Blob := TNetEncoding.Base64.Encode(AMethodResult.ToString);
+      end;
+    end;
+
+    // JSON response
+    tkEnumeration,
+    tkSet,
+    tkClass,
+    tkRecord, tkMRecord,
+    tkArray, tkDynArray:
+    begin
+      LResult := TNeon.ValueToJSONString(AMethodResult, TNeonConfiguration.Default);
+      if LEncoding = TMimeEncoding.Plain then
+      begin
+        LResText := TTextResourceContents.Create();
+        LResText.Uri := FTemplate.UriTemplate;
+        LResText.MimeType := IfThen(LMime.IsEmpty, 'application/json', LMime);
+        LResText.Text := LResult;
+      end
+      else
+      begin
+        LResBlob := TBlobResourceContents.Create();
+        LResBlob.Uri := FTemplate.UriTemplate;
         LResBlob.MimeType := LMime;
         LResBlob.Blob := TNetEncoding.Base64.Encode(LResult);
       end;

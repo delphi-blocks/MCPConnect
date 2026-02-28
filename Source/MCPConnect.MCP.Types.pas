@@ -25,7 +25,8 @@ uses
   Neon.Core.Nullables,
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
-  Neon.Core.Serializers.RTL, MCPConnect.Core.Utils;
+  Neon.Core.Serializers.RTL,
+  MCPConnect.Core.Utils;
 
 type
   EMCPException = class(Exception);
@@ -34,14 +35,15 @@ type
   end;
 
 
+  TStringPair = TPair<string, string>;
+  TStringMap = TArray<TStringPair>;
+
   TAnyMap = class(TDictionary<string, TValue>);
 
   TAnyMapOwned = class(TDictionary<string, TValue>)
   public
     destructor Destroy; override;
   end;
-
-
 
   TMetaClass = class
   public
@@ -81,7 +83,6 @@ type
     /// </remarks>
     [NeonInclude(IncludeIf.NotEmpty)] Audience: TArray<string>;
 
-    // Examples: last activity timestamp in an open file, timestamp when the resource was attached, etc.
     /// <summary>
     ///   The moment the resource was last modified, as an ISO 8601 formatted string.
     /// </summary>
@@ -104,23 +105,16 @@ type
   TMCPIcon = record
   private
     function ReadMWord(AStream: TFileStream): Word;
-    procedure GetJPGSize(const sFile: string; var wWidth, wHeight: Word);
     procedure GetPNGSize(const AFileName: string; var AWidth, AHeight: Word);
-    procedure GetGIFSize(const sGIFFile: string; var wWidth, wHeight: Word);
-
     function GetPNGSizeString(const AFileName: string): string;
-
   public
 
     /// <summary>
-    ///   A standard URI pointing to an icon resource. May be an HTTP/HTTPS URL or a data: URI with
-    ///   Base64-encoded image data. <br />
+    ///   A standard URI pointing to an icon resource. May be an HTTP/HTTPS URL or a data:
+    ///   URI with Base64-encoded image data. <br />
     ///   <br />
     ///   Consumers SHOULD takes steps to ensure URLs serving icons are from the same domain as the
-    ///   client/server or a trusted domain. <br />
-    ///   <br />
-    ///   Consumers SHOULD take appropriate precautions when consuming SVGs as they can contain
-    ///   executable JavaScript <br />
+    ///   client/server or a trusted domain.
     /// </summary>
     /// <remarks>
     ///   Format: uri
@@ -196,7 +190,7 @@ type
     Title: NullString;
 
     /// <summary>
-    ///   An optional URL of the website for this implementation <br />
+    ///   An optional URL of the website for this implementation
     /// </summary>
     /// <remarks>
     ///   Format: uri
@@ -1052,16 +1046,6 @@ begin
   finally
     mm.Free;
   end;
-
-end;
-
-procedure TMCPIcon.GetGIFSize(const sGIFFile: string; var wWidth, wHeight: word);
-begin
-
-end;
-
-procedure TMCPIcon.GetJPGSize(const sFile: string; var wWidth, wHeight: word);
-begin
 
 end;
 

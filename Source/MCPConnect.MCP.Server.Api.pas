@@ -37,11 +37,16 @@ type
     function ToolsList: TListToolsResult;
 
     [JRPC('call')]
-    function CallTool([JRPCParams] const AParams: TCallToolParams): TCallToolResult;
+    function CallTool([JRPCParams] AParams: TCallToolParams): TCallToolResult;
   end;
 
   [JRPC('resources')]
   TMCPResourcesApi = class
+  private
+    procedure InternalReadResource(AParams: TReadResourceParams;
+      AResource: TMCPResource; AResult: TReadResourceResult);
+    procedure InternalReadTemplate(AParams: TReadResourceParams;
+      ATemplate: TMCPResourceTemplate; AResult: TReadResourceResult);
   public
     [Context] RPCContext: TJRPCContext;
     [Context] MCPConfig: TMCPConfig;
@@ -53,7 +58,7 @@ type
     function TemplatesList: TListResourceTemplatesResult;
 
     [JRPC('read')]
-    function ReadResource([JRPCParams] const AParams: TReadResourceParams): TReadResourceResult;
+    function ReadResource([JRPCParams] AParams: TReadResourceParams): TReadResourceResult;
   end;
 
 
@@ -104,7 +109,7 @@ uses
 
 { TMCPToolApi }
 
-function TMCPToolsApi.CallTool(const AParams: TCallToolParams): TCallToolResult;
+function TMCPToolsApi.CallTool(AParams: TCallToolParams): TCallToolResult;
 var
   LInvoker: TMCPToolInvoker;
   LTool: TMCPTool;
@@ -187,40 +192,83 @@ end;
 
 { TMCPResourcesApi }
 
-function TMCPResourcesApi.ReadResource([JRPCParams] const AParams: TReadResourceParams): TReadResourceResult;
+procedure TMCPResourcesApi.InternalReadResource(AParams: TReadResourceParams;
+  AResource: TMCPResource; AResult: TReadResourceResult);
 var
   LInvoker: TMCPResourceInvoker;
-  LRes: TMCPResource;
   LResObj: TObject;
 begin
-  if not MCPConfig.Resources.Registry.TryGetValue(AParams.Uri, LRes) then
-    raise EMCPException.CreateFmt('Resource [%s] not found', [AParams.Uri]);
+  // If it's a static resource serve the file directly
+  if AResource.FileName <> '' then
+    TMCPStaticResource.GetResource(MCPConfig, AResource, AResult)
+  else
+  begin
+    // Create an instance of the resource class
+    LResObj := TRttiUtils.CreateInstance(AResource.Classe);
+    try
+      RPCContext.Inject(LResObj);
+
+      LInvoker := TMCPResourceInvoker.Create(LResObj, AResource);
+      try
+        RPCContext.Inject(LInvoker);
+        LInvoker.Invoke(AParams, AResult);
+      finally
+        LInvoker.Free;
+      end;
+    finally
+      LResObj.Free;
+    end;
+  end;
+end;
+
+procedure TMCPResourcesApi.InternalReadTemplate(AParams: TReadResourceParams;
+  ATemplate: TMCPResourceTemplate; AResult: TReadResourceResult);
+var
+  LInvoker: TMCPTemplateInvoker;
+  LTplObj: TObject;
+begin
+  // Create an instance of the resource class
+  LTplObj := TRttiUtils.CreateInstance(ATemplate.Classe);
+  try
+    RPCContext.Inject(LTplObj);
+
+    LInvoker := TMCPTemplateInvoker.Create(LTplObj, ATemplate);
+    try
+      RPCContext.Inject(LInvoker);
+      LInvoker.Invoke(AParams, AResult);
+    finally
+      LInvoker.Free;
+    end;
+  finally
+    LTplObj.Free;
+  end;
+end;
+
+function TMCPResourcesApi.ReadResource([JRPCParams] AParams: TReadResourceParams): TReadResourceResult;
+var
+  LRes: TMCPResource;
+  LTpl: TMCPResourceTemplate;
+begin
+  LTpl := nil;
+
+  // Try to match the exact resource uri
+  LRes := MCPConfig.Resources.GetResource(AParams.Uri);
+
+  // If no resource is found the try to match with templates
+  if not Assigned(LRes) then
+  begin
+    LTpl := MCPConfig.Resources.GetTemplate(AParams.Uri);
+
+    if not Assigned(LTpl) then
+      raise EMCPException.CreateFmt('Resource [%s] not found', [AParams.Uri]);
+  end;
 
   Result := TReadResourceResult.Create;
   try
-    // If it's a static resource serve the file directly
-    if not LRes.FileName.IsEmpty then
-    begin
-      TMCPStaticResource.GetResource(MCPConfig, LRes, Result);
-    end
+    if Assigned(LRes) then
+      InternalReadResource(AParams, LRes, Result)
     else
-    begin
-      // Create an instance of the resource class
-      LResObj := TRttiUtils.CreateInstance(LRes.Classe);
-      try
-        RPCContext.Inject(LResObj);
-
-        LInvoker := TMCPResourceInvoker.Create(LResObj, LRes);
-        try
-          RPCContext.Inject(LInvoker);
-          LInvoker.Invoke(AParams, Result);
-        finally
-          LInvoker.Free;
-        end;
-      finally
-        LResObj.Free;
-      end;
-    end;
+      InternalReadTemplate(AParams, LTpl, Result);
   except
     Result.Free;
     raise;

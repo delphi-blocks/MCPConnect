@@ -56,6 +56,9 @@ type
     ButtonOpenBrowser: TButton;
     btnConfig: TButton;
     Button1: TButton;
+    Button2: TButton;
+    edtTemplate: TEdit;
+    edtURI: TEdit;
     procedure FormCreate(Sender: TObject);
     procedure ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
     procedure btnConfigClick(Sender: TObject);
@@ -63,6 +66,7 @@ type
     procedure ButtonStartClick(Sender: TObject);
     procedure ButtonStopClick(Sender: TObject);
     procedure ButtonOpenBrowserClick(Sender: TObject);
+    procedure Button2Click(Sender: TObject);
   private
     FServer: TIdHTTPWebBrokerBridge;
     procedure StartServer;
@@ -76,6 +80,7 @@ var
 implementation
 
 {$R *.dfm}
+
 
 uses
 {$IFDEF MSWINDOWS}
@@ -91,8 +96,52 @@ uses
 
   MCPServerDemo.Resources,
   MCPServerDemo.Tools,
+  MCPConnect.Core.Utils,
   MCPConnect.Configuration.Neon,
   MCPConnect.MCP.Server.Api;
+
+
+
+function ExtractParams(const ATemplate, AInput: string): TStringMap;
+var
+  LParamNames: TArray<string>;
+  LRegexPattern: string;
+  LMatch: TMatch;
+  LName: string;
+begin
+  Result := [];
+  LParamNames := [];
+
+  var matches := TRegEx.Matches(ATemplate, '[^{\}]+(?=})');
+  for var match in matches do
+    LParamNames := LParamNames + [match.Value];
+
+  // 1. Find all parameter names in the template (e.g., 'city', 'options')
+  // Match anything between { and }
+  (*
+  LMatch := TRegEx.Match(ATemplate, '\{([a-zA-Z0-9_]+)\}');
+  while LMatch.Success do
+  begin
+    LParamNames := LParamNames + [LMatch.Groups[1].Value];
+    LMatch := LMatch.NextMatch;
+  end;
+  *)
+
+  // 2. Convert Template to Regex Pattern
+  // Escape the URL basics (like // and .) then swap {name} for a named group
+  LRegexPattern := TRegEx.Escape(ATemplate);
+  // We replace the escaped version of \{name\} with (?P<name>[^/]+)
+  LRegexPattern := TRegEx.Replace(LRegexPattern, '\\\{([a-zA-Z0-9_]+)\\\}', '(?P<$1>[^/]+)');
+
+  // 3. Execute the Match on the actual data
+  LMatch := TRegEx.Match(AInput, '^' + LRegexPattern + '$');
+
+  if not LMatch.Success then
+    Exit;
+
+  for LName in LParamNames do
+    Result := Result + [TStringPair.Create(LName, LMatch.Groups[LName].Value)];
+end;
 
 procedure TForm1.ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
 begin
@@ -142,6 +191,26 @@ begin
     memoLog.Lines.Add(match.Value);
   end;
 
+end;
+
+procedure TForm1.Button2Click(Sender: TObject);
+begin
+  var tpl := edtTemplate.Text;
+  memoLog.Lines.Add(tpl);
+
+  var uri := edtURI.Text;
+  memoLog.Lines.Add(uri);
+
+  var router := TRouteMatcher.Create;
+  try
+    if router.Match(tpl, uri) then
+      for var pair in router.Params do
+        memoLog.Lines.Add(pair.Key + ': ' + pair.Value)
+    else
+        memoLog.Lines.Add('URI is not a match for the template');
+  finally
+    router.Free;
+  end;
 end;
 
 procedure TForm1.ButtonOpenBrowserClick(Sender: TObject);

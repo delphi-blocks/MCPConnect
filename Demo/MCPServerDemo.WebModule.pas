@@ -33,20 +33,7 @@ implementation
 {%CLASSGROUP 'Vcl.Controls.TControl'}
 
 uses
-  System.IOUtils,
-  MCPConnect.JRPC.Core,
-  MCPConnect.Configuration.MCP,
-  MCPConnect.Configuration.Auth,
-  MCPConnect.Configuration.Session,
-  MCPConnect.Configuration.Neon,
-
-  MCPConnect.MCP.Types,
-  // Implemetation of MCP API
-  MCPConnect.MCP.Server.Api,
-
-  MCPServerDemo.Apps,
-  MCPServerDemo.Tools,
-  MCPServerDemo.Resources;
+  MCPServerDemo.Config;
 
 {$R *.dfm}
 
@@ -61,61 +48,10 @@ begin
 end;
 
 procedure TWebModule1.WebModuleCreate(Sender: TObject);
-var
-  LDataPath: string;
 begin
-  LDataPath := TPath.Combine(TPath.GetAppPath, 'data');
-
   FJRPCServer := TJRPCServer.Create(Self);
 
-  FJRPCServer
-
-//    .Plugin.Configure<IAuthTokenConfig>
-//      .SetToken('my-secret-token')
-//    .ApplyConfig
-//
-//    .Plugin.Configure<ISessionConfig>
-//      .SetLocation(TSessionIdLocation.Header)
-//      .SetHeaderName('Mcp-Session-Id')
-//      .SetTimeout(30)  // 30 minutes timeout
-//      .SetSessionClass(TShoppingSession)  // Use custom typed session
-//    .ApplyConfig
-
-    .Plugin.Configure<IMCPConfig>
-      .Server
-        .SetName('delphi-mcp-server')
-        .SetVersion('2.0.0')
-        .SetCapabilities([Tools, Resources])
-        .SetIconFolder(TPath.Combine(LDataPath, 'icons'))
-
-        .RegisterWriter(TMCPImageWriter)
-        .RegisterWriter(TMCPPictureWriter)
-        .RegisterWriter(TMCPStreamWriter)
-        .RegisterWriter(TMCPStringListWriter)
-      .BackToMCP
-
-
-      .Resources
-        .SetBasePath(LDataPath)
-
-        .RegisterClass(TWeatherResource)
-        .RegisterClass(TDeplphiDayAppUI)
-        .RegisterFile('index.md', 'Indice Documentazione')
-        .RegisterFile('documentation\mcp\mcpconnect.pdf', 'MCPConnect Introduction')
-      .BackToMCP
-
-      .Tools
-        .RegisterClass(TTestTool)
-        .RegisterClass(TDelphiDayTool)
-        .RegisterClass(TShoppingCartTool)  // Session-based shopping cart
-      .BackToMCP
-
-  ;
-    //.ApplyConfig;
-
-//    .Plugin.Configure<IJRPCNeonConfig>
-//      .SetNeonConfig(MCPNeonConfig)
-//      .ApplyConfig;
+  TServerConfigurator.ConfigureServer(FJRPCServer);
 
   FJRPCDispatcher := TJRPCDispatcher.Create(Self);
   FJRPCDispatcher.PathInfo := '/mcp';

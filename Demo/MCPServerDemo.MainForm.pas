@@ -24,28 +24,6 @@ uses
   MCPConnect.MCP.Attributes;
 
 type
-   THeaderTest = class
-  private
-    Fresults: string;
-    procedure Setresults(const Value: string);
-  public
-     [NeonProperty('results')]
-     property results: string read Fresults write Setresults;
-   end;
-
-
-   TTest = class
-  private
-    Fd: THeaderTest;
-    procedure Setd(const Value: THeaderTest);
-  public
-     constructor Create;
-     destructor Destroy; override;
-
-     [NeonProperty('d')]
-     property d: THeaderTest read Fd write Setd;
-   end;
-
   TForm1 = class(TForm)
     ButtonStart: TButton;
     ButtonStop: TButton;
@@ -260,31 +238,6 @@ begin
     FServer.DefaultPort := StrToInt(EditPort.Text);
     FServer.Active := True;
   end;
-end;
-
-{ THeaderTest }
-
-procedure THeaderTest.Setresults(const Value: string);
-begin
-  Fresults := Value;
-end;
-
-{ TTest }
-
-constructor TTest.Create;
-begin
-  fd := THeaderTest.Create;
-end;
-
-destructor TTest.Destroy;
-begin
-  d.Free;
-  inherited;
-end;
-
-procedure TTest.Setd(const Value: THeaderTest);
-begin
-  Fd := Value;
 end;
 
 end.

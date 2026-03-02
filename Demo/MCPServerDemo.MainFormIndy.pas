@@ -51,8 +51,7 @@ implementation
 
 uses
   WinApi.Windows, Winapi.ShellApi,
-  MCPServerDemo.Tools,
-  System.Generics.Collections;
+  MCPServerDemo.Config;
 
 procedure TForm1.ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
 begin
@@ -86,39 +85,7 @@ begin
 
   FJRPCServer := TJRPCServer.Create(Self);
 
-  FJRPCServer
-    .Plugin.Configure<IAuthTokenConfig>
-      .SetToken('my-secret-token')
-    .ApplyConfig
-
-    .Plugin.Configure<ISessionConfig>
-      .SetLocation(TSessionIdLocation.Header)
-      .SetHeaderName('Mcp-Session-Id')
-      .SetTimeout(30)  // 30 minutes timeout
-      .SetSessionClass(TShoppingSession)  // Use custom typed session
-    .ApplyConfig
-
-    .Plugin.Configure<IMCPConfig>
-      .Server
-        .SetName('delphi-mcp-server')
-        .SetVersion('2.0.0')
-        .SetCapabilities([Tools, Resources])
-
-
-        .RegisterWriter(TMCPImageWriter)
-        .RegisterWriter(TMCPPictureWriter)
-        .RegisterWriter(TMCPStreamWriter)
-        .RegisterWriter(TMCPStringListWriter)
-      .BackToMCP
-
-
-      .Tools
-        .RegisterClass(TTestTool)
-        .RegisterClass(TDelphiDayTool)
-        .RegisterClass(TShoppingCartTool)  // Session-based shopping cart
-      .BackToMCP
-
-  ;
+  TServerConfigurator.ConfigureServer(FJRPCServer);
 
   IdHTTPServer1.Server := FJRPCServer;
 

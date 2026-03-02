@@ -26,7 +26,8 @@ uses
   MCPConnect.Session.Core in '..\Source\MCPConnect.Session.Core.pas',
   MCPConnect.Transport.Indy in '..\Source\MCPConnect.Transport.Indy.pas',
   MCPServerDemo.MainFormIndy in 'MCPServerDemo.MainFormIndy.pas' {Form1},
-  MCPServerDemo.Tools in 'MCPServerDemo.Tools.pas';
+  MCPServerDemo.Tools in 'MCPServerDemo.Tools.pas',
+  MCPServerDemo.Config in 'MCPServerDemo.Config.pas';
 
 {$R *.res}
 

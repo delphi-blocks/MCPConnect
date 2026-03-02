@@ -59,8 +59,7 @@
         <Base>true</Base>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base)'!=''">
-        <DCC_DcuOutput>.\$(Platform)\$(Config)</DCC_DcuOutput>
-        <DCC_ExeOutput>.\$(Platform)\$(Config)</DCC_ExeOutput>
+        <DCC_ExeOutput>.\</DCC_ExeOutput>
         <DCC_E>false</DCC_E>
         <DCC_N>false</DCC_N>
         <DCC_S>false</DCC_S>
@@ -73,6 +72,7 @@
         <DCC_UnitSearchPath>..\Source;..\Libs\Neon\Source;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <VerInfo_Locale>1040</VerInfo_Locale>
         <VerInfo_Keys>CompanyName=;FileDescription=$(MSBuildProjectName);FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProgramID=com.embarcadero.$(MSBuildProjectName);ProductName=$(MSBuildProjectName);ProductVersion=1.0.0.0;Comments=</VerInfo_Keys>
+        <DCC_DcuOutput>.\$(Platform)\$(Config)</DCC_DcuOutput>
         <DCC_UNKNOWN_CUSTOM_ATTRIBUTE>error</DCC_UNKNOWN_CUSTOM_ATTRIBUTE>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base_Win32)'!=''">
@@ -154,6 +154,7 @@
             <Form>Form1</Form>
         </DCCReference>
         <DCCReference Include="MCPServerDemo.Tools.pas"/>
+        <DCCReference Include="MCPServerDemo.Config.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

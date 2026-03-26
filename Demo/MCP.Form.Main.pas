@@ -52,7 +52,6 @@ type
   TfrmMain = class(TForm)
     mmoLog: TMemo;
     Panel1: TPanel;
-    mmoSnippets: TMemo;
     CategoryButtons1: TCategoryButtons;
     actListMain: TActionList;
     actJRPCEnvelope: TAction;
@@ -74,10 +73,11 @@ type
     actClearLog: TAction;
     btnClearLog: TToolButton;
     ilMain: TImageList;
-    splMemo: TSplitter;
     actResource: TAction;
     actResourceTemplate: TAction;
     actResourceList: TAction;
+    actSnippets: TAction;
+    btnSnippets: TToolButton;
     procedure FormCreate(Sender: TObject);
     procedure actRequestPosExecute(Sender: TObject);
     procedure actRequestDesExecute(Sender: TObject);
@@ -98,6 +98,7 @@ type
     procedure actResourceExecute(Sender: TObject);
     procedure actResourceListExecute(Sender: TObject);
     procedure actResourceTemplateExecute(Sender: TObject);
+    procedure actSnippetsExecute(Sender: TObject);
   private
     ctx: TRttiContext;
     tools: TArray<TRttiMethod>;
@@ -138,6 +139,9 @@ var
   frmMain: TfrmMain;
 
 implementation
+
+uses
+  MCP.Form.Snippets;
 
 {$R *.dfm}
 
@@ -253,7 +257,7 @@ end;
 
 procedure TfrmMain.actJRPCEnvelopeExecute(Sender: TObject);
 begin
-  var env := TJRPCEnvelope.Create;
+  var env := TJRPCRequest.Create;
   env.ID := 'paolo';
 
   mmoLog.Lines.Add(env.ToJson);
@@ -434,6 +438,11 @@ begin
   lst.AddResource('orders', '/resources/orders', 'application/xml');
   mmoLog.Lines.Add(TNeon.ObjectToJSONString(lst, GetMCPNeonConfig));
   lst.Free;
+end;
+
+procedure TfrmMain.actSnippetsExecute(Sender: TObject);
+begin
+  frmSnippets.Show;
 end;
 
 function TfrmMain.CreatePerson(const AName: string): TPerson;

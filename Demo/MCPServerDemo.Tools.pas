@@ -45,7 +45,7 @@ type
   ///   Custom typed session for shopping cart.
   ///   No JSON storage - pure typed properties.
   /// </summary>
-  TShoppingSession = class(TSessionBase)
+  TShoppingSession = class(TMCPSessionBase)
   private
     FCart: TObjectDictionary<string, TCartItem>;
   public

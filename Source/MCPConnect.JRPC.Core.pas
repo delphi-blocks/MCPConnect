@@ -15,6 +15,8 @@ unit MCPConnect.JRPC.Core;
 
 interface
 
+{$SCOPEDENUMS ON}
+
 uses
   System.SysUtils, System.Rtti, System.Classes, System.Generics.Collections,
   System.TypInfo, System.JSON,
@@ -36,6 +38,9 @@ const
 	JRPC_INTERNAL_ERROR   = -32603; // Internal error.	Internal JSON-RPC error.
 
 type
+  /// <summary>
+  ///   Base class for all JSON-RPC related exceptions
+  /// </summary>
   EJRPCException = class(Exception)
   protected
     FCode: Integer;
@@ -43,25 +48,44 @@ type
   public
     procedure AfterConstruction; override;
 
+    /// <summary>
+    ///   The JSON-RPC error code.
+    /// </summary>
     property Code: Integer read FCode;
+
+    /// <summary>
+    ///   Optional data associated with the error.
+    /// </summary>
     property Data: TValue read FData;
   end;
 
+  /// <summary>
+  ///   Exception raised when invalid JSON was received by the server.
+  /// </summary>
   EJRPCParseError = class(EJRPCException)
   public
     procedure AfterConstruction; override;
   end;
 
+  /// <summary>
+  /// Exception raised when the JSON sent is not a valid Request object.
+  /// </summary>
   EJRPCInvalidRequestError = class(EJRPCException)
   public
     procedure AfterConstruction; override;
   end;
 
+  /// <summary>
+  /// Exception raised when the method does not exist / is not available.
+  /// </summary>
   EJRPCMethodNotFoundError = class(EJRPCException)
   public
     procedure AfterConstruction; override;
   end;
 
+  /// <summary>
+  /// Exception raised when the method parameter(s) are invalid.
+  /// </summary>
   EJRPCInvalidParamsError = class(EJRPCException)
   public
     procedure AfterConstruction; override;
@@ -69,14 +93,24 @@ type
 
   TJRPCContext = class;
 
+  /// <summary>
+  ///   Type of JSON-RPC parameters: by position, by name, or null
+  /// </summary>
   TJRPCParamsType = (ByPos, ByName, Null);
 
-  JRPCNotificationAttribute = class(TCustomAttribute)
-  end;
+  /// <summary>
+  ///   Attribute used to mark a method as a JSON-RPC notification
+  /// </summary>
+  JRPCNotificationAttribute = class(TCustomAttribute);
 
-  ContextAttribute = class(TCustomAttribute)
-  end;
+  /// <summary>
+  ///   Attribute used to mark a field for context injection
+  /// </summary>
+  ContextAttribute = class(TCustomAttribute);
 
+  /// <summary>
+  ///   Base attribute for JSON-RPC related metadata
+  /// </summary>
   JRPCAttribute = class(TCustomAttribute)
   private
     FName: string;
@@ -88,17 +122,38 @@ type
     property Name: string read FName;
     property AdditionalTags: string read FAdditional write FAdditional;
 
+    /// <summary>
+    ///   Parsed tags from AdditionalTags
+    /// </summary>
     property Tags: TAttributeTags read GetTags write FTags;
 
     constructor Create(const AName: string; const AAdditionalTags: string = '');
     destructor Destroy; override;
   end;
 
+  /// <summary>
+  ///   Attribute used to specify a JSON-RPC path prefix.
+  /// </summary>
   JRPCPathAttribute = class(JRPCAttribute);
+
+  /// <summary>
+  ///   Attribute used to specify a JSON-RPC method name.
+  /// </summary>
   JRPCMethodAttribute = class(JRPCAttribute);
+
+  /// <summary>
+  ///   Attribute used to specify a JSON-RPC parameter name.
+  /// </summary>
   JRPCParamAttribute = class(JRPCAttribute);
+
+  /// <summary>
+  ///   Attribute used to specify multiple JSON-RPC parameters.
+  /// </summary>
   JRPCParamsAttribute = class(TCustomAttribute);
 
+  /// <summary>
+  ///   Represents a JSON-RPC ID, which can be either an integer or a string.
+  /// </summary>
   TJRPCID = record
   private
     [NeonInclude] id: TValue;
@@ -110,26 +165,74 @@ type
     class operator Implicit(const ASource: TJRPCID): string;
   end;
 
-  TJRPCEnvelope = class
+  /// <summary>
+  ///   Type of JSON-RPC message: Request, Response, or Notification.
+  /// </summary>
+  TJRPCMessageType = (Request, Response, Notification);
+  TJRPCMessageTypes = set of TJRPCMessageType;
+
+  /// <summary>
+  ///   Base class for all JSON-RPC messages.
+  /// </summary>
+  TJRPCMessage = class
   public const
 	  JSONRPC_VERSION = '2.0';
   protected
-    FId: TJRPCID;
     FJsonRpc: string;
     function GetNeonConfig: INeonConfiguration;
   public
     constructor Create;
 
+    function GetType: TJRPCMessageType; virtual; abstract;
+
+    /// <summary>
+    ///   Serializes the message to a JSON string.
+    /// </summary>
     function ToJson: string; virtual;
+
+    /// <summary>
+    ///   Deserializes the message from a JSON string.
+    /// </summary>
     procedure FromJson(const AJSON: string); virtual;
 
+    /// <summary>
+    ///   The JSON-RPC version (defaults to "2.0")
+    /// </summary>
     [NeonProperty('jsonrpc')]
     property JsonRpc: string read FJsonRpc write FJsonRpc;
-
-    [NeonProperty('id'), NeonUnwrapped]
-    property Id: TJRPCID read FId write FId;
   end;
 
+  TJRPCMessageClass = class of TJRPCMessage;
+
+  /// <summary>
+  ///   Manages a collection of JSON-RPC messages.
+  /// </summary>
+  TJRPCMessages = class
+  private
+    FList: TObjectList<TJRPCMessage>;
+    FTypes: TJRPCMessageTypes;
+
+    procedure FromJsonSingle(const AJSON: TJSONObject);
+    function GetMessageType(AMessage: TJSONObject): TJRPCMessageType;
+    function GetMessageTypes(ARequestJSON: TJSONValue): TJRPCMessageTypes;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    procedure AddMessage(AMsg: TJRPCMessage);
+
+    function ToJson: string;
+    procedure FromJson(const AJSON: string); overload;
+    procedure FromJson(AStream: TStream); overload;
+    procedure FromJson(AValue: TJSONValue); overload;
+
+    property List: TObjectList<TJRPCMessage> read FList;
+    property Types: TJRPCMessageTypes read FTypes;
+  end;
+
+  /// <summary>
+  /// Represents a JSON-RPC error object.
+  /// </summary>
   TJRPCError = class
   private
     FCode: NullInteger;
@@ -146,7 +249,10 @@ type
     property Data: TValue read FData write FData;
   end;
 
-  TJRPCRequest = class(TJRPCEnvelope)
+  /// <summary>
+  ///   Abstract base class for JSON-RPC methods (Requests and Notifications).
+  /// </summary>
+  TJRPCMethod = class abstract(TJRPCMessage)
   protected
     FMethod: string;
     FParams: TJSONValue;
@@ -158,25 +264,82 @@ type
     constructor Create;
     destructor Destroy; override;
 
+    /// <summary>
+    ///   Returns the type of parameters (ByPos, ByName, or Null).
+    /// </summary>
     function ParamsType: TJRPCParamsType;
+
+    /// <summary>
+    ///   Returns the number of parameters.
+    /// </summary>
     function ParamsCount: Integer;
 
+    /// <summary>
+    ///   Adds a parameter by position.
+    /// </summary>
     procedure AddPositionParam(const AValue: TValue);
+
+    /// <summary>
+    ///   Adds a parameter by name.
+    /// </summary>
     procedure AddNamedParam(const AName: string; const AValue: TValue);
 
+    /// <summary>
+    ///   The name of the method to be invoked.
+    /// </summary>
     [NeonProperty('method')]
     property Method: string read FMethod write FMethod;
 
+    /// <summary>
+    ///   The parameters for the method call.
+    /// </summary>
     [NeonProperty('params')]
     property Params: TJSONValue read FParams write SetParams;
 
   public
-    class function CreateFromJson(const AJSON: string): TJRPCRequest;
+    /// <summary>
+    ///   Creates a TJRPCMethod instance from a JSON string.
+    /// </summary>
+    class function CreateFromJson(const AJSON: string): TJRPCMethod;
   end;
 
-  // Class representing a JSON-RPC response
-  TJRPCResponse = class(TJRPCEnvelope)
-  protected
+  /// <summary>
+  ///   Class representing a JSON-RPC notification.
+  ///   https://json-rpc.dev/learn/examples/notifications
+  /// </summary>
+  TJRPCNotification = class(TJRPCMethod)
+  public
+    function GetType: TJRPCMessageType; override;
+  end;
+
+  /// <summary>
+  /// Class representing a JSON-RPC request.
+  /// </summary>
+  TJRPCRequest = class(TJRPCMethod)
+  private
+    FId: TJRPCID;
+  public
+    function GetType: TJRPCMessageType; override;
+
+    /// <summary>
+    ///   The unique ID of the request.
+    /// </summary>
+    [NeonProperty('id'), NeonUnwrapped]
+    property Id: TJRPCID read FId write FId;
+  public
+    /// <summary>
+    ///   Creates a TJRPCRequest instance from a JSON string.
+    /// </summary>
+    class function CreateFromJson(const AJSON: string): TJRPCMethod;
+  end;
+
+
+  /// <summary>
+  ///   Class representing a JSON-RPC response.
+  /// </summary>
+  TJRPCResponse = class(TJRPCMessage)
+  private
+    FId: TJRPCID;
     FError: TJRPCError;
     FResult: TJSONValue;
     procedure SetResult(AValue: TJSONValue);
@@ -184,20 +347,37 @@ type
     constructor Create;
     destructor Destroy; override;
 
+    function GetType: TJRPCMessageType; override;
+
     function IsError: Boolean;
     function IsNotification: Boolean;
 
+    /// <summary>
+    ///   The error object, if any.
+    /// </summary>
     [NeonProperty('error')]
     property Error: TJRPCError read FError write FError;
 
+    /// <summary>
+    ///   The result of the method invocation.
+    /// </summary>
     [NeonProperty('result'), NeonInclude(IncludeIf.Always)]
     property Result: TJSONValue read FResult write SetResult;
+
+    /// <summary>
+    ///   The ID of the corresponding request.
+    /// </summary>
+    [NeonProperty('id'), NeonUnwrapped]
+    property Id: TJRPCID read FId write FId;
   public
+    /// <summary>
+    ///   Creates a TJRPCResponse instance from a JSON string.
+    /// </summary>
     class function CreateFromJson(const AJSON: string): TJRPCResponse;
   end;
 
   /// <summary>
-  ///   Custom serializer for the TJRPCRequest class.
+  ///   Custom serializer for the TJRPCMethod class.
   /// </summary>
   TJRequestSerializer = class(TCustomSerializer)
   protected
@@ -232,6 +412,9 @@ type
     function Deserialize(AValue: TJSONValue; const AData: TValue; ANeonObject: TNeonRttiObject; AContext: IDeserializerContext): TValue; override;
   end;
 
+  /// <summary>
+  /// Proxy class for creating instances of a specific class using a custom constructor function.
+  /// </summary>
   TJRPCConstructorProxy = class
   private
     FConstructorFunc: TFunc<TObject>;
@@ -246,6 +429,9 @@ type
     function Clone: TJRPCConstructorProxy;
   end;
 
+  /// <summary>
+  ///   Registry for JSON-RPC classes and their constructor proxies.
+  /// </summary>
   TJRPCRegistry = class(TObjectDictionary<string, TJRPCConstructorProxy>)
   private
     class var FInstance: TJRPCRegistry;
@@ -258,62 +444,153 @@ type
     procedure RemoveClass(AClass: TClass);
   public
     constructor Create; virtual;
+
+    /// <summary>
+    ///   Registers a class with its default constructor.
+    /// </summary>
     function RegisterClass(AClass: TClass): TJRPCConstructorProxy; overload;
+
+    /// <summary>
+    ///   Registers a class with a custom Neon configuration.
+    /// </summary>
     function RegisterClass(AClass: TClass; ANeonConfig: INeonConfiguration): TJRPCConstructorProxy; overload;
+
+    /// <summary>
+    ///   Registers a class of type T.
+    /// </summary>
     function RegisterClass<T: class>: TJRPCConstructorProxy; overload;
+
+    /// <summary>
+    ///   Registers a class of type T with a custom Neon configuration.
+    /// </summary>
     function RegisterClass<T: class>(ANeonConfig: INeonConfiguration): TJRPCConstructorProxy; overload;
+
+    /// <summary>
+    ///   Registers a class of type T with a custom constructor function.
+    /// </summary>
     function RegisterClass<T: class>(const AConstructorFunc: TFunc<TObject>): TJRPCConstructorProxy; overload;
+
+    /// <summary>
+    ///   Registers a class of type T with a custom constructor function and
+    ///   Neon configuration.
+    /// </summary>
     function RegisterClass<T: class>(const AConstructorFunc: TFunc<TObject>; ANeonConfig: INeonConfiguration): TJRPCConstructorProxy; overload;
 
     function ClassExists(AClass: TClass): Boolean; overload;
     function ClassExists<T: class>: Boolean; overload;
 
+    /// <summary>
+    ///   Unregisters a class.
+    /// </summary>
     procedure UnregisterClass(AClass: TClass);
 
+    /// <summary>
+    ///   Creates an instance of the class registered with the specified name.
+    /// </summary>
     function GetClassInstance(const AName: string; out Value: TObject): Boolean;
+
+    /// <summary>
+    ///   Retrieves the constructor proxy for the specified class name.
+    /// </summary>
     function GetConstructorProxy(const AName: string; out Value: TJRPCConstructorProxy): Boolean;
 
-    // Class/Method separator character
+    /// <summary>
+    ///   The character used to separate class and method names (default is "/").
+    /// </summary>
     property Separator: string read FSeparator write FSeparator;
 
+    /// <summary>
+    ///   Singleton instance of the registry.
+    /// </summary>
     class property Instance: TJRPCRegistry read GetInstance;
+
     class constructor Create;
     class destructor Destroy;
   end;
 
   TJRPCContextData = class(TDictionary<TClass, TObject>);
 
+  /// <summary>
+  ///   Represents the context of a JSON-RPC request, including the request
+  ///   itself, the response, and any additional data associated with the context.
+  /// </summary>
   TJRPCContext = class(TObject)
   private
-    FRequest: TJRPCRequest;
+    FRequest: TJRPCMethod;
     FResponse: TJRPCResponse;
     FContextData: TJRPCContextData;
   protected
-    function GetRequest: TJRPCRequest;
+    function GetRequest: TJRPCMethod;
     function GetResponse: TJRPCResponse;
     procedure AddConfigurations(AObject: TObject);
   public
     constructor Create;
     destructor Destroy; override;
 
+    /// <summary>
+    ///   Adds an object to the context data.
+    /// </summary>
     procedure AddContent(AObject: TObject); overload;
+
+    /// <summary>
+    ///   Adds an interface implementation to the context data.
+    /// </summary>
     procedure AddContent(AInterface: IInterface); overload;
 
+    /// <summary>
+    ///   Retrieves context data as a specific class type (raises exception if not found)
+    /// </summary>
     function GetContextDataAs<T: class>: T; overload;
+
+    /// <summary>
+    ///   Retrieves context data as a specific class type (raises exception if not found)
+    /// </summary>
     function GetContextDataAs(AClass: TClass): TObject; overload;
+
+    /// <summary>
+    ///   Retrieves context data as a specific interface (raises exception if not found)
+    /// </summary>
     function GetContextDataAs(AInterface: TGUID): IInterface; overload;
+
+    /// <summary>
+    ///   Finds context data as a specific class type (returns nil if not found)
+    /// </summary>
     function FindContextDataAs<T: class>: T; overload;
+
+    /// <summary>
+    ///   Finds context data as a specific class type (returns nil if not found)
+    /// </summary>
     function FindContextDataAs(AClass: TClass): TObject; overload;
+
+    /// <summary>
+    ///   Finds context data as a specific interface (returns nil if not found)
+    /// </summary>
     function FindContextDataAs(AInterface: TGUID): IInterface; overload;
 
+    /// <summary>
+    ///   Injects context data into the fields of the specified object.
+    /// </summary>
     procedure Inject(AObject: TObject); overload;
+
+    /// <summary>
+    ///   Injects context data into the fields of the specified interface implementation.
+    /// </summary>
     procedure Inject(AInterface: IInterface); overload;
 
-    property Request: TJRPCRequest read GetRequest;
+    /// <summary>
+    ///   The JSON-RPC request associated with this context.
+    /// </summary>
+    property Request: TJRPCMethod read GetRequest;
+
+    /// <summary>
+    ///   The JSON-RPC response associated with this context.
+    /// </summary>
     property Response: TJRPCResponse read GetResponse;
   end;
 
-
+/// <summary>
+///   Returns the default Neon configuration for JSON-RPC serialization.
+/// </summary>
 function JRPCNeonConfig: INeonConfiguration;
 
 implementation
@@ -332,19 +609,19 @@ begin
 end;
 
 
-{ TJRPCEnvelope }
+{ TJRPCMessage }
 
-constructor TJRPCEnvelope.Create;
+constructor TJRPCMessage.Create;
 begin
   FJsonRpc := JSONRPC_VERSION;
 end;
 
-procedure TJRPCEnvelope.FromJson(const AJSON: string);
+procedure TJRPCMessage.FromJson(const AJSON: string);
 begin
   TNeon.JSONToObject(Self, AJSON, JRPCNeonConfig);
 end;
 
-function TJRPCEnvelope.GetNeonConfig: INeonConfiguration;
+function TJRPCMessage.GetNeonConfig: INeonConfiguration;
 begin
   Result := TNeonConfiguration.Default
     .RegisterSerializer(TJSONValueSerializer)
@@ -353,18 +630,18 @@ begin
     .RegisterSerializer(TJResponseSerializer);
 end;
 
-function TJRPCEnvelope.ToJson: string;
+function TJRPCMessage.ToJson: string;
 begin
   Result := TNeon.ObjectToJSONString(Self, JRPCNeonConfig);
 end;
 
-constructor TJRPCRequest.Create;
+constructor TJRPCMethod.Create;
 begin
   inherited;
   FParams := TJSONNull.Create;
 end;
 
-class function TJRPCRequest.CreateFromJson(const AJSON: string): TJRPCRequest;
+class function TJRPCMethod.CreateFromJson(const AJSON: string): TJRPCMethod;
 begin
   Result := Self.Create;
   try
@@ -375,13 +652,13 @@ begin
   end;
 end;
 
-destructor TJRPCRequest.Destroy;
+destructor TJRPCMethod.Destroy;
 begin
   FParams.Free;
   inherited;
 end;
 
-function TJRPCRequest.GetNamedParams: TJSONObject;
+function TJRPCMethod.GetNamedParams: TJSONObject;
 begin
   if FParams is TJSONArray then
     raise EJRPCException.Create('Only named params are allowed');
@@ -400,7 +677,7 @@ begin
   raise EJRPCException.Create('Not a valid type for named allowed');
 end;
 
-function TJRPCRequest.GetPositionParams: TJSONArray;
+function TJRPCMethod.GetPositionParams: TJSONArray;
 begin
   if FParams is TJSONObject then
     raise EJRPCException.Create('Only position params are allowed');
@@ -419,7 +696,7 @@ begin
   raise EJRPCException.Create('Not a valid type for position allowed');
 end;
 
-function TJRPCRequest.ParamsCount: Integer;
+function TJRPCMethod.ParamsCount: Integer;
 begin
   Result := 0;
 
@@ -433,7 +710,7 @@ begin
     Exit((FParams as TJSONObject).Count);
 end;
 
-function TJRPCRequest.ParamsType: TJRPCParamsType;
+function TJRPCMethod.ParamsType: TJRPCParamsType;
 begin
   Result := TJRPCParamsType.Null;
 
@@ -447,7 +724,7 @@ begin
     Exit(TJRPCParamsType.ByName);
 end;
 
-procedure TJRPCRequest.AddNamedParam(const AName: string; const AValue: TValue);
+procedure TJRPCMethod.AddNamedParam(const AName: string; const AValue: TValue);
 var
   LParam: TJSONValue;
 begin
@@ -456,7 +733,7 @@ begin
     GetNamedParams.AddPair(AName, LParam);
 end;
 
-procedure TJRPCRequest.AddPositionParam(const AValue: TValue);
+procedure TJRPCMethod.AddPositionParam(const AValue: TValue);
 var
   LParam: TJSONValue;
 begin
@@ -465,7 +742,7 @@ begin
     GetPositionParams.AddElement(LParam);
 end;
 
-procedure TJRPCRequest.SetParams(AValue: TJSONValue);
+procedure TJRPCMethod.SetParams(AValue: TJSONValue);
 begin
   if Assigned(FParams) and (FParams <> AValue) then
   begin
@@ -589,7 +866,10 @@ begin
   end;
 end;
 
-{ TJRPCResponse }
+function TJRPCResponse.GetType: TJRPCMessageType;
+begin
+  Result := TJRPCMessageType.Response;
+end;
 
 function TJRPCResponse.IsError: Boolean;
 begin
@@ -712,7 +992,7 @@ begin
       LReq.Params := LParams.Clone as TJSONObject;
   end;
 
-  Result := TValue.From<TJRPCRequest>(LReq);
+  Result := TValue.From<TJRPCMethod>(LReq);
 end;
 
 class function TJRequestSerializer.GetTargetInfo: PTypeInfo;
@@ -920,8 +1200,11 @@ end;
 
 procedure TJRPCContext.AddContent(AObject: TObject);
 begin
-  if AObject is TJRPCRequest then
-    FRequest := TJRPCRequest(AObject)
+  if AObject = nil then
+    Exit;
+
+  if AObject is TJRPCMethod then
+    FRequest := TJRPCMethod(AObject)
   else if AObject is TJRPCResponse then
     FResponse := TJRPCResponse(AObject)
   else
@@ -991,7 +1274,7 @@ begin
   Result := GetContextDataAs(TClass(T)) as T;
 end;
 
-function TJRPCContext.GetRequest: TJRPCRequest;
+function TJRPCContext.GetRequest: TJRPCMethod;
 begin
   if not Assigned(FRequest) then
     raise EJRPCException.Create('Request not found');
@@ -1077,6 +1360,137 @@ procedure EJRPCParseError.AfterConstruction;
 begin
   inherited;
   FCode := JRPC_PARSE_ERROR;
+end;
+
+{ TJRPCMessages }
+
+procedure TJRPCMessages.AddMessage(AMsg: TJRPCMessage);
+begin
+  FList.Add(AMsg);
+  FTypes := FTypes + [AMsg.GetType];
+end;
+
+constructor TJRPCMessages.Create;
+begin
+  FList := TObjectList<TJRPCMessage>.Create;
+end;
+
+destructor TJRPCMessages.Destroy;
+begin
+  FList.Free;
+  inherited;
+end;
+
+procedure TJRPCMessages.FromJson(const AJSON: string);
+var
+  LJSON: TJSONValue;
+begin
+  LJSON := TJSONObject.ParseJSONValue(AJSON);
+  try
+    FromJson(LJSON);
+  finally
+    LJSON.Free;
+  end;
+end;
+
+procedure TJRPCMessages.FromJson(AStream: TStream);
+var
+  LJSON: TJSONValue;
+  LBuf: TBytes;
+begin
+  AStream.Read(LBuf, AStream.Size);
+  LJSON := TJSONObject.ParseJSONValue(LBuf, 0, Length(LBuf));
+  try
+    FromJson(LJSON);
+  finally
+    LJSON.Free;
+  end;
+end;
+
+procedure TJRPCMessages.FromJsonSingle(const AJSON: TJSONObject);
+var
+  LMsg: TJRPCMessage;
+begin
+  case GetMessageType(AJSON) of
+    TJRPCMessageType.Request: LMsg := TNeon.JSONToObject<TJRPCRequest>(AJSON, JRPCNeonConfig);
+    TJRPCMessageType.Response: LMsg := TNeon.JSONToObject<TJRPCResponse>(AJSON, JRPCNeonConfig);
+    TJRPCMessageType.Notification: LMsg := TNeon.JSONToObject<TJRPCMethod>(AJSON, JRPCNeonConfig);
+  else
+    LMsg := nil;
+  end;
+  AddMessage(LMsg);
+end;
+
+function TJRPCMessages.GetMessageType(AMessage: TJSONObject): TJRPCMessageType;
+var
+  LId, LMethod, LResult, LError: TJSONValue;
+begin
+  LMethod := AMessage.GetValue('method');
+  LId := AMessage.GetValue('id');
+  LResult := AMessage.GetValue('result');
+  LError := AMessage.GetValue('error');
+
+  if Assigned(LMethod) and Assigned(LId) then
+    Exit(TJRPCMessageType.Request);
+
+  if Assigned(LMethod) and not Assigned(LId) then
+    Exit(TJRPCMessageType.Notification);
+
+  if Assigned(LResult) or Assigned(LError) then
+    Exit(TJRPCMessageType.Response);
+
+  raise EJRPCInvalidRequestError.Create('Invalid JRPC Request');
+end;
+
+function TJRPCMessages.GetMessageTypes(ARequestJSON: TJSONValue): TJRPCMessageTypes;
+begin
+  Result := [];
+
+  if ARequestJSON is TJSONObject then
+    Exit(Result + [GetMessageType(ARequestJSON as TJSONObject)]);
+
+  if ARequestJSON is TJSONArray then
+    for var LReq in (ARequestJSON as TJSONArray) do
+      Result := Result + [GetMessageType(LReq as TJSONObject)];
+end;
+
+function TJRPCMessages.ToJson: string;
+begin
+  Result := TNeon.ObjectToJSONString(Self, JRPCNeonConfig);
+end;
+
+procedure TJRPCMessages.FromJson(AValue: TJSONValue);
+begin
+  if AValue is TJSONObject then
+    FromJsonSingle(AValue as TJSONObject)
+  else if AValue is TJSONArray then
+    for var LItem in AValue as TJSONArray do
+      FromJsonSingle(LItem as TJSONObject);
+end;
+
+{ TJRPCRequest }
+
+class function TJRPCRequest.CreateFromJson(const AJSON: string): TJRPCMethod;
+begin
+  Result := Self.Create;
+  try
+    Result.FromJson(AJSON);
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+function TJRPCRequest.GetType: TJRPCMessageType;
+begin
+  Result := TJRPCMessageType.Request;
+end;
+
+{ TJRPCNotification }
+
+function TJRPCNotification.GetType: TJRPCMessageType;
+begin
+  Result := TJRPCMessageType.Notification;
 end;
 
 end.

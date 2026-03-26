@@ -60,7 +60,7 @@ type
     ///   Set the class to use for creating session data instances.
     ///   Use this to provide custom session data classes with typed properties.
     /// </summary>
-    function SetSessionClass(AClass: TSessionDataClass): ISessionConfig;
+    function SetSessionClass(AClass: TMCPSessionDataClass): ISessionConfig;
 
     /// <summary>
     ///   Set session timeout in minutes. Default: 30
@@ -70,7 +70,7 @@ type
     /// <summary>
     ///   Get the session manager instance
     /// </summary>
-    function GetManager: TSessionManager;
+    function GetManager: TMCPSessionManager;
 
     /// <summary>
     ///   Get the configured location for session ID
@@ -97,9 +97,9 @@ type
     { ISessionConfig }
     function SetLocation(ALocation: TSessionIdLocation): ISessionConfig;
     function SetHeaderName(const AName: string): ISessionConfig;
-    function SetSessionClass(AClass: TSessionDataClass): ISessionConfig;
+    function SetSessionClass(AClass: TMCPSessionDataClass): ISessionConfig;
     function SetTimeout(AMinutes: Integer): ISessionConfig;
-    function GetManager: TSessionManager;
+    function GetManager: TMCPSessionManager;
     function GetLocation: TSessionIdLocation;
     function GetHeaderName: string;
 
@@ -126,9 +126,9 @@ begin
   inherited;
 end;
 
-function TSessionConfig.GetManager: TSessionManager;
+function TSessionConfig.GetManager: TMCPSessionManager;
 begin
-  Result := TSessionManager.Instance;
+  Result := TMCPSessionManager.Instance;
 end;
 
 function TSessionConfig.GetHeaderName: string;
@@ -153,15 +153,15 @@ begin
   Result := Self;
 end;
 
-function TSessionConfig.SetSessionClass(AClass: TSessionDataClass): ISessionConfig;
+function TSessionConfig.SetSessionClass(AClass: TMCPSessionDataClass): ISessionConfig;
 begin
-  TSessionManager.Instance.SessionClass := AClass;
+  TMCPSessionManager.Instance.SessionClass := AClass;
   Result := Self;
 end;
 
 function TSessionConfig.SetTimeout(AMinutes: Integer): ISessionConfig;
 begin
-  TSessionManager.Instance.TimeoutMinutes := AMinutes;
+  TMCPSessionManager.Instance.TimeoutMinutes := AMinutes;
   Result := Self;
 end;
 

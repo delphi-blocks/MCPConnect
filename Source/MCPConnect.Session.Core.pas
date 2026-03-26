@@ -42,7 +42,7 @@ type
   ///   Base exception for all session-related errors.
   ///   Inherits from EJRPCException to integrate with JSON-RPC error handling.
   /// </summary>
-  ESessionException = class(EJRPCException)
+  EMCPSessionException = class(EJRPCException)
   public
     constructor Create(const AMessage: string; ACode: Integer);
   end;
@@ -50,7 +50,7 @@ type
   /// <summary>
   ///   Exception raised when a session ID is not found
   /// </summary>
-  ESessionNotFoundError = class(ESessionException)
+  EMCPSessionNotFoundError = class(EMCPSessionException)
   public
     constructor Create(const ASessionId: string);
   end;
@@ -58,7 +58,7 @@ type
   /// <summary>
   ///   Exception raised when a session has expired
   /// </summary>
-  ESessionExpiredError = class(ESessionException)
+  EMCPSessionExpiredError = class(EMCPSessionException)
   public
     constructor Create(const ASessionId: string);
   end;
@@ -66,21 +66,21 @@ type
   /// <summary>
   ///   Exception raised when a session ID format is invalid
   /// </summary>
-  ESessionInvalidError = class(ESessionException)
+  EMCPSessionInvalidError = class(EMCPSessionException)
   public
     constructor Create(const ASessionId: string);
   end;
 
   // Forward declarations
-  TSessionBase = class;
-  TSessionDataClass = class of TSessionBase;
+  TMCPSessionBase = class;
+  TMCPSessionDataClass = class of TMCPSessionBase;
 
   /// <summary>
   ///   Abstract base class for session data.
   ///   Contains only core session properties (ID, timestamps).
   ///   Extend this class to create custom session data with typed properties.
   /// </summary>
-  TSessionBase = class abstract
+  TMCPSessionBase = class abstract
   private
     FSessionId: string;
     FCreatedAt: TDateTime;
@@ -105,9 +105,9 @@ type
   /// <summary>
   ///   Concrete session data implementation with JSON storage.
   ///   Use this if you need dynamic storage without creating a custom class.
-  ///   For typed properties, create your own class inheriting from TSessionBase.
+  ///   For typed properties, create your own class inheriting from TMCPSessionBase.
   /// </summary>
-  TSessionData = class(TSessionBase)
+  TMCPSessionData = class(TMCPSessionBase)
   private
     FData: TJSONObject;
   public
@@ -126,35 +126,35 @@ type
   ///   Thread-safe session manager singleton.
   ///   Manages session lifecycle, creation, retrieval, and lazy cleanup.
   /// </summary>
-  TSessionManager = class
+  TMCPSessionManager = class
   private
-    class var FInstance: TSessionManager;
+    class var FInstance: TMCPSessionManager;
   private
     FLock: TCriticalSection;
-    FSessions: TDictionary<string, TSessionBase>;
-    FSessionClass: TSessionDataClass;
+    FSessions: TDictionary<string, TMCPSessionBase>;
+    FSessionClass: TMCPSessionDataClass;
     FTimeoutMinutes: Integer;
 
     function GenerateSessionId: string;
-    function IsExpired(ASession: TSessionBase): Boolean;
+    function IsExpired(ASession: TMCPSessionBase): Boolean;
     procedure RemoveExpiredSession(const ASessionId: string);
   protected
-    class function GetInstance: TSessionManager; static;
+    class function GetInstance: TMCPSessionManager; static;
   public
     /// <summary>
     ///   Create a new session with a generated ID
     /// </summary>
-    function CreateSession: TSessionBase;
+    function CreateSession: TMCPSessionBase;
 
     /// <summary>
     ///   Get an existing session by ID. Raises exception if not found or expired.
     /// </summary>
-    function GetSession(const ASessionId: string): TSessionBase;
+    function GetSession(const ASessionId: string): TMCPSessionBase;
 
     /// <summary>
     ///   Try to get a session by ID. Returns False if not found or expired.
     /// </summary>
-    function TryGetSession(const ASessionId: string; out ASession: TSessionBase): Boolean;
+    function TryGetSession(const ASessionId: string; out ASession: TMCPSessionBase): Boolean;
 
     /// <summary>
     ///   Destroy a session and free its resources
@@ -169,7 +169,7 @@ type
     /// <summary>
     ///   Class used to create new session instances
     /// </summary>
-    property SessionClass: TSessionDataClass read FSessionClass write FSessionClass;
+    property SessionClass: TMCPSessionDataClass read FSessionClass write FSessionClass;
 
     /// <summary>
     ///   Session timeout in minutes (default: 30)
@@ -179,7 +179,7 @@ type
     /// <summary>
     ///   Singleton instance of the session manager
     /// </summary>
-    class property Instance: TSessionManager read GetInstance;
+    class property Instance: TMCPSessionManager read GetInstance;
 
     class constructor Create;
     class destructor Destroy;
@@ -193,73 +193,73 @@ uses
   System.DateUtils,
   Neon.Core.Utils;
 
-{ ESessionException }
+{ EMCPSessionException }
 
-constructor ESessionException.Create(const AMessage: string; ACode: Integer);
+constructor EMCPSessionException.Create(const AMessage: string; ACode: Integer);
 begin
   inherited Create(AMessage);
   FCode := ACode;  // Inherited from EJRPCException
 end;
 
-{ ESessionNotFoundError }
+{ EMCPSessionNotFoundError }
 
-constructor ESessionNotFoundError.Create(const ASessionId: string);
+constructor EMCPSessionNotFoundError.Create(const ASessionId: string);
 begin
   inherited Create(Format('Session "%s" not found', [ASessionId]), JRPC_SESSION_NOT_FOUND);
 end;
 
-{ ESessionExpiredError }
+{ EMCPSessionExpiredError }
 
-constructor ESessionExpiredError.Create(const ASessionId: string);
+constructor EMCPSessionExpiredError.Create(const ASessionId: string);
 begin
   inherited Create(Format('Session "%s" has expired', [ASessionId]), JRPC_SESSION_EXPIRED);
 end;
 
-{ ESessionInvalidError }
+{ EMCPSessionInvalidError }
 
-constructor ESessionInvalidError.Create(const ASessionId: string);
+constructor EMCPSessionInvalidError.Create(const ASessionId: string);
 begin
   inherited Create(Format('Session ID "%s" is invalid', [ASessionId]), JRPC_SESSION_INVALID);
 end;
 
-{ TSessionData }
+{ TMCPSessionData }
 
-constructor TSessionData.Create;
+constructor TMCPSessionData.Create;
 begin
   inherited Create;
   FData := TJSONObject.Create;
 end;
 
-destructor TSessionData.Destroy;
+destructor TMCPSessionData.Destroy;
 begin
   FData.Free;
   inherited;
 end;
 
-{ TSessionManager }
+{ TMCPSessionManager }
 
-class constructor TSessionManager.Create;
+class constructor TMCPSessionManager.Create;
 begin
   FInstance := nil;
 end;
 
-constructor TSessionManager.Create;
+constructor TMCPSessionManager.Create;
 begin
   inherited;
   FLock := TCriticalSection.Create;
-  FSessions := TDictionary<string, TSessionBase>.Create;
-  FSessionClass := TSessionData;
+  FSessions := TDictionary<string, TMCPSessionBase>.Create;
+  FSessionClass := TMCPSessionData;
   FTimeoutMinutes := 30;
 end;
 
-class destructor TSessionManager.Destroy;
+class destructor TMCPSessionManager.Destroy;
 begin
   FInstance.Free;
 end;
 
-destructor TSessionManager.Destroy;
+destructor TMCPSessionManager.Destroy;
 var
-  LSession: TSessionBase;
+  LSession: TMCPSessionBase;
 begin
   for LSession in FSessions.Values do
     LSession.Free;
@@ -268,7 +268,7 @@ begin
   inherited;
 end;
 
-function TSessionManager.CreateSession: TSessionBase;
+function TMCPSessionManager.CreateSession: TMCPSessionBase;
 var
   LSessionId: string;
 begin
@@ -276,7 +276,7 @@ begin
 
   FLock.Enter;
   try
-    Result := TRttiUtils.CreateInstance(FSessionClass) as TSessionBase;
+    Result := TRttiUtils.CreateInstance(FSessionClass) as TMCPSessionBase;
     // Initialize session properties (same unit, can access private fields)
     Result.FSessionId := LSessionId;
     Result.FCreatedAt := Now;
@@ -287,9 +287,9 @@ begin
   end;
 end;
 
-procedure TSessionManager.DestroySession(const ASessionId: string);
+procedure TMCPSessionManager.DestroySession(const ASessionId: string);
 var
-  LSession: TSessionBase;
+  LSession: TMCPSessionBase;
 begin
   FLock.Enter;
   try
@@ -303,7 +303,7 @@ begin
   end;
 end;
 
-function TSessionManager.GenerateSessionId: string;
+function TMCPSessionManager.GenerateSessionId: string;
 var
   LGuid: TGUID;
 begin
@@ -313,20 +313,20 @@ begin
   Result := Copy(Result, 2, Length(Result) - 2);
 end;
 
-class function TSessionManager.GetInstance: TSessionManager;
+class function TMCPSessionManager.GetInstance: TMCPSessionManager;
 begin
   if not Assigned(FInstance) then
-    FInstance := TSessionManager.Create;
+    FInstance := TMCPSessionManager.Create;
   Result := FInstance;
 end;
 
-function TSessionManager.GetSession(const ASessionId: string): TSessionBase;
+function TMCPSessionManager.GetSession(const ASessionId: string): TMCPSessionBase;
 begin
   if not TryGetSession(ASessionId, Result) then
-    raise ESessionNotFoundError.Create(ASessionId);
+    raise EMCPSessionNotFoundError.Create(ASessionId);
 end;
 
-function TSessionManager.IsExpired(ASession: TSessionBase): Boolean;
+function TMCPSessionManager.IsExpired(ASession: TMCPSessionBase): Boolean;
 var
   LElapsedMinutes: Int64;
 begin
@@ -334,9 +334,9 @@ begin
   Result := LElapsedMinutes > FTimeoutMinutes;
 end;
 
-procedure TSessionManager.RemoveExpiredSession(const ASessionId: string);
+procedure TMCPSessionManager.RemoveExpiredSession(const ASessionId: string);
 var
-  LSession: TSessionBase;
+  LSession: TMCPSessionBase;
 begin
   if FSessions.TryGetValue(ASessionId, LSession) then
   begin
@@ -345,7 +345,7 @@ begin
   end;
 end;
 
-function TSessionManager.SessionExists(const ASessionId: string): Boolean;
+function TMCPSessionManager.SessionExists(const ASessionId: string): Boolean;
 begin
   FLock.Enter;
   try
@@ -355,8 +355,8 @@ begin
   end;
 end;
 
-function TSessionManager.TryGetSession(const ASessionId: string;
-  out ASession: TSessionBase): Boolean;
+function TMCPSessionManager.TryGetSession(const ASessionId: string;
+  out ASession: TMCPSessionBase): Boolean;
 begin
   FLock.Enter;
   try
@@ -368,7 +368,7 @@ begin
       if IsExpired(ASession) then
       begin
         RemoveExpiredSession(ASessionId);
-        raise ESessionExpiredError.Create(ASessionId);
+        raise EMCPSessionExpiredError.Create(ASessionId);
       end;
 
       // Update last accessed time

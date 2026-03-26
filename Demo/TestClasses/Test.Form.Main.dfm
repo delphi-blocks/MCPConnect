@@ -82,10 +82,13 @@ object frmMain: TfrmMain
         Collapsed = False
         Items = <
           item
-            Action = actJRPCEnvelope
+            Action = actJRPCID
           end
           item
-            Action = actJRPCID
+            Action = actMessages
+          end
+          item
+            Action = actMessagesRead
           end
           item
             Action = actRequestPos
@@ -160,10 +163,15 @@ object frmMain: TfrmMain
     Images = ilMain
     Left = 80
     Top = 472
-    object actJRPCEnvelope: TAction
+    object actMessages: TAction
       Category = 'JRPC'
-      Caption = 'Test Envelope'
-      OnExecute = actJRPCEnvelopeExecute
+      Caption = 'Messages (Write)'
+      OnExecute = actMessagesExecute
+    end
+    object actMessagesRead: TAction
+      Category = 'JRPC'
+      Caption = 'Messages (Read)'
+      OnExecute = actMessagesReadExecute
     end
     object actJRPCID: TAction
       Category = 'JRPC'

@@ -215,6 +215,7 @@ type
     procedure FromJsonSingle(const AJSON: TJSONObject);
     function GetMessageType(AMessage: TJSONObject): TJRPCMessageType;
     function GetMessageTypes(ARequestJSON: TJSONValue): TJRPCMessageTypes;
+    function GetCount: NativeInt;
   public
     constructor Create;
     destructor Destroy; override;
@@ -228,6 +229,7 @@ type
 
     property List: TObjectList<TJRPCMessage> read FList;
     property Types: TJRPCMessageTypes read FTypes;
+    property Count: NativeInt read GetCount;
   end;
 
   /// <summary>
@@ -330,7 +332,7 @@ type
     /// <summary>
     ///   Creates a TJRPCRequest instance from a JSON string.
     /// </summary>
-    class function CreateFromJson(const AJSON: string): TJRPCMethod;
+    class function CreateFromJson(const AJSON: string): TJRPCRequest;
   end;
 
 
@@ -377,7 +379,7 @@ type
   end;
 
   /// <summary>
-  ///   Custom serializer for the TJRPCMethod class.
+  ///   Custom serializer for the TJRPCRequest class.
   /// </summary>
   TJRequestSerializer = class(TCustomSerializer)
   protected
@@ -516,12 +518,14 @@ type
   /// </summary>
   TJRPCContext = class(TObject)
   private
-    FRequest: TJRPCMethod;
+    FRequest: TJRPCRequest;
     FResponse: TJRPCResponse;
+    FNotification: TJRPCNotification;
     FContextData: TJRPCContextData;
   protected
-    function GetRequest: TJRPCMethod;
+    function GetRequest: TJRPCRequest;
     function GetResponse: TJRPCResponse;
+    function GetNotification: TJRPCNotification;
     procedure AddConfigurations(AObject: TObject);
   public
     constructor Create;
@@ -580,12 +584,18 @@ type
     /// <summary>
     ///   The JSON-RPC request associated with this context.
     /// </summary>
-    property Request: TJRPCMethod read GetRequest;
+    property Request: TJRPCRequest read GetRequest;
 
     /// <summary>
     ///   The JSON-RPC response associated with this context.
     /// </summary>
     property Response: TJRPCResponse read GetResponse;
+
+    /// <summary>
+    ///   The JSON-RPC notification associated with this context.
+    /// </summary>
+    property Notification: TJRPCNotification read GetNotification;
+
   end;
 
 /// <summary>
@@ -992,7 +1002,7 @@ begin
       LReq.Params := LParams.Clone as TJSONObject;
   end;
 
-  Result := TValue.From<TJRPCMethod>(LReq);
+  Result := TValue.From<TJRPCRequest>(LReq);
 end;
 
 class function TJRequestSerializer.GetTargetInfo: PTypeInfo;
@@ -1203,10 +1213,12 @@ begin
   if AObject = nil then
     Exit;
 
-  if AObject is TJRPCMethod then
-    FRequest := TJRPCMethod(AObject)
+  if AObject is TJRPCRequest then
+    FRequest := TJRPCRequest(AObject)
   else if AObject is TJRPCResponse then
     FResponse := TJRPCResponse(AObject)
+  else if AObject is TJRPCNotification then
+    FNotification := TJRPCNotification(AObject)
   else
   begin
     FContextData.Add(AObject.ClassType, AObject);
@@ -1274,7 +1286,15 @@ begin
   Result := GetContextDataAs(TClass(T)) as T;
 end;
 
-function TJRPCContext.GetRequest: TJRPCMethod;
+function TJRPCContext.GetNotification: TJRPCNotification;
+begin
+  if not Assigned(FNotification) then
+    raise EJRPCException.Create('Notification not found');
+
+  Result := FNotification;
+end;
+
+function TJRPCContext.GetRequest: TJRPCRequest;
 begin
   if not Assigned(FRequest) then
     raise EJRPCException.Create('Request not found');
@@ -1414,11 +1434,16 @@ begin
   case GetMessageType(AJSON) of
     TJRPCMessageType.Request: LMsg := TNeon.JSONToObject<TJRPCRequest>(AJSON, JRPCNeonConfig);
     TJRPCMessageType.Response: LMsg := TNeon.JSONToObject<TJRPCResponse>(AJSON, JRPCNeonConfig);
-    TJRPCMessageType.Notification: LMsg := TNeon.JSONToObject<TJRPCMethod>(AJSON, JRPCNeonConfig);
+    TJRPCMessageType.Notification: LMsg := TNeon.JSONToObject<TJRPCNotification>(AJSON, JRPCNeonConfig);
   else
     LMsg := nil;
   end;
   AddMessage(LMsg);
+end;
+
+function TJRPCMessages.GetCount: NativeInt;
+begin
+  Result := FList.Count;
 end;
 
 function TJRPCMessages.GetMessageType(AMessage: TJSONObject): TJRPCMessageType;
@@ -1455,8 +1480,22 @@ begin
 end;
 
 function TJRPCMessages.ToJson: string;
+var
+  LRes: TJSONArray;
+  LMsg: TJRPCMessage;
+  LVal: TJSONValue;
 begin
-  Result := TNeon.ObjectToJSONString(Self, JRPCNeonConfig);
+  LRes := TJSONArray.Create;
+  try
+    for LMsg in FList do
+    begin
+      LVal := TNeon.ObjectToJSON(LMsg, JRPCNeonConfig);
+      LRes.AddElement(LVal);
+    end;
+    Result := TNeon.Print(LRes, True);
+  finally
+    LRes.Free;
+  end;
 end;
 
 procedure TJRPCMessages.FromJson(AValue: TJSONValue);
@@ -1470,7 +1509,7 @@ end;
 
 { TJRPCRequest }
 
-class function TJRPCRequest.CreateFromJson(const AJSON: string): TJRPCMethod;
+class function TJRPCRequest.CreateFromJson(const AJSON: string): TJRPCRequest;
 begin
   Result := Self.Create;
   try

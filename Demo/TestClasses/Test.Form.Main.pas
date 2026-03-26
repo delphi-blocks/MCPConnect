@@ -54,7 +54,7 @@ type
     Panel1: TPanel;
     CategoryButtons1: TCategoryButtons;
     actListMain: TActionList;
-    actJRPCEnvelope: TAction;
+    actMessages: TAction;
     actJRPCID: TAction;
     actRequestPos: TAction;
     actRequestNamed: TAction;
@@ -78,13 +78,14 @@ type
     actResourceList: TAction;
     actSnippets: TAction;
     btnSnippets: TToolButton;
+    actMessagesRead: TAction;
     procedure FormCreate(Sender: TObject);
     procedure actRequestPosExecute(Sender: TObject);
     procedure actRequestDesExecute(Sender: TObject);
     procedure actRequestNamedExecute(Sender: TObject);
     procedure actResponseExecute(Sender: TObject);
     procedure actResponseDesExecute(Sender: TObject);
-    procedure actJRPCEnvelopeExecute(Sender: TObject);
+    procedure actMessagesExecute(Sender: TObject);
     procedure actJRPCIDExecute(Sender: TObject);
     procedure InitializeResultExecute(Sender: TObject);
     procedure actInitializeRequestExecute(Sender: TObject);
@@ -95,6 +96,7 @@ type
     procedure actToolListExecute(Sender: TObject);
     procedure actCallToolParamsExecute(Sender: TObject);
     procedure actClearLogExecute(Sender: TObject);
+    procedure actMessagesReadExecute(Sender: TObject);
     procedure actResourceExecute(Sender: TObject);
     procedure actResourceListExecute(Sender: TObject);
     procedure actResourceTemplateExecute(Sender: TObject);
@@ -255,14 +257,29 @@ begin
   LContext.Free;
 end;
 
-procedure TfrmMain.actJRPCEnvelopeExecute(Sender: TObject);
+procedure TfrmMain.actMessagesExecute(Sender: TObject);
 begin
-  var env := TJRPCRequest.Create;
-  env.ID := 'paolo';
+  var msg := TJRPCMessages.Create;
 
-  mmoLog.Lines.Add(env.ToJson);
+  var nt := TJRPCNotification.Create;
+  nt.Method := 'hello-notification';
+  nt.AddNamedParam('max', 12);
+  msg.AddMessage(nt);
 
-  env.Free;
+  var rq := TJRPCRequest.Create;
+  rq.id := 11;
+  rq.Method := 'get-age';
+  rq.AddNamedParam('name', 'Paolo');
+  msg.AddMessage(rq);
+
+  var rs := TJRPCResponse.Create;
+  rs.id := 11;
+  rs.Result := TJSONObject.Create.AddPair('age', 55);
+  msg.AddMessage(rs);
+
+  mmoLog.Lines.Add(msg.ToJson);
+
+  msg.Free;
 end;
 
 procedure TfrmMain.actJRPCIDExecute(Sender: TObject);
@@ -409,6 +426,33 @@ end;
 procedure TfrmMain.actClearLogExecute(Sender: TObject);
 begin
   mmoLog.Clear;
+end;
+
+procedure TfrmMain.actMessagesReadExecute(Sender: TObject);
+begin
+  var msgs := TJRPCMessages.Create;
+  msgs.FromJson(mmoLog.Lines.Text);
+  mmoLog.Lines.Add('Count: ' + msgs.Count.ToString);
+
+  for var m in msgs.List do
+  begin
+    mmoLog.Lines.Add('Message: ' + m.ClassName);
+
+    if m.GetType = TJRPCMessageType.Request then
+      mmoLog.Lines.Add('Request Method: ' + (m as TJRPCRequest).Method)
+    else if m.GetType = TJRPCMessageType.Notification then
+      mmoLog.Lines.Add('Notification Method: ' + (m as TJRPCNotification).Method)
+    else if m.GetType = TJRPCMessageType.Response then
+      mmoLog.Lines.Add('Result: ' + (m as TJRPCResponse).Result.ToJSON);
+
+    mmoLog.Lines.Add('---------------');
+
+  end;
+
+
+
+
+  msgs.Free;
 end;
 
 procedure TfrmMain.actResourceExecute(Sender: TObject);

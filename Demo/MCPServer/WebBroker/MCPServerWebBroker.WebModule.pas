@@ -1,4 +1,4 @@
-unit MCPServerDemo.WebModule;
+unit MCPServerWebBroker.WebModule;
 
 interface
 
@@ -33,7 +33,7 @@ implementation
 {%CLASSGROUP 'Vcl.Controls.TControl'}
 
 uses
-  MCPServerDemo.Config;
+  MCPServer.Config;
 
 {$R *.dfm}
 

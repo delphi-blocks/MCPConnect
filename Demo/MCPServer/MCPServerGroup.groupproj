@@ -1,0 +1,60 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{8DD48209-BB08-4E7C-884C-D30E9D64D954}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="Indy\MCPServerIndy.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="WebBroker\MCPServerWebBroker.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="Stdio\MCPServerStdio.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="MCPServerIndy">
+        <MSBuild Projects="Indy\MCPServerIndy.dproj"/>
+    </Target>
+    <Target Name="MCPServerIndy:Clean">
+        <MSBuild Projects="Indy\MCPServerIndy.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="MCPServerIndy:Make">
+        <MSBuild Projects="Indy\MCPServerIndy.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="MCPServerWebBroker">
+        <MSBuild Projects="WebBroker\MCPServerWebBroker.dproj"/>
+    </Target>
+    <Target Name="MCPServerWebBroker:Clean">
+        <MSBuild Projects="WebBroker\MCPServerWebBroker.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="MCPServerWebBroker:Make">
+        <MSBuild Projects="WebBroker\MCPServerWebBroker.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="MCPServerStdio">
+        <MSBuild Projects="Stdio\MCPServerStdio.dproj"/>
+    </Target>
+    <Target Name="MCPServerStdio:Clean">
+        <MSBuild Projects="Stdio\MCPServerStdio.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="MCPServerStdio:Make">
+        <MSBuild Projects="Stdio\MCPServerStdio.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="MCPServerIndy;MCPServerWebBroker;MCPServerStdio"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="MCPServerIndy:Clean;MCPServerWebBroker:Clean;MCPServerStdio:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="MCPServerIndy:Make;MCPServerWebBroker:Make;MCPServerStdio:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>

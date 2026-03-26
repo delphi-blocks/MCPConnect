@@ -1,0 +1,84 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{E4B9D31E-3EB0-42B7-BB2C-BE6C824E15C2}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="TestClasses\TestClasses.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="JRPCServer\JRPCServer.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="MCPServer\Stdio\MCPServerStdio.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="MCPServer\Indy\MCPServerIndy.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="MCPServer\WebBroker\MCPServerWebBroker.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="TestClasses">
+        <MSBuild Projects="TestClasses\TestClasses.dproj"/>
+    </Target>
+    <Target Name="TestClasses:Clean">
+        <MSBuild Projects="TestClasses\TestClasses.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="TestClasses:Make">
+        <MSBuild Projects="TestClasses\TestClasses.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="JRPCServer">
+        <MSBuild Projects="JRPCServer\JRPCServer.dproj"/>
+    </Target>
+    <Target Name="JRPCServer:Clean">
+        <MSBuild Projects="JRPCServer\JRPCServer.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="JRPCServer:Make">
+        <MSBuild Projects="JRPCServer\JRPCServer.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="MCPServerStdio">
+        <MSBuild Projects="MCPServer\Stdio\MCPServerStdio.dproj"/>
+    </Target>
+    <Target Name="MCPServerStdio:Clean">
+        <MSBuild Projects="MCPServer\Stdio\MCPServerStdio.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="MCPServerStdio:Make">
+        <MSBuild Projects="MCPServer\Stdio\MCPServerStdio.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="MCPServerIndy">
+        <MSBuild Projects="MCPServer\Indy\MCPServerIndy.dproj"/>
+    </Target>
+    <Target Name="MCPServerIndy:Clean">
+        <MSBuild Projects="MCPServer\Indy\MCPServerIndy.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="MCPServerIndy:Make">
+        <MSBuild Projects="MCPServer\Indy\MCPServerIndy.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="MCPServerWebBroker">
+        <MSBuild Projects="MCPServer\WebBroker\MCPServerWebBroker.dproj"/>
+    </Target>
+    <Target Name="MCPServerWebBroker:Clean">
+        <MSBuild Projects="MCPServer\WebBroker\MCPServerWebBroker.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="MCPServerWebBroker:Make">
+        <MSBuild Projects="MCPServer\WebBroker\MCPServerWebBroker.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="TestClasses;JRPCServer;MCPServerStdio;MCPServerIndy;MCPServerWebBroker"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="TestClasses:Clean;JRPCServer:Clean;MCPServerStdio:Clean;MCPServerIndy:Clean;MCPServerWebBroker:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="TestClasses:Make;JRPCServer:Make;MCPServerStdio:Make;MCPServerIndy:Make;MCPServerWebBroker:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>

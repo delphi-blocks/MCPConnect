@@ -139,9 +139,5 @@ object frmSnippets: TfrmSnippets
     ScrollBars = ssBoth
     TabOrder = 0
     WordWrap = False
-    ExplicitLeft = -89
-    ExplicitTop = -92
-    ExplicitWidth = 566
-    ExplicitHeight = 571
   end
 end

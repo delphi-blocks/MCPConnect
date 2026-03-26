@@ -1,4 +1,4 @@
-unit MCPServerDemo.Apps;
+unit MCPServer.Apps;
 
 interface
 

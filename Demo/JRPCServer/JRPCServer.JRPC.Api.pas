@@ -1,4 +1,4 @@
-unit ServerDemo.JRPC.Api;
+unit JRPCServer.JRPC.Api;
 
 interface
 

@@ -1,4 +1,4 @@
-unit MCPServerDemo.Config;
+unit MCPServer.Config;
 
 interface
 
@@ -28,9 +28,9 @@ implementation
 
 uses
   System.IOUtils,
-  MCPServerDemo.Tools,
-  MCPServerDemo.Resources,
-  MCPServerDemo.Apps;
+  MCPServer.Tools,
+  MCPServer.Resources,
+  MCPServer.Apps;
 
 
 { TServerConfigurator }

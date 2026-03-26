@@ -1,4 +1,4 @@
-unit MCPServerDemo.Resources;
+unit MCPServer.Resources;
 
 interface
 

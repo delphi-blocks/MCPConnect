@@ -1,4 +1,4 @@
-unit MCPServerDemo.Tools;
+unit MCPServer.Tools;
 
 interface
 

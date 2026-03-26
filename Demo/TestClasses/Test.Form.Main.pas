@@ -1,4 +1,4 @@
-unit MCP.Form.Main;
+unit Test.Form.Main;
 
 interface
 
@@ -141,7 +141,7 @@ var
 implementation
 
 uses
-  MCP.Form.Snippets;
+  Test.Form.Snippets;
 
 {$R *.dfm}
 

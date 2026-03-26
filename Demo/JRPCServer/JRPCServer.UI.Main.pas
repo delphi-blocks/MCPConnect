@@ -1,25 +1,11 @@
-unit MCPServerDemo.MainFormIndy;
+unit JRPCServer.UI.Main;
 
 interface
 
 uses
   Winapi.Messages, System.SysUtils, System.Variants,
   System.Classes, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs,
-  Vcl.AppEvnts, Vcl.StdCtrls, IdGlobal, Web.HTTPApp,
-  IdContext, IdBaseComponent, IdComponent, IdCustomTCPServer,
-  IdCustomHTTPServer, IdHTTPServer,
-
-  MCPConnect.JRPC.Server,
-  MCPConnect.Transport.Indy,
-
-  MCPConnect.MCP.Server.Api,
-
-  MCPConnect.Configuration.MCP,
-  MCPConnect.Configuration.Session,
-  MCPConnect.Configuration.Auth,
-
-  MCPConnect.Content.Writers.RTL,
-  MCPConnect.Content.Writers.VCL;
+  Vcl.AppEvnts, Vcl.StdCtrls, IdHTTPWebBrokerBridge, IdGlobal, Web.HTTPApp;
 
 type
   TForm1 = class(TForm)
@@ -35,9 +21,9 @@ type
     procedure ButtonStopClick(Sender: TObject);
     procedure ButtonOpenBrowserClick(Sender: TObject);
   private
-    IdHTTPServer1: TJRPCIndyServer;
-    FJRPCServer: TJRPCServer;
+    FServer: TIdHTTPWebBrokerBridge;
     procedure StartServer;
+    { Private declarations }
   public
     { Public declarations }
   end;
@@ -50,23 +36,31 @@ implementation
 {$R *.dfm}
 
 uses
+{$IFDEF MSWINDOWS}
   WinApi.Windows, Winapi.ShellApi,
-  MCPServerDemo.Config;
+{$ENDIF}
+  System.Generics.Collections;
 
 procedure TForm1.ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
 begin
-  ButtonStart.Enabled := not IdHTTPServer1.Active;
-  ButtonStop.Enabled := IdHTTPServer1.Active;
-  EditPort.Enabled := not IdHTTPServer1.Active;
+  ButtonStart.Enabled := not FServer.Active;
+  ButtonStop.Enabled := FServer.Active;
+  EditPort.Enabled := not FServer.Active;
 end;
 
 procedure TForm1.ButtonOpenBrowserClick(Sender: TObject);
+{$IFDEF MSWINDOWS}
 var
   LURL: string;
+{$ENDIF}
 begin
   StartServer;
+{$IFDEF MSWINDOWS}
   LURL := Format('http://localhost:%s', [EditPort.Text]);
-  ShellExecute(0, nil, PChar(LURL), nil, nil, SW_SHOWNOACTIVATE);
+  ShellExecute(0,
+        nil,
+        PChar(LURL), nil, nil, SW_SHOWNOACTIVATE);
+{$ENDIF}
 end;
 
 procedure TForm1.ButtonStartClick(Sender: TObject);
@@ -76,29 +70,23 @@ end;
 
 procedure TForm1.ButtonStopClick(Sender: TObject);
 begin
-  IdHTTPServer1.Active := False;
+  FServer.Active := False;
+  FServer.Bindings.Clear;
 end;
 
 procedure TForm1.FormCreate(Sender: TObject);
 begin
-  IdHTTPServer1 := TJRPCIndyServer.Create(Self);
-
-  FJRPCServer := TJRPCServer.Create(Self);
-
-  TServerConfigurator.ConfigureServer(FJRPCServer);
-
-  IdHTTPServer1.Server := FJRPCServer;
-
+  FServer := TIdHTTPWebBrokerBridge.Create(Self);
   StartServer;
 end;
 
 procedure TForm1.StartServer;
 begin
-  if not IdHTTPServer1.Active then
+  if not FServer.Active then
   begin
-    IdHTTPServer1.Bindings.Clear;
-    IdHTTPServer1.DefaultPort := StrToInt(EditPort.Text);
-    IdHTTPServer1.Active := True;
+    FServer.Bindings.Clear;
+    FServer.DefaultPort := StrToInt(EditPort.Text);
+    FServer.Active := True;
   end;
 end;
 

@@ -86,7 +86,7 @@ type
   TWorkerThread = class(TThread)
   private
     FServer: TJRPCServer;
-    FSession: TSessionBase;
+    FSession: TMCPSessionBase;
     FSessionConfig: TSessionConfig;
     procedure SetServer(const Value: TJRPCServer);
     procedure HandleRequest(const ARequestContent: string; out AResponseContent: string);
@@ -355,7 +355,7 @@ begin
   // Create session for this STDIO connection (implicit session per connection)
   if Assigned(FSessionConfig) then
   begin
-    FSession := TSessionManager.Instance.CreateSession;
+    FSession := TMCPSessionManager.Instance.CreateSession;
     LSessionId := FSession.SessionId;  // Save ID before thread ends
   end;
 
@@ -398,7 +398,7 @@ begin
     // The session would be automatically destroyed by TSessionManager's destructor
     // at application termination, but we clean it up here for good practice.
     if not LSessionId.IsEmpty then
-      TSessionManager.Instance.DestroySession(LSessionId);
+      TMCPSessionManager.Instance.DestroySession(LSessionId);
   end;
 
   Terminate;

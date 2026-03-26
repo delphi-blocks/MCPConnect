@@ -43,7 +43,7 @@ type
     procedure SetServer(const Value: TJRPCServer);
     function CheckAuthorization(Request: TWebRequest; Response: TWebResponse): Boolean;
     function ExtractSessionId(Request: TWebRequest): string;
-    function HandleSession(Request: TWebRequest; out ASessionCreated: Boolean): TSessionBase;
+    function HandleSession(Request: TWebRequest; out ASessionCreated: Boolean): TMCPSessionBase;
   public
     { IWebDispatch }
     function DispatchEnabled: Boolean;
@@ -138,7 +138,7 @@ var
   LInvokable: IJRPCInvokable;
   LContext: TJRPCContext;
   LId: TJRPCID;
-  LSession: TSessionBase;
+  LSession: TMCPSessionBase;
   LSessionCreated: Boolean;
 begin
   if not Assigned(FServer) then
@@ -247,7 +247,7 @@ begin
 end;
 
 function TJRPCDispatcher.HandleSession(Request: TWebRequest;
-  out ASessionCreated: Boolean): TSessionBase;
+  out ASessionCreated: Boolean): TMCPSessionBase;
 var
   LSessionId: string;
 begin
@@ -263,12 +263,12 @@ begin
   if not LSessionId.IsEmpty then
   begin
     // GetSession will raise exception if expired or not found
-    Result := TSessionManager.Instance.GetSession(LSessionId);
+    Result := TMCPSessionManager.Instance.GetSession(LSessionId);
   end
   else
   begin
     // No session ID provided - auto-create new session
-    Result := TSessionManager.Instance.CreateSession;
+    Result := TMCPSessionManager.Instance.CreateSession;
     ASessionCreated := True;
   end;
 end;

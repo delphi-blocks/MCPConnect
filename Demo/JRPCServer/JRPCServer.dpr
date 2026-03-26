@@ -1,13 +1,13 @@
-program JRPCServerDemo;
+program JRPCServer;
 {$APPTYPE GUI}
 
 uses
   Vcl.Forms,
   Web.WebReq,
   IdHTTPWebBrokerBridge,
-  ServerDemo.UI.Main in 'ServerDemo.UI.Main.pas' {Form1},
-  ServerDemo.WebModule in 'ServerDemo.WebModule.pas' {WebModule1: TWebModule},
-  ServerDemo.JRPC.Api in 'ServerDemo.JRPC.Api.pas';
+  JRPCServer.UI.Main in 'JRPCServer.UI.Main.pas' {Form1},
+  JRPCServer.WebModule in 'JRPCServer.WebModule.pas' {WebModule1: TWebModule},
+  JRPCServer.JRPC.Api in 'JRPCServer.JRPC.Api.pas';
 
 {$R *.res}
 

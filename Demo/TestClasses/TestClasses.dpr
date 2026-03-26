@@ -1,9 +1,9 @@
-program MCPTest;
+program TestClasses;
 
 uses
   Vcl.Forms,
-  MCP.Form.Main in 'MCP.Form.Main.pas' {frmMain},
-  MCP.Form.Snippets in 'MCP.Form.Snippets.pas' {frmSnippets};
+  Test.Form.Main in 'Test.Form.Main.pas' {frmMain},
+  Test.Form.Snippets in 'Test.Form.Snippets.pas' {frmSnippets};
 
 {$R *.res}
 

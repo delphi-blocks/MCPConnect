@@ -1,4 +1,4 @@
-unit MCPServerDemo.MainForm;
+unit MCPServerWebBroker.Form.Main;
 
 interface
 
@@ -8,7 +8,7 @@ uses
   Vcl.AppEvnts, Vcl.StdCtrls, IdHTTPWebBrokerBridge, IdGlobal, Web.HTTPApp,
   IdContext,
 
-  MCPServerDemo.WebModule,
+  MCPServerWebBroker.WebModule,
 
   Neon.Core.Nullables,
   Neon.Core.Tags,
@@ -72,8 +72,8 @@ uses
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
 
-  MCPServerDemo.Resources,
-  MCPServerDemo.Tools,
+  MCPServer.Resources,
+  MCPServer.Tools,
   MCPConnect.Core.Utils,
   MCPConnect.Configuration.Neon,
   MCPConnect.MCP.Server.Api;

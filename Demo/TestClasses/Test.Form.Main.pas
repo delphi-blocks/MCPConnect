@@ -197,10 +197,11 @@ end;
 procedure TfrmMain.actResponseExecute(Sender: TObject);
 begin
   var res := TJRPCResponse.Create;
-  res.Id := 1;
-  //r.Error.Code := 123;
-  //r.Error.Message := 'Call Error';
-
+  res.Id := nil;
+  {
+  res.Error.Code := 123;
+  res.Error.Message := 'Call Error';
+  }
   var list := TStringList.Create;
   list.Add('Paolo');
   list.Add('Rossi');
@@ -215,10 +216,7 @@ procedure TfrmMain.actResponseDesExecute(Sender: TObject);
 begin
   var res := TJRPCResponse.CreateFromJson(mmoLog.Lines.Text);
 
-  if res.IsError then
-    mmoLog.Lines.Add('Error detected: ' + res.Error.Message)
-  else
-    mmoLog.Lines.Add('Result (as JSON) is a: ' + res.Result.ClassName);
+  mmoLog.Lines.Add('Result (as JSON) is a: ' + res.Result.ClassName);
 
   res.Free;
 end;
@@ -277,6 +275,12 @@ begin
   rs.Result := TJSONObject.Create.AddPair('age', 55);
   msg.AddMessage(rs);
 
+  var er := TJRPCError.Create;
+  er.id := nil;
+  er.Error.Code := 1233;
+  er.Error.Message := 'Error';
+  msg.AddMessage(er);
+
   mmoLog.Lines.Add(msg.ToJson);
 
   msg.Free;
@@ -287,11 +291,27 @@ var
   s: string;
 begin
 
+  var tpl := TJRPCError.Create;
+  tpl.Id := nil;
+  tpl.Error.Code := 32334;
+  tpl.Error.Message := 'Error';
+
+  var err := tpl.Clone;
+
+  s := TNeon.ObjectToJSONString(err, JRPCNeonConfig);
+  mmoLog.Lines.Add(s);
+  err.Free;
+  tpl.Free;
+  Exit;
+
   var a: TJRPCID; // := 12;
   //a.Init;
   s := TNeon.ValueToJSONString(TValue.From<TJRPCID>(a), GetNeonConfig);
   mmoLog.Lines.Add(s);
 
+  a := nil;
+  s := TNeon.ValueToJSONString(TValue.From<TJRPCID>(a), GetNeonConfig);
+  mmoLog.Lines.Add(s);
 
   var v: TValue;
   v := 123;
@@ -433,25 +453,18 @@ begin
   var msgs := TJRPCMessages.Create;
   msgs.FromJson(mmoLog.Lines.Text);
   mmoLog.Lines.Add('Count: ' + msgs.Count.ToString);
-
+  mmoLog.Lines.Add('---------------');
   for var m in msgs.List do
   begin
     mmoLog.Lines.Add('Message: ' + m.ClassName);
-
     if m.GetType = TJRPCMessageType.Request then
       mmoLog.Lines.Add('Request Method: ' + (m as TJRPCRequest).Method)
     else if m.GetType = TJRPCMessageType.Notification then
       mmoLog.Lines.Add('Notification Method: ' + (m as TJRPCNotification).Method)
     else if m.GetType = TJRPCMessageType.Response then
       mmoLog.Lines.Add('Result: ' + (m as TJRPCResponse).Result.ToJSON);
-
     mmoLog.Lines.Add('---------------');
-
   end;
-
-
-
-
   msgs.Free;
 end;
 
@@ -519,8 +532,7 @@ function TfrmMain.GetNeonConfig: INeonConfiguration;
 begin
   Result := TNeonConfiguration.Default
     .RegisterSerializer(TTValueSerializer)
-    .RegisterSerializer(TJRequestSerializer)
-    .RegisterSerializer(TJResponseSerializer);
+    .RegisterSerializer(TJRequestSerializer);
 end;
 
 function TfrmMain.GetPersonName(p: TPerson): string;

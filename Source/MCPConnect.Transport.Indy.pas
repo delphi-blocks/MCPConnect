@@ -21,13 +21,15 @@ uses
 
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
-
+  MCPConnect.Core.Utils,
   MCPConnect.Configuration.Auth,
   MCPConnect.Configuration.Session,
   MCPConnect.Session.Core,
+  MCPConnect.JRPC.Core,
   MCPConnect.JRPC.Server;
 
 const
+  HTTP_CODE_OK = 200;
   HTTP_CODE_ACCEPTED = 202;
   HTTP_CODE_NOCONTENT = 204;
   HTTP_CODE_UNAUTHORIZED = 401;
@@ -37,21 +39,31 @@ const
   HTTP_CODE_NOTACCEPTABLE = 406;
 
 type
+
   TJRPCIndyBridge = class(TComponent)
+  private type
+    TMsgContext = record
+      GC: IGarbageCollector;
+      JRPCCtx: TJRPCContext;
+      Session: TMCPSessionBase;
+      Request: TJRPCMessage;
+      Responses: TJRPCMessages;
+    end;
   private
     FServer: TJRPCServer;
     FAuthTokenConfig: TAuthTokenConfig;
     FSessionConfig: TSessionConfig;
-
-    procedure AddSessionID(AResponse: TIdHTTPResponseInfo; ASession: TMCPSessionBase);
 
     procedure SetServer(const Value: TJRPCServer);
     function CheckAuthorization(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo): Boolean;
     function ExtractSessionId(ARequestInfo: TIdHTTPRequestInfo): string;
     function HandleSession(ARequestInfo: TIdHTTPRequestInfo; out ASessionCreated: Boolean): TMCPSessionBase;
 
+    procedure HandleMessage(AMsgContext: TMsgContext);
+
     procedure HandleRequestGET(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
     procedure HandleRequestPOST(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
+    procedure HandleRequestOPTIONS(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
 
   public
     procedure HandleRequest(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
@@ -77,17 +89,8 @@ implementation
 
 uses
   System.IOUtils,
-  MCPConnect.JRPC.Core,
-  MCPConnect.JRPC.Invoker,
-  MCPConnect.Core.Utils;
-
-{ TJRPCIndyBridge }
-
-procedure TJRPCIndyBridge.AddSessionID(AResponse: TIdHTTPResponseInfo; ASession: TMCPSessionBase);
-begin
-  if Assigned(ASession) and Assigned(FSessionConfig) then
-    AResponse.CustomHeaders.AddValue(FSessionConfig.GetHeaderName, ASession.SessionId);
-end;
+  MCPConnect.Configuration.Neon,
+  MCPConnect.JRPC.Invoker;
 
 function TJRPCIndyBridge.CheckAuthorization(AContext: TIdContext;
   ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo): Boolean;
@@ -120,26 +123,109 @@ begin
   end;
 end;
 
-procedure TJRPCIndyBridge.HandleRequest(AContext: TIdContext;
-  ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
-begin
-  if not Assigned(FServer) then
-    raise EJRPCException.Create('Server not found');
+procedure TJRPCIndyBridge.HandleMessage(AMsgContext: TMsgContext);
+var
+  LRequest: TJRPCRequest;
+  LResponse: TJRPCResponse;
+  LConstructorProxy: TJRPCConstructorProxy;
+  LInstance: TObject;
 
-  if not CheckAuthorization(AContext, ARequestInfo, AResponseInfo) then
+  LInvokerCtx: TJRPCInvokerContext;
+begin
+  if AMsgContext.Request is TJRPCNotification then
   begin
-    AResponseInfo.ResponseNo := HTTP_CODE_FORBIDDEN;
-    AResponseInfo.ContentText := '';
+    { TODO -opaolo -c : Enqueue the notification 28/03/2026 15:49:20 }
     Exit;
   end;
 
-  case ARequestInfo.CommandType of
-    hcGET: HandleRequestGET(AContext, ARequestInfo, AResponseInfo);
-    hcPOST: HandleRequestPOST(AContext, ARequestInfo, AResponseInfo);
-    //hcOPTION: ;
-    else AResponseInfo.ResponseNo := HTTP_CODE_NOTALLOWED;
+  if AMsgContext.Request is TJRPCResponse then
+  begin
+    { TODO -opaolo -c : Enqueue the response 28/03/2026 15:49:20 }
+    Exit;
   end;
 
+  if AMsgContext.Request is TJRPCError then
+  begin
+    var LOriginal := AMsgContext.Request as TJRPCError;
+
+    // If the error is in the JRPC request messages then process internally the error.
+    if LOriginal.Request then
+    begin
+      { TODO -opaolo -c : Enqueue the error 28/03/2026 15:49:20 }
+    end
+    else
+    begin
+      // If the error was generated processing the request, clone the error object
+      AMsgContext.Responses.AddMessage(LOriginal.Clone);
+    end;
+    Exit;
+  end;
+
+  LRequest := AMsgContext.Request as TJRPCRequest;
+  try
+    AMsgContext.JRPCCtx.AddContent(LRequest);
+
+    if not TJRPCRegistry.Instance.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
+      raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LRequest.Method]);
+
+    LInstance := LConstructorProxy.ConstructorFunc();
+    AMsgContext.GC.Add(LInstance);
+
+    // Injects the context inside the instance
+    AMsgContext.JRPCCtx.Inject(LInstance);
+
+    LInvokerCtx.GC := AMsgContext.GC;
+    LInvokerCtx.Request := LRequest;
+    LInvokerCtx.Responses := AMsgContext.Responses;
+    LInvokerCtx.ApiInstance := LInstance;
+    LInvokerCtx.SelectConfig(LConstructorProxy.NeonConfig, AMsgContext.JRPCCtx.FindContextDataAs<TJRPCNeonConfig>);
+
+    TJRPCInvoker.Invoke(LInvokerCtx);
+  except
+    on E: Exception do
+    begin
+      var err := TJRPCInvoker.HandleError(E, LRequest.Id);
+      AMsgContext.Responses.AddMessage(err);
+    end;
+  end;
+end;
+
+procedure TJRPCIndyBridge.HandleRequest(AContext: TIdContext;
+  ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
+begin
+  try
+    if not Assigned(FServer) then
+      raise EJRPCException.Create('Server not found');
+
+    if not CheckAuthorization(AContext, ARequestInfo, AResponseInfo) then
+    begin
+      AResponseInfo.ResponseNo := HTTP_CODE_FORBIDDEN;
+      AResponseInfo.ContentText := '';
+      Exit;
+    end;
+
+    case ARequestInfo.CommandType of
+      hcGET:    HandleRequestGET(AContext, ARequestInfo, AResponseInfo);
+      hcPOST:   HandleRequestPOST(AContext, ARequestInfo, AResponseInfo);
+      hcOPTION: HandleRequestOPTIONS(AContext, ARequestInfo, AResponseInfo);
+    else
+      AResponseInfo.ResponseNo := HTTP_CODE_NOTALLOWED;
+    end;
+  except
+    on E: EJRPCException do
+    begin
+      AResponseInfo.ResponseNo := 500;
+      AResponseInfo.ContentType := 'application/json';
+      AResponseInfo.ContentText := E.ToJSON;
+    end;
+
+    on E: Exception do
+    begin
+      AResponseInfo.ResponseNo := 500;
+      AResponseInfo.ContentType := 'application/json';
+      AResponseInfo.ContentText := Format('{"message": "%s"}', [E.Message]);
+    end;
+  end;
 end;
 
 procedure TJRPCIndyBridge.HandleRequestGET(AContext: TIdContext;
@@ -148,94 +234,81 @@ begin
   AResponseInfo.ResponseNo := HTTP_CODE_NOTALLOWED;
 end;
 
+procedure TJRPCIndyBridge.HandleRequestOPTIONS(AContext: TIdContext;
+  ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
+begin
+  AResponseInfo.ResponseNo := HTTP_CODE_ACCEPTED;
+  AResponseInfo.ContentText := '';
+end;
+
 procedure TJRPCIndyBridge.HandleRequestPOST(AContext: TIdContext;
   ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
 var
-  LGarbageCollector: IGarbageCollector;
-  LRequest: TJRPCRequest;
-  LResponse: TJRPCResponse;
-  LConstructorProxy: TJRPCConstructorProxy;
-  LInstance: TObject;
-  LInvokable: IJRPCInvokable;
+  LGarbage: IGarbageCollector;
   LContext: TJRPCContext;
+  LCtx: TMsgContext;
   LEncoding: IIdTextEncoding;
   LRequestContent: string;
-  LId: TJRPCID;
   LSession: TMCPSessionBase;
   LSessionCreated: Boolean;
+
+  LRequestList, LResponseList: TJRPCMessages;
+  LRequest: TJRPCMessage;
 begin
-  LGarbageCollector := TGarbageCollector.CreateInstance;
-  LSession := nil;
+  // HttpRequest:  Headers, PostStream
+  // HttpResponse: ContentType, Content, StatusCode
+
+
   LSessionCreated := False;
+  LGarbage := TGarbageCollector.CreateInstance;
+  LContext := TJRPCContext.Create;
 
-  LResponse := TJRPCResponse.Create;
-  LGarbageCollector.Add(LResponse);
+  LGarbage.Add(LContext);
+  LContext.AddContent(LGarbage);
+  LContext.AddContent(FServer);
 
-  try
-    // Handle session (get existing or create new)
-    LSession := HandleSession(ARequestInfo, LSessionCreated);
+  // Handle session (get existing or create new)
+  LSession := HandleSession(ARequestInfo, LSessionCreated);
 
-    if ARequestInfo.CharSet <> '' then
-      LEncoding := IndyTextEncoding(ARequestInfo.CharSet)
-    else
-      LEncoding := IndyTextEncoding_UTF8;
-
-    ARequestInfo.PostStream.Position := 0;
-    LRequestContent := ReadStringFromStream(ARequestInfo.PostStream, -1, LEncoding);
-
-    if False {not (TMCPMessageType.Request in types)} then
-    begin
-      // Put responses and notifications in the active Session
-
-      // Then respond with a 202.
-      AResponseInfo.ResponseNo := HTTP_CODE_ACCEPTED;
-      if LSessionCreated  then
-        AddSessionID(AResponseInfo, LSession);
-
-      Exit;
-    end;
-
-    LRequest := TNeon.JSONToObject<TJRPCRequest>(LRequestContent, JRPCNeonConfig);
-    LGarbageCollector.Add(LRequest);
-    LId := LRequest.Id;
-
-    if not TJRPCRegistry.Instance.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
-      raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LRequest.Method]);
-
-    LInstance := LConstructorProxy.ConstructorFunc();
-    LGarbageCollector.Add(LInstance);
-
-    LContext := TJRPCContext.Create;
-    LGarbageCollector.Add(LContext);
-
-    LContext.AddContent(LRequest);
-    LContext.AddContent(LResponse);
-    LContext.AddContent(FServer);
+  // Add session to context if available
+  if Assigned(LSession) then
     LContext.AddContent(LSession);
 
-    // Injects the context inside the instance
-    LContext.Inject(LInstance);
+  if ARequestInfo.CharSet <> '' then
+    LEncoding := IndyTextEncoding(ARequestInfo.CharSet)
+  else
+    LEncoding := IndyTextEncoding_UTF8;
 
-    LInvokable := TJRPCObjectInvoker.Create(LInstance);
-    LInvokable.NeonConfig := LConstructorProxy.NeonConfig;
-    if not LInvokable.Invoke(LContext, LRequest, LResponse) then
-      raise EJRPCMethodNotFoundError.CreateFmt('Cannot invoke method "%s"', [LRequest.Method]);
-  except
-    on E: Exception do
-      TJRPCObjectInvoker.HandleException(E, LId, LResponse);
+  ARequestInfo.PostStream.Position := 0;
+  LRequestContent := ReadStringFromStream(ARequestInfo.PostStream, -1, LEncoding);
+
+  LRequestList := TJRPCMessages.CreateFromJson(LRequestContent);
+  LGarbage.Add(LRequestList);
+
+  LResponseList := TJRPCMessages.Create;
+  LGarbage.Add(LResponseList);
+
+  for LRequest in LRequestList.List do
+  begin
+    LCtx.GC := LGarbage;
+    LCtx.JRPCCtx := LContext;
+    LCtx.Session := LSession;
+    LCtx.Request := LRequest;
+    LCtx.Responses := LResponseList;
+
+    { TODO -opaolo -c : Use directly JRPCContect! 28/03/2026 17:45:11 }
+    HandleMessage(LCtx);
   end;
 
-  if LSessionCreated  then
-    AddSessionID(AResponseInfo, LSession);
-
+  { TODO -opaolo -c : To change based on SSE vs JSON reqs 28/03/2026 17:45:47 }
   AResponseInfo.ContentType := 'application/json';
-  if LResponse.IsNotification then
-  begin
-    AResponseInfo.ResponseNo := HTTP_CODE_ACCEPTED;
-    AResponseInfo.ContentText := '';
-  end
+  AResponseInfo.ContentText := LResponseList.ToJson;
+
+  if LResponseList.Count = 0 then
+    AResponseInfo.ResponseNo := HTTP_CODE_ACCEPTED
   else
-    AResponseInfo.ContentText := TNeon.ObjectToJSONString(LResponse, JRPCNeonConfig);
+    AResponseInfo.ResponseNo := HTTP_CODE_OK;
+
 end;
 
 procedure TJRPCIndyBridge.SetServer(const Value: TJRPCServer);

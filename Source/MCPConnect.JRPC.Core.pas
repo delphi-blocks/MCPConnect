@@ -48,6 +48,8 @@ type
   public
     procedure AfterConstruction; override;
 
+    function ToJSON: string;
+
     /// <summary>
     ///   The JSON-RPC error code.
     /// </summary>
@@ -92,6 +94,7 @@ type
   end;
 
   TJRPCContext = class;
+  TJRPCError = class;
 
   /// <summary>
   ///   Type of JSON-RPC parameters: by position, by name, or null
@@ -160,19 +163,22 @@ type
   public
     class operator Implicit(ASource: Integer): TJRPCID;
     class operator Implicit(ASource: string): TJRPCID;
+    class operator Implicit(Value: TObject): TJRPCID;
 
     class operator Implicit(const ASource: TJRPCID): Integer;
     class operator Implicit(const ASource: TJRPCID): string;
+
+    function IsNull: Boolean;
   end;
 
   /// <summary>
   ///   Type of JSON-RPC message: Request, Response, or Notification.
   /// </summary>
-  TJRPCMessageType = (Request, Response, Notification);
+  TJRPCMessageType = (Request, Response, Error, Notification);
   TJRPCMessageTypes = set of TJRPCMessageType;
 
   /// <summary>
-  ///   Base class for all JSON-RPC messages.
+  ///   Base class for all JSON-RPC classes.
   /// </summary>
   TJRPCMessage = class
   public const
@@ -211,6 +217,7 @@ type
   private
     FList: TObjectList<TJRPCMessage>;
     FTypes: TJRPCMessageTypes;
+    FSingle: Boolean;
 
     procedure FromJsonSingle(const AJSON: TJSONObject);
     function GetMessageType(AMessage: TJSONObject): TJRPCMessageType;
@@ -227,15 +234,18 @@ type
     procedure FromJson(AStream: TStream); overload;
     procedure FromJson(AValue: TJSONValue); overload;
 
+    property Single: Boolean read FSingle write FSingle;
     property List: TObjectList<TJRPCMessage> read FList;
     property Types: TJRPCMessageTypes read FTypes;
     property Count: NativeInt read GetCount;
+  public
+    class function CreateFromJson(const AJSON: string): TJRPCMessages;
   end;
 
   /// <summary>
   /// Represents a JSON-RPC error object.
   /// </summary>
-  TJRPCError = class
+  TJRPCErrorDetails = class
   private
     FCode: NullInteger;
     FData: TValue;
@@ -342,7 +352,6 @@ type
   TJRPCResponse = class(TJRPCMessage)
   private
     FId: TJRPCID;
-    FError: TJRPCError;
     FResult: TJSONValue;
     procedure SetResult(AValue: TJSONValue);
   public
@@ -350,15 +359,6 @@ type
     destructor Destroy; override;
 
     function GetType: TJRPCMessageType; override;
-
-    function IsError: Boolean;
-    function IsNotification: Boolean;
-
-    /// <summary>
-    ///   The error object, if any.
-    /// </summary>
-    [NeonProperty('error')]
-    property Error: TJRPCError read FError write FError;
 
     /// <summary>
     ///   The result of the method invocation.
@@ -379,6 +379,47 @@ type
   end;
 
   /// <summary>
+  ///   Class representing a JSON-RPC error.
+  /// </summary>
+  TJRPCError = class(TJRPCMessage)
+  private
+    FId: TJRPCID;
+    FError: TJRPCErrorDetails;
+    FRequest: Boolean;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    function GetType: TJRPCMessageType; override;
+    function Clone: TJRPCError;
+
+    /// <summary>
+    ///   The error object, if any.
+    /// </summary>
+    [NeonProperty('error')]
+    property Error: TJRPCErrorDetails read FError write FError;
+
+    /// <summary>
+    ///   The ID of the corresponding request.
+    /// </summary>
+    [NeonProperty('id'), NeonUnwrapped]
+    property Id: TJRPCID read FId write FId;
+
+    /// <summary>
+    ///   Specifies if the exception is from a JRPC request
+    /// </summary>
+    [NeonIgnore]
+    property Request: Boolean read FRequest write FRequest;
+  public
+    /// <summary>
+    ///   Creates a TJRPCError instance
+    /// </summary>
+    class function CreateFromJson(const AJSON: string): TJRPCError;
+    class function CreateFromException(E: Exception; AId: TJRPCID): TJRPCError; overload;
+    class function CreateFromException(E: Exception; AJSON: TJSONObject): TJRPCError; overload;
+  end;
+
+  /// <summary>
   ///   Custom serializer for the TJRPCRequest class.
   /// </summary>
   TJRequestSerializer = class(TCustomSerializer)
@@ -391,9 +432,9 @@ type
   end;
 
   /// <summary>
-  ///   Custom serializer for the TJRPCResponse class.
+  ///   Custom serializer for the TJRPCError class.
   /// </summary>
-  TJResponseSerializer = class(TCustomSerializer)
+  TJErrorSerializer = class(TCustomSerializer)
   protected
     class function GetTargetInfo: PTypeInfo; override;
     class function CanHandle(AType: PTypeInfo): Boolean; override;
@@ -510,22 +551,20 @@ type
     class destructor Destroy;
   end;
 
-  TJRPCContextData = class(TDictionary<TClass, TObject>);
+  TJRPCContextRegistry = class(TDictionary<TClass, TObject>);
 
   /// <summary>
-  ///   Represents the context of a JSON-RPC request, including the request
-  ///   itself, the response, and any additional data associated with the context.
+  ///   Represents the context of a JSON-RPC CurrentRequest, including the CurrentRequest
+  ///   itself, the Responses, and any additional data associated with the context.
   /// </summary>
   TJRPCContext = class(TObject)
   private
-    FRequest: TJRPCRequest;
-    FResponse: TJRPCResponse;
-    FNotification: TJRPCNotification;
-    FContextData: TJRPCContextData;
+    FCurrentRequest: TJRPCRequest;
+    FResponses: TJRPCMessages;
+    FContextData: TJRPCContextRegistry;
   protected
-    function GetRequest: TJRPCRequest;
-    function GetResponse: TJRPCResponse;
-    function GetNotification: TJRPCNotification;
+    function GetCurrentRequest: TJRPCRequest;
+    function GetResponses: TJRPCMessages;
     procedure AddConfigurations(AObject: TObject);
   public
     constructor Create;
@@ -582,20 +621,14 @@ type
     procedure Inject(AInterface: IInterface); overload;
 
     /// <summary>
-    ///   The JSON-RPC request associated with this context.
+    ///   The JSON-RPC CurrentRequest associated with this context.
     /// </summary>
-    property Request: TJRPCRequest read GetRequest;
+    property CurrentRequest: TJRPCRequest read GetCurrentRequest;
 
     /// <summary>
-    ///   The JSON-RPC response associated with this context.
+    ///   The JSON-RPC Responses associated with this context.
     /// </summary>
-    property Response: TJRPCResponse read GetResponse;
-
-    /// <summary>
-    ///   The JSON-RPC notification associated with this context.
-    /// </summary>
-    property Notification: TJRPCNotification read GetNotification;
-
+    property Responses: TJRPCMessages read GetResponses;
   end;
 
 /// <summary>
@@ -615,7 +648,8 @@ begin
     .RegisterSerializer(TJSONValueSerializer)
     .RegisterSerializer(TJValueSerializer)
     .RegisterSerializer(TJRequestSerializer)
-    .RegisterSerializer(TJResponseSerializer);
+    .RegisterSerializer(TJErrorSerializer)
+  ;
 end;
 
 
@@ -636,8 +670,7 @@ begin
   Result := TNeonConfiguration.Default
     .RegisterSerializer(TJSONValueSerializer)
     .RegisterSerializer(TJValueSerializer)
-    .RegisterSerializer(TJValueSerializer)
-    .RegisterSerializer(TJResponseSerializer);
+    .RegisterSerializer(TJValueSerializer);
 end;
 
 function TJRPCMessage.ToJson: string;
@@ -773,12 +806,22 @@ begin
   Result.id := ASource;
 end;
 
+class operator TJRPCID.Implicit(Value: TObject): TJRPCID;
+begin
+  Result.id := nil;
+end;
+
 class operator TJRPCID.Implicit(const ASource: TJRPCID): string;
 begin
   if ASource.Id.IsType<Integer> then
     raise EJRPCParseError.Create('The Id is an integer');
 
   Result := ASource.Id.AsString;
+end;
+
+function TJRPCID.IsNull: Boolean;
+begin
+  Result := id.IsEmpty;
 end;
 
 class operator TJRPCID.Implicit(const ASource: TJRPCID): Integer;
@@ -789,65 +832,6 @@ begin
   Result := ASource.Id.AsInteger;
 end;
 
-{ TJResponseSerializer }
-
-class function TJResponseSerializer.CanHandle(AType: PTypeInfo): Boolean;
-begin
-  Result := TypeInfoIs(AType);
-end;
-
-class function TJResponseSerializer.GetTargetInfo: PTypeInfo;
-begin
-  Result := TJRPCResponse.ClassInfo;
-end;
-
-function TJResponseSerializer.Deserialize(AValue: TJSONValue;
-  const AData: TValue; ANeonObject: TNeonRttiObject;
-  AContext: IDeserializerContext): TValue;
-var
-  LRes: TJRPCResponse;
-begin
-  LRes := AData.AsType<TJRPCResponse>;
-
-  var j := AValue.FindValue('result');
-  if Assigned(j) then
-    LRes.Result := j.Clone as TJSONValue;
-
-  var id := AValue.FindValue('id');
-  if id is TJSONNumber then
-    LRes.Id := id.GetValue<Integer>
-  else
-    LRes.Id := id.GetValue<string>;
-
-  LRes.JsonRpc := AValue.FindValue('jsonrpc').Value;
-
-  var err := AValue.FindValue('error');
-  if Assigned(err) then
-  begin
-    var typ := TRttiUtils.Context.GetType(LRes.Error.ClassType);
-    AContext.ReadDataMember(err, typ, LRes.Error, True);
-  end;
-
-  Result := TValue.From<TJRPCResponse>(LRes);
-end;
-
-function TJResponseSerializer.Serialize(const AValue: TValue;
-  ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue;
-var
-  LRes: TJRPCResponse;
-begin
-  LRes := AValue.AsObject as TJRPCResponse;
-
-  if LRes.IsError then
-    AContext.GetConfiguration.Rules.ForClass<TJRPCResponse>
-      .AddIgnoreMembers(['Result'])
-  else
-    AContext.GetConfiguration.Rules.ForClass<TJRPCResponse>
-      .AddIgnoreMembers(['Error']);
-
-  Result := AContext.WriteDataMember(AValue, False);
-end;
-
 
 { TJRPCResponse }
 
@@ -855,12 +839,10 @@ constructor TJRPCResponse.Create;
 begin
   inherited;
   FResult := TJSONNull.Create;
-  FError := TJRPCError.Create;
 end;
 
 destructor TJRPCResponse.Destroy;
 begin
-  FError.Free;
   FResult.Free;
   inherited;
 end;
@@ -879,19 +861,6 @@ end;
 function TJRPCResponse.GetType: TJRPCMessageType;
 begin
   Result := TJRPCMessageType.Response;
-end;
-
-function TJRPCResponse.IsError: Boolean;
-begin
-  Result := True;
-
-  if FError.Code.IsNull or FError.Message.IsNull then
-    Result := False;
-end;
-
-function TJRPCResponse.IsNotification: Boolean;
-begin
-  Result := (not IsError) and not Assigned(FResult);
 end;
 
 procedure TJRPCResponse.SetResult(AValue: TJSONValue);
@@ -950,13 +919,15 @@ end;
 
 function TJValueSerializer.Serialize(const AValue: TValue;
   ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue;
+var
+  LValue: TValue;
 begin
   Result := nil;
 
   if AValue.TypeInfo = TypeInfo(TValue) then
   begin
-    var vv := AValue.AsType<TValue>;
-    if not Assigned(TRttiUtils.Context.GetType(vv.TypeInfo)) then
+    LValue := AValue.AsType<TValue>;
+    if not Assigned(TRttiUtils.Context.GetType(LValue.TypeInfo)) then
       Exit(nil);
 
     Result := AContext.WriteDataMember(AValue.AsType<TValue>, False)
@@ -1214,11 +1185,9 @@ begin
     Exit;
 
   if AObject is TJRPCRequest then
-    FRequest := TJRPCRequest(AObject)
-  else if AObject is TJRPCResponse then
-    FResponse := TJRPCResponse(AObject)
-  else if AObject is TJRPCNotification then
-    FNotification := TJRPCNotification(AObject)
+    FCurrentRequest := TJRPCRequest(AObject)
+  else if AObject is TJRPCMessages then
+    FResponses := TJRPCMessages(AObject)
   else
   begin
     FContextData.Add(AObject.ClassType, AObject);
@@ -1234,7 +1203,7 @@ end;
 constructor TJRPCContext.Create;
 begin
   inherited Create;
-  FContextData := TJRPCContextData.Create;
+  FContextData := TJRPCContextRegistry.Create;
   AddContent(Self);
 end;
 
@@ -1286,28 +1255,20 @@ begin
   Result := GetContextDataAs(TClass(T)) as T;
 end;
 
-function TJRPCContext.GetNotification: TJRPCNotification;
+function TJRPCContext.GetCurrentRequest: TJRPCRequest;
 begin
-  if not Assigned(FNotification) then
-    raise EJRPCException.Create('Notification not found');
+  if not Assigned(FCurrentRequest) then
+    raise EJRPCException.Create('CurrentRequest not found');
 
-  Result := FNotification;
+  Result := FCurrentRequest;
 end;
 
-function TJRPCContext.GetRequest: TJRPCRequest;
+function TJRPCContext.GetResponses: TJRPCMessages;
 begin
-  if not Assigned(FRequest) then
-    raise EJRPCException.Create('Request not found');
+  if not Assigned(FResponses) then
+    raise EJRPCException.Create('Responses not found');
 
-  Result := FRequest;
-end;
-
-function TJRPCContext.GetResponse: TJRPCResponse;
-begin
-  if not Assigned(FResponse) then
-    raise EJRPCException.Create('Response not found');
-
-  Result := FResponse;
+  Result := FResponses;
 end;
 
 procedure TJRPCContext.Inject(AInterface: IInterface);
@@ -1348,6 +1309,14 @@ procedure EJRPCException.AfterConstruction;
 begin
   inherited;
   FCode := JRPC_INTERNAL_ERROR;
+end;
+
+function EJRPCException.ToJSON: string;
+var
+  LErrorNeonConfig: INeonConfiguration;
+begin
+  LErrorNeonConfig := JRPCNeonConfig.AddIgnoreMembers(['BaseException', 'InnerException', 'StackTrace', 'StackInfo', 'HelpContext']);
+  Result := TNeon.ObjectToJSONString(Self, LErrorNeonConfig);
 end;
 
 { EJRPCInvalidRequestError }
@@ -1395,6 +1364,17 @@ begin
   FList := TObjectList<TJRPCMessage>.Create;
 end;
 
+class function TJRPCMessages.CreateFromJson(const AJSON: string): TJRPCMessages;
+begin
+  Result := TJRPCMessages.Create;
+  try
+    Result.FromJson(AJSON);
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
 destructor TJRPCMessages.Destroy;
 begin
   FList.Free;
@@ -1406,6 +1386,8 @@ var
   LJSON: TJSONValue;
 begin
   LJSON := TJSONObject.ParseJSONValue(AJSON);
+  if not Assigned(LJSON) then
+    raise EJRPCParseError.Create('An invalid JSON was received by the server');
   try
     FromJson(LJSON);
   finally
@@ -1431,12 +1413,31 @@ procedure TJRPCMessages.FromJsonSingle(const AJSON: TJSONObject);
 var
   LMsg: TJRPCMessage;
 begin
-  case GetMessageType(AJSON) of
-    TJRPCMessageType.Request: LMsg := TNeon.JSONToObject<TJRPCRequest>(AJSON, JRPCNeonConfig);
-    TJRPCMessageType.Response: LMsg := TNeon.JSONToObject<TJRPCResponse>(AJSON, JRPCNeonConfig);
-    TJRPCMessageType.Notification: LMsg := TNeon.JSONToObject<TJRPCNotification>(AJSON, JRPCNeonConfig);
-  else
-    LMsg := nil;
+  try
+    case GetMessageType(AJSON) of
+      TJRPCMessageType.Request:
+      begin
+        LMsg := TNeon.JSONToObject<TJRPCRequest>(AJSON, JRPCNeonConfig);
+      end;
+      TJRPCMessageType.Response:
+      begin
+        LMsg := TNeon.JSONToObject<TJRPCResponse>(AJSON, JRPCNeonConfig);
+      end;
+      TJRPCMessageType.Error:
+      begin
+        LMsg := TNeon.JSONToObject<TJRPCError>(AJSON, JRPCNeonConfig);
+        (LMsg as TJRPCError).Request := True;
+      end;
+      TJRPCMessageType.Notification:
+      begin
+        LMsg := TNeon.JSONToObject<TJRPCNotification>(AJSON, JRPCNeonConfig);
+      end
+    else
+      LMsg := nil;
+    end;
+  except
+    on E: Exception do
+      LMsg := TJRPCError.CreateFromException(E, AJSON);
   end;
   AddMessage(LMsg);
 end;
@@ -1461,8 +1462,11 @@ begin
   if Assigned(LMethod) and not Assigned(LId) then
     Exit(TJRPCMessageType.Notification);
 
-  if Assigned(LResult) or Assigned(LError) then
+  if Assigned(LResult) then
     Exit(TJRPCMessageType.Response);
+
+  if Assigned(LError) then
+    Exit(TJRPCMessageType.Error);
 
   raise EJRPCInvalidRequestError.Create('Invalid JRPC Request');
 end;
@@ -1483,15 +1487,24 @@ function TJRPCMessages.ToJson: string;
 var
   LRes: TJSONArray;
   LMsg: TJRPCMessage;
-  LVal: TJSONValue;
 begin
+  if FList.Count = 0 then
+    Exit('');
+
+  if FList.Count = 1 then
+    Exit(TNeon.ObjectToJSONString(FList[0], JRPCNeonConfig));
+
   LRes := TJSONArray.Create;
   try
     for LMsg in FList do
     begin
-      LVal := TNeon.ObjectToJSON(LMsg, JRPCNeonConfig);
-      LRes.AddElement(LVal);
+      {
+      if LMSg is TJRPCError then
+        Continue;
+      }
+      LRes.AddElement(TNeon.ObjectToJSON(LMsg, JRPCNeonConfig));
     end;
+
     Result := TNeon.Print(LRes, True);
   finally
     LRes.Free;
@@ -1501,7 +1514,10 @@ end;
 procedure TJRPCMessages.FromJson(AValue: TJSONValue);
 begin
   if AValue is TJSONObject then
-    FromJsonSingle(AValue as TJSONObject)
+  begin
+    FSingle := True;
+    FromJsonSingle(AValue as TJSONObject);
+  end
   else if AValue is TJSONArray then
     for var LItem in AValue as TJSONArray do
       FromJsonSingle(LItem as TJSONObject);
@@ -1532,5 +1548,119 @@ begin
   Result := TJRPCMessageType.Notification;
 end;
 
-end.
+{ TJRPCError }
 
+function TJRPCError.Clone: TJRPCError;
+begin
+  Result := TJRPCError.Create;
+  Result.Id := FId;
+  Result.Error.Code := FError.Code;
+  Result.Error.Message := FError.Message;
+  Result.Error.Data := FError.Data;
+end;
+
+constructor TJRPCError.Create;
+begin
+  inherited;
+  FError := TJRPCErrorDetails.Create;
+end;
+
+destructor TJRPCError.Destroy;
+begin
+  FError.Free;
+  inherited;
+end;
+
+function TJRPCError.GetType: TJRPCMessageType;
+begin
+  Result := TJRPCMessageType.Error;
+end;
+
+class function TJRPCError.CreateFromJson(const AJSON: string): TJRPCError;
+begin
+  Result := Self.Create;
+  try
+    Result.FromJson(AJSON);
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+class function TJRPCError.CreateFromException(E: Exception; AJSON: TJSONObject): TJRPCError;
+var
+  LValue: TJSONValue;
+  LId: TJRPCID;
+begin
+  LId := nil;
+  LValue := AJSON.GetValue('id');
+  if Assigned(LValue) then
+  begin
+    if LValue is TJSONNumber then
+      LId := LValue.AsType<Integer>
+    else if LValue is TJSONString then
+      LId := LValue.AsType<string>
+  end;
+
+  Result := CreateFromException(E, LId);
+end;
+
+class function TJRPCError.CreateFromException(E: Exception; AId: TJRPCID): TJRPCError;
+begin
+  Result := TJRPCError.Create;
+
+  if E is EJRPCException then
+  begin
+    Result.Id := AId;
+    Result.Error.Code := EJRPCException(E).Code;
+    Result.Error.Message := E.Message;
+  end
+  else if E is EJSONParseException then
+  begin
+    Result.Id := AId;
+    Result.Error.Code := JRPC_PARSE_ERROR;
+    Result.Error.Message := E.Message;
+  end
+  else
+  begin
+    Result.Id := AId;
+    Result.Error.Code := JRPC_INVALID_REQUEST;
+    Result.Error.Message := E.Message;
+    Result.Error.Data := E.ClassName;
+  end;
+end;
+
+{ TJErrorSerializer }
+
+class function TJErrorSerializer.CanHandle(AType: PTypeInfo): Boolean;
+begin
+  Result := TypeInfoIs(AType);
+end;
+
+function TJErrorSerializer.Deserialize(AValue: TJSONValue; const AData: TValue;
+  ANeonObject: TNeonRttiObject; AContext: IDeserializerContext): TValue;
+var
+  LType: TRttiType;
+begin
+  LType := TRttiUtils.Context.GetType(TJRPCError);
+  Result := AContext.ReadDataMember(AValue, LType, AData, False);
+end;
+
+class function TJErrorSerializer.GetTargetInfo: PTypeInfo;
+begin
+  Result := TJRPCError.ClassInfo;
+end;
+
+function TJErrorSerializer.Serialize(const AValue: TValue;
+  ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue;
+var
+  LError: TJRPCError;
+begin
+  LError := AValue.AsType<TJRPCError>;
+
+  Result := AContext.WriteDataMember(LError, False);
+  if LError.Id.IsNull then
+    (Result as TJSONObject).AddPair('id', TJSONNull.Create);
+end;
+
+end.

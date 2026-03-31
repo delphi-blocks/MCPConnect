@@ -26,7 +26,10 @@ uses
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
 
+  MCPConnect.Configuration.Neon,
+  MCPConnect.Core.Utils,
   MCPConnect.JRPC.Core;
+
 
 type
   /// <summary>
@@ -44,73 +47,44 @@ type
     constructor Create(ACode: Integer; const AMessage: string; const AData: string = '');
   end;
 
-  /// <summary>
-  ///   This interface define a standard method to handle JRPC call
-  /// </summary>
-  IJRPCInvokable = interface
-  ['{246F6538-B87C-4164-B81C-74F0ABDD2FCD}']
-    function Invoke(AContext: TJRPCContext; ARequest: TJRPCRequest; AResponse: TJRPCResponse): Boolean;
-    function GetNeonConfig: INeonConfiguration;
-    procedure SetNeonConfig(AConfig: INeonConfiguration);
+  TJRPCInvokerContext = record
+    GC: IGarbageCollector;
+    Request: TJRPCRequest;
+    Responses: TJRPCMessages;
 
-    property NeonConfig: INeonConfiguration read GetNeonConfig write SetNeonConfig;
+    ApiInstance: TObject;
+    NeonConfig: INeonConfiguration;
+
+    procedure SelectConfig(AApiConfig: INeonConfiguration; AJRPCConfig: TJRPCNeonConfig);
   end;
 
   /// <summary>
-  ///   This class is responsible for invoking a method on a given instance.
-  ///   The user has to provide the instance and the method to be invoked.
-  /// </summary>
-  TJRPCMethodInvoker = class(TInterfacedObject, IJRPCInvokable)
-  private
-    FInstance: TObject;
-    FMethod: TRttiMethod;
-    FNeonConfig: INeonConfiguration;
-  protected
-    function GetParamName(LParam: TRttiParameter): string;
-    function RequestToRttiParams(ARequest: TJRPCRequest): TArray<TValue>;
-    function RttiResultToResponse(AResult: TValue): TJSONValue;
-    procedure Configure(AContext: TJRPCContext);
-  public
-    { IJRPCInvokable }
-    function Invoke(AContext: TJRPCContext; ARequest: TJRPCRequest; AResponse: TJRPCResponse): Boolean;
-    function GetNeonConfig: INeonConfiguration;
-    procedure SetNeonConfig(AConfig: INeonConfiguration);
-
-    constructor Create(AInstance: TObject; AMethod: TRttiMethod);
-  end;
-
-  /// <summary>
-  ///   This class invoke a specific method on a given instance.
+  ///   This class InternalInvoke a specific method on a given instance.
   ///   The method to be invoked is reached through RTTI
   ///   using the JRPC specific attributes.
   /// </summary>
-  TJRPCObjectInvoker = class(TInterfacedObject, IJRPCInvokable)
+  TJRPCInvoker = class
   private
-    FInstance: TObject;
     FRttiType: TRttiType;
+    FContext: TJRPCInvokerContext;
     FNeonConfig: INeonConfiguration;
     FSeparator: string;
+
     function FindMethod(ARequest: TJRPCRequest): TRttiMethod;
     function GetRequestMethodName(ARequest: TJRPCRequest): string;
+    function RetrieveNeonConfig(ANeonConfig: INeonConfiguration): INeonConfiguration;
+    function GetParamName(LParam: TRttiParameter): string;
+    function RequestToRttiParams(AMethod: TRttiMethod): TArray<TValue>;
+    procedure InternalInvoke;
   public
-    { IJRPCInvokable }
-    function Invoke(AContext: TJRPCContext; ARequest: TJRPCRequest; AResponse: TJRPCResponse): Boolean;
-    function GetNeonConfig: INeonConfiguration;
-    procedure SetNeonConfig(AConfig: INeonConfiguration);
 
-    constructor Create(AApiInstance: TObject);
-
+    constructor Create(AContext: TJRPCInvokerContext);
   public
-    class procedure HandleException(E: Exception; AId: TJRPCID; AResponse: TJRPCResponse); static;
+    class function HandleError(E: Exception; AId: TJRPCID): TJRPCError; static;
+    class procedure Invoke(AContext: TJRPCInvokerContext);
   end;
 
 implementation
-
-{ TJRPCMethodInvoker }
-
-uses
-  MCPConnect.Core.Utils,
-  MCPConnect.Configuration.Neon;
 
 // Checks the compatibility of the JSONValue with the function parameters
 procedure CheckCompatibility(AParam: TRttiParameter; AValue: TJSONValue);
@@ -139,7 +113,143 @@ begin
     raise EJRPCInvokerError.Create(JRPC_INVALID_PARAMS, Format('Invalid parameter [%s]', [AParam.Name]));
 end;
 
-function TJRPCMethodInvoker.RequestToRttiParams(ARequest: TJRPCRequest): TArray<TValue>;
+constructor TJRPCInvoker.Create(AContext: TJRPCInvokerContext);
+begin
+  inherited Create;
+  FSeparator := '/';
+  FContext := AContext;
+  FRttiType := TRttiUtils.GetType(AContext.ApiInstance);
+
+  FNeonConfig := RetrieveNeonConfig(AContext.NeonConfig);
+
+  TRttiUtils.HasAttribute<JRPCAttribute>(FRttiType,
+    procedure (LAttrib: JRPCAttribute)
+    begin
+      if LAttrib.Tags.Exists('separator') then
+        FSeparator := LAttrib.Tags.GetValueAs<string>('separator');
+    end);
+
+end;
+
+function TJRPCInvoker.FindMethod(ARequest: TJRPCRequest): TRttiMethod;
+var
+  LMethod: TRttiMethod;
+  LJRPCAttrib: JRPCAttribute;
+  LMethodName: string;
+  LRequestMethodName: string;
+begin
+  Result := nil;
+  LRequestMethodName := GetRequestMethodName(ARequest);
+  for LMethod in FRttiType.GetMethods do
+  begin
+    LJRPCAttrib := TRttiUtils.FindAttribute<JRPCAttribute>(LMethod);
+    if Assigned(LJRPCAttrib) then
+      LMethodName := LJRPCAttrib.Name
+    else
+      LMethodName := LMethod.Name;
+
+    if LRequestMethodName = LMethodName then
+      Exit(LMethod);
+  end;
+end;
+
+procedure TJRPCInvoker.InternalInvoke;
+var
+  LMethod: TRttiMethod;
+  LResponse: TJRPCResponse;
+  LArgs: TArray<TValue>;
+  LResult: TValue;
+begin
+  LMethod := FindMethod(FContext.Request);
+  if not Assigned(LMethod) then
+    raise EJRPCMethodNotFoundError.CreateFmt('Method [%s] non found', [FContext.Request.Method]);
+
+  try
+    LArgs := RequestToRttiParams(LMethod);
+  except
+    raise EJRPCInvalidParamsError.Create('Invalid method parameters.');
+    FContext.GC.Add(LArgs);
+  end;
+
+  try
+    LResult := LMethod.Invoke(FContext.ApiInstance, LArgs);
+    FContext.GC.Add(LResult);
+    LResponse := TJRPCResponse.Create;
+  except
+    raise EJRPCException.CreateFmt('Error calling Api method [%s.%s]',
+      [FContext.ApiInstance.ClassName, FContext.Request.Method]);
+  end;
+
+  LResponse.Id := FContext.Request.Id;
+
+  { TODO -opaolo -c :  31/03/2026 10:46:08 }
+  if TRttiUtils.HasAttribute<JRPCNotificationAttribute>(LMethod) then
+    LResponse.Result := nil
+  else
+    LResponse.Result := TNeon.ValueToJSON(LResult, FNeonConfig);
+
+  FContext.Responses.AddMessage(LResponse);
+end;
+
+function TJRPCInvoker.GetParamName(LParam: TRttiParameter): string;
+var
+  LParamAttrib: JRPCAttribute;
+begin
+  LParamAttrib := TRttiUtils.FindAttribute<JRPCAttribute>(LParam);
+  if Assigned(LParamAttrib) then
+    Result := LParamAttrib.Name
+  else
+    Result := LParam.Name;
+end;
+
+function TJRPCInvoker.GetRequestMethodName(ARequest: TJRPCRequest): string;
+var
+  LSeparatorIndex: Integer;
+begin
+  LSeparatorIndex := Pos(FSeparator, ARequest.Method);
+  if LSeparatorIndex > 0 then
+    Result := Copy(ARequest.Method, LSeparatorIndex + 1, Length(ARequest.Method))
+  else
+    Result := '';
+end;
+
+class function TJRPCInvoker.HandleError(E: Exception; AId: TJRPCID): TJRPCError;
+begin
+  Result := TJRPCError.Create;
+  if E is EJRPCException then
+  begin
+    Result.Id := AId;
+    Result.Error.Code := EJRPCException(E).Code;
+    Result.Error.Message := E.Message;
+  end
+  else if E is EJSONParseException then
+  begin
+    Result.Id := AId;
+    Result.Error.Code := JRPC_PARSE_ERROR;
+    Result.Error.Message := E.Message;
+  end
+  else
+  begin
+    Result.Id := AId;
+    Result.Error.Code := JRPC_INVALID_REQUEST;
+    Result.Error.Message := E.Message;
+    Result.Error.Data := E.ClassName;
+  end;
+end;
+
+class procedure TJRPCInvoker.Invoke(AContext: TJRPCInvokerContext);
+var
+  LInvoker: TJRPCInvoker;
+begin
+  LInvoker := TJRPCInvoker.Create(AContext);
+  try
+    LInvoker.InternalInvoke();
+  finally
+    LInvoker.Free;
+  end;
+end;
+
+function TJRPCInvoker.RequestToRttiParams(AMethod: TRttiMethod): TArray<TValue>;
 
   function CastJSONValue(AParam: TRttiParameter; AValue: TJSONValue): TValue;
   begin
@@ -174,29 +284,29 @@ begin
   Result := [];
 
   LParamIndex := 0;
-  LRttiParams := FMethod.GetParameters;
+  LRttiParams := AMethod.GetParameters;
 
   if (Length(LRttiParams) = 1) and (TRttiUtils.HasAttribute<JRPCParamsAttribute>(LRttiParams[0])) then
   begin
     //Result := [TNeon.JSONToObject(LRttiParams[0].ParamType, ARequest.Params, TNeonConfiguration.Camel.SetMembers([TNeonMembers.Fields])) ];
-    Result := [TNeon.JSONToObject(LRttiParams[0].ParamType, ARequest.Params, FNeonConfig) ];
+    Result := [TNeon.JSONToObject(LRttiParams[0].ParamType, FContext.Request.Params, FNeonConfig) ];
   end
   else
   begin
     for LParam in LRttiParams do
     begin
-      case ARequest.ParamsType of
+      case FContext.Request.ParamsType of
         TJRPCParamsType.ByPos:
         begin
-          if LParamIndex >= (ARequest.Params as TJSONArray).Count then
-            raise EJRPCInvokerError.CreateFmt('Parameter with index "%d" not found (only %d parameters available)', [LParamIndex, (ARequest.Params as TJSONArray).Count]);
+          if LParamIndex >= (FContext.Request.Params as TJSONArray).Count then
+            raise EJRPCInvokerError.CreateFmt('Parameter with index "%d" not found (only %d parameters available)', [LParamIndex, (FContext.Request.Params as TJSONArray).Count]);
 
-          LParamJSON := (ARequest.Params as TJSONArray).Items[LParamIndex];
+          LParamJSON := (FContext.Request.Params as TJSONArray).Items[LParamIndex];
         end;
 
         TJRPCParamsType.ByName:
         begin
-          if not (ARequest.Params as TJSONObject).TryGetValue(GetParamName(LParam), LParamJSON) then
+          if not (FContext.Request.Params as TJSONObject).TryGetValue(GetParamName(LParam), LParamJSON) then
             raise EJRPCInvokerError.CreateFmt('Parameter "%s" not found', [GetParamName(LParam)]);
         end;
       else
@@ -209,200 +319,34 @@ begin
   end;
 end;
 
-function TJRPCMethodInvoker.RttiResultToResponse(AResult: TValue): TJSONValue;
+function TJRPCInvoker.RetrieveNeonConfig(ANeonConfig: INeonConfiguration): INeonConfiguration;
 begin
-  if TRttiUtils.HasAttribute<JRPCNotificationAttribute>(FMethod) then
-    Exit(nil);
-
-  Result := TNeon.ValueToJSON(AResult, FNeonConfig);
-end;
-
-procedure TJRPCMethodInvoker.SetNeonConfig(AConfig: INeonConfiguration);
-begin
-  FNeonConfig := AConfig;
-end;
-
-procedure TJRPCMethodInvoker.Configure(AContext: TJRPCContext);
-var
-  LJRPCNeonConfig: TJRPCNeonConfig;
-begin
-  if not Assigned(FNeonConfig) then
-  begin
-    LJRPCNeonConfig := AContext.FindContextDataAs<TJRPCNeonConfig>;
-    if Assigned(LJRPCNeonConfig) then
-      FNeonConfig := LJRPCNeonConfig.NeonConfig;
-  end;
-
-  if not Assigned(FNeonConfig) then
-    FNeonConfig := TNeonConfiguration.Default;
-end;
-
-constructor TJRPCMethodInvoker.Create(AInstance: TObject; AMethod: TRttiMethod);
-begin
-  inherited Create;
-  FInstance := AInstance;
-  FMethod := AMethod;
-  FNeonConfig := TNeonConfiguration.Default;
-end;
-
-function TJRPCMethodInvoker.GetNeonConfig: INeonConfiguration;
-begin
-  Result := FNeonConfig;
-end;
-
-function TJRPCMethodInvoker.GetParamName(LParam: TRttiParameter): string;
-var
-  LParamAttrib: JRPCAttribute;
-begin
-  LParamAttrib := TRttiUtils.FindAttribute<JRPCAttribute>(LParam);
-  if Assigned(LParamAttrib) then
-    Result := LParamAttrib.Name
-  else
-    Result := LParam.Name;
-end;
-
-function TJRPCMethodInvoker.Invoke(AContext: TJRPCContext; ARequest: TJRPCRequest;
-  AResponse: TJRPCResponse): Boolean;
-var
-  LArgs: TArray<TValue>;
-  LResult: TValue;
-  LGarbageCollector: IGarbageCollector;
-begin
-  Result := True;
-
-  Configure(AContext);
-
-  LGarbageCollector := TGarbageCollector.CreateInstance;
-  AContext.AddContent(LGarbageCollector);
-  try
-    LArgs := RequestToRttiParams(ARequest);
-    LGarbageCollector.Add(LArgs);
-    LResult := FMethod.Invoke(FInstance, LArgs);
-    try
-      AResponse.Id := ARequest.Id;
-      AResponse.Result := RttiResultToResponse(LResult);
-    finally
-      if LResult.IsObject then
-        LGarbageCollector.Add(LResult.AsObject);
-    end;
-  except
-    on E: Exception do
-      TJRPCObjectInvoker.HandleException(E, ARequest.Id, AResponse);
-  end;
-end;
-
-{ TJRPCObjectInvoker }
-
-constructor TJRPCObjectInvoker.Create(AApiInstance: TObject);
-begin
-  inherited Create;
-  FSeparator := '/';
-  FInstance := AApiInstance;
-  FRttiType := TRttiUtils.GetType(FInstance);
-
-  TRttiUtils.HasAttribute<JRPCAttribute>(FRttiType,
-    procedure (LAttrib: JRPCAttribute)
-    begin
-      if LAttrib.Tags.Exists('separator') then
-        FSeparator := LAttrib.Tags.GetValueAs<string>('separator');
-    end);
-end;
-
-function TJRPCObjectInvoker.FindMethod(ARequest: TJRPCRequest): TRttiMethod;
-var
-  LMethod: TRttiMethod;
-  LJRPCAttrib: JRPCAttribute;
-  LMethodName: string;
-  LRequestMethodName: string;
-begin
-  Result := nil;
-  LRequestMethodName := GetRequestMethodName(ARequest);
-  for LMethod in FRttiType.GetMethods do
-  begin
-    LJRPCAttrib := TRttiUtils.FindAttribute<JRPCAttribute>(LMethod);
-    if Assigned(LJRPCAttrib) then
-      LMethodName := LJRPCAttrib.Name
-    else
-      LMethodName := LMethod.Name;
-
-    if LRequestMethodName = LMethodName then
-      Exit(LMethod);
-  end;
-end;
-
-function TJRPCObjectInvoker.Invoke(AContext: TJRPCContext; ARequest: TJRPCRequest;
-  AResponse: TJRPCResponse): Boolean;
-var
-  LMethod: TRttiMethod;
-  LMethodInvoker: IJRPCInvokable;
-begin
-  LMethod := FindMethod(ARequest);
-  if not Assigned(LMethod) then
-  begin
-    AResponse.Error.Code := JRPC_METHOD_NOT_FOUND;
-    AResponse.Error.Message := Format('Method [%s] non found', [ARequest.Method]);
-    Exit(False);
-  end;
-
-  LMethodInvoker := TJRPCMethodInvoker.Create(FInstance, LMethod);
-  LMethodInvoker.NeonConfig := FNeonConfig;
-  Result := LMethodInvoker.Invoke(AContext, ARequest, AResponse);
-end;
-
-function TJRPCObjectInvoker.GetNeonConfig: INeonConfiguration;
-begin
-  Result := FNeonConfig;
-end;
-
-procedure TJRPCObjectInvoker.SetNeonConfig(AConfig: INeonConfiguration);
-begin
-  FNeonConfig := AConfig;
-end;
-
-function TJRPCObjectInvoker.GetRequestMethodName(ARequest: TJRPCRequest): string;
-var
-  LSeparatorIndex: Integer;
-begin
-  LSeparatorIndex := Pos(FSeparator, ARequest.Method);
-  if LSeparatorIndex > 0 then
-    Result := Copy(ARequest.Method, LSeparatorIndex + 1, Length(ARequest.Method))
-  else
-    Result := '';
-end;
-
-class procedure TJRPCObjectInvoker.HandleException(E: Exception;
-  AId: TJRPCID; AResponse: TJRPCResponse);
-begin
-  if E is EJRPCException then
-  begin
-    AResponse.Id := AId;
-    AResponse.Error.Code := EJRPCException(E).Code;
-    AResponse.Error.Message := E.Message;
-  end
-  else if E is EJSONParseException then
-  begin
-    AResponse.Id := AId;
-    AResponse.Error.Code := JRPC_PARSE_ERROR;
-    AResponse.Error.Message := E.Message;
-  end
-  else
-  begin
-    AResponse.Id := AId;
-    AResponse.Error.Code := JRPC_INVALID_REQUEST;
-    AResponse.Error.Message := E.Message;
-    AResponse.Error.Data := E.ClassName;
-  end;
-
+  Result := ANeonConfig;
+  if not Assigned(Result) then
+    Result := TNeonConfiguration.Default;
 end;
 
 { EJRPCInvokerError }
 
-constructor EJRPCInvokerError.Create(ACode: Integer; const AMessage,
-  AData: string);
+constructor EJRPCInvokerError.Create(ACode: Integer; const AMessage, AData: string);
 begin
   inherited Create(AMessage);
   FCode := ACode;
   FData := AData;
+end;
+
+{ TJRPCInvokerContext }
+
+procedure TJRPCInvokerContext.SelectConfig(AApiConfig: INeonConfiguration; AJRPCConfig: TJRPCNeonConfig);
+begin
+  NeonConfig := AApiConfig;
+
+  if not Assigned(NeonConfig) then
+    if Assigned(AJRPCConfig) then
+      NeonConfig := AJRPCConfig.NeonConfig;
+
+  if not Assigned(NeonConfig) then
+    NeonConfig := TNeonConfiguration.Default;
 end;
 
 end.

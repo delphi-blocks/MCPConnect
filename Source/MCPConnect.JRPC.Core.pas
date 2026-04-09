@@ -27,7 +27,9 @@ uses
   Neon.Core.Attributes,
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
-  Neon.Core.Serializers.RTL;
+  Neon.Core.Serializers.RTL,
+
+  MCPConnect.JRPC.Classes;
 
 const
   // Standard JSON-RPC error codes
@@ -105,11 +107,6 @@ type
   ///   Attribute used to mark a method as a JSON-RPC notification
   /// </summary>
   JRPCNotificationAttribute = class(TCustomAttribute);
-
-  /// <summary>
-  ///   Attribute used to mark a field for context injection
-  /// </summary>
-  ContextAttribute = class(TCustomAttribute);
 
   /// <summary>
   ///   Base attribute for JSON-RPC related metadata
@@ -221,7 +218,6 @@ type
 
     procedure FromJsonSingle(const AJSON: TJSONObject);
     function GetMessageType(AMessage: TJSONObject): TJRPCMessageType;
-    function GetMessageTypes(ARequestJSON: TJSONValue): TJRPCMessageTypes;
     function GetCount: NativeInt;
   public
     constructor Create;
@@ -557,68 +553,18 @@ type
   ///   Represents the context of a JSON-RPC CurrentRequest, including the CurrentRequest
   ///   itself, the Responses, and any additional data associated with the context.
   /// </summary>
-  TJRPCContext = class(TObject)
+  TJRPCContext = class(TContextManager)
   private
     FCurrentRequest: TJRPCRequest;
     FResponses: TJRPCMessages;
-    FContextData: TJRPCContextRegistry;
   protected
     function GetCurrentRequest: TJRPCRequest;
     function GetResponses: TJRPCMessages;
     procedure AddConfigurations(AObject: TObject);
   public
     constructor Create;
-    destructor Destroy; override;
 
-    /// <summary>
-    ///   Adds an object to the context data.
-    /// </summary>
-    procedure AddContent(AObject: TObject); overload;
-
-    /// <summary>
-    ///   Adds an interface implementation to the context data.
-    /// </summary>
-    procedure AddContent(AInterface: IInterface); overload;
-
-    /// <summary>
-    ///   Retrieves context data as a specific class type (raises exception if not found)
-    /// </summary>
-    function GetContextDataAs<T: class>: T; overload;
-
-    /// <summary>
-    ///   Retrieves context data as a specific class type (raises exception if not found)
-    /// </summary>
-    function GetContextDataAs(AClass: TClass): TObject; overload;
-
-    /// <summary>
-    ///   Retrieves context data as a specific interface (raises exception if not found)
-    /// </summary>
-    function GetContextDataAs(AInterface: TGUID): IInterface; overload;
-
-    /// <summary>
-    ///   Finds context data as a specific class type (returns nil if not found)
-    /// </summary>
-    function FindContextDataAs<T: class>: T; overload;
-
-    /// <summary>
-    ///   Finds context data as a specific class type (returns nil if not found)
-    /// </summary>
-    function FindContextDataAs(AClass: TClass): TObject; overload;
-
-    /// <summary>
-    ///   Finds context data as a specific interface (returns nil if not found)
-    /// </summary>
-    function FindContextDataAs(AInterface: TGUID): IInterface; overload;
-
-    /// <summary>
-    ///   Injects context data into the fields of the specified object.
-    /// </summary>
-    procedure Inject(AObject: TObject); overload;
-
-    /// <summary>
-    ///   Injects context data into the fields of the specified interface implementation.
-    /// </summary>
-    procedure Inject(AInterface: IInterface); overload;
+    procedure AddContent(AObject: TObject); override;
 
     /// <summary>
     ///   The JSON-RPC CurrentRequest associated with this context.
@@ -644,7 +590,7 @@ uses
 function JRPCNeonConfig: INeonConfiguration;
 begin
   Result := TNeonConfiguration.Camel
-    .SetPrettyPrint(True)
+    //.SetPrettyPrint(True)
     .RegisterSerializer(TJSONValueSerializer)
     .RegisterSerializer(TJValueSerializer)
     .RegisterSerializer(TJRequestSerializer)
@@ -1179,6 +1125,12 @@ begin
   end;
 end;
 
+constructor TJRPCContext.Create;
+begin
+  inherited Create;
+end;
+
+
 procedure TJRPCContext.AddContent(AObject: TObject);
 begin
   if AObject = nil then
@@ -1195,65 +1147,6 @@ begin
   end;
 end;
 
-procedure TJRPCContext.AddContent(AInterface: IInterface);
-begin
-  AddContent(AInterface as TObject);
-end;
-
-constructor TJRPCContext.Create;
-begin
-  inherited Create;
-  FContextData := TJRPCContextRegistry.Create;
-  AddContent(Self);
-end;
-
-destructor TJRPCContext.Destroy;
-begin
-  FContextData.Free;
-  inherited;
-end;
-
-function TJRPCContext.FindContextDataAs(AClass: TClass): TObject;
-begin
-  if not FContextData.TryGetValue(AClass, Result) then
-    Result := nil;
-end;
-
-function TJRPCContext.FindContextDataAs(AInterface: TGUID): IInterface;
-var
-  LObject: TObject;
-begin
-  Result := nil;
-  for LObject in FContextData.Values do
-  begin
-    if Supports(LObject, AInterface, Result) then
-      Exit;
-  end;
-end;
-
-function TJRPCContext.FindContextDataAs<T>: T;
-begin
-  Result := FindContextDataAs(TClass(T)) as T;
-end;
-
-function TJRPCContext.GetContextDataAs(AClass: TClass): TObject;
-begin
-  Result := FindContextDataAs(AClass);
-  if not Assigned(Result) then
-    raise EJRPCException.CreateFmt('Context: object "%s" not found', [AClass.ClassName]);
-end;
-
-function TJRPCContext.GetContextDataAs(AInterface: TGUID): IInterface;
-begin
-  Result := FindContextDataAs(AInterface);
-  if not Assigned(Result) then
-    raise EJRPCException.CreateFmt('Context: interface "%s" not found', [AInterface.ToString]);
-end;
-
-function TJRPCContext.GetContextDataAs<T>: T;
-begin
-  Result := GetContextDataAs(TClass(T)) as T;
-end;
 
 function TJRPCContext.GetCurrentRequest: TJRPCRequest;
 begin
@@ -1269,38 +1162,6 @@ begin
     raise EJRPCException.Create('Responses not found');
 
   Result := FResponses;
-end;
-
-procedure TJRPCContext.Inject(AInterface: IInterface);
-begin
-  Inject(AInterface as TObject);
-end;
-
-procedure TJRPCContext.Inject(AObject: TObject);
-var
-  LRttiType: TRttiType;
-begin
-  LRttiType := TRttiUtils.Context.GetType(AObject.ClassType);
-  TRttiUtils.ForEachFieldWithAttribute<ContextAttribute>(LRttiType,
-    function (AField: TRttiField; AAttr: ContextAttribute): Boolean
-    var
-      LValue: TValue;
-    begin
-      if AField.FieldType is TRttiInstanceType then
-      begin
-        LValue := GetContextDataAs(TRttiInstanceType(AField.FieldType).MetaclassType);
-        AField.SetValue(AObject, LValue);
-        Result := True;
-      end
-      else if AField.FieldType is TRttiInterfaceType then
-      begin
-        LValue := GetContextDataAs(TRttiInterfaceType(AField.FieldType).GUID) as TObject;
-        AField.SetValue(AObject, LValue);
-        Result := True;
-      end
-      else
-        raise EJRPCException.Create('Context variables should be an object or interface');
-    end);
 end;
 
 { EJRPCException }
@@ -1469,18 +1330,6 @@ begin
     Exit(TJRPCMessageType.Error);
 
   raise EJRPCInvalidRequestError.Create('Invalid JRPC Request');
-end;
-
-function TJRPCMessages.GetMessageTypes(ARequestJSON: TJSONValue): TJRPCMessageTypes;
-begin
-  Result := [];
-
-  if ARequestJSON is TJSONObject then
-    Exit(Result + [GetMessageType(ARequestJSON as TJSONObject)]);
-
-  if ARequestJSON is TJSONArray then
-    for var LReq in (ARequestJSON as TJSONArray) do
-      Result := Result + [GetMessageType(LReq as TJSONObject)];
 end;
 
 function TJRPCMessages.ToJson: string;

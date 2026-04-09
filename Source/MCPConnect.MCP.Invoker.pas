@@ -23,8 +23,7 @@ uses
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
 
-  MCPConnect.Core.Utils,
-
+  MCPConnect.JRPC.Classes,
   MCPConnect.JRPC.Core,
   MCPConnect.Configuration.Core,
   MCPConnect.Configuration.MCP,

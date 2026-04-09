@@ -12,7 +12,7 @@ uses
   MCPConnect.Content.Writers in '..\..\..\Source\MCPConnect.Content.Writers.pas',
   MCPConnect.Content.Writers.RTL in '..\..\..\Source\MCPConnect.Content.Writers.RTL.pas',
   MCPConnect.Content.Writers.VCL in '..\..\..\Source\MCPConnect.Content.Writers.VCL.pas',
-  MCPConnect.Core.Utils in '..\..\..\Source\MCPConnect.Core.Utils.pas',
+  MCPConnect.JRPC.Classes in '..\..\..\Source\MCPConnect.JRPC.Classes.pas',
   MCPConnect.JRPC.Core in '..\..\..\Source\MCPConnect.JRPC.Core.pas',
   MCPConnect.JRPC.Invoker in '..\..\..\Source\MCPConnect.JRPC.Invoker.pas',
   MCPConnect.JRPC.Server in '..\..\..\Source\MCPConnect.JRPC.Server.pas',
@@ -28,7 +28,7 @@ uses
   MCPServer.Tools in '..\MCPServer.Tools.pas',
   MCPServer.Resources in '..\MCPServer.Resources.pas',
   MCPServer.Apps in '..\MCPServer.Apps.pas',
-  MCPServerWebBroker.Form.Main in 'MCPServerWebBroker.Form.Main.pas' {Form1},
+  MCPServerWebBroker.Form.Main in 'MCPServerWebBroker.Form.Main.pas' {frmMain},
   MCPServerWebBroker.WebModule in 'MCPServerWebBroker.WebModule.pas' {WebModule1: TWebModule},
   MCPServer.Config in '..\MCPServer.Config.pas';
 
@@ -39,6 +39,6 @@ begin
   if WebRequestHandler <> nil then
     WebRequestHandler.WebModuleClass := WebModuleClass;
   Application.Initialize;
-  Application.CreateForm(TForm1, Form1);
+  Application.CreateForm(TfrmMain, frmMain);
   Application.Run;
 end.

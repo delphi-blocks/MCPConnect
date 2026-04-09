@@ -22,7 +22,7 @@ uses
   MCPConnect.MCP.Prompts in '..\..\..\Source\MCPConnect.MCP.Prompts.pas',
   MCPConnect.MCP.Invoker in '..\..\..\Source\MCPConnect.MCP.Invoker.pas',
   MCPConnect.MCP.Types in '..\..\..\Source\MCPConnect.MCP.Types.pas',
-  MCPConnect.Core.Utils in '..\..\..\Source\MCPConnect.Core.Utils.pas',
+  MCPConnect.JRPC.Classes in '..\..\..\Source\MCPConnect.JRPC.Classes.pas',
   MCPConnect.Session.Core in '..\..\..\Source\MCPConnect.Session.Core.pas',
   MCPConnect.Content.Writers in '..\..\..\Source\MCPConnect.Content.Writers.pas',
   MCPConnect.Content.Writers.RTL in '..\..\..\Source\MCPConnect.Content.Writers.RTL.pas',
@@ -53,7 +53,6 @@ begin
           .SetVersion('2.0.0')
           .SetCapabilities([Tools, Resources])
 
-
           .RegisterWriter(TMCPImageWriter)
           .RegisterWriter(TMCPPictureWriter)
           .RegisterWriter(TMCPStreamWriter)
@@ -70,15 +69,7 @@ begin
     LStdioServer := TJRPCStdioServer.Create(nil);
     try
       LStdioServer.Server := LJRPCServer;
-//      LStdioServer.StartServer;
-//      while not LStdioServer.Terminated do
-//      begin
-//        LStdioServer.ProcessRequests;
-//        Sleep(1000);
-//        Writeln('ping');
-//      end;
       LStdioServer.StartServerAndWait;
-
     finally
       LStdioServer.Free;
     end;

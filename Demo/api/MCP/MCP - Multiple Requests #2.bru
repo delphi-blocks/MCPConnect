@@ -1,0 +1,43 @@
+meta {
+  name: MCP - Multiple Requests #2
+  type: http
+  seq: 18
+}
+
+post {
+  url: http://localhost:8080/mcp
+  body: json
+  auth: inherit
+}
+
+headers {
+  Accept: application/json
+}
+
+body:json {
+  [
+    {
+      "method": "tools/list",
+      "params": {},
+      "jsonrpc": "2.0",
+      "id": 1
+    },
+    {
+      "jsonrpc": "2.0",
+      "result": 7,
+      "id": 2.
+    },
+    {
+      "jsonrpc": "2.0",
+      "error": {
+        "code": -32601,
+        "message": "Method not found"
+      }
+    }
+  ]
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

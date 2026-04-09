@@ -3,7 +3,7 @@ program MCPServerIndy;
 
 uses
   Vcl.Forms,
-  MCPServerIndy.Form.Main in 'MCPServerIndy.Form.Main.pas' {Form1},
+  MCPServerIndy.Form.Main in 'MCPServerIndy.Form.Main.pas' {frmMain},
   MCPServer.Apps in '..\MCPServer.Apps.pas',
   MCPServer.Config in '..\MCPServer.Config.pas',
   MCPServer.Resources in '..\MCPServer.Resources.pas',
@@ -16,7 +16,6 @@ uses
   MCPConnect.Content.Writers in '..\..\..\Source\MCPConnect.Content.Writers.pas',
   MCPConnect.Content.Writers.RTL in '..\..\..\Source\MCPConnect.Content.Writers.RTL.pas',
   MCPConnect.Content.Writers.VCL in '..\..\..\Source\MCPConnect.Content.Writers.VCL.pas',
-  MCPConnect.Core.Utils in '..\..\..\Source\MCPConnect.Core.Utils.pas',
   MCPConnect.JRPC.Core in '..\..\..\Source\MCPConnect.JRPC.Core.pas',
   MCPConnect.JRPC.Invoker in '..\..\..\Source\MCPConnect.JRPC.Invoker.pas',
   MCPConnect.JRPC.Server in '..\..\..\Source\MCPConnect.JRPC.Server.pas',
@@ -29,13 +28,15 @@ uses
   MCPConnect.MCP.Tools in '..\..\..\Source\MCPConnect.MCP.Tools.pas',
   MCPConnect.MCP.Types in '..\..\..\Source\MCPConnect.MCP.Types.pas',
   MCPConnect.Session.Core in '..\..\..\Source\MCPConnect.Session.Core.pas',
-  MCPConnect.Transport.Indy in '..\..\..\Source\MCPConnect.Transport.Indy.pas';
+  MCPConnect.Transport.Indy in '..\..\..\Source\MCPConnect.Transport.Indy.pas',
+  MCPConnect.JRPC.Classes in '..\..\..\Source\MCPConnect.JRPC.Classes.pas',
+  MCPConnect.Transport.Base in '..\..\..\Source\MCPConnect.Transport.Base.pas';
 
 {$R *.res}
 
 begin
   ReportMemoryLeaksOnShutdown := True;
   Application.Initialize;
-  Application.CreateForm(TForm1, Form1);
+  Application.CreateForm(TfrmMain, frmMain);
   Application.Run;
 end.

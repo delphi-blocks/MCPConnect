@@ -13,9 +13,9 @@ uses
 
   MCPConnect.Configuration.MCP,
   MCPConnect.JRPC.Core,
+  MCPConnect.JRPC.Classes,
   MCPConnect.MCP.Types,
   MCPConnect.MCP.Attributes,
-  MCPConnect.Core.Utils,
   MCPConnect.Session.Core;
 
 type

@@ -27,7 +27,7 @@ uses
   Neon.Core.Persistence.JSON,
 
   MCPConnect.Configuration.Neon,
-  MCPConnect.Core.Utils,
+  MCPConnect.JRPC.Classes,
   MCPConnect.JRPC.Core;
 
 
@@ -166,9 +166,9 @@ begin
 
   try
     LArgs := RequestToRttiParams(LMethod);
+    FContext.GC.Add(LArgs);
   except
     raise EJRPCInvalidParamsError.Create('Invalid method parameters.');
-    FContext.GC.Add(LArgs);
   end;
 
   try

@@ -136,6 +136,10 @@
             <Form>frmSnippets</Form>
             <FormType>dfm</FormType>
         </DCCReference>
+        <DCCReference Include="Test.Form.Misc.pas">
+            <Form>frmMisc</Form>
+            <FormType>dfm</FormType>
+        </DCCReference>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

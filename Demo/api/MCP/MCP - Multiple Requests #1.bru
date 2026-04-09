@@ -1,0 +1,38 @@
+meta {
+  name: MCP - Multiple Requests #1
+  type: http
+  seq: 17
+}
+
+post {
+  url: http://localhost:8080/mcp
+  body: json
+  auth: inherit
+}
+
+body:json {
+  [{
+    "method": "tools/list",
+    "params": {},
+    "jsonrpc": "2.0",
+    "id": 1
+  },{
+    "method": "resources/list",
+    "jsonrpc": "2.0",
+    "id": 5
+  },{
+    "method": "notify/update",
+    "jsonrpc": "2.0"  
+  },{
+    "foo": "bar"
+  },{
+    "method": "tools/list",
+    "params": {},
+    "jsonrpc": "2.0"  
+  }]
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

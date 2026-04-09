@@ -19,56 +19,26 @@ uses
   System.Classes, System.SysUtils,
   IdCustomHTTPServer, IdContext, IdGlobal,
 
-  Neon.Core.Persistence,
-  Neon.Core.Persistence.JSON,
-  MCPConnect.Core.Utils,
-  MCPConnect.Configuration.Auth,
-  MCPConnect.Configuration.Session,
-  MCPConnect.Session.Core,
   MCPConnect.JRPC.Core,
-  MCPConnect.JRPC.Server;
-
-const
-  HTTP_CODE_OK = 200;
-  HTTP_CODE_ACCEPTED = 202;
-  HTTP_CODE_NOCONTENT = 204;
-  HTTP_CODE_UNAUTHORIZED = 401;
-  HTTP_CODE_FORBIDDEN = 403;
-  HTTP_CODE_NOTFOUND = 404;
-  HTTP_CODE_NOTALLOWED = 405;
-  HTTP_CODE_NOTACCEPTABLE = 406;
+  MCPConnect.JRPC.Server,
+  MCPConnect.Transport.Base;
 
 type
-
   TJRPCIndyBridge = class(TComponent)
-  private type
-    TMsgContext = record
-      GC: IGarbageCollector;
-      JRPCCtx: TJRPCContext;
-      Session: TMCPSessionBase;
-      Request: TJRPCMessage;
-      Responses: TJRPCMessages;
-    end;
   private
     FServer: TJRPCServer;
-    FAuthTokenConfig: TAuthTokenConfig;
-    FSessionConfig: TSessionConfig;
+    procedure LogRequest(const ARequest: TMCPTransportRequest);
+    procedure LogResponse(const AResponse: TMCPTransportResponse);
+    procedure LogHttpResponse(const AResponse: TIdHTTPResponseInfo);
 
-    procedure SetServer(const Value: TJRPCServer);
-    function CheckAuthorization(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo): Boolean;
-    function ExtractSessionId(ARequestInfo: TIdHTTPRequestInfo): string;
-    function HandleSession(ARequestInfo: TIdHTTPRequestInfo; out ASessionCreated: Boolean): TMCPSessionBase;
+    procedure ConvertRequest(AHttpRequest: TIdHTTPRequestInfo; var ARequest: TMCPTransportRequest);
+    procedure ConvertResponse(const AResponse: TMCPTransportResponse; AHttpResponse: TIdHTTPResponseInfo);
 
-    procedure HandleMessage(AMsgContext: TMsgContext);
-
-    procedure HandleRequestGET(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
-    procedure HandleRequestPOST(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
-    procedure HandleRequestOPTIONS(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
-
+    function ReadContentStream(ARequestInfo: TIdHTTPRequestInfo): string;
   public
     procedure HandleRequest(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
 
-    property Server: TJRPCServer read FServer write SetServer;
+    property Server: TJRPCServer read FServer write FServer;
   end;
 
   TJRPCIndyServer = class(TIdCustomHTTPServer)
@@ -88,280 +58,54 @@ type
 implementation
 
 uses
-  System.IOUtils,
-  MCPConnect.Configuration.Neon,
-  MCPConnect.JRPC.Invoker;
+  System.IOUtils, Logify;
 
-function TJRPCIndyBridge.CheckAuthorization(AContext: TIdContext;
-  ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo): Boolean;
+procedure TJRPCIndyBridge.ConvertRequest(AHttpRequest: TIdHTTPRequestInfo; var ARequest: TMCPTransportRequest);
+var
+  LIndex: Integer;
 begin
-  Result := True;
-  if Assigned(FAuthTokenConfig) and (FAuthTokenConfig.Token <> '') then
-  begin
-    case FAuthTokenConfig.Location of
-      TAuthTokenLocation.Bearer:
-      begin
-        if ARequestInfo.RawHeaders.Values['Authorization'] <> 'Bearer ' + FAuthTokenConfig.Token then
-          Exit(False);
-      end;
+  for LIndex := 0 to AHttpRequest.RawHeaders.Count - 1 do
+    ARequest.Headers.AddOrSet(AHttpRequest.RawHeaders.KeyNames[LIndex],
+      AHttpRequest.RawHeaders.ValueFromIndex[LIndex]);
 
-      TAuthTokenLocation.Cookie:
-      begin
-        if ARequestInfo.Cookies.Cookie[FAuthTokenConfig.CustomHeader, ''].CookieName <> FAuthTokenConfig.Token then
-          Exit(False);
-      end;
+  ARequest.Url := AHttpRequest.URI;
+  ARequest.Command := AHttpRequest.Command;
+  ARequest.Content := ReadContentStream(AHttpRequest);
 
-      TAuthTokenLocation.Header:
-      begin
-        if ARequestInfo.RawHeaders.Values[FAuthTokenConfig.CustomHeader] <> FAuthTokenConfig.Token then
-          Exit(False);
-      end;
-
-      else
-        raise EJRPCException.Create('Invalid token location');
-    end;
-  end;
+  LogRequest(ARequest);
 end;
 
-procedure TJRPCIndyBridge.HandleMessage(AMsgContext: TMsgContext);
+procedure TJRPCIndyBridge.ConvertResponse(const AResponse: TMCPTransportResponse;
+  AHttpResponse: TIdHTTPResponseInfo);
 var
-  LRequest: TJRPCRequest;
-  LResponse: TJRPCResponse;
-  LConstructorProxy: TJRPCConstructorProxy;
-  LInstance: TObject;
-
-  LInvokerCtx: TJRPCInvokerContext;
+  LIndex: Integer;
 begin
-  if AMsgContext.Request is TJRPCNotification then
-  begin
-    { TODO -opaolo -c : Enqueue the notification 28/03/2026 15:49:20 }
-    Exit;
-  end;
+  for LIndex := 0 to AResponse.Headers.Count - 1 do
+    AHttpResponse.CustomHeaders.AddPair(AResponse.Headers.RawHeaders[LIndex].Key,
+      AResponse.Headers.RawHeaders[LIndex].Value);
 
-  if AMsgContext.Request is TJRPCResponse then
-  begin
-    { TODO -opaolo -c : Enqueue the response 28/03/2026 15:49:20 }
-    Exit;
-  end;
+  AHttpResponse.ResponseNo := AResponse.Code;
+  AHttpResponse.ContentText := AResponse.Content;
+  AHttpResponse.ContentType := AResponse.ContentType;
 
-  if AMsgContext.Request is TJRPCError then
-  begin
-    var LOriginal := AMsgContext.Request as TJRPCError;
-
-    // If the error is in the JRPC request messages then process internally the error.
-    if LOriginal.Request then
-    begin
-      { TODO -opaolo -c : Enqueue the error 28/03/2026 15:49:20 }
-    end
-    else
-    begin
-      // If the error was generated processing the request, clone the error object
-      AMsgContext.Responses.AddMessage(LOriginal.Clone);
-    end;
-    Exit;
-  end;
-
-  LRequest := AMsgContext.Request as TJRPCRequest;
-  try
-    AMsgContext.JRPCCtx.AddContent(LRequest);
-
-    if not TJRPCRegistry.Instance.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
-      raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LRequest.Method]);
-
-    LInstance := LConstructorProxy.ConstructorFunc();
-    AMsgContext.GC.Add(LInstance);
-
-    // Injects the context inside the instance
-    AMsgContext.JRPCCtx.Inject(LInstance);
-
-    LInvokerCtx.GC := AMsgContext.GC;
-    LInvokerCtx.Request := LRequest;
-    LInvokerCtx.Responses := AMsgContext.Responses;
-    LInvokerCtx.ApiInstance := LInstance;
-    LInvokerCtx.SelectConfig(LConstructorProxy.NeonConfig, AMsgContext.JRPCCtx.FindContextDataAs<TJRPCNeonConfig>);
-
-    TJRPCInvoker.Invoke(LInvokerCtx);
-  except
-    on E: Exception do
-    begin
-      var err := TJRPCInvoker.HandleError(E, LRequest.Id);
-      AMsgContext.Responses.AddMessage(err);
-    end;
-  end;
+  LogHttpResponse(AHttpResponse);
 end;
 
 procedure TJRPCIndyBridge.HandleRequest(AContext: TIdContext;
   ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
-begin
-  try
-    if not Assigned(FServer) then
-      raise EJRPCException.Create('Server not found');
-
-    if not CheckAuthorization(AContext, ARequestInfo, AResponseInfo) then
-    begin
-      AResponseInfo.ResponseNo := HTTP_CODE_FORBIDDEN;
-      AResponseInfo.ContentText := '';
-      Exit;
-    end;
-
-    case ARequestInfo.CommandType of
-      hcGET:    HandleRequestGET(AContext, ARequestInfo, AResponseInfo);
-      hcPOST:   HandleRequestPOST(AContext, ARequestInfo, AResponseInfo);
-      hcOPTION: HandleRequestOPTIONS(AContext, ARequestInfo, AResponseInfo);
-    else
-      AResponseInfo.ResponseNo := HTTP_CODE_NOTALLOWED;
-    end;
-  except
-    on E: EJRPCException do
-    begin
-      AResponseInfo.ResponseNo := 500;
-      AResponseInfo.ContentType := 'application/json';
-      AResponseInfo.ContentText := E.ToJSON;
-    end;
-
-    on E: Exception do
-    begin
-      AResponseInfo.ResponseNo := 500;
-      AResponseInfo.ContentType := 'application/json';
-      AResponseInfo.ContentText := Format('{"message": "%s"}', [E.Message]);
-    end;
-  end;
-end;
-
-procedure TJRPCIndyBridge.HandleRequestGET(AContext: TIdContext;
-  ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
-begin
-  AResponseInfo.ResponseNo := HTTP_CODE_NOTALLOWED;
-end;
-
-procedure TJRPCIndyBridge.HandleRequestOPTIONS(AContext: TIdContext;
-  ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
-begin
-  AResponseInfo.ResponseNo := HTTP_CODE_ACCEPTED;
-  AResponseInfo.ContentText := '';
-end;
-
-procedure TJRPCIndyBridge.HandleRequestPOST(AContext: TIdContext;
-  ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
 var
-  LGarbage: IGarbageCollector;
-  LContext: TJRPCContext;
-  LCtx: TMsgContext;
-  LEncoding: IIdTextEncoding;
-  LRequestContent: string;
-  LSession: TMCPSessionBase;
-  LSessionCreated: Boolean;
-
-  LRequestList, LResponseList: TJRPCMessages;
-  LRequest: TJRPCMessage;
+  LRequest: TMCPTransportRequest;
+  LResponse: TMCPTransportResponse;
+  LMcpHandler: IMCPTransportHandler;
 begin
-  // HttpRequest:  Headers, PostStream
-  // HttpResponse: ContentType, Content, StatusCode
+  if not Assigned(FServer) then
+    raise EJRPCException.Create('JRPC Server not found');
 
+  LMcpHandler := TMCPTransportHandler.Create(FServer);
 
-  LSessionCreated := False;
-  LGarbage := TGarbageCollector.CreateInstance;
-  LContext := TJRPCContext.Create;
-
-  LGarbage.Add(LContext);
-  LContext.AddContent(LGarbage);
-  LContext.AddContent(FServer);
-
-  // Handle session (get existing or create new)
-  LSession := HandleSession(ARequestInfo, LSessionCreated);
-
-  // Add session to context if available
-  if Assigned(LSession) then
-    LContext.AddContent(LSession);
-
-  if ARequestInfo.CharSet <> '' then
-    LEncoding := IndyTextEncoding(ARequestInfo.CharSet)
-  else
-    LEncoding := IndyTextEncoding_UTF8;
-
-  ARequestInfo.PostStream.Position := 0;
-  LRequestContent := ReadStringFromStream(ARequestInfo.PostStream, -1, LEncoding);
-
-  LRequestList := TJRPCMessages.CreateFromJson(LRequestContent);
-  LGarbage.Add(LRequestList);
-
-  LResponseList := TJRPCMessages.Create;
-  LGarbage.Add(LResponseList);
-
-  for LRequest in LRequestList.List do
-  begin
-    LCtx.GC := LGarbage;
-    LCtx.JRPCCtx := LContext;
-    LCtx.Session := LSession;
-    LCtx.Request := LRequest;
-    LCtx.Responses := LResponseList;
-
-    { TODO -opaolo -c : Use directly JRPCContect! 28/03/2026 17:45:11 }
-    HandleMessage(LCtx);
-  end;
-
-  { TODO -opaolo -c : To change based on SSE vs JSON reqs 28/03/2026 17:45:47 }
-  AResponseInfo.ContentType := 'application/json';
-  AResponseInfo.ContentText := LResponseList.ToJson;
-
-  if LResponseList.Count = 0 then
-    AResponseInfo.ResponseNo := HTTP_CODE_ACCEPTED
-  else
-    AResponseInfo.ResponseNo := HTTP_CODE_OK;
-
-end;
-
-procedure TJRPCIndyBridge.SetServer(const Value: TJRPCServer);
-begin
-  FServer := Value;
-
-  FAuthTokenConfig := FServer.GetConfiguration<TAuthTokenConfig>;
-  FSessionConfig := FServer.GetConfiguration<TSessionConfig>;
-end;
-
-function TJRPCIndyBridge.ExtractSessionId(ARequestInfo: TIdHTTPRequestInfo): string;
-begin
-  Result := '';
-
-  if not Assigned(FSessionConfig) then
-    Exit;
-
-  case FSessionConfig.GetLocation of
-    TSessionIdLocation.Header:
-      Result := ARequestInfo.RawHeaders.Values[FSessionConfig.GetHeaderName];
-
-    TSessionIdLocation.Cookie:
-      Result := ARequestInfo.Cookies.Cookie[FSessionConfig.GetHeaderName, ''].Value;
-  end;
-
-  Result := Result.Trim;
-end;
-
-function TJRPCIndyBridge.HandleSession(ARequestInfo: TIdHTTPRequestInfo;
-  out ASessionCreated: Boolean): TMCPSessionBase;
-var
-  LSessionId: string;
-begin
-  Result := nil;
-  ASessionCreated := False;
-
-  if not Assigned(FSessionConfig) or (not FSessionConfig.IsApplied) then
-    Exit;
-
-  LSessionId := ExtractSessionId(ARequestInfo);
-
-  // If session ID is provided, try to get existing session
-  if not LSessionId.IsEmpty then
-  begin
-    // GetSession will raise exception if expired or not found
-    Result := TMCPSessionManager.Instance.GetSession(LSessionId);
-  end
-  else
-  begin
-    // No session ID provided - auto-create new session
-    Result := TMCPSessionManager.Instance.CreateSession;
-    ASessionCreated := True;
-  end;
+  ConvertRequest(ARequestInfo, LRequest);
+  LMcpHandler.HandleRequest(LRequest, LResponse);
+  ConvertResponse(LResponse, AResponseInfo);
 end;
 
 { TJRPCIndyServer }
@@ -393,6 +137,55 @@ procedure TJRPCIndyServer.SetServer(const Value: TJRPCServer);
 begin
   FServer := Value;
   FBridge.Server := Value;
+end;
+
+procedure TJRPCIndyBridge.LogHttpResponse(const AResponse: TIdHTTPResponseInfo);
+begin
+  Logger.Log('-->-->-->-->-->-->--> RESPONSE', TLogLevel.Debug);
+  Logger.Log(Format('Http Code: [%d]', [AResponse.ResponseNo]), TLogLevel.Debug);
+  Logger.Log('*** Headers ***', TLogLevel.Debug);
+  for var head in AResponse.CustomHeaders do
+    Logger.Log(Format('%s', [head]), TLogLevel.Debug);
+  Logger.Log(Format('*** Content: %s', [AResponse.ContentText]), TLogLevel.Debug);
+end;
+
+procedure TJRPCIndyBridge.LogRequest(const ARequest: TMCPTransportRequest);
+begin
+  Logger.Log('<--<--<--<--<--<--<-- REQUEST', TLogLevel.Debug);
+  Logger.Log(Format('Url: [%s] %s', [ARequest.Command, ARequest.Url]), TLogLevel.Debug);
+  Logger.Log('*** Headers ***', TLogLevel.Debug);
+  for var head in ARequest.Headers.RawHeaders do
+    Logger.Log(Format('%s: %s', [head.Key, head.Value]), TLogLevel.Debug);
+  Logger.Log('*** Content: ' + ARequest.Content, TLogLevel.Debug);
+end;
+
+procedure TJRPCIndyBridge.LogResponse(const AResponse: TMCPTransportResponse);
+begin
+  Logger.Log('-->-->-->-->-->-->--> RESPONSE', TLogLevel.Debug);
+  Logger.Log(Format('Http Code: [%d]', [AResponse.Code]), TLogLevel.Debug);
+  Logger.Log('*** Headers ***', TLogLevel.Debug);
+  for var head in AResponse.Headers.RawHeaders do
+    Logger.Log(Format('%s: %s', [head.Key, head.Value]), TLogLevel.Debug);
+  Logger.Log(Format('*** Content: %s', [AResponse.Content]), TLogLevel.Debug);
+end;
+
+function TJRPCIndyBridge.ReadContentStream(ARequestInfo: TIdHTTPRequestInfo): string;
+var
+  LEncoding: IIdTextEncoding;
+begin
+  if not Assigned(ARequestInfo.PostStream) then
+    Exit('');
+
+  if ARequestInfo.PostStream.Size = 0 then
+    Exit('');
+
+  if ARequestInfo.CharSet <> '' then
+    LEncoding := IndyTextEncoding(ARequestInfo.CharSet)
+  else
+    LEncoding := IndyTextEncoding_UTF8;
+
+  ARequestInfo.PostStream.Position := 0;
+  Result := ReadStringFromStream(ARequestInfo.PostStream, -1, LEncoding);
 end;
 
 end.

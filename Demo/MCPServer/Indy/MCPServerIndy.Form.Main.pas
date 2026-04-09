@@ -22,7 +22,7 @@ uses
   MCPConnect.Content.Writers.VCL;
 
 type
-  TForm1 = class(TForm)
+  TfrmMain = class(TForm)
     ButtonStart: TButton;
     ButtonStop: TButton;
     EditPort: TEdit;
@@ -43,7 +43,7 @@ type
   end;
 
 var
-  Form1: TForm1;
+  frmMain: TfrmMain;
 
 implementation
 
@@ -51,16 +51,17 @@ implementation
 
 uses
   WinApi.Windows, Winapi.ShellApi,
+  Logify, Logify.Adapter.Debug,
   MCPServer.Config;
 
-procedure TForm1.ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
+procedure TfrmMain.ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
 begin
   ButtonStart.Enabled := not IdHTTPServer1.Active;
   ButtonStop.Enabled := IdHTTPServer1.Active;
   EditPort.Enabled := not IdHTTPServer1.Active;
 end;
 
-procedure TForm1.ButtonOpenBrowserClick(Sender: TObject);
+procedure TfrmMain.ButtonOpenBrowserClick(Sender: TObject);
 var
   LURL: string;
 begin
@@ -69,17 +70,18 @@ begin
   ShellExecute(0, nil, PChar(LURL), nil, nil, SW_SHOWNOACTIVATE);
 end;
 
-procedure TForm1.ButtonStartClick(Sender: TObject);
+procedure TfrmMain.ButtonStartClick(Sender: TObject);
 begin
   StartServer;
 end;
 
-procedure TForm1.ButtonStopClick(Sender: TObject);
+procedure TfrmMain.ButtonStopClick(Sender: TObject);
 begin
   IdHTTPServer1.Active := False;
+  Logger.Log('MCP Server Stopped', TLogLevel.Debug);
 end;
 
-procedure TForm1.FormCreate(Sender: TObject);
+procedure TfrmMain.FormCreate(Sender: TObject);
 begin
   IdHTTPServer1 := TJRPCIndyServer.Create(Self);
 
@@ -92,14 +94,19 @@ begin
   StartServer;
 end;
 
-procedure TForm1.StartServer;
+procedure TfrmMain.StartServer;
 begin
   if not IdHTTPServer1.Active then
   begin
     IdHTTPServer1.Bindings.Clear;
     IdHTTPServer1.DefaultPort := StrToInt(EditPort.Text);
     IdHTTPServer1.Active := True;
+    Logger.Log('MCP Server Started', TLogLevel.Debug);
   end;
 end;
+
+initialization
+  TLoggerAdapterRegistry.Instance.RegisterFactory(
+    TLogifyAdapterDebugFactory.CreateAdapterFactory('Debug log', TLogLevel.Info));
 
 end.

@@ -26,7 +26,7 @@ uses
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
   Neon.Core.Serializers.RTL,
-  MCPConnect.Core.Utils;
+  MCPConnect.JRPC.Classes;
 
 type
   EMCPException = class(Exception);

@@ -1,0 +1,29 @@
+meta {
+  name: MCP - HTTP OPTIONS
+  type: http
+  seq: 19
+}
+
+options {
+  url: http://localhost:8080/mcp
+  body: json
+  auth: none
+}
+
+headers {
+  Accept: */*
+  Access-Control-Request-Method: POST
+  Access-Control-Request-Headers: content-type
+  Origin: http://localhost:6274
+  Accept-Encoding: gzip, deflate, br, zstd
+  Accept-Language: en-US,en;q=0.9,it-IT;q=0.8,it;q=0.7
+  Referer: http://localhost:6274/
+  Sec-Fetch-Mode: cors
+  Sec-Fetch-Site: same-site
+  Sec-Fetch-Dest: empty
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

@@ -69,7 +69,7 @@
         <Icon_MainIcon>$(BDS)\bin\delphi_PROJECTICON.ico</Icon_MainIcon>
         <Icns_MainIcns>$(BDS)\bin\delphi_PROJECTICNS.icns</Icns_MainIcns>
         <SanitizedProjectName>MCPServerIndy</SanitizedProjectName>
-        <DCC_UnitSearchPath>..\..\..\Source;..\..\..\Libs\Neon\Source;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>..\..\..\Source;..\..\..\Libs\Neon\Source;..\..\..\Libs\Logify\Source;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <VerInfo_Locale>1040</VerInfo_Locale>
         <VerInfo_Keys>CompanyName=;FileDescription=$(MSBuildProjectName);FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProgramID=com.embarcadero.$(MSBuildProjectName);ProductName=$(MSBuildProjectName);ProductVersion=1.0.0.0;Comments=</VerInfo_Keys>
         <DCC_DcuOutput>.\$(Platform)\$(Config)</DCC_DcuOutput>
@@ -129,7 +129,7 @@
             <MainSource>MainSource</MainSource>
         </DelphiCompile>
         <DCCReference Include="MCPServerIndy.Form.Main.pas">
-            <Form>Form1</Form>
+            <Form>frmMain</Form>
         </DCCReference>
         <DCCReference Include="..\MCPServer.Apps.pas"/>
         <DCCReference Include="..\MCPServer.Config.pas"/>
@@ -143,7 +143,6 @@
         <DCCReference Include="..\..\..\Source\MCPConnect.Content.Writers.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.Content.Writers.RTL.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.Content.Writers.VCL.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.Core.Utils.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Core.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Invoker.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Server.pas"/>
@@ -157,6 +156,8 @@
         <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.Session.Core.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.Transport.Indy.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Classes.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.Transport.Base.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

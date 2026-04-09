@@ -1,9 +1,9 @@
-object Form1: TForm1
+object frmMain: TfrmMain
   Left = 271
   Top = 114
-  Caption = 'Form1'
-  ClientHeight = 418
-  ClientWidth = 826
+  Caption = 'frmMain'
+  ClientHeight = 328
+  ClientWidth = 437
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -57,8 +57,8 @@ object Form1: TForm1
   object memoLog: TMemo
     Left = 0
     Top = 104
-    Width = 826
-    Height = 314
+    Width = 437
+    Height = 224
     Align = alBottom
     Anchors = [akLeft, akTop, akRight, akBottom]
     Font.Charset = ANSI_CHARSET
@@ -69,6 +69,8 @@ object Form1: TForm1
     ParentFont = False
     ScrollBars = ssVertical
     TabOrder = 4
+    ExplicitWidth = 826
+    ExplicitHeight = 314
   end
   object btnConfig: TButton
     Left = 299
@@ -79,43 +81,9 @@ object Form1: TForm1
     TabOrder = 5
     OnClick = btnConfigClick
   end
-  object Button1: TButton
-    Left = 376
-    Top = 73
-    Width = 75
-    Height = 25
-    Caption = 'Button1'
-    TabOrder = 6
-    OnClick = Button1Click
-  end
-  object Button2: TButton
-    Left = 496
-    Top = 64
-    Width = 75
-    Height = 25
-    Caption = 'Router'
-    TabOrder = 7
-    OnClick = Button2Click
-  end
-  object edtTemplate: TEdit
-    Left = 496
-    Top = 8
-    Width = 305
-    Height = 21
-    TabOrder = 8
-    Text = 'demo://weather/{city}/temp/{um}'
-  end
-  object edtURI: TEdit
-    Left = 496
-    Top = 35
-    Width = 305
-    Height = 21
-    TabOrder = 9
-    Text = 'demo://weather/rome/temp/celsius'
-  end
   object ApplicationEvents1: TApplicationEvents
     OnIdle = ApplicationEvents1Idle
-    Left = 720
-    Top = 24
+    Left = 96
+    Top = 152
   end
 end

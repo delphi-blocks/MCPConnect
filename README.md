@@ -63,21 +63,32 @@ The main features of JRPC are:
 
 ### Requirements
 
-  * Delphi **10 or newer** (support for Attributes is essential).
+  * Delphi **10.3 or newer** (support for Attributes is essential).
   * Neon as Serialization Engine (https://github.com/paolo-rossi/delphi-neon)
+  * Logify as (meta) logging library (https://github.com/delphi-blocks/Logify)
 
 ### Getting Started
 
-1.  **Clone Neon the Repository:**
-    ```bash
-    git clone https://github.com/paolo-rossi/delphi-neon
-    ```
-3.  **Clone MCPConnect the Repository:**
+1.  **Clone MCPConnect the Repository:**
     ```bash
     git clone https://github.com/delphi-blocks/MCPConnect.git
     ```
-3.  **Add to Project Path:** Add the `Source` directory of the cloned repositories to your Delphi Project's search path.
-4.  **Integrate:** Reference the core units, such as `MCPConnect.JRPC.Core` and `MCPConnect.MCP.Attributes`, in your server project.
+1.  **Go to the `Libs` folder:**
+    ```bash
+    cd Libs
+    ```
+1.  **Clone Neon Repository to the `Libs` folder:**
+    ```bash
+    git clone https://github.com/paolo-rossi/delphi-neon
+    ```
+1.  **Clone Logify Repository to the `Libs` folder:**
+    ```bash
+    git clone https://github.com/paolo-rossi/delphi-neon
+    ```
+1.  **Add to Project Path:** Add the `Source` directory of the cloned repositories to your Delphi Project's search path.
+1.  **Integrate:** Reference the core units, such as `MCPConnect.JRPC.Core` and `MCPConnect.MCP.Attributes`, in your server project.
+
+> **Note:** You can clone `Neon` and `Logify` to a different folder than `Libs` but, if you do so, remember to adjust the MCPConnect Demos paths (for Neon and Logify) to your chosen directory.
 
 -----
 

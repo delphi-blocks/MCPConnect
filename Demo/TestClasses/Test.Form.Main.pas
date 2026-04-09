@@ -9,7 +9,7 @@ uses
   System.ImageList, Vcl.ImgList, System.Actions, Vcl.ActnList,
   Vcl.CategoryButtons, Vcl.ComCtrls, Vcl.ToolWin,
 
-  MCPConnect.Core.Utils,
+  MCPConnect.JRPC.Classes,
 
   MCPConnect.MCP.Attributes,
   MCPConnect.MCP.Types,
@@ -79,6 +79,7 @@ type
     actSnippets: TAction;
     btnSnippets: TToolButton;
     actMessagesRead: TAction;
+    actOpenMisc: TAction;
     procedure FormCreate(Sender: TObject);
     procedure actRequestPosExecute(Sender: TObject);
     procedure actRequestDesExecute(Sender: TObject);
@@ -97,6 +98,7 @@ type
     procedure actCallToolParamsExecute(Sender: TObject);
     procedure actClearLogExecute(Sender: TObject);
     procedure actMessagesReadExecute(Sender: TObject);
+    procedure actOpenMiscExecute(Sender: TObject);
     procedure actResourceExecute(Sender: TObject);
     procedure actResourceListExecute(Sender: TObject);
     procedure actResourceTemplateExecute(Sender: TObject);
@@ -143,7 +145,7 @@ var
 implementation
 
 uses
-  Test.Form.Snippets;
+  Test.Form.Snippets, Test.Form.Misc;
 
 {$R *.dfm}
 
@@ -226,8 +228,8 @@ var
   LContext: TJRPCContext;
   LRequest: TJRPCRequest;
   LResponse: TJRPCResponse;
-  LMethodInvoker: IJRPCInvokable;
 begin
+{
   // Build the test request
   LRequest := TJRPCRequest.Create;
   LRequest.Id := 1;
@@ -253,6 +255,8 @@ begin
   LRequest.Free;
   LResponse.Free;
   LContext.Free;
+}
+
 end;
 
 procedure TfrmMain.actMessagesExecute(Sender: TObject);
@@ -358,6 +362,7 @@ end;
 
 procedure TfrmMain.actInvokeRequestExecute(Sender: TObject);
 begin
+{
   var GC := TGarbageCollector.CreateInstance;
 
   var LRequest := TNeon.JSONToObject<TJRPCRequest>(mmoLog.Lines.Text, JRPCNeonConfig);
@@ -381,7 +386,7 @@ begin
   mmoLog.Lines.Add('------ SERIALIZED RESPONSE ------');
   var LStringResponse := TNeon.ObjectToJSONString(LResponse, JRPCNeonConfig);
   mmoLog.Lines.Add(LStringResponse);
-
+}
 end;
 
 procedure TfrmMain.actStructTagsExecute(Sender: TObject);
@@ -466,6 +471,11 @@ begin
     mmoLog.Lines.Add('---------------');
   end;
   msgs.Free;
+end;
+
+procedure TfrmMain.actOpenMiscExecute(Sender: TObject);
+begin
+  frmMisc.Show;
 end;
 
 procedure TfrmMain.actResourceExecute(Sender: TObject);

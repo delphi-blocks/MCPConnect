@@ -17,6 +17,7 @@ interface
 
 uses
   System.Classes, System.SysUtils, System.JSON,
+  MCPConnect.JRPC.Classes,
   MCPConnect.JRPC.Core,
   MCPConnect.Configuration.MCP,
 

@@ -272,6 +272,12 @@ object frmMain: TfrmMain
       ImageIndex = 3
       OnExecute = actSnippetsExecute
     end
+    object actOpenMisc: TAction
+      Category = 'UI'
+      Caption = 'actOpenMisc'
+      ShortCut = 16461
+      OnExecute = actOpenMiscExecute
+    end
   end
   object ilMain: TImageList
     Height = 32

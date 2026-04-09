@@ -11,7 +11,7 @@
 {  Licensed under the MIT license                                              }
 {                                                                              }
 {******************************************************************************}
-unit MCPConnect.Core.Utils;
+unit MCPConnect.JRPC.Classes;
 
 interface
 
@@ -246,6 +246,79 @@ type
 
 
   /// <summary>
+  ///   Attribute used to mark a field for context injection
+  /// </summary>
+  ContextAttribute = class(TCustomAttribute);
+
+  ECtxException = class(Exception);
+
+  TContextRegistry = class(TDictionary<TClass, TObject>);
+
+  /// <summary>
+  ///   Represents the context of a JSON-RPC CurrentRequest, including the CurrentRequest
+  ///   itself, the Responses, and any additional data associated with the context.
+  /// </summary>
+  TContextManager = class
+  protected
+    FContextData: TContextRegistry;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    /// <summary>
+    ///   Adds an object to the context data.
+    /// </summary>
+    procedure AddContent(AObject: TObject); overload; virtual;
+
+    /// <summary>
+    ///   Adds an interface implementation to the context data.
+    /// </summary>
+    procedure AddContent(AInterface: IInterface); overload; virtual;
+
+    /// <summary>
+    ///   Retrieves context data as a specific class type (raises exception if not found)
+    /// </summary>
+    function GetContextDataAs<T: class>: T; overload;
+
+    /// <summary>
+    ///   Retrieves context data as a specific class type (raises exception if not found)
+    /// </summary>
+    function GetContextDataAs(AClass: TClass): TObject; overload;
+
+    /// <summary>
+    ///   Retrieves context data as a specific interface (raises exception if not found)
+    /// </summary>
+    function GetContextDataAs(AInterface: TGUID): IInterface; overload;
+
+    /// <summary>
+    ///   Finds context data as a specific class type (returns nil if not found)
+    /// </summary>
+    function FindContextDataAs<T: class>: T; overload;
+
+    /// <summary>
+    ///   Finds context data as a specific class type (returns nil if not found)
+    /// </summary>
+    function FindContextDataAs(AClass: TClass): TObject; overload;
+
+    /// <summary>
+    ///   Finds context data as a specific interface (returns nil if not found)
+    /// </summary>
+    function FindContextDataAs(AInterface: TGUID): IInterface; overload;
+
+    /// <summary>
+    ///   Injects context data into the fields of the specified object.
+    /// </summary>
+    procedure Inject(AObject: TObject); overload;
+
+    /// <summary>
+    ///   Injects context data into the fields of the specified interface implementation.
+    /// </summary>
+    procedure Inject(AInterface: IInterface); overload;
+  end;
+
+
+
+  /// <summary>
   ///   Creates a new TValue initialized with the default value for the specified
   ///   RTTI type. Supports common Delphi type kinds including integers, floats,
   ///   strings, classes, and records.
@@ -275,7 +348,7 @@ implementation
 
 uses
   System.NetEncoding,
-  MCPConnect.JRPC.Core;
+  Neon.Core.Utils;
 
 function CreateNewValue(AType: TRttiType): TValue;
 var
@@ -302,7 +375,7 @@ begin
       end;
     end;
   else
-    raise EJRPCException.CreateFmt('Error creating type: %s', [AType.Name]);
+    raise Exception.CreateFmt('Error creating type: %s', [AType.Name]);
   end;
 end;
 
@@ -448,6 +521,109 @@ begin
   for LName in FParamNames do
     if LMatch.Groups[LName].Success then
       FParams.Add(LName, TNetEncoding.URL.Decode(LMatch.Groups[LName].Value));
+end;
+
+{ TContextManager }
+
+procedure TContextManager.AddContent(AObject: TObject);
+begin
+  if AObject = nil then
+    Exit;
+
+  FContextData.Add(AObject.ClassType, AObject);
+end;
+
+procedure TContextManager.AddContent(AInterface: IInterface);
+begin
+  AddContent(AInterface as TObject);
+end;
+
+constructor TContextManager.Create;
+begin
+  inherited Create;
+  FContextData := TContextRegistry.Create;
+  AddContent(Self);
+end;
+
+destructor TContextManager.Destroy;
+begin
+  FContextData.Free;
+  inherited;
+end;
+
+function TContextManager.FindContextDataAs(AClass: TClass): TObject;
+begin
+  if not FContextData.TryGetValue(AClass, Result) then
+    Result := nil;
+end;
+
+function TContextManager.FindContextDataAs(AInterface: TGUID): IInterface;
+var
+  LObject: TObject;
+begin
+  Result := nil;
+  for LObject in FContextData.Values do
+  begin
+    if Supports(LObject, AInterface, Result) then
+      Exit;
+  end;
+end;
+
+function TContextManager.FindContextDataAs<T>: T;
+begin
+  Result := FindContextDataAs(TClass(T)) as T;
+end;
+
+function TContextManager.GetContextDataAs(AClass: TClass): TObject;
+begin
+  Result := FindContextDataAs(AClass);
+  if not Assigned(Result) then
+    raise ECtxException.CreateFmt('Context: object "%s" not found', [AClass.ClassName]);
+end;
+
+function TContextManager.GetContextDataAs(AInterface: TGUID): IInterface;
+begin
+  Result := FindContextDataAs(AInterface);
+  if not Assigned(Result) then
+    raise ECtxException.CreateFmt('Context: interface "%s" not found', [AInterface.ToString]);
+end;
+
+function TContextManager.GetContextDataAs<T>: T;
+begin
+  Result := GetContextDataAs(TClass(T)) as T;
+end;
+
+procedure TContextManager.Inject(AInterface: IInterface);
+begin
+  Inject(AInterface as TObject);
+end;
+
+procedure TContextManager.Inject(AObject: TObject);
+var
+  LRttiType: TRttiType;
+begin
+  LRttiType := TRttiUtils.Context.GetType(AObject.ClassType);
+  TRttiUtils.ForEachFieldWithAttribute<ContextAttribute>(LRttiType,
+    function (AField: TRttiField; AAttr: ContextAttribute): Boolean
+    var
+      LValue: TValue;
+    begin
+      if AField.FieldType is TRttiInstanceType then
+      begin
+        LValue := GetContextDataAs(TRttiInstanceType(AField.FieldType).MetaclassType);
+        AField.SetValue(AObject, LValue);
+        Result := True;
+      end
+      else if AField.FieldType is TRttiInterfaceType then
+      begin
+        LValue := GetContextDataAs(TRttiInterfaceType(AField.FieldType).GUID) as TObject;
+        AField.SetValue(AObject, LValue);
+        Result := True;
+      end
+      else
+        raise ECtxException.Create('Context variables should be an object or interface');
+    end
+  );
 end;
 
 end.

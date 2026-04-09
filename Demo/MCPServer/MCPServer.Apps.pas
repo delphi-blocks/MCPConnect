@@ -12,7 +12,7 @@ uses
   MCPConnect.JRPC.Core,
   MCPConnect.MCP.Types,
   MCPConnect.MCP.Attributes,
-  MCPConnect.Core.Utils,
+  MCPConnect.JRPC.Classes,
   MCPConnect.Session.Core;
 
 type

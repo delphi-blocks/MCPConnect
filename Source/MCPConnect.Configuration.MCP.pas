@@ -20,10 +20,11 @@ uses
   System.Generics.Defaults,
   System.Generics.Collections,
   System.Rtti,
+  System.JSON,
 
   Neon.Core.Nullables,
 
-  MCPConnect.Core.Utils,
+  MCPConnect.JRPC.Classes,
   MCPConnect.JRPC.Core,
   MCPConnect.MCP.Types,
   MCPConnect.MCP.Tools,
@@ -32,7 +33,7 @@ uses
 
   MCPConnect.MCP.Attributes,
   MCPConnect.Content.Writers,
-  MCPConnect.Configuration.Core, System.JSON;
+  MCPConnect.Configuration.Core;
 
 type
   /// <summary>
@@ -47,6 +48,7 @@ type
   TMCPListConfig = class;
   TMCPToolsConfig = class;
   TMCPServerConfig = class;
+  TMCPSecurityConfig = class;
   TMCPResourcesConfig = class;
 
   /// <summary>
@@ -100,6 +102,12 @@ type
     /// </summary>
     function Server: TMCPServerConfig;
 
+
+    /// <summary>
+    ///   Security configuration
+    /// </summary>
+    function Security: TMCPSecurityConfig;
+
     /// <summary>
     ///   Tools configuration
     /// </summary>
@@ -116,6 +124,9 @@ type
     function Prompts: TMCPListConfig;
   end;
 
+  /// <summary>
+  ///   Base class for MCP configuration sections.
+  /// </summary>
   TMCPBaseConfig = class
   protected
     FConfig: IMCPConfig;
@@ -129,6 +140,9 @@ type
   TMCPCapability = (Tools, Resources, Prompts, Tasks, Logging, Completions);
   TMCPCapabilities = set of TMCPCapability;
 
+  /// <summary>
+  ///   Configuration for the MCP server details (name, version, etc.).
+  /// </summary>
   TMCPServerConfig = class(TMCPBaseConfig)
   public
     IconFolder: string;
@@ -183,6 +197,11 @@ type
     /// <returns>Self for fluent chaining</returns>
     function SetVersion(const AVersion: string): TMCPServerConfig;
 
+    /// <summary>
+    ///   Sets the capabilities supported by the MCP server (Tools, Resources, Prompts, etc.).
+    /// </summary>
+    /// <param name="ACapabilities">Set of supported capabilities</param>
+    /// <returns>Self for fluent chaining</returns>
     function SetCapabilities(ACapabilities: TMCPCapabilities): TMCPServerConfig;
 
     /// <summary>
@@ -204,6 +223,25 @@ type
     function RegisterWriter(AClass: TCustomWriterClass): TMCPServerConfig;
   end;
 
+  /// <summary>
+  ///   Configuration for security settings like CORS.
+  /// </summary>
+  TMCPSecurityConfig = class(TMCPBaseConfig)
+  public
+    CORS: Boolean;
+    AllowedMethods: TArray<string>;
+    AllowedOrigins: TArray<string>;
+  public
+    constructor Create(AConfig: IMCPConfig);
+
+    function SetCORS(AEnable: Boolean): TMCPSecurityConfig;
+    function SetAllowedMethods(const AMethods: TArray<string>): TMCPSecurityConfig;
+    function SetAllowedOrigins(const AOrigins: TArray<string>): TMCPSecurityConfig;
+  end;
+
+  /// <summary>
+  ///   Configuration for managing lists of registered classes (prompts, etc.).
+  /// </summary>
   TMCPListConfig = class(TMCPBaseConfig)
   private
     FClasses: TObjectDictionary<string, TClass>;
@@ -225,6 +263,9 @@ type
   end;
 
 
+  /// <summary>
+  ///   Configuration for MCP tools registration and discovery.
+  /// </summary>
   TMCPToolsConfig = class(TMCPBaseConfig)
   private
     procedure WriteInputSchema(ATool: TMCPTool);
@@ -253,11 +294,17 @@ type
     procedure FilterList(AList: TListToolsResult; AFilter: TMCPToolFilterFunc);
   end;
 
+  /// <summary>
+  ///   Helper class for serving static resources.
+  /// </summary>
   TMCPStaticResource = class
   public
     class procedure GetResource(AConfig: IMCPConfig; AResource: TMCPResource; AResult: TReadResourceResult);
   end;
 
+  /// <summary>
+  ///   Configuration for MCP resources, templates, and UI.
+  /// </summary>
   TMCPResourcesConfig = class(TMCPBaseConfig)
   private type
     TypeKindSet = set of TTypeKind;
@@ -308,10 +355,14 @@ type
     procedure TemplateList(AList: TListResourceTemplatesResult);
   end;
 
+  /// <summary>
+  ///   Main implementation of IMCPConfig, aggregating all configuration sections.
+  /// </summary>
   [Implements(IMCPConfig)]
   TMCPConfig = class(TJRPCConfiguration, IMCPConfig)
   private
     FServer: TMCPServerConfig;
+    FSecurity: TMCPSecurityConfig;
     FTools: TMCPToolsConfig;
     FResources: TMCPResourcesConfig;
 
@@ -322,6 +373,7 @@ type
 
     { IMCPConfig }
     function Server: TMCPServerConfig;
+    function Security: TMCPSecurityConfig;
     function Tools: TMCPToolsConfig;
     function Resources: TMCPResourcesConfig;
 
@@ -343,6 +395,7 @@ begin
   inherited;
 
   FServer := TMCPServerConfig.Create(Self);
+  FSecurity := TMCPSecurityConfig.Create(Self);
   FTools := TMCPToolsConfig.Create(Self);
   FResources := TMCPResourcesConfig.Create(Self);
   FPrompts := TMCPListConfig.Create(Self);
@@ -353,6 +406,7 @@ begin
   FPrompts.Free;
   FResources.Free;
   FTools.Free;
+  FSecurity.Free;
   FServer.Free;
 
   inherited;
@@ -371,6 +425,11 @@ end;
 function TMCPConfig.Tools: TMCPToolsConfig;
 begin
   Result := FTools;
+end;
+
+function TMCPConfig.Security: TMCPSecurityConfig;
+begin
+  Result := FSecurity;
 end;
 
 function TMCPConfig.Server: TMCPServerConfig;
@@ -668,6 +727,7 @@ end;
 
 constructor TMCPBaseConfig.Create(AConfig: IMCPConfig);
 begin
+  inherited Create;
   FConfig := AConfig;
 end;
 
@@ -1064,6 +1124,32 @@ begin
   else
     AResult.AddBlobContent(AResource.Uri, AResource.MimeType, TFile.ReadAllText(LFileName));
 
+end;
+
+{ TMCPSecurityConfig }
+
+constructor TMCPSecurityConfig.Create(AConfig: IMCPConfig);
+begin
+  inherited Create(AConfig);
+  AllowedMethods := ['POST'];
+end;
+
+function TMCPSecurityConfig.SetAllowedMethods(const AMethods: TArray<string>): TMCPSecurityConfig;
+begin
+  AllowedMethods := AMethods;
+  Result := Self;
+end;
+
+function TMCPSecurityConfig.SetAllowedOrigins(const AOrigins: TArray<string>): TMCPSecurityConfig;
+begin
+  AllowedOrigins := AOrigins;
+  Result := Self;
+end;
+
+function TMCPSecurityConfig.SetCORS(AEnable: Boolean): TMCPSecurityConfig;
+begin
+  CORS := AEnable;
+  Result := Self;
 end;
 
 initialization

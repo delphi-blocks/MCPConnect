@@ -1,0 +1,33 @@
+meta {
+  name: JRPC - Multiple Requests
+  type: http
+  seq: 6
+}
+
+post {
+  url: http://localhost:8080/jrpc
+  body: json
+  auth: none
+}
+
+body:json {
+  [
+    {
+      "jsonrpc": "2.0",
+      "id": 42,
+      "method": "object/person"
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "notify/update"
+    },
+    {
+      "foo": "boo"
+    },
+  ]
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

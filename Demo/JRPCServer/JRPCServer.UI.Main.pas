@@ -8,7 +8,7 @@ uses
   Vcl.AppEvnts, Vcl.StdCtrls, IdHTTPWebBrokerBridge, IdGlobal, Web.HTTPApp;
 
 type
-  TForm1 = class(TForm)
+  TfrmMain = class(TForm)
     ButtonStart: TButton;
     ButtonStop: TButton;
     EditPort: TEdit;
@@ -29,7 +29,7 @@ type
   end;
 
 var
-  Form1: TForm1;
+  frmMain: TfrmMain;
 
 implementation
 
@@ -41,14 +41,14 @@ uses
 {$ENDIF}
   System.Generics.Collections;
 
-procedure TForm1.ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
+procedure TfrmMain.ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
 begin
   ButtonStart.Enabled := not FServer.Active;
   ButtonStop.Enabled := FServer.Active;
   EditPort.Enabled := not FServer.Active;
 end;
 
-procedure TForm1.ButtonOpenBrowserClick(Sender: TObject);
+procedure TfrmMain.ButtonOpenBrowserClick(Sender: TObject);
 {$IFDEF MSWINDOWS}
 var
   LURL: string;
@@ -63,24 +63,24 @@ begin
 {$ENDIF}
 end;
 
-procedure TForm1.ButtonStartClick(Sender: TObject);
+procedure TfrmMain.ButtonStartClick(Sender: TObject);
 begin
   StartServer;
 end;
 
-procedure TForm1.ButtonStopClick(Sender: TObject);
+procedure TfrmMain.ButtonStopClick(Sender: TObject);
 begin
   FServer.Active := False;
   FServer.Bindings.Clear;
 end;
 
-procedure TForm1.FormCreate(Sender: TObject);
+procedure TfrmMain.FormCreate(Sender: TObject);
 begin
   FServer := TIdHTTPWebBrokerBridge.Create(Self);
   StartServer;
 end;
 
-procedure TForm1.StartServer;
+procedure TfrmMain.StartServer;
 begin
   if not FServer.Active then
   begin

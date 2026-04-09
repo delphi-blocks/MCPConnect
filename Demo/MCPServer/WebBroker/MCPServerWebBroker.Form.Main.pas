@@ -24,7 +24,7 @@ uses
   MCPConnect.MCP.Attributes;
 
 type
-  TForm1 = class(TForm)
+  TfrmMain = class(TForm)
     ButtonStart: TButton;
     ButtonStop: TButton;
     EditPort: TEdit;
@@ -33,18 +33,12 @@ type
     ApplicationEvents1: TApplicationEvents;
     ButtonOpenBrowser: TButton;
     btnConfig: TButton;
-    Button1: TButton;
-    Button2: TButton;
-    edtTemplate: TEdit;
-    edtURI: TEdit;
     procedure FormCreate(Sender: TObject);
     procedure ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
     procedure btnConfigClick(Sender: TObject);
-    procedure Button1Click(Sender: TObject);
     procedure ButtonStartClick(Sender: TObject);
     procedure ButtonStopClick(Sender: TObject);
     procedure ButtonOpenBrowserClick(Sender: TObject);
-    procedure Button2Click(Sender: TObject);
   private
     FServer: TIdHTTPWebBrokerBridge;
     procedure StartServer;
@@ -53,7 +47,7 @@ type
   end;
 
 var
-  Form1: TForm1;
+  frmMain: TfrmMain;
 
 implementation
 
@@ -65,7 +59,6 @@ uses
   WinApi.Windows, Winapi.ShellApi,
 {$ENDIF}
   System.Generics.Collections,
-  System.RegularExpressions,
 
   Neon.Core.Types,
   Neon.Core.Serializers.RTL,
@@ -74,61 +67,20 @@ uses
 
   MCPServer.Resources,
   MCPServer.Tools,
-  MCPConnect.Core.Utils,
+  MCPConnect.JRPC.Classes,
   MCPConnect.Configuration.Neon,
   MCPConnect.MCP.Server.Api;
 
+{ TfrmMain }
 
-
-function ExtractParams(const ATemplate, AInput: string): TStringMap;
-var
-  LParamNames: TArray<string>;
-  LRegexPattern: string;
-  LMatch: TMatch;
-  LName: string;
-begin
-  Result := [];
-  LParamNames := [];
-
-  var matches := TRegEx.Matches(ATemplate, '[^{\}]+(?=})');
-  for var match in matches do
-    LParamNames := LParamNames + [match.Value];
-
-  // 1. Find all parameter names in the template (e.g., 'city', 'options')
-  // Match anything between { and }
-  (*
-  LMatch := TRegEx.Match(ATemplate, '\{([a-zA-Z0-9_]+)\}');
-  while LMatch.Success do
-  begin
-    LParamNames := LParamNames + [LMatch.Groups[1].Value];
-    LMatch := LMatch.NextMatch;
-  end;
-  *)
-
-  // 2. Convert Template to Regex Pattern
-  // Escape the URL basics (like // and .) then swap {name} for a named group
-  LRegexPattern := TRegEx.Escape(ATemplate);
-  // We replace the escaped version of \{name\} with (?P<name>[^/]+)
-  LRegexPattern := TRegEx.Replace(LRegexPattern, '\\\{([a-zA-Z0-9_]+)\\\}', '(?P<$1>[^/]+)');
-
-  // 3. Execute the Match on the actual data
-  LMatch := TRegEx.Match(AInput, '^' + LRegexPattern + '$');
-
-  if not LMatch.Success then
-    Exit;
-
-  for LName in LParamNames do
-    Result := Result + [TStringPair.Create(LName, LMatch.Groups[LName].Value)];
-end;
-
-procedure TForm1.ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
+procedure TfrmMain.ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
 begin
   ButtonStart.Enabled := not FServer.Active;
   ButtonStop.Enabled := FServer.Active;
   EditPort.Enabled := not FServer.Active;
 end;
 
-procedure TForm1.btnConfigClick(Sender: TObject);
+procedure TfrmMain.btnConfigClick(Sender: TObject);
 begin
   var mcp := TMCPConfig.Create;
 
@@ -158,40 +110,7 @@ begin
   mcp.Free;
 end;
 
-procedure TForm1.Button1Click(Sender: TObject);
-begin
-  var res: TArray<string> := [];
-  var matches := TRegEx.Matches('demo://weather/dynamic/{city}/{celsius}', '[^{\}]+(?=})');
-
-  for var match in matches do
-  begin
-    res := res + [match.Value];
-    memoLog.Lines.Add(match.Value);
-  end;
-
-end;
-
-procedure TForm1.Button2Click(Sender: TObject);
-begin
-  var tpl := edtTemplate.Text;
-  memoLog.Lines.Add(tpl);
-
-  var uri := edtURI.Text;
-  memoLog.Lines.Add(uri);
-
-  var router := TRouteMatcher.Create;
-  try
-    if router.Match(tpl, uri) then
-      for var pair in router.Params do
-        memoLog.Lines.Add(pair.Key + ': ' + pair.Value)
-    else
-        memoLog.Lines.Add('URI is not a match for the template');
-  finally
-    router.Free;
-  end;
-end;
-
-procedure TForm1.ButtonOpenBrowserClick(Sender: TObject);
+procedure TfrmMain.ButtonOpenBrowserClick(Sender: TObject);
 {$IFDEF MSWINDOWS}
 var
   LURL: string;
@@ -206,31 +125,31 @@ begin
 {$ENDIF}
 end;
 
-procedure TForm1.ButtonStartClick(Sender: TObject);
+procedure TfrmMain.ButtonStartClick(Sender: TObject);
 begin
   StartServer;
 end;
 
-procedure TForm1.ButtonStopClick(Sender: TObject);
+procedure TfrmMain.ButtonStopClick(Sender: TObject);
 begin
   FServer.Active := False;
   FServer.Bindings.Clear;
 end;
 
-procedure TForm1.FormCreate(Sender: TObject);
+procedure TfrmMain.FormCreate(Sender: TObject);
 begin
   FServer := TIdHTTPWebBrokerBridge.Create(Self);
   FServer.OnParseAuthentication := ParseAuthentication;
   StartServer;
 end;
 
-procedure TForm1.ParseAuthentication(AContext: TIdContext; const AAuthType,
+procedure TfrmMain.ParseAuthentication(AContext: TIdContext; const AAuthType,
   AAuthData: String; var VUsername, VPassword: String; var VHandled: Boolean);
 begin
   VHandled := True;
 end;
 
-procedure TForm1.StartServer;
+procedure TfrmMain.StartServer;
 begin
   if not FServer.Active then
   begin

@@ -109,13 +109,14 @@
         <DCCReference Include="IndyProtocols.dcp"/>
         <DCCReference Include="IndyCore.dcp"/>
         <DCCReference Include="Neon.dcp"/>
+        <DCCReference Include="Logify.dcp"/>
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.Auth.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.Core.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.MCP.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.Neon.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.Session.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Content.Writers.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.Core.Utils.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.JRPC.Classes.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.JRPC.Core.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.JRPC.Invoker.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.JRPC.Server.pas"/>
@@ -128,6 +129,7 @@
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Tools.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Session.Core.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Transport.Base.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Transport.Indy.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Transport.Stdio.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Transport.WebBroker.pas"/>

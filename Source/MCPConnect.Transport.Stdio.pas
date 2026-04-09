@@ -105,9 +105,10 @@ uses
   Neon.Core.Types,
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
-  MCPConnect.Core.Utils,
+  MCPConnect.JRPC.Classes,
   MCPConnect.JRPC.Invoker,
-  MCPConnect.JRPC.Core;
+  MCPConnect.JRPC.Core,
+  MCPConnect.Transport.Base;
 
 function StdInHandle: THandle;
 begin
@@ -404,79 +405,25 @@ begin
   Terminate;
 end;
 
-procedure TWorkerThread.HandleRequest(const ARequestContent: string;
-  out AResponseContent: string);
+procedure TWorkerThread.HandleRequest(const ARequestContent: string; out AResponseContent: string);
 var
-  LGarbageCollector: IGarbageCollector;
-  LJRPCRequest: TJRPCRequest;
-  LJRPCResponse: TJRPCResponse;
-  LConstructorProxy: TJRPCConstructorProxy;
-  LInstance: TObject;
-  LInvokable: IJRPCInvokable;
-  LContext: TJRPCContext;
-  LId: TJRPCID;
+  LRequest: TMCPTransportRequest;
+  LResponse: TMCPTransportResponse;
+  LMcpHandler: IMCPTransportHandler;
 begin
   if not Assigned(FServer) then
     raise EJRPCException.Create('Server not found');
 
-//  if not CheckAuthorization(Request, Response) then
-//  begin
-//    Response.StatusCode := 403;
-//    Response.Content := '';
-//    Exit(True);
-//  end;
+  // Auth??
+  LRequest.Headers.AddOrSet('Accept', 'application/json');
 
-  LGarbageCollector := TGarbageCollector.CreateInstance;
+  LRequest.Command := 'POST';
+  LRequest.Content := ARequestContent;
 
-  LJRPCResponse := TJRPCResponse.Create;
-  LGarbageCollector.Add(LJRPCResponse);
+  LMcpHandler := TMCPTransportHandler.Create(FServer);
+  LMcpHandler.HandleRequest(LRequest, LResponse);
 
-  try
-    LJRPCRequest := TNeon.JSONToObject<TJRPCRequest>(ARequestContent, JRPCNeonConfig);
-    LGarbageCollector.Add(LJRPCRequest);
-    LId := LJRPCRequest.Id;
-
-    if not TJRPCRegistry.Instance.GetConstructorProxy(LJRPCRequest.Method, LConstructorProxy) then
-    begin
-      raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LJRPCRequest.Method]);
-    end;
-
-    LInstance := LConstructorProxy.ConstructorFunc();
-    LGarbageCollector.Add(LInstance);
-
-    LContext := TJRPCContext.Create;
-    LGarbageCollector.Add(LContext);
-
-    LContext.AddContent(LJRPCRequest);
-    LContext.AddContent(LJRPCResponse);
-    LContext.AddContent(FServer);
-
-    // Add session to context if available (implicit session per STDIO connection)
-    if Assigned(FSession) then
-      LContext.AddContent(FSession);
-
-    // Injects the context inside the instance
-    LContext.Inject(LInstance);
-
-    LInvokable := TJRPCObjectInvoker.Create(LInstance);
-    LInvokable.NeonConfig := LConstructorProxy.NeonConfig;
-    if not LInvokable.Invoke(LContext, LJRPCRequest, LJRPCResponse) then
-    begin
-      raise EJRPCMethodNotFoundError.CreateFmt('Cannot invoke method "%s"', [LJRPCRequest.Method]);
-    end;
-  except
-    on E: Exception do
-      TJRPCObjectInvoker.HandleException(E, LId, LJRPCResponse);
-  end;
-
-  if LJRPCResponse.IsNotification then
-  begin
-    AResponseContent := '';
-  end
-  else
-  begin
-    AResponseContent := RemoveLineBreaks(TNeon.ObjectToJSONString(LJRPCResponse, JRPCNeonConfig));
-  end;
+  AResponseContent := LResponse.Content;
 end;
 
 procedure TWorkerThread.SetServer(const Value: TJRPCServer);

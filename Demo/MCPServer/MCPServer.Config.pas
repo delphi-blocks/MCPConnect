@@ -68,6 +68,12 @@ begin
         .RegisterWriter(TMCPStringListWriter)
       .BackToMCP
 
+      .Security
+        .SetCORS(True)
+        .SetAllowedMethods(['POST'])
+        .SetAllowedOrigins(['http://localhost'])
+      .BackToMCP
+
       .Resources
         .SetBasePath(LDataPath)
 

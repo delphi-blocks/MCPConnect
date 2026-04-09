@@ -155,7 +155,7 @@ begin
   Result := '';
   for var pair in RawHeaders do
     if SameText(pair.Key, AName) then
-      Exit(pair.Value);
+      Exit(pair.Value.Trim);
 end;
 
 
@@ -221,7 +221,7 @@ begin
     Exit;
 
   for LOrigin in FMCPConfig.Security.AllowedOrigins do
-    if LOrigin.StartsWith(LHeader) then
+    if LHeader.StartsWith(LOrigin) then
       Exit;
 
   Result := False;
@@ -236,7 +236,6 @@ begin
       AResponse.Content := '';
       Exit;
     end;
-
 
     if not CheckAuthorization(ARequest, AResponse) then
     begin
@@ -254,6 +253,7 @@ begin
     else
       AResponse.Code := HTTP_CODE_NOTALLOWED;
 
+    InjectCORS(ARequest, AResponse);
   except
     on E: EJRPCException do
     begin
@@ -300,16 +300,12 @@ end;
 
 procedure TMCPTransportHandler.HandleGET(const ARequest: TMCPTransportRequest; var AResponse: TMCPTransportResponse);
 begin
-  InjectCORS(ARequest, AResponse);
-
   AResponse.Headers.AddOrSet('Allow', 'POST');
   AResponse.Code := HTTP_CODE_NOTALLOWED;
 end;
 
 procedure TMCPTransportHandler.HandleOPTIONS(const ARequest: TMCPTransportRequest; var AResponse: TMCPTransportResponse);
 begin
-  InjectCORS(ARequest, AResponse);
-
   AResponse.Code := HTTP_CODE_NOCONTENT;
   AResponse.Content := '';
 end;
@@ -356,7 +352,6 @@ begin
   { TODO -opaolo -c : To change based on SSE vs JSON reqs 28/03/2026 17:45:47 }
   AResponse.ContentType := 'application/json';
   AResponse.Content := LResponseList.ToJson;
-  AResponse.Headers.AddOrSet('Access-Control-Allow-Origin', '*');
 
   if LResponseList.Count = 0 then
     AResponse.Code := HTTP_CODE_ACCEPTED
@@ -398,17 +393,10 @@ begin
   if not FMCPConfig.Security.CORS then
     Exit;
 
-  {
+  // Set the allowed origins (from security configuration)
   LHValue := ARequest.Headers.Get('Origin');
   if not LHValue.IsEmpty then
     AResponse.Headers.AddOrSet('Access-Control-Allow-Origin', LHValue);
-  }
-
-  // Set the allowed origins (from security configuration)
-  if Length(FMCPConfig.Security.AllowedOrigins) = 0 then
-    AResponse.Headers.AddOrSet('Access-Control-Allow-Origin', '*')
-  else
-    AResponse.Headers.AddOrSet('Access-Control-Allow-Origin', string.Join(',', FMCPConfig.Security.AllowedOrigins));
 
   // Set the allowed methods supported by the server (from security configuration)
   LHValue := ARequest.Headers.Get('Access-Control-Request-Method');

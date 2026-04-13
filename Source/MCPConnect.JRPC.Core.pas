@@ -428,6 +428,18 @@ type
   end;
 
   /// <summary>
+  ///   Custom serializer for the TJRPCResponse class.
+  /// </summary>
+  TJResponseSerializer = class(TCustomSerializer)
+  protected
+    class function GetTargetInfo: PTypeInfo; override;
+    class function CanHandle(AType: PTypeInfo): Boolean; override;
+  public
+    function Serialize(const AValue: TValue; ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue; override;
+    function Deserialize(AValue: TJSONValue; const AData: TValue; ANeonObject: TNeonRttiObject; AContext: IDeserializerContext): TValue; override;
+  end;
+
+  /// <summary>
   ///   Custom serializer for the TJRPCError class.
   /// </summary>
   TJErrorSerializer = class(TCustomSerializer)
@@ -594,6 +606,7 @@ begin
     .RegisterSerializer(TJSONValueSerializer)
     .RegisterSerializer(TJValueSerializer)
     .RegisterSerializer(TJRequestSerializer)
+    .RegisterSerializer(TJResponseSerializer)
     .RegisterSerializer(TJErrorSerializer)
   ;
 end;
@@ -1510,6 +1523,48 @@ begin
   Result := AContext.WriteDataMember(LError, False);
   if LError.Id.IsNull then
     (Result as TJSONObject).AddPair('id', TJSONNull.Create);
+end;
+
+{ TJResponseSerializer }
+
+class function TJResponseSerializer.CanHandle(AType: PTypeInfo): Boolean;
+begin
+  Result := TypeInfoIs(AType);
+end;
+
+function TJResponseSerializer.Deserialize(AValue: TJSONValue;
+  const AData: TValue; ANeonObject: TNeonRttiObject;
+  AContext: IDeserializerContext): TValue;
+var
+  LIdValue: TJSONValue;
+  LResponse: TJRPCResponse;
+  LResult: TJSONValue;
+begin
+  LResponse := AData.AsType<TJRPCResponse>;
+  LResult := AValue.GetValue<TJSONValue>('result');
+  LResponse.Result := LResult.Clone as TJSONValue;
+
+  LIdValue := AValue.GetValue<TJSONValue>('id', nil);
+  if not Assigned(LIdValue) then
+    LResponse.Id := ''
+  else if LIdValue is TJSONNumber then
+    LResponse.Id := LIdValue.AsType<Integer>
+  else
+    LResponse.Id := LIdValue.Value;
+  LResponse.JsonRpc := AValue.GetValue<string>('jsonrpc');
+
+  Result := TValue.From<TJRPCResponse>(LResponse);
+end;
+
+class function TJResponseSerializer.GetTargetInfo: PTypeInfo;
+begin
+  Result := TJRPCResponse.ClassInfo;
+end;
+
+function TJResponseSerializer.Serialize(const AValue: TValue;
+  ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue;
+begin
+  Result := AContext.WriteDataMember(AValue, False);
 end;
 
 end.

@@ -45,14 +45,13 @@ type
   private
     FServer: TJRPCServer;
     FBridge: TJRPCIndyBridge;
-
     procedure ParseAuthentication(AContext: TIdContext; const AAuthType, AAuthData: String; var VUsername, VPassword: String; var VHandled: Boolean);
     procedure SetServer(const Value: TJRPCServer);
   public
-    property Server: TJRPCServer read FServer write SetServer;
-
     constructor Create(AOwner: TComponent);
     destructor Destroy; override;
+
+    property Server: TJRPCServer read FServer write SetServer;
   end;
 
 implementation

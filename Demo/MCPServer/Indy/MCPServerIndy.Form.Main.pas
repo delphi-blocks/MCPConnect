@@ -10,16 +10,13 @@ uses
   IdCustomHTTPServer, IdHTTPServer,
 
   MCPConnect.JRPC.Server,
-  MCPConnect.Transport.Indy,
-
   MCPConnect.MCP.Server.Api,
-
   MCPConnect.Configuration.MCP,
   MCPConnect.Configuration.Session,
   MCPConnect.Configuration.Auth,
-
   MCPConnect.Content.Writers.RTL,
-  MCPConnect.Content.Writers.VCL;
+  MCPConnect.Content.Writers.VCL,
+  MCPConnect.Transport.Indy;
 
 type
   TfrmMain = class(TForm)
@@ -35,8 +32,9 @@ type
     procedure ButtonStopClick(Sender: TObject);
     procedure ButtonOpenBrowserClick(Sender: TObject);
   private
-    IdHTTPServer1: TJRPCIndyServer;
+    FHTTPServer: TJRPCIndyServer;
     FJRPCServer: TJRPCServer;
+
     procedure StartServer;
   public
     { Public declarations }
@@ -56,9 +54,9 @@ uses
 
 procedure TfrmMain.ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
 begin
-  ButtonStart.Enabled := not IdHTTPServer1.Active;
-  ButtonStop.Enabled := IdHTTPServer1.Active;
-  EditPort.Enabled := not IdHTTPServer1.Active;
+  ButtonStart.Enabled := not FHTTPServer.Active;
+  ButtonStop.Enabled := FHTTPServer.Active;
+  EditPort.Enabled := not FHTTPServer.Active;
 end;
 
 procedure TfrmMain.ButtonOpenBrowserClick(Sender: TObject);
@@ -77,30 +75,27 @@ end;
 
 procedure TfrmMain.ButtonStopClick(Sender: TObject);
 begin
-  IdHTTPServer1.Active := False;
+  FHTTPServer.Active := False;
   Logger.Log('MCP Server Stopped', TLogLevel.Debug);
 end;
 
 procedure TfrmMain.FormCreate(Sender: TObject);
 begin
-  IdHTTPServer1 := TJRPCIndyServer.Create(Self);
-
+  FHTTPServer := TJRPCIndyServer.Create(Self);
   FJRPCServer := TJRPCServer.Create(Self);
-
   TServerConfigurator.ConfigureServer(FJRPCServer);
-
-  IdHTTPServer1.Server := FJRPCServer;
+  FHTTPServer.Server := FJRPCServer;
 
   StartServer;
 end;
 
 procedure TfrmMain.StartServer;
 begin
-  if not IdHTTPServer1.Active then
+  if not FHTTPServer.Active then
   begin
-    IdHTTPServer1.Bindings.Clear;
-    IdHTTPServer1.DefaultPort := StrToInt(EditPort.Text);
-    IdHTTPServer1.Active := True;
+    FHTTPServer.Bindings.Clear;
+    FHTTPServer.DefaultPort := StrToInt(EditPort.Text);
+    FHTTPServer.Active := True;
     Logger.Log('MCP Server Started', TLogLevel.Debug);
   end;
 end;

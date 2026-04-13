@@ -224,10 +224,12 @@ begin
 end;
 
 procedure TfrmMain.actRttiCallExecute(Sender: TObject);
+{
 var
   LContext: TJRPCContext;
   LRequest: TJRPCRequest;
   LResponse: TJRPCResponse;
+}
 begin
 {
   // Build the test request

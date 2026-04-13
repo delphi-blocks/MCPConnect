@@ -176,8 +176,11 @@ begin
     FContext.GC.Add(LResult);
     LResponse := TJRPCResponse.Create;
   except
-    raise EJRPCException.CreateFmt('Error calling Api method [%s.%s]',
-      [FContext.ApiInstance.ClassName, FContext.Request.Method]);
+    on E: EJRPCException do
+      raise;
+    on E: Exception do
+      raise EJRPCException.CreateFmt('Error calling Api method [%s.%s]',
+        [FContext.ApiInstance.ClassName, FContext.Request.Method]);
   end;
 
   LResponse.Id := FContext.Request.Id;

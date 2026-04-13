@@ -838,9 +838,9 @@ begin
   if AValue is TJSONNumber then
   begin
     if (AValue as TJSONNumber).Value.Contains('.') then
-      LType := TRttiUtils.Context.GetType(TypeInfo(Integer))
+      LType := TRttiUtils.Context.GetType(TypeInfo(Double))
     else
-      LType := TRttiUtils.Context.GetType(TypeInfo(Double));
+      LType := TRttiUtils.Context.GetType(TypeInfo(Integer));
 
     LValue := AContext.ReadDataMember(AValue, LType, AData, False);
   end

@@ -25,7 +25,7 @@ uses
 
 type
   // Custom session class for testing
-  TCustomTestSession = class(TSessionBase)
+  TCustomTestSession = class(TMCPSessionBase)
   private
     FUserName: string;
     FUserRole: string;
@@ -35,9 +35,9 @@ type
   end;
 
   [TestFixture]
-  TSessionDataTest = class(TObject)
+  TMCPSessionDataTest = class(TObject)
   private
-    FSession: TSessionData;
+    FSession: TMCPSessionData;
   public
     [Setup]
     procedure Setup;
@@ -72,9 +72,9 @@ type
   end;
 
   [TestFixture]
-  TSessionManagerTest = class(TObject)
+  TMCPSessionManagerTest = class(TObject)
   private
-    FManager: TSessionManager;
+    FManager: TMCPSessionManager;
   public
     [Setup]
     procedure Setup;
@@ -128,27 +128,27 @@ type
 
 implementation
 
-{ TSessionDataTest }
+{ TMCPSessionDataTest }
 
-procedure TSessionDataTest.Setup;
+procedure TMCPSessionDataTest.Setup;
 begin
-  FSession := TSessionData.Create;
+  FSession := TMCPSessionData.Create;
 end;
 
-procedure TSessionDataTest.TearDown;
+procedure TMCPSessionDataTest.TearDown;
 begin
   FSession.Free;
 end;
 
 { Creation and Destruction Tests }
 
-procedure TSessionDataTest.TestCreate;
+procedure TMCPSessionDataTest.TestCreate;
 begin
   Assert.IsNotNull(FSession, 'Session should be created');
   Assert.IsNotNull(FSession.Data, 'Data property should be initialized');
 end;
 
-procedure TSessionDataTest.TestDataInitialized;
+procedure TMCPSessionDataTest.TestDataInitialized;
 begin
   Assert.IsTrue(FSession.Data is TJSONObject, 'Data should be a TJSONObject');
   Assert.AreEqual(0, FSession.Data.Count, 'Data should be empty initially');
@@ -156,7 +156,7 @@ end;
 
 { JSON Data Operations Tests }
 
-procedure TSessionDataTest.TestAddSimpleValue;
+procedure TMCPSessionDataTest.TestAddSimpleValue;
 begin
   FSession.Data.AddPair('username', 'john_doe');
 
@@ -164,7 +164,7 @@ begin
   Assert.AreEqual('john_doe', FSession.Data.GetValue<string>('username'), 'Username should match');
 end;
 
-procedure TSessionDataTest.TestAddMultipleValues;
+procedure TMCPSessionDataTest.TestAddMultipleValues;
 begin
   FSession.Data.AddPair('username', 'john_doe');
   FSession.Data.AddPair('userId', TJSONNumber.Create(123));
@@ -176,7 +176,7 @@ begin
   Assert.AreEqual(True, FSession.Data.GetValue<Boolean>('isActive'), 'IsActive should be True');
 end;
 
-procedure TSessionDataTest.TestRetrieveValue;
+procedure TMCPSessionDataTest.TestRetrieveValue;
 var
   LValue: TJSONValue;
 begin
@@ -187,7 +187,7 @@ begin
   Assert.AreEqual('testValue', LValue.Value, 'Retrieved value should match');
 end;
 
-procedure TSessionDataTest.TestUpdateValue;
+procedure TMCPSessionDataTest.TestUpdateValue;
 begin
   FSession.Data.AddPair('counter', TJSONNumber.Create(1));
   Assert.AreEqual(1, FSession.Data.GetValue<Integer>('counter'), 'Initial counter should be 1');
@@ -199,7 +199,7 @@ begin
   Assert.AreEqual(2, FSession.Data.GetValue<Integer>('counter'), 'Updated counter should be 2');
 end;
 
-procedure TSessionDataTest.TestRemoveValue;
+procedure TMCPSessionDataTest.TestRemoveValue;
 var
   LPair: TJSONPair;
 begin
@@ -215,7 +215,7 @@ begin
   end;
 end;
 
-procedure TSessionDataTest.TestDataPersistence;
+procedure TMCPSessionDataTest.TestDataPersistence;
 begin
   FSession.Data.AddPair('persistent', 'value');
 
@@ -227,7 +227,7 @@ end;
 
 { Complex Data Types Tests }
 
-procedure TSessionDataTest.TestAddJSONObject;
+procedure TMCPSessionDataTest.TestAddJSONObject;
 var
   LUserData: TJSONObject;
   LRetrieved: TJSONObject;
@@ -246,7 +246,7 @@ begin
   Assert.AreEqual(30, LRetrieved.GetValue<Integer>('age'), 'User age should match');
 end;
 
-procedure TSessionDataTest.TestAddJSONArray;
+procedure TMCPSessionDataTest.TestAddJSONArray;
 var
   LItems: TJSONArray;
   LRetrieved: TJSONArray;
@@ -264,35 +264,35 @@ begin
   Assert.AreEqual('item1', LRetrieved.Items[0].Value, 'First item should match');
 end;
 
-{ TSessionManagerTest }
+{ TMCPSessionManagerTest }
 
-procedure TSessionManagerTest.Setup;
+procedure TMCPSessionManagerTest.Setup;
 begin
-  FManager := TSessionManager.Create;
+  FManager := TMCPSessionManager.Create;
   FManager.TimeoutMinutes := 30;
 end;
 
-procedure TSessionManagerTest.TearDown;
+procedure TMCPSessionManagerTest.TearDown;
 begin
   FManager.Free;
 end;
 
 { Session Creation Tests }
 
-procedure TSessionManagerTest.TestCreateSession;
+procedure TMCPSessionManagerTest.TestCreateSession;
 var
-  LSession: TSessionBase;
+  LSession: TMCPSessionBase;
 begin
   LSession := FManager.CreateSession;
 
   Assert.IsNotNull(LSession, 'Created session should not be null');
   Assert.IsNotEmpty(LSession.SessionId, 'Session should have an ID');
-  Assert.IsTrue(LSession is TSessionData, 'Default session should be TSessionData');
+  Assert.IsTrue(LSession is TMCPSessionData, 'Default session should be TMCPSessionData');
 end;
 
-procedure TSessionManagerTest.TestCreateMultipleSessions;
+procedure TMCPSessionManagerTest.TestCreateMultipleSessions;
 var
-  LSession1, LSession2: TSessionBase;
+  LSession1, LSession2: TMCPSessionBase;
 begin
   LSession1 := FManager.CreateSession;
   LSession2 := FManager.CreateSession;
@@ -302,12 +302,12 @@ begin
   Assert.AreNotEqual(LSession1.SessionId, LSession2.SessionId, 'Session IDs should be unique');
 end;
 
-procedure TSessionManagerTest.TestSessionHasUniqueId;
+procedure TMCPSessionManagerTest.TestSessionHasUniqueId;
 var
-  LSessions: TList<TSessionBase>;
+  LSessions: TList<TMCPSessionBase>;
   I: Integer;
 begin
-  LSessions := TList<TSessionBase>.Create;
+  LSessions := TList<TMCPSessionBase>.Create;
   try
     // Create 1000 sessions
     for I := 1 to 1000 do
@@ -323,9 +323,9 @@ begin
   end;
 end;
 
-procedure TSessionManagerTest.TestSessionInitialTimestamps;
+procedure TMCPSessionManagerTest.TestSessionInitialTimestamps;
 var
-  LSession: TSessionBase;
+  LSession: TMCPSessionBase;
   LBefore, LAfter: TDateTime;
 begin
   LBefore := Now;
@@ -339,9 +339,9 @@ end;
 
 { Session Retrieval Tests }
 
-procedure TSessionManagerTest.TestGetSession;
+procedure TMCPSessionManagerTest.TestGetSession;
 var
-  LCreated, LRetrieved: TSessionBase;
+  LCreated, LRetrieved: TMCPSessionBase;
 begin
   LCreated := FManager.CreateSession;
   LRetrieved := FManager.GetSession(LCreated.SessionId);
@@ -351,10 +351,10 @@ begin
   Assert.AreSame(LCreated, LRetrieved, 'Should return same session instance');
 end;
 
-procedure TSessionManagerTest.TestTryGetSession;
+procedure TMCPSessionManagerTest.TestTryGetSession;
 var
-  LSession: TSessionBase;
-  LCreated: TSessionBase;
+  LSession: TMCPSessionBase;
+  LCreated: TMCPSessionBase;
   LFound: Boolean;
 begin
   LCreated := FManager.CreateSession;
@@ -366,9 +366,9 @@ begin
   Assert.AreEqual(LCreated.SessionId, LSession.SessionId, 'Session IDs should match');
 end;
 
-procedure TSessionManagerTest.TestGetSessionUpdatesLastAccess;
+procedure TMCPSessionManagerTest.TestGetSessionUpdatesLastAccess;
 var
-  LSession: TSessionBase;
+  LSession: TMCPSessionBase;
   LInitialAccess: TDateTime;
 begin
   LSession := FManager.CreateSession;
@@ -383,9 +383,9 @@ begin
   Assert.IsTrue(LSession.LastAccessedAt > LInitialAccess, 'LastAccessedAt should be updated');
 end;
 
-procedure TSessionManagerTest.TestSessionExists;
+procedure TMCPSessionManagerTest.TestSessionExists;
 var
-  LSession: TSessionBase;
+  LSession: TMCPSessionBase;
 begin
   LSession := FManager.CreateSession;
 
@@ -395,9 +395,9 @@ end;
 
 { Session Destruction Tests }
 
-procedure TSessionManagerTest.TestDestroySession;
+procedure TMCPSessionManagerTest.TestDestroySession;
 var
-  LSession: TSessionBase;
+  LSession: TMCPSessionBase;
   LSessionId: string;
 begin
   LSession := FManager.CreateSession;
@@ -410,7 +410,7 @@ begin
   Assert.IsFalse(FManager.SessionExists(LSessionId), 'Session should not exist after destruction');
 end;
 
-procedure TSessionManagerTest.TestDestroyNonExistentSession;
+procedure TMCPSessionManagerTest.TestDestroyNonExistentSession;
 begin
   // Should not raise an exception
   FManager.DestroySession('nonexistent-id');
@@ -419,9 +419,9 @@ end;
 
 { Timeout and Expiration Tests }
 
-procedure TSessionManagerTest.TestSessionTimeout;
+procedure TMCPSessionManagerTest.TestSessionTimeout;
 var
-  LSession: TSessionBase;
+  LSession: TMCPSessionBase;
 begin
   FManager.TimeoutMinutes := 1; // 1 minute timeout
 
@@ -430,20 +430,20 @@ begin
   // Manually set LastAccessedAt to 2 minutes ago
   LSession.LastAccessedAt := IncMinute(Now, -2);
 
-  // Try to get the session - should raise ESessionExpiredError
+  // Try to get the session - should raise EMCPSessionExpiredError
   Assert.WillRaise(
     procedure
     begin
       FManager.GetSession(LSession.SessionId);
     end,
-    ESessionExpiredError,
-    'Getting expired session should raise ESessionExpiredError'
+    EMCPSessionExpiredError,
+    'Getting expired session should raise EMCPSessionExpiredError'
   );
 end;
 
-procedure TSessionManagerTest.TestExpiredSessionRemoved;
+procedure TMCPSessionManagerTest.TestExpiredSessionRemoved;
 var
-  LSession: TSessionBase;
+  LSession: TMCPSessionBase;
   LSessionId: string;
 begin
   FManager.TimeoutMinutes := 1;
@@ -460,14 +460,14 @@ begin
   try
     FManager.GetSession(LSessionId);
   except
-    on E: ESessionExpiredError do
+    on E: EMCPSessionExpiredError do
       ; // Expected
   end;
 
   Assert.IsFalse(FManager.SessionExists(LSessionId), 'Expired session should be removed after access attempt');
 end;
 
-procedure TSessionManagerTest.TestTimeoutConfiguration;
+procedure TMCPSessionManagerTest.TestTimeoutConfiguration;
 begin
   FManager.TimeoutMinutes := 60;
   Assert.AreEqual(60, FManager.TimeoutMinutes, 'Timeout should be configurable');
@@ -478,9 +478,9 @@ end;
 
 { Custom Session Class Tests }
 
-procedure TSessionManagerTest.TestCustomSessionClass;
+procedure TMCPSessionManagerTest.TestCustomSessionClass;
 var
-  LSession: TSessionBase;
+  LSession: TMCPSessionBase;
   LCustomSession: TCustomTestSession;
 begin
   FManager.SessionClass := TCustomTestSession;
@@ -499,21 +499,21 @@ end;
 
 { Error Handling Tests }
 
-procedure TSessionManagerTest.TestGetNonExistentSessionRaisesException;
+procedure TMCPSessionManagerTest.TestGetNonExistentSessionRaisesException;
 begin
   Assert.WillRaise(
     procedure
     begin
       FManager.GetSession('nonexistent-id');
     end,
-    ESessionNotFoundError,
-    'Getting non-existent session should raise ESessionNotFoundError'
+    EMCPSessionNotFoundError,
+    'Getting non-existent session should raise EMCPSessionNotFoundError'
   );
 end;
 
-procedure TSessionManagerTest.TestGetExpiredSessionRaisesException;
+procedure TMCPSessionManagerTest.TestGetExpiredSessionRaisesException;
 var
-  LSession: TSessionBase;
+  LSession: TMCPSessionBase;
 begin
   FManager.TimeoutMinutes := 1;
   LSession := FManager.CreateSession;
@@ -526,13 +526,13 @@ begin
     begin
       FManager.GetSession(LSession.SessionId);
     end,
-    ESessionExpiredError,
-    'Getting expired session should raise ESessionExpiredError'
+    EMCPSessionExpiredError,
+    'Getting expired session should raise EMCPSessionExpiredError'
   );
 end;
 
 initialization
-  TDUnitX.RegisterTestFixture(TSessionDataTest);
-  TDUnitX.RegisterTestFixture(TSessionManagerTest);
+  TDUnitX.RegisterTestFixture(TMCPSessionDataTest);
+  TDUnitX.RegisterTestFixture(TMCPSessionManagerTest);
 
 end.

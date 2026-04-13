@@ -35,7 +35,6 @@ uses
   MCPConnect.Configuration.MCP in '..\Source\MCPConnect.Configuration.MCP.pas',
   MCPConnect.Configuration.Neon in '..\Source\MCPConnect.Configuration.Neon.pas',
   MCPConnect.Configuration.Session in '..\Source\MCPConnect.Configuration.Session.pas',
-  MCPConnect.Core.Utils in '..\Source\MCPConnect.Core.Utils.pas',
   MCPConnect.JRPC.Core in '..\Source\MCPConnect.JRPC.Core.pas',
   MCPConnect.JRPC.Invoker in '..\Source\MCPConnect.JRPC.Invoker.pas',
   MCPConnect.JRPC.Server in '..\Source\MCPConnect.JRPC.Server.pas',

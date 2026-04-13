@@ -333,8 +333,8 @@ begin
     LResponse.Id := 1;
     LResponse.Result := TJSONNumber.Create(42);
 
-    Assert.IsFalse(LResponse.IsError, 'Response with result should not be an error');
-    Assert.IsFalse(LResponse.IsNotification, 'Response with result should not be a notification');
+    Assert.IsFalse(LResponse.GetType = TJRPCMessageType.Error, 'Response with result should not be an error');
+    Assert.IsFalse(LResponse.GetType = TJRPCMessageType.Notification, 'Response with result should not be a notification');
     Assert.AreEqual(42, LResponse.Result.GetValue<Integer>, 'Result value should be 42');
   finally
     LResponse.Free;
@@ -343,16 +343,16 @@ end;
 
 procedure TJRPCCoreTest.TestResponseWithError;
 var
-  LResponse: TJRPCResponse;
+  LResponse: TJRPCError;
 begin
-  LResponse := TJRPCResponse.Create;
+  LResponse := TJRPCError.Create;
   try
     LResponse.Id := 2;
     LResponse.Error.Code := -32601;
     LResponse.Error.Message := 'Method not found';
 
-    Assert.IsTrue(LResponse.IsError, 'Response with error should be marked as error');
-    Assert.IsFalse(LResponse.IsNotification, 'Response with error should not be a notification');
+    Assert.IsTrue(LResponse.GetType = TJRPCMessageType.Error, 'Response with error should be marked as error');
+    Assert.IsFalse(LResponse.GetType = TJRPCMessageType.Notification, 'Response with error should not be a notification');
     Assert.AreEqual(-32601, LResponse.Error.Code.Value, 'Error code should be -32601');
     Assert.AreEqual('Method not found', LResponse.Error.Message.Value, 'Error message should be "Method not found"');
   finally
@@ -362,35 +362,35 @@ end;
 
 procedure TJRPCCoreTest.TestResponseIsError;
 var
-  LResponse: TJRPCResponse;
+  LError: TJRPCError;
 begin
-  LResponse := TJRPCResponse.Create;
+  LError := TJRPCError.Create;
   try
-    // No error set
-    Assert.IsFalse(LResponse.IsError, 'Response without error should return False for IsError');
-
-    // Set error
-    LResponse.Error.Code := -32600;
-    LResponse.Error.Message := 'Invalid Request';
-    Assert.IsTrue(LResponse.IsError, 'Response with error code and message should return True for IsError');
+    Assert.IsTrue(LError.GetType = TJRPCMessageType.Error, 'TJRPCError type should always be Error');
+    LError.Error.Code := -32600;
+    LError.Error.Message := 'Invalid Request';
+    Assert.AreEqual(-32600, LError.Error.Code.Value, 'Error code should be set correctly');
+    Assert.AreEqual('Invalid Request', LError.Error.Message.Value, 'Error message should be set correctly');
   finally
-    LResponse.Free;
+    LError.Free;
   end;
 end;
 
 procedure TJRPCCoreTest.TestResponseIsNotification;
 var
+  LNotification: TJRPCNotification;
   LResponse: TJRPCResponse;
 begin
+  LNotification := TJRPCNotification.Create;
+  try
+    Assert.IsTrue(LNotification.GetType = TJRPCMessageType.Notification, 'TJRPCNotification type should be Notification');
+  finally
+    LNotification.Free;
+  end;
+
   LResponse := TJRPCResponse.Create;
   try
-    // Initially is notification (no result, no error)
-    LResponse.Result := nil;
-    Assert.IsTrue(LResponse.IsNotification, 'Response without result and error should be a notification');
-
-    // Add result
-    LResponse.Result := TJSONNumber.Create(1);
-    Assert.IsFalse(LResponse.IsNotification, 'Response with result should not be a notification');
+    Assert.IsTrue(LResponse.GetType = TJRPCMessageType.Response, 'TJRPCResponse type should be Response, not Notification');
   finally
     LResponse.Free;
   end;
@@ -419,16 +419,16 @@ end;
 
 procedure TJRPCCoreTest.TestResponseSerializeError;
 var
-  LResponse: TJRPCResponse;
+  LError: TJRPCError;
   LJson: string;
 begin
-  LResponse := TJRPCResponse.Create;
+  LError := TJRPCError.Create;
   try
-    LResponse.Id := 2;
-    LResponse.Error.Code := -32700;
-    LResponse.Error.Message := 'Parse error';
+    LError.Id := 2;
+    LError.Error.Code := -32700;
+    LError.Error.Message := 'Parse error';
 
-    LJson := LResponse.ToJson;
+    LJson := LError.ToJson;
     Assert.IsNotEmpty(LJson, 'Serialized JSON should not be empty');
     Assert.IsTrue(LJson.Contains('"jsonrpc"'), 'JSON should contain "jsonrpc" field');
     Assert.IsTrue(LJson.Contains('"id"'), 'JSON should contain "id" field');
@@ -437,39 +437,46 @@ begin
     Assert.IsTrue(LJson.Contains('"message"'), 'JSON error should contain "message" field');
     Assert.IsFalse(LJson.Contains('"result"'), 'JSON should not contain "result" field when error is present');
   finally
-    LResponse.Free;
+    LError.Free;
   end;
 end;
 
 procedure TJRPCCoreTest.TestResponseDeserializeResult;
 var
+  LMessages: TJRPCMessages;
   LResponse: TJRPCResponse;
 begin
-  LResponse := TJRPCResponse.CreateFromJson(ResponseWithResult);
+  LMessages := TJRPCMessages.CreateFromJson(ResponseWithResult);
   try
-    //raise Exception.Create(LResponse.ToJson);
+    Assert.AreEqual(NativeInt(1), LMessages.Count, 'Should contain one message');
+    Assert.IsTrue(LMessages.List[0] is TJRPCResponse, 'Message should be a TJRPCResponse');
+    LResponse := LMessages.List[0] as TJRPCResponse;
     Assert.AreEqual('2.0', LResponse.JsonRpc, 'JsonRpc version should be 2.0');
     Assert.AreEqual(1, Integer(LResponse.Id), 'Id should be 1');
-    Assert.IsFalse(LResponse.IsError, 'Response should not be an error');
+    Assert.IsTrue(LResponse.GetType = TJRPCMessageType.Response, 'Deserialized response should be of type Response');
     Assert.AreEqual(42, LResponse.Result.GetValue<Integer>, 'Result value should be 42');
   finally
-    LResponse.Free;
+    LMessages.Free;
   end;
 end;
 
 procedure TJRPCCoreTest.TestResponseDeserializeError;
 var
-  LResponse: TJRPCResponse;
+  LMessages: TJRPCMessages;
+  LError: TJRPCError;
 begin
-  LResponse := TJRPCResponse.CreateFromJson(ResponseWithError);
+  LMessages := TJRPCMessages.CreateFromJson(ResponseWithError);
   try
-    Assert.AreEqual('2.0', LResponse.JsonRpc, 'JsonRpc version should be 2.0');
-    Assert.AreEqual(Integer(2), Integer(LResponse.Id), 'Id should be 2');
-    Assert.IsTrue(LResponse.IsError, 'Response should be marked as error');
-    Assert.AreEqual(-32601, LResponse.Error.Code.Value, 'Error code should be -32601');
-    Assert.AreEqual('Method not found', LResponse.Error.Message.Value, 'Error message should be "Method not found"');
+    Assert.AreEqual(NativeInt(1), LMessages.Count, 'Should contain one message');
+    Assert.IsTrue(LMessages.List[0] is TJRPCError, 'Message should be a TJRPCError');
+    LError := LMessages.List[0] as TJRPCError;
+    Assert.AreEqual('2.0', LError.JsonRpc, 'JsonRpc version should be 2.0');
+    Assert.AreEqual(Integer(2), Integer(LError.Id), 'Id should be 2');
+    Assert.IsTrue(LError.GetType = TJRPCMessageType.Error, 'Deserialized error should be of type Error');
+    Assert.AreEqual(-32601, LError.Error.Code.Value, 'Error code should be -32601');
+    Assert.AreEqual('Method not found', LError.Error.Message.Value, 'Error message should be "Method not found"');
   finally
-    LResponse.Free;
+    LMessages.Free;
   end;
 end;
 

@@ -19,7 +19,7 @@ uses
   System.SysUtils, System.Rtti, System.Generics.Collections,
   DUnitX.TestFramework,
 
-  MCPConnect.Core.Utils;
+  MCPConnect.JRPC.Classes;
 
 type
   [TestFixture]

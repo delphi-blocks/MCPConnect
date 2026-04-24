@@ -16,8 +16,8 @@ unit MCPConnect.Transport.Indy;
 interface
 
 uses
-  System.Classes, System.SysUtils,
-  IdCustomHTTPServer, IdContext, IdGlobal,
+  System.Classes, System.SysUtils, System.Generics.Collections,
+  IdCustomHTTPServer, IdContext, IdGlobal, IdGlobalProtocols, IdTCPConnection,
 
   MCPConnect.JRPC.Core,
   MCPConnect.JRPC.Server,
@@ -31,8 +31,10 @@ type
     procedure LogResponse(const AResponse: TMCPTransportResponse);
     procedure LogHttpResponse(const AResponse: TIdHTTPResponseInfo);
 
-    procedure ConvertRequest(AHttpRequest: TIdHTTPRequestInfo; var ARequest: TMCPTransportRequest);
-    procedure ConvertResponse(const AResponse: TMCPTransportResponse; AHttpResponse: TIdHTTPResponseInfo);
+    procedure SendHeaders(const AResponse: TMCPTransportResponse; AContext: TIdContext; AHttpResponse: TIdHTTPResponseInfo);
+
+    procedure ConvertRequest(AContext: TIdContext; AHttpRequest: TIdHTTPRequestInfo; var ARequest: TMCPTransportRequest);
+    procedure ConvertResponse(const AResponse: TMCPTransportResponse; AContext: TIdContext; AHttpResponse: TIdHTTPResponseInfo);
 
     function ReadContentStream(ARequestInfo: TIdHTTPRequestInfo): string;
   public
@@ -54,12 +56,22 @@ type
     property Server: TJRPCServer read FServer write SetServer;
   end;
 
+  TMCPSSEResponseWriterIndy = class(TMCPSSEResponseWriter)
+  private
+    FConnection: TIdTCPConnection;
+  protected
+    function InternalConnected: Boolean; override;
+    procedure InternalWriteLine(const AValue: string); override;
+  public
+    constructor Create(AConnection: TIdTCPConnection);
+  end;
+
 implementation
 
 uses
   System.IOUtils, Logify;
 
-procedure TJRPCIndyBridge.ConvertRequest(AHttpRequest: TIdHTTPRequestInfo; var ARequest: TMCPTransportRequest);
+procedure TJRPCIndyBridge.ConvertRequest(AContext: TIdContext; AHttpRequest: TIdHTTPRequestInfo; var ARequest: TMCPTransportRequest);
 var
   LIndex: Integer;
 begin
@@ -75,19 +87,33 @@ begin
 end;
 
 procedure TJRPCIndyBridge.ConvertResponse(const AResponse: TMCPTransportResponse;
-  AHttpResponse: TIdHTTPResponseInfo);
+  AContext: TIdContext; AHttpResponse: TIdHTTPResponseInfo);
 var
   LIndex: Integer;
+  LWriter: IMCPSSEResponseWriter;
 begin
   for LIndex := 0 to AResponse.Headers.Count - 1 do
     AHttpResponse.CustomHeaders.AddPair(AResponse.Headers.RawHeaders[LIndex].Key,
       AResponse.Headers.RawHeaders[LIndex].Value);
 
-  AHttpResponse.ResponseNo := AResponse.Code;
-  AHttpResponse.ContentText := AResponse.Content;
-  AHttpResponse.ContentType := AResponse.ContentType;
+  if Assigned(AResponse.WriterProc) then
+  begin
+    AHttpResponse.ContentType := 'text/event-stream';
+    AHttpResponse.ContentLength := -2; // Trick to stop indy to send Content-Length
+    SendHeaders(AResponse, AContext, AHttpResponse);
 
-  LogHttpResponse(AHttpResponse);
+    LWriter := TMCPSSEResponseWriterIndy.Create(AContext.Connection);
+    AResponse.WriterProc(LWriter);
+  end
+  else
+  begin
+    AHttpResponse.ResponseNo := AResponse.Code;
+    AHttpResponse.ContentText := AResponse.Content;
+    AHttpResponse.ContentType := AResponse.ContentType;
+
+    LogHttpResponse(AHttpResponse);
+  end;
+
 end;
 
 procedure TJRPCIndyBridge.HandleRequest(AContext: TIdContext;
@@ -102,9 +128,9 @@ begin
 
   LMcpHandler := TMCPTransportHandler.Create(FServer);
 
-  ConvertRequest(ARequestInfo, LRequest);
+  ConvertRequest(AContext, ARequestInfo, LRequest);
   LMcpHandler.HandleRequest(LRequest, LResponse);
-  ConvertResponse(LResponse, AResponseInfo);
+  ConvertResponse(LResponse, AContext, AResponseInfo);
 end;
 
 { TJRPCIndyServer }
@@ -185,6 +211,63 @@ begin
 
   ARequestInfo.PostStream.Position := 0;
   Result := ReadStringFromStream(ARequestInfo.PostStream, -1, LEncoding);
+end;
+
+procedure TJRPCIndyBridge.SendHeaders(const AResponse: TMCPTransportResponse;
+  AContext: TIdContext; AHttpResponse: TIdHTTPResponseInfo);
+
+  function IsIndyHeader(const Name: string): Boolean;
+  const
+    IndyHeaders: array [0..4] of string = ('Date', 'Content-Type', 'Content-Length', 'Connection', 'Transfer-Encoding');
+  var
+    IndyHeader: string;
+  begin
+    Result := False;
+    for IndyHeader in IndyHeaders do
+      if CompareText(Name, IndyHeader) = 0 then
+        Exit(True);
+  end;
+
+var
+  LHeaderPair: TPair<string, string>;
+begin
+  inherited;
+  AHttpResponse.Date := GMTToLocalDateTime(AResponse.Headers.Get('Date'));
+  AHttpResponse.CustomHeaders.Clear;
+
+  for LHeaderPair in AResponse.Headers.RawHeaders do
+  begin
+    if IsIndyHeader(LHeaderPair.Key) then
+      Continue;
+    AHttpResponse.CustomHeaders.AddValue(LHeaderPair.Key, LHeaderPair.Value);
+  end;
+  AHttpResponse.TransferEncoding := AResponse.Headers.Get('Transfer-Encoding');
+
+  if AResponse.Headers.Get('Connection') <> '' then
+    AHttpResponse.Connection := AResponse.Headers.Get('Connection');
+
+  //SendCookies;
+
+    AHttpResponse.WriteHeader;
+end;
+
+{ TMCPSSEResponseWriterIndy }
+
+constructor TMCPSSEResponseWriterIndy.Create(AConnection: TIdTCPConnection);
+begin
+  inherited Create;
+  FConnection := AConnection;
+end;
+
+function TMCPSSEResponseWriterIndy.InternalConnected: Boolean;
+begin
+  Result := FConnection.Connected;
+end;
+
+procedure TMCPSSEResponseWriterIndy.InternalWriteLine(const AValue: string);
+begin
+  inherited;
+  FConnection.Socket.WriteLn(AValue, IndyTextEncoding_UTF8);
 end;
 
 end.

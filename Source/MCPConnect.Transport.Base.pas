@@ -41,6 +41,38 @@ const
   HTTP_CODE_NOTACCEPTABLE = 406;
 
 type
+  IMCPSSEResponseWriter = interface
+    ['{68598454-50C5-4892-B8E0-81687CC2F4DE}']
+    procedure Write(const AValue: string); overload;
+    procedure Write(const AEvent, AValue: string); overload;
+    procedure Write(const AEvent, AValue: string; ARetry: Integer); overload;
+    procedure Write(const AId, AEvent, AValue: string; ARetry: Integer); overload;
+    procedure Write(const AId, AEvent, AValue: string); overload;
+    procedure Write(AId: Integer; const AEvent, AValue: string; ARetry: Integer); overload;
+    procedure Write(AId: Integer; const AEvent, AValue: string); overload;
+    procedure WriteComment(const AValue: string); overload;
+    function Connected: Boolean;
+  end;
+
+  TMCPSSEResponseWriter = class(TInterfacedObject, IMCPSSEResponseWriter)
+  protected
+    function SplitString(const AValue: string): TArray<string>;
+    function InternalConnected: Boolean; virtual; abstract;
+    procedure InternalWriteLine(const AValue: string); virtual; abstract;
+  public
+    { IMCPSSEResponseWriter }
+    procedure Write(const AValue: string); overload;
+    procedure Write(const AEvent, AValue: string); overload;
+    procedure Write(const AEvent, AValue: string; ARetry: Integer); overload;
+    procedure Write(const AId, AEvent, AValue: string; ARetry: Integer); overload;
+    procedure Write(const AId, AEvent, AValue: string); overload;
+    procedure Write(AId: Integer; const AEvent, AValue: string; ARetry: Integer); overload;
+    procedure Write(AId: Integer; const AEvent, AValue: string); overload;
+    procedure WriteComment(const AValue: string); overload;
+    function Connected: Boolean;
+  end;
+
+  TMCPSSEResponseWriterProc = reference to procedure (AWriter: IMCPSSEResponseWriter);
 
   TMCPTransportHeaders = record
     RawHeaders: TArray<TPair<string, string>>;
@@ -63,12 +95,15 @@ type
 
   TMCPTransportResponse = record
   private
+    FWriterProc: TMCPSSEResponseWriterProc;
     function GetContentType: string;
     procedure SetContentType(const AValue: string);
   public
     Headers: TMCPTransportHeaders;
     Content: string;
     Code: Integer;
+    procedure SSEContent(AWriterProc: TMCPSSEResponseWriterProc);
+    property WriterProc: TMCPSSEResponseWriterProc read FWriterProc write FWriterProc;
     property ContentType: string read GetContentType write SetContentType;
   end;
 
@@ -118,11 +153,7 @@ type
     procedure HandleRequest(const ARequest: TMCPTransportRequest; var AResponse: TMCPTransportResponse);
   end;
 
-
-
-
 implementation
-
 
 uses
   System.IOUtils,
@@ -299,9 +330,43 @@ begin
 end;
 
 procedure TMCPTransportHandler.HandleGET(const ARequest: TMCPTransportRequest; var AResponse: TMCPTransportResponse);
+var
+  LGarbage: IGarbageCollector;
+  LContext: TJRPCContext;
+  LSession: TMCPSessionBase;
+  LSessionCreated: Boolean;
 begin
-  AResponse.Headers.AddOrSet('Allow', 'POST');
-  AResponse.Code := HTTP_CODE_NOTALLOWED;
+  //AResponse.Headers.AddOrSet('Allow', 'POST');
+  //AResponse.Code := HTTP_CODE_NOTALLOWED;
+
+  LSessionCreated := False;
+  LGarbage := TGarbageCollector.CreateInstance;
+  LContext := TJRPCContext.Create;
+
+  LGarbage.Add(LContext);
+  LContext.AddContent(LGarbage);
+  LContext.AddContent(FServer);
+
+  // Handle session (get existing or create new)
+  LSession := HandleSession(ARequest, LSessionCreated);
+
+  // Add session to context if available
+  if Assigned(LSession) then
+    LContext.AddContent(LSession);
+
+  AResponse.SSEContent(
+    procedure (AWriter: IMCPSSEResponseWriter)
+    begin
+      while AWriter.Connected  do
+      begin
+        // TODO:
+        // 1. Get the active session (exit if not found)
+        // 2. Tell the session that there's a SSE channel
+        // 3. Read messages from notification manager of the current session
+        // 4. Serialize the notifications and send to the Writer
+      end;
+    end
+  );
 end;
 
 procedure TMCPTransportHandler.HandleOPTIONS(const ARequest: TMCPTransportRequest; var AResponse: TMCPTransportResponse);
@@ -422,6 +487,12 @@ begin
   Headers.AddOrSet('Content-Type', AValue);
 end;
 
+procedure TMCPTransportResponse.SSEContent(
+  AWriterProc: TMCPSSEResponseWriterProc);
+begin
+  FWriterProc := AWriterProc;
+end;
+
 procedure TMCPRequestHandler.HandleMessages(AContext: TJRPCMsgContext);
 begin
   FContext := AContext;
@@ -516,6 +587,101 @@ begin
 
   Result := '------' + sLineBreak + Format('Request: [%s] %s', [Command, Url]) + sLineBreak + Result;
   Result := Result + Format('Content: %s', [Content]) + sLineBreak;
+end;
+
+{ TMCPSSEResponseWriter }
+
+function TMCPSSEResponseWriter.Connected: Boolean;
+begin
+  Result := InternalConnected;
+end;
+
+function TMCPSSEResponseWriter.SplitString(
+  const AValue: string): TArray<string>;
+var
+  LLines: TArray<string>;
+begin
+  LLines := AValue.Split([sLineBreak]);
+  if Length(LLines) = 0 then
+    LLines := AValue.Split([#13]);
+  if Length(LLines) = 0 then
+    LLines := AValue.Split([#10]);
+  if Length(LLines) = 0 then
+    LLines := [AValue];
+
+  Result := LLines;
+end;
+
+procedure TMCPSSEResponseWriter.Write(const AEvent, AValue: string;
+  ARetry: Integer);
+begin
+  Write('', AEvent, AValue, ARetry);
+end;
+
+procedure TMCPSSEResponseWriter.Write(const AEvent, AValue: string);
+begin
+  Write(AEvent, AValue, 0);
+end;
+
+procedure TMCPSSEResponseWriter.Write(const AValue: string);
+begin
+  Write('', AValue);
+end;
+
+procedure TMCPSSEResponseWriter.Write(AId: Integer; const AEvent,
+  AValue: string);
+begin
+  Write(AId.ToString, AEvent, AValue, 0);
+end;
+
+procedure TMCPSSEResponseWriter.Write(AId: Integer; const AEvent,
+  AValue: string; ARetry: Integer);
+begin
+  Write(AId.ToString, AEvent, AValue, ARetry);
+end;
+
+procedure TMCPSSEResponseWriter.Write(const AId, AEvent, AValue: string;
+  ARetry: Integer);
+var
+  LLines: TArray<string>;
+  LLine: string;
+  LMessage: string;
+begin
+  LLines := SplitString(AValue);
+
+  LMessage := '';
+  if AId <> '' then
+    LMessage := LMessage + 'id: ' + AId + #13#10;
+  if AEvent <> '' then
+    LMessage := LMessage + 'event: ' + AEvent + #13#10;
+  if ARetry > 0 then
+    LMessage := LMessage + 'retry: ' + IntToStr(ARetry) + #13#10;
+
+  for LLine in LLines do
+    LMessage := LMessage + 'data: ' + LLine + #13#10;
+
+  InternalWriteLine(LMessage);
+end;
+
+procedure TMCPSSEResponseWriter.Write(const AId, AEvent, AValue: string);
+begin
+  Write(AId, AEvent, AValue, 0);
+end;
+
+procedure TMCPSSEResponseWriter.WriteComment(const AValue: string);
+var
+  LLines: TArray<string>;
+  LLine: string;
+  LMessage: string;
+begin
+  LLines := SplitString(AValue);
+
+  LMessage := '';
+
+  for LLine in LLines do
+    LMessage := LMessage + ': ' + LLine + #13#10;
+
+  InternalWriteLine(LMessage);
 end;
 
 end.

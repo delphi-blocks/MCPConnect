@@ -109,6 +109,11 @@ type
   JRPCNotificationAttribute = class(TCustomAttribute);
 
   /// <summary>
+  ///   Status of JSON-RPC notification
+  /// </summary>
+  TJRPCNotificationStatus = (None, Peeked, Deleted);
+
+  /// <summary>
   ///   Base attribute for JSON-RPC related metadata
   /// </summary>
   JRPCAttribute = class(TCustomAttribute)
@@ -181,6 +186,7 @@ type
   public const
 	  JSONRPC_VERSION = '2.0';
   protected
+    FInternalId: Integer;
     FJsonRpc: string;
     function GetNeonConfig: INeonConfiguration;
   public
@@ -197,6 +203,15 @@ type
     ///   Deserializes the message from a JSON string.
     /// </summary>
     procedure FromJson(const AJSON: string); virtual;
+
+    /// <summary>
+    ///   Internal field to identify messages inside a system
+    /// </summary>
+    /// <remarks>
+    ///   This field has no relations with the JSON-RPC id field
+    /// </remarks>
+    [NeonIgnore]
+    property InternalId: Integer read FInternalId write FInternalId;
 
     /// <summary>
     ///   The JSON-RPC version (defaults to "2.0")
@@ -316,8 +331,13 @@ type
   ///   https://json-rpc.dev/learn/examples/notifications
   /// </summary>
   TJRPCNotification = class(TJRPCMethod)
+  private
+    FStatus: TJRPCNotificationStatus;
   public
     function GetType: TJRPCMessageType; override;
+
+    [NeonIgnore]
+    property Status: TJRPCNotificationStatus read FStatus write FStatus;
   end;
 
   /// <summary>
@@ -589,10 +609,26 @@ type
     property Responses: TJRPCMessages read GetResponses;
   end;
 
-/// <summary>
-///   Returns the default Neon configuration for JSON-RPC serialization.
-/// </summary>
-function JRPCNeonConfig: INeonConfiguration;
+  TMCPMessageQueue<T: TJRPCMessage> = class
+  protected
+    FMaxItems: Integer;
+    FQueue: TQueue<T>;
+  public
+    constructor Create(AMaxItems: Integer = 1000);
+    destructor Destroy; override;
+
+    procedure Enqueue(const Value: T); inline;
+    function Dequeue: T; inline;
+    function Peek: T; inline;
+    function Count: NativeInt; inline;
+  end;
+
+
+
+  /// <summary>
+  ///   Returns the default Neon configuration for JSON-RPC serialization.
+  /// </summary>
+  function JRPCNeonConfig: INeonConfiguration;
 
 implementation
 
@@ -1565,6 +1601,64 @@ function TJResponseSerializer.Serialize(const AValue: TValue;
   ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue;
 begin
   Result := AContext.WriteDataMember(AValue, False);
+end;
+
+{ TMCPMessageQueue<T> }
+
+function TMCPMessageQueue<T>.Count: NativeInt;
+begin
+  Result := FQueue.Count;
+end;
+
+constructor TMCPMessageQueue<T>.Create(AMaxItems: Integer);
+begin
+  FQueue := TQueue<T>.Create;
+  FMaxItems := AMaxItems;
+end;
+
+function TMCPMessageQueue<T>.Dequeue: T;
+begin
+  TMonitor.Enter(FQueue);
+  try
+    if FQueue.Count = 0 then
+      Result := nil
+    else
+      Result := FQueue.Dequeue;
+  finally
+    TMonitor.Exit(FQueue);
+  end;
+end;
+
+destructor TMCPMessageQueue<T>.Destroy;
+begin
+  while FQueue.Count > 0 do
+    FQueue.Dequeue.Free;
+
+  FQueue.Free;
+  inherited;
+end;
+
+procedure TMCPMessageQueue<T>.Enqueue(const Value: T);
+begin
+  TMonitor.Enter(FQueue);
+  try
+    if FQueue.Count = FMaxItems then
+      FQueue.Dequeue;
+
+    FQueue.Enqueue(Value);
+  finally
+    TMonitor.Exit(FQueue);
+  end;
+end;
+
+function TMCPMessageQueue<T>.Peek: T;
+begin
+  TMonitor.Enter(FQueue);
+  try
+    Result := FQueue.Peek;
+  finally
+    TMonitor.Exit(FQueue);
+  end;
 end;
 
 end.

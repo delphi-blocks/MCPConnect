@@ -102,6 +102,30 @@ type
     property LastAccessedAt: TDateTime read FLastAccessedAt write FLastAccessedAt;
   end;
 
+  TMCPNotificationQueue = class (TMCPMessageQueue<TJRPCNotification>)
+  end;
+
+  TMCPResponseQueue = class (TMCPMessageQueue<TJRPCResponse>)
+  end;
+
+  TMCPRequestQueue = class (TMCPMessageQueue<TJRPCRequest>)
+  end;
+
+  TMCPErrorQueue = class (TMCPMessageQueue<TJRPCError>)
+  end;
+
+  TMCPSessionQueues = class
+    Notifications: TMCPNotificationQueue;
+    Responses: TMCPResponseQueue;
+    Requests: TMCPRequestQueue;
+    Errors: TMCPErrorQueue;
+
+    constructor Create(AMaxItems: Integer);
+    destructor Destroy; override;
+
+  end;
+
+
   /// <summary>
   ///   Concrete session data implementation with JSON storage.
   ///   Use this if you need dynamic storage without creating a custom class.
@@ -110,6 +134,8 @@ type
   TMCPSessionData = class(TMCPSessionBase)
   private
     FData: TJSONObject;
+    FInbound: TMCPSessionQueues;
+    FOutbound: TMCPSessionQueues;
   public
     /// <summary>
     ///   Direct access to the JSON data object.
@@ -117,6 +143,8 @@ type
     ///   Memory management is handled automatically by the session.
     /// </summary>
     property Data: TJSONObject read FData;
+    property Inbound: TMCPSessionQueues read FInbound write FInbound;
+    property Outbound: TMCPSessionQueues read FOutbound write FOutbound;
 
     constructor Create;
     destructor Destroy; override;
@@ -141,6 +169,12 @@ type
   protected
     class function GetInstance: TMCPSessionManager; static;
   public
+    class constructor Create;
+    class destructor Destroy;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
     /// <summary>
     ///   Create a new session with a generated ID
     /// </summary>
@@ -180,11 +214,6 @@ type
     ///   Singleton instance of the session manager
     /// </summary>
     class property Instance: TMCPSessionManager read GetInstance;
-
-    class constructor Create;
-    class destructor Destroy;
-    constructor Create;
-    destructor Destroy; override;
   end;
 
 implementation
@@ -228,10 +257,14 @@ constructor TMCPSessionData.Create;
 begin
   inherited Create;
   FData := TJSONObject.Create;
+  FInbound := TMCPSessionQueues.Create(100);
+  FOutbound := TMCPSessionQueues.Create(100);
 end;
 
 destructor TMCPSessionData.Destroy;
 begin
+  FInbound.Free;
+  FOutbound.Free;
   FData.Free;
   inherited;
 end;
@@ -377,6 +410,26 @@ begin
   finally
     FLock.Leave;
   end;
+end;
+
+{ TMCPSessionQueues }
+
+constructor TMCPSessionQueues.Create(AMaxItems: Integer);
+begin
+  Notifications := TMCPNotificationQueue.Create(AMaxItems);
+  Responses := TMCPResponseQueue.Create(AMaxItems);
+  Requests := TMCPRequestQueue.Create(AMaxItems);
+  Errors := TMCPErrorQueue.Create(AMaxItems);
+end;
+
+destructor TMCPSessionQueues.Destroy;
+begin
+  Notifications.Free;
+  Responses.Free;
+  Requests.Free;
+  Errors.Free;
+
+  inherited;
 end;
 
 end.

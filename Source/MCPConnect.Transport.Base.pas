@@ -450,13 +450,13 @@ var
 begin
   if AMessage is TJRPCNotification then
   begin
-    { TODO -opaolo -c : Enqueue the notification 28/03/2026 15:49:20 }
+    (FContext.Session as TMCPSessionData).Inbound.Notifications.Enqueue(AMessage as TJRPCNotification);
     Exit;
   end;
 
   if AMessage is TJRPCResponse then
   begin
-    { TODO -opaolo -c : Enqueue the response 28/03/2026 15:49:20 }
+    (FContext.Session as TMCPSessionData).Inbound.Responses.Enqueue(AMessage as TJRPCResponse);
     Exit;
   end;
 
@@ -467,7 +467,7 @@ begin
     // If the error is in the JRPC request messages then process internally the error.
     if LOriginal.Request then
     begin
-      { TODO -opaolo -c : Enqueue the error 28/03/2026 15:49:20 }
+      (FContext.Session as TMCPSessionData).Inbound.Errors.Enqueue(AMessage as TJRPCError);
     end
     else
     begin

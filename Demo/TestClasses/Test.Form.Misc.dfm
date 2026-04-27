@@ -10,12 +10,14 @@ object frmMisc: TfrmMisc
   Font.Height = -12
   Font.Name = 'Segoe UI'
   Font.Style = []
+  OnCreate = FormCreate
+  OnDestroy = FormDestroy
   TextHeight = 15
   object edtTemplate: TEdit
     Left = 23
     Top = 16
     Width = 305
-    Height = 21
+    Height = 23
     TabOrder = 0
     Text = 'demo://weather/{city}/temp/{um}'
   end
@@ -23,7 +25,7 @@ object frmMisc: TfrmMisc
     Left = 23
     Top = 43
     Width = 305
-    Height = 21
+    Height = 23
     TabOrder = 1
     Text = 'demo://weather/rome/temp/celsius'
   end
@@ -54,6 +56,32 @@ object frmMisc: TfrmMisc
     Lines.Strings = (
       'memoLog')
     TabOrder = 4
-    ExplicitTop = 232
+  end
+  object btnDelphiQueue: TButton
+    Left = 432
+    Top = 42
+    Width = 75
+    Height = 25
+    Caption = 'btnDelphiQueue'
+    TabOrder = 5
+    OnClick = btnDelphiQueueClick
+  end
+  object btnMCPQueue: TButton
+    Left = 432
+    Top = 88
+    Width = 75
+    Height = 25
+    Caption = 'btnMCPQueue'
+    TabOrder = 6
+    OnClick = btnMCPQueueClick
+  end
+  object btnPrintQueue: TButton
+    Left = 513
+    Top = 88
+    Width = 75
+    Height = 25
+    Caption = 'btnPrintQueue'
+    TabOrder = 7
+    OnClick = btnPrintQueueClick
   end
 end

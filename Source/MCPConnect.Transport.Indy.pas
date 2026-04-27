@@ -28,7 +28,9 @@ type
   private
     FServer: TJRPCServer;
     procedure LogRequest(const ARequest: TMCPTransportRequest);
+    {$HINTS OFF}
     procedure LogResponse(const AResponse: TMCPTransportResponse);
+    {$HINTS ON}
     procedure LogHttpResponse(const AResponse: TIdHTTPResponseInfo);
 
     procedure ConvertRequest(AHttpRequest: TIdHTTPRequestInfo; var ARequest: TMCPTransportRequest);

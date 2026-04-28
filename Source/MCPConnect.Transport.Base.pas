@@ -399,9 +399,13 @@ begin
 
   // Add session to context if available
   if Assigned(LSession) then
+  begin
+    { TODO -opaolo -c : From configuration! 28/04/2026 13:52:21 }
+    AResponse.Headers.AddOrSet('Mcp-Session-Id', LSession.SessionId);
     LContext.AddContent(LSession);
+  end;
 
-  LRequestList := TJRPCMessages.CreateFromJson(ARequest.Content, False);
+  LRequestList := TJRPCMessages.CreateFromJson(ARequest.Content);
   LGarbage.Add(LRequestList);
 
   LResponseList := TJRPCMessages.Create(True);
@@ -524,8 +528,9 @@ begin
   begin
     if Assigned(FContext.Session) then
     begin
-      Logger.LogDebug('Enqueing notification [%s]', [(AMessage as TJRPCNotification).Method]);
-      FContext.Session.Inbound.Notifications.Enqueue(AMessage as TJRPCNotification);
+      var LMsg := AMessage as TJRPCNotification;
+      Logger.LogDebug('Enqueing notification [%s]', [LMsg.Method]);
+      FContext.Session.Inbound.Notifications.Enqueue(LMsg.Clone);
     end;
     Exit;
   end;
@@ -534,30 +539,31 @@ begin
   begin
     if Assigned(FContext.Session) then
     begin
-      Logger.LogDebug('Enqueing response id [%s]', [(AMessage as TJRPCResponse).Id.AsString]);
-      FContext.Session.Inbound.Responses.Enqueue(AMessage as TJRPCResponse);
+      var LMsg := AMessage as TJRPCResponse;
+      Logger.LogDebug('Enqueing response id [%s]', [LMsg.Id.AsString]);
+      FContext.Session.Inbound.Responses.Enqueue(LMsg.Clone);
     end;
     Exit;
   end;
 
   if AMessage is TJRPCError then
   begin
-    var LOriginal := AMessage as TJRPCError;
+    var LMsg := AMessage as TJRPCError;
 
     // If the error is in the JRPC request messages then process internally the error.
-    if LOriginal.Request then
+    if LMsg.Request then
     begin
       if Assigned(FContext.Session) then
       begin
-        Logger.LogDebug('Enqueing error [%s]', [LOriginal.Error.Message.Value]);
-        FContext.Session.Inbound.Errors.Enqueue(LOriginal);
+        Logger.LogDebug('Enqueing error [%s]', [LMsg.Error.Message.Value]);
+        FContext.Session.Inbound.Errors.Enqueue(LMsg.Clone);
       end;
     end
     else
     begin
       // If the error was generated processing the request, clone the error object
-      Logger.LogDebug('Error detected [%s]', [LOriginal.Error.Message.Value]);
-      FContext.Responses.AddMessage(LOriginal);
+      Logger.LogDebug('Error detected [%s]', [LMsg.Error.Message.Value]);
+      FContext.Responses.AddMessage(LMsg.Clone);
     end;
 
     Exit;
@@ -592,7 +598,6 @@ begin
       FContext.Responses.AddMessage(err);
     end;
   end;
-  LRequest.Free;
 end;
 
 { TMCPTransportRequest }

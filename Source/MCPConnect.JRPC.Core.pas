@@ -252,7 +252,7 @@ type
     property Types: TJRPCMessageTypes read FTypes;
     property Count: NativeInt read GetCount;
   public
-    class function CreateFromJson(const AJSON: string; AOwnsObjects: Boolean): TJRPCMessages;
+    class function CreateFromJson(const AJSON: string): TJRPCMessages;
   end;
 
   /// <summary>
@@ -337,6 +337,7 @@ type
     FStatus: TJRPCNotificationStatus;
   public
     function GetType: TJRPCMessageType; override;
+    function Clone: TJRPCNotification;
 
     [NeonIgnore]
     property Status: TJRPCNotificationStatus read FStatus write FStatus;
@@ -350,6 +351,7 @@ type
     FId: TJRPCID;
   public
     function GetType: TJRPCMessageType; override;
+    function Clone: TJRPCRequest;
 
     /// <summary>
     ///   The unique ID of the request.
@@ -377,6 +379,7 @@ type
     destructor Destroy; override;
 
     function GetType: TJRPCMessageType; override;
+    function Clone: TJRPCResponse;
 
     /// <summary>
     ///   The result of the method invocation.
@@ -848,6 +851,15 @@ end;
 
 { TJRPCResponse }
 
+function TJRPCResponse.Clone: TJRPCResponse;
+begin
+  Result := TJRPCResponse.Create;
+  Result.InternalId := FInternalId;
+  Result.Id := FId;
+  Result.JsonRpc := FJsonRpc;
+  Result.Result := FResult.Clone as TJSONValue;
+end;
+
 constructor TJRPCResponse.Create;
 begin
   inherited;
@@ -1292,9 +1304,9 @@ begin
   FList := TObjectList<TJRPCMessage>.Create(AOwnsObjects);
 end;
 
-class function TJRPCMessages.CreateFromJson(const AJSON: string; AOwnsObjects: Boolean): TJRPCMessages;
+class function TJRPCMessages.CreateFromJson(const AJSON: string): TJRPCMessages;
 begin
-  Result := TJRPCMessages.Create(AOwnsObjects);
+  Result := TJRPCMessages.Create(True);
   try
     Result.FromJson(AJSON);
   except
@@ -1441,6 +1453,15 @@ end;
 
 { TJRPCRequest }
 
+function TJRPCRequest.Clone: TJRPCRequest;
+begin
+  Result := TJRPCRequest.Create;
+  Result.InternalId := FInternalId;
+  Result.Id := FId;
+  Result.Method := FMethod;
+  Result.Params := FParams.Clone as TJSONValue;
+end;
+
 class function TJRPCRequest.CreateFromJson(const AJSON: string): TJRPCRequest;
 begin
   Result := Self.Create;
@@ -1458,6 +1479,14 @@ begin
 end;
 
 { TJRPCNotification }
+
+function TJRPCNotification.Clone: TJRPCNotification;
+begin
+  Result := TJRPCNotification.Create;
+  Result.InternalId := FInternalId;
+  Result.Method := FMethod;
+  Result.Params := FParams.Clone as TJSONValue;
+end;
 
 function TJRPCNotification.GetType: TJRPCMessageType;
 begin

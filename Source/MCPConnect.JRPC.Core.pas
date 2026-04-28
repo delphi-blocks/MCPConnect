@@ -19,7 +19,7 @@ interface
 
 uses
   System.SysUtils, System.Rtti, System.Classes, System.Generics.Collections,
-  System.TypInfo, System.JSON,
+  System.TypInfo, System.JSON, System.SyncObjs,
 
   Neon.Core.Utils,
   Neon.Core.Tags,
@@ -171,6 +171,8 @@ type
     class operator Implicit(const ASource: TJRPCID): string;
 
     function IsNull: Boolean;
+    function AsInteger: Integer;
+    function AsString: string;
   end;
 
   /// <summary>
@@ -235,7 +237,7 @@ type
     function GetMessageType(AMessage: TJSONObject): TJRPCMessageType;
     function GetCount: NativeInt;
   public
-    constructor Create;
+    constructor Create(AOwnsObjects: Boolean);
     destructor Destroy; override;
 
     procedure AddMessage(AMsg: TJRPCMessage);
@@ -250,7 +252,7 @@ type
     property Types: TJRPCMessageTypes read FTypes;
     property Count: NativeInt read GetCount;
   public
-    class function CreateFromJson(const AJSON: string): TJRPCMessages;
+    class function CreateFromJson(const AJSON: string; AOwnsObjects: Boolean): TJRPCMessages;
   end;
 
   /// <summary>
@@ -611,6 +613,7 @@ type
 
   TMCPMessageQueue<T: TJRPCMessage> = class
   protected
+    FEvent: TEvent;
     FMaxItems: Integer;
     FQueue: TQueue<T>;
   public
@@ -619,11 +622,10 @@ type
 
     procedure Enqueue(const Value: T); inline;
     function Dequeue: T; inline;
+    function DequeueWait(ATimeOut: Integer = 1000): T; inline;
     function Peek: T; inline;
     function Count: NativeInt; inline;
   end;
-
-
 
   /// <summary>
   ///   Returns the default Neon configuration for JSON-RPC serialization.
@@ -804,6 +806,22 @@ end;
 class operator TJRPCID.Implicit(Value: TObject): TJRPCID;
 begin
   Result.id := nil;
+end;
+
+function TJRPCID.AsString: string;
+begin
+  if id.IsType<string> then
+    Result := id.AsString
+  else
+    Result := id.AsInteger.ToString;
+end;
+
+function TJRPCID.AsInteger: Integer;
+begin
+  if id.IsOrdinal then
+    Result := id.AsInteger
+  else
+    Result := 0;
 end;
 
 class operator TJRPCID.Implicit(const ASource: TJRPCID): string;
@@ -1269,14 +1287,14 @@ begin
   FTypes := FTypes + [AMsg.GetType];
 end;
 
-constructor TJRPCMessages.Create;
+constructor TJRPCMessages.Create(AOwnsObjects: Boolean);
 begin
-  FList := TObjectList<TJRPCMessage>.Create;
+  FList := TObjectList<TJRPCMessage>.Create(AOwnsObjects);
 end;
 
-class function TJRPCMessages.CreateFromJson(const AJSON: string): TJRPCMessages;
+class function TJRPCMessages.CreateFromJson(const AJSON: string; AOwnsObjects: Boolean): TJRPCMessages;
 begin
-  Result := TJRPCMessages.Create;
+  Result := TJRPCMessages.Create(AOwnsObjects);
   try
     Result.FromJson(AJSON);
   except
@@ -1605,15 +1623,21 @@ end;
 
 { TMCPMessageQueue<T> }
 
-function TMCPMessageQueue<T>.Count: NativeInt;
-begin
-  Result := FQueue.Count;
-end;
-
 constructor TMCPMessageQueue<T>.Create(AMaxItems: Integer);
 begin
+  FEvent := TEvent.Create;
   FQueue := TQueue<T>.Create;
   FMaxItems := AMaxItems;
+end;
+
+destructor TMCPMessageQueue<T>.Destroy;
+begin
+  FEvent.Free;
+  while FQueue.Count > 0 do
+    FQueue.Dequeue.Free;
+
+  FQueue.Free;
+  inherited;
 end;
 
 function TMCPMessageQueue<T>.Dequeue: T;
@@ -1629,13 +1653,18 @@ begin
   end;
 end;
 
-destructor TMCPMessageQueue<T>.Destroy;
+function TMCPMessageQueue<T>.DequeueWait(ATimeOut: Integer = 1000): T;
+var
+  LEventResult: TWaitResult;
 begin
-  while FQueue.Count > 0 do
-    FQueue.Dequeue.Free;
+  if FQueue.Count > 0 then
+    Exit(Dequeue);
 
-  FQueue.Free;
-  inherited;
+  LEventResult := FEvent.WaitFor(ATimeOut);
+  if LEventResult = wrSignaled then
+    Exit(Dequeue);
+
+  { TODO -opaolo -c : Finire 27/04/2026 17:53:40 }
 end;
 
 procedure TMCPMessageQueue<T>.Enqueue(const Value: T);
@@ -1646,6 +1675,7 @@ begin
       FQueue.Dequeue;
 
     FQueue.Enqueue(Value);
+    FEvent.SetEvent;
   finally
     TMonitor.Exit(FQueue);
   end;
@@ -1659,6 +1689,11 @@ begin
   finally
     TMonitor.Exit(FQueue);
   end;
+end;
+
+function TMCPMessageQueue<T>.Count: NativeInt;
+begin
+  Result := FQueue.Count;
 end;
 
 end.

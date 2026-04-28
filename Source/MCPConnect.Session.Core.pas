@@ -75,17 +75,47 @@ type
   TMCPSessionBase = class;
   TMCPSessionDataClass = class of TMCPSessionBase;
 
+  TMCPNotificationQueue = class (TMCPMessageQueue<TJRPCNotification>)
+  end;
+
+  TMCPResponseQueue = class (TMCPMessageQueue<TJRPCResponse>)
+  end;
+
+  TMCPRequestQueue = class (TMCPMessageQueue<TJRPCRequest>)
+  end;
+
+  TMCPErrorQueue = class (TMCPMessageQueue<TJRPCError>)
+  end;
+
+  TMCPOutboundQueue = class (TMCPMessageQueue<TJRPCMessage>)
+  end;
+
+  TMCPSessionQueues = class
+    Notifications: TMCPNotificationQueue;
+    Responses: TMCPResponseQueue;
+    Requests: TMCPRequestQueue;
+    Errors: TMCPErrorQueue;
+
+    constructor Create(AMaxItems: Integer);
+    destructor Destroy; override;
+  end;
+
   /// <summary>
   ///   Abstract base class for session data.
   ///   Contains only core session properties (ID, timestamps).
   ///   Extend this class to create custom session data with typed properties.
   /// </summary>
   TMCPSessionBase = class abstract
-  private
+  protected
     FSessionId: string;
     FCreatedAt: TDateTime;
     FLastAccessedAt: TDateTime;
+    FInbound: TMCPSessionQueues;
+    FOutbound: TMCPOutboundQueue;
   public
+    constructor Create;
+    destructor Destroy; override;
+
     /// <summary>
     ///   Unique session identifier
     /// </summary>
@@ -100,31 +130,10 @@ type
     ///   Timestamp of last access (updated on each request)
     /// </summary>
     property LastAccessedAt: TDateTime read FLastAccessedAt write FLastAccessedAt;
+
+    property Inbound: TMCPSessionQueues read FInbound write FInbound;
+    property Outbound: TMCPOutboundQueue read FOutbound write FOutbound;
   end;
-
-  TMCPNotificationQueue = class (TMCPMessageQueue<TJRPCNotification>)
-  end;
-
-  TMCPResponseQueue = class (TMCPMessageQueue<TJRPCResponse>)
-  end;
-
-  TMCPRequestQueue = class (TMCPMessageQueue<TJRPCRequest>)
-  end;
-
-  TMCPErrorQueue = class (TMCPMessageQueue<TJRPCError>)
-  end;
-
-  TMCPSessionQueues = class
-    Notifications: TMCPNotificationQueue;
-    Responses: TMCPResponseQueue;
-    Requests: TMCPRequestQueue;
-    Errors: TMCPErrorQueue;
-
-    constructor Create(AMaxItems: Integer);
-    destructor Destroy; override;
-
-  end;
-
 
   /// <summary>
   ///   Concrete session data implementation with JSON storage.
@@ -134,8 +143,6 @@ type
   TMCPSessionData = class(TMCPSessionBase)
   private
     FData: TJSONObject;
-    FInbound: TMCPSessionQueues;
-    FOutbound: TMCPSessionQueues;
   public
     /// <summary>
     ///   Direct access to the JSON data object.
@@ -143,8 +150,6 @@ type
     ///   Memory management is handled automatically by the session.
     /// </summary>
     property Data: TJSONObject read FData;
-    property Inbound: TMCPSessionQueues read FInbound write FInbound;
-    property Outbound: TMCPSessionQueues read FOutbound write FOutbound;
 
     constructor Create;
     destructor Destroy; override;
@@ -257,14 +262,10 @@ constructor TMCPSessionData.Create;
 begin
   inherited Create;
   FData := TJSONObject.Create;
-  FInbound := TMCPSessionQueues.Create(100);
-  FOutbound := TMCPSessionQueues.Create(100);
 end;
 
 destructor TMCPSessionData.Destroy;
 begin
-  FInbound.Free;
-  FOutbound.Free;
   FData.Free;
   inherited;
 end;
@@ -429,6 +430,22 @@ begin
   Requests.Free;
   Errors.Free;
 
+  inherited;
+end;
+
+{ TMCPSessionBase }
+
+constructor TMCPSessionBase.Create;
+begin
+  inherited Create;
+  FInbound := TMCPSessionQueues.Create(100);
+  FOutbound := TMCPOutboundQueue.Create(100);
+end;
+
+destructor TMCPSessionBase.Destroy;
+begin
+  FInbound.Free;
+  FOutbound.Free;
   inherited;
 end;
 

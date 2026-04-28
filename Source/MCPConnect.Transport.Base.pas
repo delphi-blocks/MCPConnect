@@ -157,6 +157,7 @@ implementation
 
 uses
   System.IOUtils,
+  Logify,
   MCPConnect.Configuration.Neon,
   MCPConnect.JRPC.Invoker;
 
@@ -400,10 +401,10 @@ begin
   if Assigned(LSession) then
     LContext.AddContent(LSession);
 
-  LRequestList := TJRPCMessages.CreateFromJson(ARequest.Content);
+  LRequestList := TJRPCMessages.CreateFromJson(ARequest.Content, False);
   LGarbage.Add(LRequestList);
 
-  LResponseList := TJRPCMessages.Create;
+  LResponseList := TJRPCMessages.Create(True);
   LGarbage.Add(LResponseList);
 
   LCtx.GC := LGarbage;
@@ -519,15 +520,23 @@ var
   LInstance: TObject;
   LInvokerCtx: TJRPCInvokerContext;
 begin
-  if AMessage is TJRPCNotification then
+  if (AMessage is TJRPCNotification) then
   begin
-    (FContext.Session as TMCPSessionData).Inbound.Notifications.Enqueue(AMessage as TJRPCNotification);
+    if Assigned(FContext.Session) then
+    begin
+      Logger.LogDebug('Enqueing notification [%s]', [(AMessage as TJRPCNotification).Method]);
+      FContext.Session.Inbound.Notifications.Enqueue(AMessage as TJRPCNotification);
+    end;
     Exit;
   end;
 
   if AMessage is TJRPCResponse then
   begin
-    (FContext.Session as TMCPSessionData).Inbound.Responses.Enqueue(AMessage as TJRPCResponse);
+    if Assigned(FContext.Session) then
+    begin
+      Logger.LogDebug('Enqueing response id [%s]', [(AMessage as TJRPCResponse).Id.AsString]);
+      FContext.Session.Inbound.Responses.Enqueue(AMessage as TJRPCResponse);
+    end;
     Exit;
   end;
 
@@ -538,18 +547,26 @@ begin
     // If the error is in the JRPC request messages then process internally the error.
     if LOriginal.Request then
     begin
-      (FContext.Session as TMCPSessionData).Inbound.Errors.Enqueue(AMessage as TJRPCError);
+      if Assigned(FContext.Session) then
+      begin
+        Logger.LogDebug('Enqueing error [%s]', [LOriginal.Error.Message.Value]);
+        FContext.Session.Inbound.Errors.Enqueue(LOriginal);
+      end;
     end
     else
     begin
       // If the error was generated processing the request, clone the error object
-      FContext.Responses.AddMessage(LOriginal.Clone);
+      Logger.LogDebug('Error detected [%s]', [LOriginal.Error.Message.Value]);
+      FContext.Responses.AddMessage(LOriginal);
     end;
+
     Exit;
   end;
 
   LRequest := AMessage as TJRPCRequest;
   try
+    Logger.LogDebug('Processing request [%s: %s]', [LRequest.Id.AsString, LRequest.Method]);
+
     FContext.JRPCCtx.AddContent(LRequest);
 
     if not TJRPCRegistry.Instance.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
@@ -575,6 +592,7 @@ begin
       FContext.Responses.AddMessage(err);
     end;
   end;
+  LRequest.Free;
 end;
 
 { TMCPTransportRequest }

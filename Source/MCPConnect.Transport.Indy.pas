@@ -49,7 +49,7 @@ type
   private
     FServer: TJRPCServer;
     FBridge: TJRPCIndyBridge;
-    procedure ParseAuthentication(AContext: TIdContext; const AAuthType, AAuthData: String; var VUsername, VPassword: String; var VHandled: Boolean);
+    procedure ParseAuthentication(AContext: TIdContext; const AAuthType, AAuthData: string; var VUsername, VPassword: String; var VHandled: Boolean);
     procedure SetServer(const Value: TJRPCServer);
   public
     constructor Create(AOwner: TComponent);
@@ -154,7 +154,7 @@ begin
 end;
 
 procedure TJRPCIndyServer.ParseAuthentication(AContext: TIdContext;
-  const AAuthType, AAuthData: String; var VUsername, VPassword: String;
+  const AAuthType, AAuthData: string; var VUsername, VPassword: String;
   var VHandled: Boolean);
 begin
   VHandled := True;
@@ -168,32 +168,32 @@ end;
 
 procedure TJRPCIndyBridge.LogHttpResponse(const AResponse: TIdHTTPResponseInfo);
 begin
-  Logger.Log('-->-->-->-->-->-->--> RESPONSE', TLogLevel.Debug);
-  Logger.Log(Format('Http Code: [%d]', [AResponse.ResponseNo]), TLogLevel.Debug);
-  Logger.Log('*** Headers ***', TLogLevel.Debug);
+  Logger.Log('-->-->-->-->-->-->--> RESPONSE', TLogLevel.Trace);
+  Logger.Log(Format('Http Code: [%d]', [AResponse.ResponseNo]), TLogLevel.Trace);
+  Logger.Log('*** Headers ***', TLogLevel.Trace);
   for var head in AResponse.CustomHeaders do
-    Logger.Log(Format('%s', [head]), TLogLevel.Debug);
-  Logger.Log(Format('*** Content: %s', [AResponse.ContentText]), TLogLevel.Debug);
+    Logger.Log(Format('%s', [head]), TLogLevel.Trace);
+  Logger.Log(Format('*** Content: %s', [AResponse.ContentText]), TLogLevel.Trace);
 end;
 
 procedure TJRPCIndyBridge.LogRequest(const ARequest: TMCPTransportRequest);
 begin
-  Logger.Log('<--<--<--<--<--<--<-- REQUEST', TLogLevel.Debug);
-  Logger.Log(Format('Url: [%s] %s', [ARequest.Command, ARequest.Url]), TLogLevel.Debug);
-  Logger.Log('*** Headers ***', TLogLevel.Debug);
+  Logger.Log('<--<--<--<--<--<--<-- REQUEST', TLogLevel.Trace);
+  Logger.Log(Format('Url: [%s] %s', [ARequest.Command, ARequest.Url]), TLogLevel.Trace);
+  Logger.Log('*** Headers ***', TLogLevel.Trace);
   for var head in ARequest.Headers.RawHeaders do
-    Logger.Log(Format('%s: %s', [head.Key, head.Value]), TLogLevel.Debug);
-  Logger.Log('*** Content: ' + ARequest.Content, TLogLevel.Debug);
+    Logger.Log(Format('%s: %s', [head.Key, head.Value]), TLogLevel.Trace);
+  Logger.Log('*** Content: ' + ARequest.Content, TLogLevel.Trace);
 end;
 
 procedure TJRPCIndyBridge.LogResponse(const AResponse: TMCPTransportResponse);
 begin
-  Logger.Log('-->-->-->-->-->-->--> RESPONSE', TLogLevel.Debug);
-  Logger.Log(Format('Http Code: [%d]', [AResponse.Code]), TLogLevel.Debug);
-  Logger.Log('*** Headers ***', TLogLevel.Debug);
+  Logger.Log('-->-->-->-->-->-->--> RESPONSE', TLogLevel.Trace);
+  Logger.Log(Format('Http Code: [%d]', [AResponse.Code]), TLogLevel.Trace);
+  Logger.Log('*** Headers ***', TLogLevel.Trace);
   for var head in AResponse.Headers.RawHeaders do
-    Logger.Log(Format('%s: %s', [head.Key, head.Value]), TLogLevel.Debug);
-  Logger.Log(Format('*** Content: %s', [AResponse.Content]), TLogLevel.Debug);
+    Logger.Log(Format('%s: %s', [head.Key, head.Value]), TLogLevel.Trace);
+  Logger.Log(Format('*** Content: %s', [AResponse.Content]), TLogLevel.Trace);
 end;
 
 function TJRPCIndyBridge.ReadContentStream(ARequestInfo: TIdHTTPRequestInfo): string;

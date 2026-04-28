@@ -43,7 +43,7 @@ begin
 
   AServer
 
-    {
+
     .Plugin.Configure<IAuthTokenConfig>
       .SetToken('my-secret-token')
     .ApplyConfig
@@ -54,7 +54,7 @@ begin
       .SetTimeout(30)  // 30 minutes timeout
       .SetSessionClass(TShoppingSession)  // Use custom typed session
     .ApplyConfig
-    }
+
     .Plugin.Configure<IMCPConfig>
       .Server
         .SetName('delphi-mcp-server')

@@ -407,23 +407,37 @@ end;
 
 procedure TWorkerThread.HandleRequest(const ARequestContent: string; out AResponseContent: string);
 var
-  LRequest: TMCPTransportRequest;
-  LResponse: TMCPTransportResponse;
   LMcpHandler: IMCPTransportHandler;
+  LRes: string;
 begin
   if not Assigned(FServer) then
     raise EJRPCException.Create('Server not found');
 
   // Auth??
-  LRequest.Headers.AddOrSet('Accept', 'application/json');
-
-  LRequest.Command := 'POST';
-  LRequest.Content := ARequestContent;
 
   LMcpHandler := TMCPTransportHandler.Create(FServer);
-  LMcpHandler.HandleRequest(LRequest, LResponse);
 
-  AResponseContent := LResponse.Content;
+  LMcpHandler.ProcessRequest(
+    procedure (ARequest: TMCPTransportRequest)
+    begin
+      ARequest.Headers.AddOrSetValue('Accept', 'application/json');
+
+      ARequest.Command := 'POST';
+      ARequest.Content := ARequestContent;
+
+      //LogRequest(ARequest);
+    end,
+
+    procedure (AResponse: TMCPTransportResponse)
+    begin
+      LRes := AResponse.Content;
+
+      //LogHttpResponse(AResponseInfo);
+    end
+
+  );
+
+  AResponseContent := LRes;
 end;
 
 procedure TWorkerThread.SetServer(const Value: TJRPCServer);

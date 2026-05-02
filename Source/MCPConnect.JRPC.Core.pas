@@ -626,6 +626,7 @@ type
     procedure Enqueue(const Value: T); inline;
     function Dequeue: T; inline;
     function DequeueWait(ATimeOut: Integer = 1000): T; inline;
+    //function TryDequeueWait(ATimeOut: Integer = 1000; out AValue: T): Boolean; inline;
     function Peek: T; inline;
     function Count: NativeInt; inline;
   end;
@@ -1692,6 +1693,8 @@ begin
   LEventResult := FEvent.WaitFor(ATimeOut);
   if LEventResult = wrSignaled then
     Exit(Dequeue);
+
+
 
   { TODO -opaolo -c : Finire 27/04/2026 17:53:40 }
 end;

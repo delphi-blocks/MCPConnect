@@ -33,7 +33,6 @@ type
     FServer: TJRPCServer;
     procedure SetPathInfo(const Value: string);
     procedure SetServer(const Value: TJRPCServer);
-    function CreateMCPRequest(ARequest: TWebRequest): TMCPTransportRequest;
   public
     { IWebDispatch }
     function DispatchEnabled: Boolean;
@@ -88,54 +87,6 @@ begin
   FPathInfo := 'jrpc';
 end;
 
-function TJRPCDispatcher.CreateMCPRequest(
-  ARequest: TWebRequest): TMCPTransportRequest;
-begin
-  {$IFDEF HAS_WEBBROKER_REQUEST_HEADERS}
-  for var I := 0 to ARequest.AllHeaders.Count - 1 do
-    Result.Headers.AddOrSet(ARequest.AllHeaders.KeyNames[I],
-      ARequest.AllHeaders.ValueFromIndex[I]);
-  {$ELSE}
-  if ARequest.Authorization <> '' then
-    Result.Headers.AddOrSet('Authorization', ARequest.Authorization);
-  if ARequest.CacheControl <> '' then
-    Result.Headers.AddOrSet('Cache-Control', ARequest.CacheControl);
-  if ARequest.Cookie <> '' then
-    Result.Headers.AddOrSet('Cookie', ARequest.Cookie);
-  if ARequest.Date > 0 then
-    Result.Headers.AddOrSet('Date', DateTimeToHTTPDate(ARequest.Date));
-  if ARequest.Accept <> '' then
-    Result.Headers.AddOrSet('Accept', ARequest.Accept);
-  if ARequest.From <> '' then
-    Result.Headers.AddOrSet('From', ARequest.From);
-  if ARequest.Host <> '' then
-    Result.Headers.AddOrSet('Host', ARequest.Host);
-  if ARequest.IfModifiedSince > 0 then
-    Result.Headers.AddOrSet('If-Modified-Since', DateTimeToHTTPDate(ARequest.IfModifiedSince));
-  if ARequest.Referer <> '' then
-    Result.Headers.AddOrSet('Referer', ARequest.Referer);
-  if ARequest.UserAgent <> '' then
-    Result.Headers.AddOrSet('User-Agent', ARequest.UserAgent);
-  if ARequest.ContentEncoding <> '' then
-    Result.Headers.AddOrSet('Content-Encoding', ARequest.ContentEncoding);
-  if ARequest.ContentType <> '' then
-    Result.Headers.AddOrSet('Content-Type', ARequest.ContentType);
-  if ARequest.ContentLength <> 0 then
-    Result.Headers.AddOrSet('Content-Length', ARequest.ContentLength.ToString);
-  if ARequest.ContentVersion <> '' then
-    Result.Headers.AddOrSet('Content-Version', ARequest.ContentVersion);
-  if ARequest.DerivedFrom <> '' then
-    Result.Headers.AddOrSet('Derived-From', ARequest.DerivedFrom);
-  if ARequest.Expires > 0 then
-    Result.Headers.AddOrSet('Expires', DateTimeToHTTPDate(ARequest.Expires));
-  if ARequest.Title <> '' then
-    Result.Headers.AddOrSet('Title', ARequest.Title);
-  {$ENDIF}
-
-  Result.Command := ARequest.Method;
-  Result.Content := ARequest.Content;
-end;
-
 destructor TJRPCDispatcher.Destroy;
 begin
   FDispatchMask.Free;
@@ -163,40 +114,91 @@ end;
 
 function TJRPCDispatcher.DispatchRequest(Sender: TObject; Request: TWebRequest; Response: TWebResponse): Boolean;
 var
-  LRequest: TMCPTransportRequest;
-  LResponse: TMCPTransportResponse;
   LMcpHandler: IMCPTransportHandler;
-  LWriter: IMCPSSEResponseWriter;
 begin
   if not Assigned(FServer) then
     raise EJRPCException.Create('Server not found');
 
-  LRequest := CreateMCPRequest(Request);
-
   LMcpHandler := TMCPTransportHandler.Create(FServer);
-  LMcpHandler.HandleRequest(LRequest, LResponse);
+  LMcpHandler.ProcessRequest(
 
-  for var I := 0 to LResponse.Headers.Count - 1 do
-    Response.CustomHeaders.AddPair(LResponse.Headers.RawHeaders[I].Key,
-      LResponse.Headers.RawHeaders[I].Value);
+    procedure (ARequest: TMCPTransportRequest)
+    begin
+      {$IFDEF HAS_WEBBROKER_REQUEST_HEADERS}
+      for var I := 0 to Request.AllHeaders.Count - 1 do
+        ARequest.Headers.AddOrSetValue(Request.AllHeaders.KeyNames[I],
+          Request.AllHeaders.ValueFromIndex[I]);
+      {$ELSE}
+      if Request.Authorization <> '' then
+        ARequest.Headers.AddOrSetValue('Authorization', Request.Authorization);
+      if Request.CacheControl <> '' then
+        ARequest.Headers.AddOrSetValue('Cache-Control', Request.CacheControl);
+      if Request.Cookie <> '' then
+        ARequest.Headers.AddOrSetValue('Cookie', Request.Cookie);
+      if Request.Date > 0 then
+        ARequest.Headers.AddOrSetValue('Date', DateTimeToHTTPDate(Request.Date));
+      if Request.Accept <> '' then
+        ARequest.Headers.AddOrSetValue('Accept', Request.Accept);
+      if Request.From <> '' then
+        ARequest.Headers.AddOrSetValue('From', Request.From);
+      if Request.Host <> '' then
+        ARequest.Headers.AddOrSetValue('Host', Request.Host);
+      if Request.IfModifiedSince > 0 then
+        ARequest.Headers.AddOrSetValue('If-Modified-Since', DateTimeToHTTPDate(Request.IfModifiedSince));
+      if Request.Referer <> '' then
+        ARequest.Headers.AddOrSet('Referer', Request.Referer);
+      if Request.UserAgent <> '' then
+        ARequest.Headers.AddOrSetValue('User-Agent', Request.UserAgent);
+      if Request.ContentEncoding <> '' then
+        ARequest.Headers.AddOrSetValue('Content-Encoding', Request.ContentEncoding);
+      if Request.ContentType <> '' then
+        ARequest.Headers.AddOrSetValue('Content-Type', Request.ContentType);
+      if Request.ContentLength <> 0 then
+        ARequest.Headers.AddOrSetValue('Content-Length', Request.ContentLength.ToString);
+      if Request.ContentVersion <> '' then
+        ARequest.Headers.AddOrSetValue('Content-Version', Request.ContentVersion);
+      if Request.DerivedFrom <> '' then
+        ARequest.Headers.AddOrSetValue('Derived-From', Request.DerivedFrom);
+      if Request.Expires > 0 then
+        ARequest.Headers.AddOrSetValue('Expires', DateTimeToHTTPDate(Request.Expires));
+      if Request.Title <> '' then
+        ARequest.Headers.AddOrSetValue('Title', Request.Title);
+      {$ENDIF}
 
-  if Assigned(LResponse.WriterProc) then
-  begin
-    Response.ContentType := 'text/event-stream';
+      ARequest.Command := Request.Method;
+      ARequest.Content := Request.Content;
 
-    {$IFDEF HAS_WEBBROKER_SSE}
-    LWriter := TMCPSSEResponseWriterWebBroker.Create(Response);
-    {$ELSE}
-    raise Exception.Create('SSE not supported. Upgrade to Delphi 13.1 or higher');
-    {$ENDIF}
-    LResponse.WriterProc(LWriter);
-  end
-  else
-  begin
-    Response.StatusCode := LResponse.Code;
-    Response.Content := LResponse.Content;
-    Response.ContentType := LResponse.ContentType;
-  end;
+
+      //LogRequest(ARequest);
+    end,
+
+    procedure (AResponse: TMCPTransportResponse)
+    var
+      LWriter: IMCPSSEResponseWriter;
+    begin
+      for var pair in AResponse.Headers do
+        Response.CustomHeaders.AddPair(pair.Key, pair.Value);
+
+      if Assigned(AResponse.WriterProc) then
+      begin
+        Response.ContentType := 'text/event-stream';
+
+        {$IFDEF HAS_WEBBROKER_SSE}
+        LWriter := TMCPSSEResponseWriterWebBroker.Create(Response);
+        {$ELSE}
+        raise Exception.Create('SSE not supported. Upgrade to Delphi 13.1 or higher');
+        {$ENDIF}
+        AResponse.WriterProc(LWriter);
+      end
+      else
+      begin
+        Response.StatusCode := AResponse.Code;
+        Response.Content := AResponse.Content;
+        Response.ContentType := AResponse.ContentType;
+      end;
+    end
+  );
+
   Result := True;
 end;
 

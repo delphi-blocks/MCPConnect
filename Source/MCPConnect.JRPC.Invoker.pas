@@ -48,7 +48,7 @@ type
   end;
 
   TJRPCInvokerContext = record
-    GC: IGarbageCollector;
+    Garbage: IGarbageCollector;
     Request: TJRPCRequest;
     Responses: TJRPCMessages;
 
@@ -166,14 +166,14 @@ begin
 
   try
     LArgs := RequestToRttiParams(LMethod);
-    FContext.GC.Add(LArgs);
+    FContext.Garbage.Add(LArgs);
   except
     raise EJRPCInvalidParamsError.Create('Invalid method parameters.');
   end;
 
   try
     LResult := LMethod.Invoke(FContext.ApiInstance, LArgs);
-    FContext.GC.Add(LResult);
+    FContext.Garbage.Add(LResult);
     LResponse := TJRPCResponse.Create;
   except
     on E: EJRPCException do

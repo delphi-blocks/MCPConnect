@@ -11,6 +11,7 @@ uses
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
 
+
   MCPConnect.Configuration.MCP,
   MCPConnect.JRPC.Core,
   MCPConnect.JRPC.Classes,
@@ -79,6 +80,8 @@ type
   TDelphiDayTool = class
   private
     [Context] FGC: IGarbageCollector;
+    [Context] FSession: TMCPSessionBase;
+
   public
     [McpTool('get_tickets', 'Get the list of available tickets for the DelphiDay', 'icon=badge.png')]
     [McpApp('ui://delphiday/ticket-app')]
@@ -272,6 +275,11 @@ begin
   Result.Add(TTicket.Create(1, 'Conferenza + Seminari', StrToDate('19/11/2025'), 179.0, ''));
   Result.Add(TTicket.Create(2, 'Solo Conferenza', StrToDate('19/11/2025'), 0, ''));
   Result.Add(TTicket.Create(3, 'Young ticket', StrToDate('19/11/2025'), 69.0, ''));
+
+  var n := TJRPCNotification.Create;
+  n.Method := 'notification/logging';
+  n.AddNamedParam('name', 'Paolo');
+  FSession.Outbound.Enqueue(n);
 end;
 
 { TTicket }

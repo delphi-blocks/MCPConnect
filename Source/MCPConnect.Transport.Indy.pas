@@ -35,9 +35,6 @@ type
 
     procedure SendHeaders(const AResponse: TMCPTransportResponse; AContext: TIdContext; AHttpResponse: TIdHTTPResponseInfo);
 
-    procedure ConvertRequest(AContext: TIdContext; AHttpRequest: TIdHTTPRequestInfo; var ARequest: TMCPTransportRequest);
-    procedure ConvertResponse(const AResponse: TMCPTransportResponse; AContext: TIdContext; AHttpResponse: TIdHTTPResponseInfo);
-
     function ReadContentStream(ARequestInfo: TIdHTTPRequestInfo): string;
   public
     procedure HandleRequest(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
@@ -73,56 +70,9 @@ implementation
 uses
   System.IOUtils, Logify;
 
-procedure TJRPCIndyBridge.ConvertRequest(AContext: TIdContext; AHttpRequest: TIdHTTPRequestInfo; var ARequest: TMCPTransportRequest);
-var
-  LIndex: Integer;
-begin
-  for LIndex := 0 to AHttpRequest.RawHeaders.Count - 1 do
-    ARequest.Headers.AddOrSet(AHttpRequest.RawHeaders.KeyNames[LIndex],
-      AHttpRequest.RawHeaders.ValueFromIndex[LIndex]);
-
-  ARequest.Url := AHttpRequest.URI;
-  ARequest.Command := AHttpRequest.Command;
-  ARequest.Content := ReadContentStream(AHttpRequest);
-
-  LogRequest(ARequest);
-end;
-
-procedure TJRPCIndyBridge.ConvertResponse(const AResponse: TMCPTransportResponse;
-  AContext: TIdContext; AHttpResponse: TIdHTTPResponseInfo);
-var
-  LIndex: Integer;
-  LWriter: IMCPSSEResponseWriter;
-begin
-  for LIndex := 0 to AResponse.Headers.Count - 1 do
-    AHttpResponse.CustomHeaders.AddPair(AResponse.Headers.RawHeaders[LIndex].Key,
-      AResponse.Headers.RawHeaders[LIndex].Value);
-
-  if Assigned(AResponse.WriterProc) then
-  begin
-    AHttpResponse.ContentType := 'text/event-stream';
-    AHttpResponse.ContentLength := -2; // Trick to stop indy to send Content-Length
-    SendHeaders(AResponse, AContext, AHttpResponse);
-
-    LWriter := TMCPSSEResponseWriterIndy.Create(AContext.Connection);
-    AResponse.WriterProc(LWriter);
-  end
-  else
-  begin
-    AHttpResponse.ResponseNo := AResponse.Code;
-    AHttpResponse.ContentText := AResponse.Content;
-    AHttpResponse.ContentType := AResponse.ContentType;
-
-    LogHttpResponse(AHttpResponse);
-  end;
-
-end;
-
 procedure TJRPCIndyBridge.HandleRequest(AContext: TIdContext;
   ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
 var
-  LRequest: TMCPTransportRequest;
-  LResponse: TMCPTransportResponse;
   LMcpHandler: IMCPTransportHandler;
 begin
   if not Assigned(FServer) then
@@ -130,9 +80,49 @@ begin
 
   LMcpHandler := TMCPTransportHandler.Create(FServer);
 
-  ConvertRequest(AContext, ARequestInfo, LRequest);
-  LMcpHandler.HandleRequest(LRequest, LResponse);
-  ConvertResponse(LResponse, AContext, AResponseInfo);
+  LMcpHandler.ProcessRequest(
+
+    procedure (ARequest: TMCPTransportRequest)
+    var
+      LIndex: Integer;
+    begin
+      for LIndex := 0 to ARequestInfo.RawHeaders.Count - 1 do
+        ARequest.Headers.AddOrSetValue(ARequestInfo.RawHeaders.KeyNames[LIndex].Trim,
+          ARequestInfo.RawHeaders.ValueFromIndex[LIndex].Trim);
+
+      ARequest.Url := ARequestInfo.URI;
+      ARequest.Command := ARequestInfo.Command;
+      ARequest.Content := ReadContentStream(ARequestInfo);
+
+      LogRequest(ARequest);
+    end,
+
+    procedure (AResponse: TMCPTransportResponse)
+    var
+      LWriter: IMCPSSEResponseWriter;
+    begin
+      for var pair in AResponse.Headers do
+        AResponseInfo.CustomHeaders.AddPair(pair.Key, pair.Value);
+
+      if Assigned(AResponse.WriterProc) then
+      begin
+        AResponseInfo.ContentType := 'text/event-stream';
+        AResponseInfo.ContentLength := -2; // Trick to stop indy to send Content-Length
+        SendHeaders(AResponse, AContext, AResponseInfo);
+
+        LWriter := TMCPSSEResponseWriterIndy.Create(AContext.Connection);
+        AResponse.WriterProc(LWriter);
+      end
+      else
+      begin
+        AResponseInfo.ResponseNo := AResponse.Code;
+        AResponseInfo.ContentText := AResponse.Content;
+        AResponseInfo.ContentType := AResponse.ContentType;
+
+        LogHttpResponse(AResponseInfo);
+      end;
+    end
+  );
 end;
 
 { TJRPCIndyServer }
@@ -181,7 +171,7 @@ begin
   Logger.Log('<--<--<--<--<--<--<-- REQUEST', TLogLevel.Trace);
   Logger.Log(Format('Url: [%s] %s', [ARequest.Command, ARequest.Url]), TLogLevel.Trace);
   Logger.Log('*** Headers ***', TLogLevel.Trace);
-  for var head in ARequest.Headers.RawHeaders do
+  for var head in ARequest.Headers do
     Logger.Log(Format('%s: %s', [head.Key, head.Value]), TLogLevel.Trace);
   Logger.Log('*** Content: ' + ARequest.Content, TLogLevel.Trace);
 end;
@@ -191,7 +181,7 @@ begin
   Logger.Log('-->-->-->-->-->-->--> RESPONSE', TLogLevel.Trace);
   Logger.Log(Format('Http Code: [%d]', [AResponse.Code]), TLogLevel.Trace);
   Logger.Log('*** Headers ***', TLogLevel.Trace);
-  for var head in AResponse.Headers.RawHeaders do
+  for var head in AResponse.Headers do
     Logger.Log(Format('%s: %s', [head.Key, head.Value]), TLogLevel.Trace);
   Logger.Log(Format('*** Content: %s', [AResponse.Content]), TLogLevel.Trace);
 end;
@@ -234,19 +224,19 @@ var
   LHeaderPair: TPair<string, string>;
 begin
   inherited;
-  AHttpResponse.Date := GMTToLocalDateTime(AResponse.Headers.Get('Date'));
+  AHttpResponse.Date := GMTToLocalDateTime(AResponse.GetHeader('Date'));
   AHttpResponse.CustomHeaders.Clear;
 
-  for LHeaderPair in AResponse.Headers.RawHeaders do
+  for LHeaderPair in AResponse.Headers do
   begin
     if IsIndyHeader(LHeaderPair.Key) then
       Continue;
     AHttpResponse.CustomHeaders.AddValue(LHeaderPair.Key, LHeaderPair.Value);
   end;
-  AHttpResponse.TransferEncoding := AResponse.Headers.Get('Transfer-Encoding');
+  AHttpResponse.TransferEncoding := AResponse.GetHeader('Transfer-Encoding');
 
-  if AResponse.Headers.Get('Connection') <> '' then
-    AHttpResponse.Connection := AResponse.Headers.Get('Connection');
+  if AResponse.GetHeader('Connection') <> '' then
+    AHttpResponse.Connection := AResponse.GetHeader('Connection');
 
   //SendCookies;
 

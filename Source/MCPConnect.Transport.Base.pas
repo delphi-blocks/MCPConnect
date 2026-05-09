@@ -26,6 +26,7 @@ uses
   MCPConnect.Configuration.Auth,
   MCPConnect.Configuration.Session,
   MCPConnect.Session.Core,
+  MCPConnect.MCP.Types,
   MCPConnect.JRPC.Classes,
   MCPConnect.JRPC.Core,
   MCPConnect.JRPC.Server;
@@ -41,6 +42,18 @@ const
   HTTP_CODE_NOTACCEPTABLE = 406;
 
 type
+  /// <summary>
+  ///   Exception class for all transport related errors
+  /// </summary>
+  EMCPTransportException = class(EMCPException)
+  private
+    FCode: Integer;
+  public
+    constructor Create(ACode: Integer; const AMsg: string);
+    function ToJSON: string;
+    property Code: Integer read FCode write FCode;
+  end;
+
   IMCPSSEResponseWriter = interface
     ['{68598454-50C5-4892-B8E0-81687CC2F4DE}']
     procedure Write(const AValue: string); overload;
@@ -79,10 +92,9 @@ type
   TMCPTransportHeaders = class
   private type
     THeaders = class(TDictionary<string, string>)
-
     end;
   public
-    Headers: TDictionary<string, string>;
+    Headers: THeaders;
 
     constructor Create;
     destructor Destroy; override;
@@ -110,6 +122,7 @@ type
     WriterProc: TMCPSSEResponseWriterProc;
     Content: string;
     Code: Integer;
+    Outbund: TQueue<string>;
 
     procedure SSEContent(AWriterProc: TMCPSSEResponseWriterProc);
     procedure SetCookie(const AName, AValue: string);
@@ -160,7 +173,7 @@ type
 implementation
 
 uses
-  System.IOUtils,
+  System.IOUtils, System.JSON,
   Logify,
   MCPConnect.Configuration.Neon,
   MCPConnect.JRPC.Invoker;
@@ -223,7 +236,7 @@ var
   LOrigin, LHeader: string;
 begin
   if not Assigned(FMCPConfig) then
-    raise EJRPCException.Create('Error retrieving MCP configuration');
+    raise EMCPException.Create('Error retrieving MCP configuration');
 
   Result := True;
   if Length(FMCPConfig.Security.AllowedOrigins) = 0 then
@@ -246,20 +259,12 @@ procedure TMCPTransportHandler.ProcessRequest(ARequestConverter:
 begin
   ARequestConverter(FRequest);
 
-  try
+  try try
     if not CheckOrigin then
-    begin
-      FResponse.Code := HTTP_CODE_FORBIDDEN;
-      FResponse.Content := '';
-      Exit;
-    end;
+      raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, 'Cross-Origin Request Blocked: Same Origin Policy');
 
     if not CheckAuthorization then
-    begin
-      FResponse.Code := HTTP_CODE_FORBIDDEN;
-      FResponse.Content := '';
-      Exit;
-    end;
+      raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, 'Authorization check failed');
 
     FGarbage := TGarbageCollector.CreateInstance;
     FContext := TJRPCContext.Create;
@@ -282,10 +287,17 @@ begin
     else if FRequest.Command = 'OPTIONS' then
       HandleOPTIONS
     else
-      FResponse.Code := HTTP_CODE_NOTALLOWED;
+      raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, 'Http method not allowed');
 
     InjectCORS;
   except
+    on E: EMCPTransportException do
+    begin
+      FResponse.Code := E.Code;
+      FResponse.ContentType := 'application/json';
+      FResponse.Content := E.ToJSON;
+    end;
+
     on E: EJRPCException do
     begin
       FResponse.Code := 500;
@@ -300,8 +312,9 @@ begin
       FResponse.Content := Format('{"message": "%s"}', [E.Message]);
     end;
   end;
-
-  AResponseConverter(FResponse);
+  finally
+    AResponseConverter(FResponse);
+  end;
 end;
 
 function TMCPTransportHandler.ExtractSessionId: string;
@@ -652,7 +665,7 @@ end;
 
 constructor TMCPTransportHeaders.Create;
 begin
-  Headers := TDictionary<string, string>.Create;
+  Headers := THeaders.Create;
 end;
 
 destructor TMCPTransportHeaders.Destroy;
@@ -665,6 +678,29 @@ function TMCPTransportHeaders.GetHeader(const AName: string): string;
 begin
   if not Headers.TryGetValue(AName, Result) then
     Result := '';
+end;
+
+{ EMCPTransportException }
+
+constructor EMCPTransportException.Create(ACode: Integer; const AMsg: string);
+begin
+  inherited Create(AMsg);
+  FCode := ACode;
+end;
+
+function EMCPTransportException.ToJSON: string;
+var
+  LJSON: TJSONObject;
+begin
+  LJSON := TJSONObject.Create;
+  try
+    LJSON.AddPair('code', Self.Code);
+    LJSON.AddPair('class', Self.ClassName);
+    LJSON.AddPair('message', Self.Message);
+    Result := LJSON.ToJSON;
+  finally
+    LJSON.Free;
+  end;
 end;
 
 end.

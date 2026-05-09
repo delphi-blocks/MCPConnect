@@ -87,8 +87,11 @@ begin
       LIndex: Integer;
     begin
       for LIndex := 0 to ARequestInfo.RawHeaders.Count - 1 do
-        ARequest.Headers.AddOrSetValue(ARequestInfo.RawHeaders.KeyNames[LIndex].Trim,
-          ARequestInfo.RawHeaders.ValueFromIndex[LIndex].Trim);
+      begin
+        var n := ARequestInfo.RawHeaders.Names[LIndex];
+        var v := ARequestInfo.RawHeaders.Values[n];
+        ARequest.Headers.AddOrSetValue(n, v);
+      end;
 
       ARequest.Url := ARequestInfo.URI;
       ARequest.Command := ARequestInfo.Command;
@@ -102,7 +105,7 @@ begin
       LWriter: IMCPSSEResponseWriter;
     begin
       for var pair in AResponse.Headers do
-        AResponseInfo.CustomHeaders.AddPair(pair.Key, pair.Value);
+        AResponseInfo.CustomHeaders.AddValue(pair.Key, pair.Value);
 
       if Assigned(AResponse.WriterProc) then
       begin

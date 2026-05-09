@@ -41,7 +41,6 @@ const
   HTTP_CODE_NOTACCEPTABLE = 406;
 
 type
-
   TMCPTransportHeaders = record
     RawHeaders: TArray<TPair<string, string>>;
 

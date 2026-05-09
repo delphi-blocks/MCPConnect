@@ -19,6 +19,7 @@ uses
   System.Classes, System.SysUtils, System.TypInfo, System.Rtti, System.Generics.Collections,
   System.Generics.Defaults, System.JSON,
 
+  MCPConnect.JRPC.Classes,
   MCPConnect.JRPC.Core;
 
 type

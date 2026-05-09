@@ -63,7 +63,10 @@ The main features of JRPC are:
 
 ### Requirements
 
-  * Delphi **10.3 or newer** (support for Attributes is essential).
+  * Delphi **11 Alexandria or newer** — tested on 11, 12 and 13. Cross-version
+    differences (e.g. `TWebRequest.AllHeaders`, `TPath.GetAppPath`,
+    `TNoRefCountObject`) are guarded by conditional defines in
+    `Source/MCPConnect.inc`.
   * Neon as Serialization Engine (https://github.com/paolo-rossi/delphi-neon)
   * Logify as (meta) logging library (https://github.com/delphi-blocks/Logify)
 
@@ -139,7 +142,7 @@ FJRPCServer
     .Resources
       .SetBasePath(GetCurrentDir + '\data')  // Base path for static file resources
       .RegisterClass(TWeatherResource)        // Classes with [McpResource] methods
-      .RegisterClass(TMyApp)                  // Classes with [McpApp] methods
+      .RegisterClass(TMyApp)                  // Classes with [McpAppUI] methods
       .RegisterFile('docs\readme.md', 'Documentation')  // Static file resources
     .BackToMCP
 
@@ -229,7 +232,7 @@ FJRPCServer
     .SetLocation(TSessionIdLocation.Header)  // or Cookie
     .SetHeaderName('Mcp-Session-Id')         // Default for MCP
     .SetTimeout(30)                           // Minutes
-    .SetSessionClass(TSessionData)            // Or your custom class
+    .SetSessionClass(TMCPSessionData)         // Or your custom class
   .ApplyConfig
 
   .Plugin.Configure<IMCPConfig>
@@ -251,14 +254,14 @@ FJRPCServer
 
 Sessions are automatically injected into your tool classes using the `[Context]` attribute:
 
-**Option 1: Generic JSON Storage (TSessionData)**
+**Option 1: Generic JSON Storage (TMCPSessionData)**
 
 ```delphi
 type
   TShoppingCartTool = class
   private
     [Context]
-    FSession: TSessionData;  // Automatically injected
+    FSession: TMCPSessionData;  // Automatically injected
   public
     [McpTool('cart_add', 'Add item to shopping cart')]
     function AddToCart(
@@ -302,7 +305,7 @@ type
     property Quantity: Integer read FQuantity write FQuantity;
   end;
 
-  TShoppingSession = class(TSessionBase)
+  TShoppingSession = class(TMCPSessionBase)
   private
     FCart: TObjectDictionary<string, TCartItem>;
   public
@@ -386,7 +389,7 @@ MCP Apps are UI resources served via a `ui://` URI scheme. The client (if it sup
 type
   TMyApp = class
   public
-    [McpApp('ui://my-app/index.html', 'ui://my-app/index.html', 'An interactive UI panel')]
+    [McpAppUI('my-app', 'ui://my-app/index.html', 'An interactive UI panel')]
     function GetUI: string;
   end;
 
@@ -396,18 +399,28 @@ begin
 end;
 ```
 
-The `[McpApp]` attribute takes `(name, uri, description)`.
+The `[McpAppUI]` attribute takes `(name, uri, description)`.
 
 #### Linking a Tool to an App
 
-A tool can declare that it has an associated MCP App using the `app=` annotation in `[McpTool]`:
+A tool can declare that its result should be rendered by an MCP App in two equivalent ways:
+
+**Option A** — separate `[McpApp]` attribute on the tool method (takes the app URI):
+
+```delphi
+[McpTool('get_tickets', 'List available tickets')]
+[McpApp('ui://my-app/index.html')]
+function GetTickets: TTickets;
+```
+
+**Option B** — `app=` annotation in the third parameter of `[McpTool]`:
 
 ```delphi
 [McpTool('get_tickets', 'List available tickets', 'app=ui://my-app/index.html')]
 function GetTickets: TTickets;
 ```
 
-This tells the client that the tool result can be rendered inside the specified app UI.
+Both tell the client that the tool result can be rendered inside the specified app UI.
 
 #### Registering Resources and Static Files
 
@@ -417,7 +430,7 @@ Resources (both class-based and app-based) and static files are all registered i
 .Resources
   .SetBasePath(GetCurrentDir + '\data')
   .RegisterClass(TWeatherResource)   // [McpResource] class
-  .RegisterClass(TMyApp)             // [McpApp] class
+  .RegisterClass(TMyApp)             // [McpAppUI] class
   .RegisterFile('readme.md', 'Documentation')         // static text file
   .RegisterFile('docs\guide.pdf', 'User Guide')       // static binary file
 .BackToMCP

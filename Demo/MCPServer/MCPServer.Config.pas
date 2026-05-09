@@ -39,7 +39,7 @@ class procedure TServerConfigurator.ConfigureServer(AServer: TJRPCServer);
 var
   LDataPath: string;
 begin
-  LDataPath := TPath.Combine(TPath.GetAppPath, 'data');
+  LDataPath := TPath.Combine(ExtractFilePath(ParamStr(0)), 'data');
 
   AServer
 

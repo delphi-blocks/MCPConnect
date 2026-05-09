@@ -650,7 +650,7 @@ begin
   inherited;
   WriterRegistry := TMCPWriterRegistry.Create;
 
-  IconFolder := TPath.GetAppPath;
+  IconFolder := ExtractFilePath(ParamStr(0));
   ScopeSeparator := '_';  // Default separator (MCP requires ^[a-zA-Z0-9_-]{1,64}$)
   Capabilities := [TMCPCapability.Tools, TMCPCapability.Resources, TMCPCapability.Prompts];
 end;

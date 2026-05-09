@@ -269,9 +269,9 @@ function TDelphiDayTool.GetTickets: TTickets;
 begin
   Result := TTickets.Create;
   FGC.Add(Result);
-  Result.Add(TTicket.Create(1, 'Conferenza + Seminari', StrToDate('19/11/2025'), 179.0, ''));
-  Result.Add(TTicket.Create(2, 'Solo Conferenza', StrToDate('19/11/2025'), 0, ''));
-  Result.Add(TTicket.Create(3, 'Young ticket', StrToDate('19/11/2025'), 69.0, ''));
+  Result.Add(TTicket.Create(1, 'Conferenza + Seminari', EncodeDate(2026, 6, 10), 179.0, ''));
+  Result.Add(TTicket.Create(2, 'Solo Conferenza', EncodeDate(2026, 6, 10), 0, ''));
+  Result.Add(TTicket.Create(3, 'Young ticket', EncodeDate(2026, 6, 10), 69.0, ''));
 end;
 
 { TTicket }

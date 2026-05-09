@@ -13,13 +13,20 @@
 {******************************************************************************}
 unit MCPConnect.JRPC.Classes;
 
+{$I 'MCPConnect.inc' }
+
 interface
 
 uses
   System.Classes, System.SysUtils, System.Rtti, System.TypInfo,
-  System.Generics.Collections, System.RegularExpressions;
+  System.Generics.Collections, System.Generics.Defaults,
+  System.RegularExpressions;
 
 type
+  {$IFNDEF HAS_NO_REF_COUNT}
+  TNoRefCountObject = TSingletonImplementation;
+  {$ENDIF}
+
   /// <summary>
   ///   Anonymous method type that defines a custom disposal action.
   ///   Used by the garbage collector to execute custom cleanup logic

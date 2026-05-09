@@ -28,7 +28,6 @@ type
   private
     FServer: TJRPCServer;
     procedure LogRequest(const ARequest: TMCPTransportRequest);
-    procedure LogResponse(const AResponse: TMCPTransportResponse);
     procedure LogHttpResponse(const AResponse: TIdHTTPResponseInfo);
 
     procedure ConvertRequest(AHttpRequest: TIdHTTPRequestInfo; var ARequest: TMCPTransportRequest);
@@ -76,12 +75,28 @@ end;
 
 procedure TJRPCIndyBridge.ConvertResponse(const AResponse: TMCPTransportResponse;
   AHttpResponse: TIdHTTPResponseInfo);
-var
-  LIndex: Integer;
+
+  function IsIndyHeader(const Name: string): Boolean;
+  const
+    IndyHeaders: array [0..4] of string = ('Date', 'Content-Type', 'Content-Length', 'Connection', 'Transfer-Encoding');
+  var
+    IndyHeader: string;
+  begin
+    Result := False;
+    for IndyHeader in IndyHeaders do
+      if CompareText(Name, IndyHeader) = 0 then
+        Exit(True);
+  end;
+
 begin
-  for LIndex := 0 to AResponse.Headers.Count - 1 do
-    AHttpResponse.CustomHeaders.AddPair(AResponse.Headers.RawHeaders[LIndex].Key,
-      AResponse.Headers.RawHeaders[LIndex].Value);
+  AHttpResponse.CustomHeaders.Clear;
+  for var LHeaderPair in AResponse.Headers.RawHeaders do
+  begin
+    // This check avoids doubled headers
+    if IsIndyHeader(LHeaderPair.Key) then
+      Continue;
+    AHttpResponse.CustomHeaders.AddValue(LHeaderPair.Key, LHeaderPair.Value);
+  end;
 
   AHttpResponse.ResponseNo := AResponse.Code;
   AHttpResponse.ContentText := AResponse.Content;
@@ -156,16 +171,6 @@ begin
   for var head in ARequest.Headers.RawHeaders do
     Logger.Log(Format('%s: %s', [head.Key, head.Value]), TLogLevel.Debug);
   Logger.Log('*** Content: ' + ARequest.Content, TLogLevel.Debug);
-end;
-
-procedure TJRPCIndyBridge.LogResponse(const AResponse: TMCPTransportResponse);
-begin
-  Logger.Log('-->-->-->-->-->-->--> RESPONSE', TLogLevel.Debug);
-  Logger.Log(Format('Http Code: [%d]', [AResponse.Code]), TLogLevel.Debug);
-  Logger.Log('*** Headers ***', TLogLevel.Debug);
-  for var head in AResponse.Headers.RawHeaders do
-    Logger.Log(Format('%s: %s', [head.Key, head.Value]), TLogLevel.Debug);
-  Logger.Log(Format('*** Content: %s', [AResponse.Content]), TLogLevel.Debug);
 end;
 
 function TJRPCIndyBridge.ReadContentStream(ARequestInfo: TIdHTTPRequestInfo): string;

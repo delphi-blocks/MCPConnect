@@ -30,7 +30,8 @@ function TDeplphiDayAppUI.GetUI: string;
 var
   LFileName: string;
 begin
-  LFileName := TPath.Combine(TPath.GetAppPath, 'data', 'delphi-mcp-app.html');
+  LFileName := TPath.Combine(TPath.GetAppPath, 'data');
+  LFileName := TPath.Combine(LFileName, 'delphi-mcp-app.html');
   Result := TFile.ReadAllText(LFileName);
 end;
 

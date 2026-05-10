@@ -173,8 +173,7 @@ type
 implementation
 
 uses
-  System.IOUtils, System.JSON,
-  Logify,
+  System.IOUtils, System.JSON, Logify,
   MCPConnect.Configuration.Neon,
   MCPConnect.JRPC.Invoker;
 

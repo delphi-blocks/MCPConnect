@@ -56,6 +56,8 @@
 
 {$IF CompilerVersion >= 36} // Delphi 12.0 Athens
   {$DEFINE HAS_ARRAY_TO_STRING}
+  {$DEFINE HAS_APP_PATH}
+  {$DEFINE HAS_WEBBROKER_ALLHEADERS}
 {$ENDIF}
 
 {$IF CompilerVersion >= 37} // Delphi 13.0 Florence

@@ -33,6 +33,7 @@ type
     FServer: TJRPCServer;
     procedure SetPathInfo(const Value: string);
     procedure SetServer(const Value: TJRPCServer);
+    procedure ConvertHeaders(AWebRequest: TWebRequest; AMCPRequest: TMCPTransportRequest);
   public
     { IWebDispatch }
     function DispatchEnabled: Boolean;
@@ -70,6 +71,14 @@ type
 
 implementation
 
+
+function DateToHttpStr(ADate: TDateTime): string;
+const
+  sDateFormat = '"%s", dd "%s" yyyy hh":"nn":"ss';
+begin
+  Result := Format(FormatDateTime(sDateFormat + ' "GMT"', ADate), [DayOfWeekStr(ADate), MonthStr(ADate)]);
+end;
+
 function DateTimeToHTTPDate(ADateTime: TDateTime): string;
 const
   HTTPDateFormat = 'ddd, dd mmm yyyy hh:nn:ss "GMT"';
@@ -78,6 +87,47 @@ var
 begin
   FS := TFormatSettings.Create('en-US');
   Result := FormatDateTime(HTTPDateFormat, ADateTime, FS);
+end;
+
+procedure TJRPCDispatcher.ConvertHeaders(AWebRequest: TWebRequest; AMCPRequest: TMCPTransportRequest);
+begin
+  {$IFDEF HAS_WEBBROKER_ALLHEADERS}
+  for var I := 0 to AWebRequest.AllHeaders.Count - 1 do
+    LMCPRequest.Headers.AddOrSet(AWebRequest.AllHeaders.KeyNames[I],
+      AWebRequest.AllHeaders.ValueFromIndex[I]);
+  {$ELSE}
+    AMCPRequest.Headers.AddOrSetValue('Cache-Control', AWebRequest.CacheControl);
+  if AWebRequest.Cookie <> '' then
+    AMCPRequest.Headers.AddOrSetValue('Cookie', AWebRequest.Cookie);
+  if AWebRequest.Date > 0 then
+    AMCPRequest.Headers.AddOrSetValue('Date', DateToHttpStr(AWebRequest.Date));
+  if AWebRequest.Accept <> '' then
+    AMCPRequest.Headers.AddOrSetValue('Accept', AWebRequest.Accept);
+  if AWebRequest.From <> '' then
+    AMCPRequest.Headers.AddOrSetValue('From', AWebRequest.From);
+  if AWebRequest.Host <> '' then
+    AMCPRequest.Headers.AddOrSetValue('Host', AWebRequest.Host);
+  if AWebRequest.IfModifiedSince > 0 then
+    AMCPRequest.Headers.AddOrSetValue('If-Modified-Since', DateToHttpStr(AWebRequest.IfModifiedSince));
+  if AWebRequest.Referer <> '' then
+    AMCPRequest.Headers.AddOrSetValue('Referer', AWebRequest.Referer);
+  if AWebRequest.UserAgent <> '' then
+    AMCPRequest.Headers.AddOrSetValue('User-Agent', AWebRequest.UserAgent);
+  if AWebRequest.ContentEncoding <> '' then
+    AMCPRequest.Headers.AddOrSetValue('Content-Encoding', AWebRequest.ContentEncoding);
+  if AWebRequest.ContentType <> '' then
+    AMCPRequest.Headers.AddOrSetValue('Content-Type', AWebRequest.ContentType);
+  if AWebRequest.ContentLength <> 0 then
+    AMCPRequest.Headers.AddOrSetValue('Content-Length', AWebRequest.ContentLength.ToString);
+  if AWebRequest.ContentVersion <> '' then
+    AMCPRequest.Headers.AddOrSetValue('Content-Version', AWebRequest.ContentVersion);
+  if AWebRequest.DerivedFrom <> '' then
+    AMCPRequest.Headers.AddOrSetValue('Derived-From', AWebRequest.DerivedFrom);
+  if AWebRequest.Expires > 0 then
+    AMCPRequest.Headers.AddOrSetValue('Expires', DateToHttpStr(AWebRequest.Expires));
+  if AWebRequest.Title <> '' then
+    AMCPRequest.Headers.AddOrSetValue('Title', AWebRequest.Title);
+  {$ENDIF}
 end;
 
 constructor TJRPCDispatcher.Create(AOwner: TComponent);
@@ -124,50 +174,9 @@ begin
 
     procedure (ARequest: TMCPTransportRequest)
     begin
-      {$IFDEF HAS_WEBBROKER_REQUEST_HEADERS}
-      for var I := 0 to Request.AllHeaders.Count - 1 do
-        ARequest.Headers.AddOrSetValue(Request.AllHeaders.KeyNames[I],
-          Request.AllHeaders.ValueFromIndex[I]);
-      {$ELSE}
-      if Request.Authorization <> '' then
-        ARequest.Headers.AddOrSetValue('Authorization', Request.Authorization);
-      if Request.CacheControl <> '' then
-        ARequest.Headers.AddOrSetValue('Cache-Control', Request.CacheControl);
-      if Request.Cookie <> '' then
-        ARequest.Headers.AddOrSetValue('Cookie', Request.Cookie);
-      if Request.Date > 0 then
-        ARequest.Headers.AddOrSetValue('Date', DateTimeToHTTPDate(Request.Date));
-      if Request.Accept <> '' then
-        ARequest.Headers.AddOrSetValue('Accept', Request.Accept);
-      if Request.From <> '' then
-        ARequest.Headers.AddOrSetValue('From', Request.From);
-      if Request.Host <> '' then
-        ARequest.Headers.AddOrSetValue('Host', Request.Host);
-      if Request.IfModifiedSince > 0 then
-        ARequest.Headers.AddOrSetValue('If-Modified-Since', DateTimeToHTTPDate(Request.IfModifiedSince));
-      if Request.Referer <> '' then
-        ARequest.Headers.AddOrSet('Referer', Request.Referer);
-      if Request.UserAgent <> '' then
-        ARequest.Headers.AddOrSetValue('User-Agent', Request.UserAgent);
-      if Request.ContentEncoding <> '' then
-        ARequest.Headers.AddOrSetValue('Content-Encoding', Request.ContentEncoding);
-      if Request.ContentType <> '' then
-        ARequest.Headers.AddOrSetValue('Content-Type', Request.ContentType);
-      if Request.ContentLength <> 0 then
-        ARequest.Headers.AddOrSetValue('Content-Length', Request.ContentLength.ToString);
-      if Request.ContentVersion <> '' then
-        ARequest.Headers.AddOrSetValue('Content-Version', Request.ContentVersion);
-      if Request.DerivedFrom <> '' then
-        ARequest.Headers.AddOrSetValue('Derived-From', Request.DerivedFrom);
-      if Request.Expires > 0 then
-        ARequest.Headers.AddOrSetValue('Expires', DateTimeToHTTPDate(Request.Expires));
-      if Request.Title <> '' then
-        ARequest.Headers.AddOrSetValue('Title', Request.Title);
-      {$ENDIF}
-
+      ConvertHeaders(Request, ARequest);
       ARequest.Command := Request.Method;
       ARequest.Content := Request.Content;
-
 
       //LogRequest(ARequest);
     end,
@@ -186,7 +195,7 @@ begin
         {$IFDEF HAS_WEBBROKER_SSE}
         LWriter := TMCPSSEResponseWriterWebBroker.Create(Response);
         {$ELSE}
-        raise Exception.Create('SSE not supported. Upgrade to Delphi 13.1 or higher');
+        raise EMCPTransportException.Create(405, 'WebBroker does not support SSE. Upgrade to Delphi 13.1 or higher');
         {$ENDIF}
         AResponse.WriterProc(LWriter);
       end

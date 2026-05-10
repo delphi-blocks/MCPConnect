@@ -28,6 +28,7 @@ implementation
 
 uses
   System.IOUtils,
+  MCPConnect.JRPC.Classes,
   MCPServer.Tools,
   MCPServer.Resources,
   MCPServer.Apps;
@@ -42,7 +43,6 @@ begin
   LDataPath := TPath.Combine(TPath.GetAppPath, 'data');
 
   AServer
-
 
     .Plugin.Configure<IAuthTokenConfig>
       .SetToken('my-secret-token')

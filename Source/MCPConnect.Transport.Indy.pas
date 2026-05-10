@@ -33,8 +33,8 @@ type
     {$HINTS ON}
     procedure LogHttpResponse(const AResponse: TIdHTTPResponseInfo);
 
+    function IsIndyHeader(const Name: string): Boolean;
     procedure SendHeaders(const AResponse: TMCPTransportResponse; AContext: TIdContext; AHttpResponse: TIdHTTPResponseInfo);
-
     function ReadContentStream(ARequestInfo: TIdHTTPRequestInfo): string;
   public
     procedure HandleRequest(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
@@ -70,8 +70,7 @@ implementation
 uses
   System.IOUtils, Logify;
 
-procedure TJRPCIndyBridge.HandleRequest(AContext: TIdContext;
-  ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
+procedure TJRPCIndyBridge.HandleRequest(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
 var
   LMcpHandler: IMCPTransportHandler;
 begin
@@ -104,8 +103,15 @@ begin
     var
       LWriter: IMCPSSEResponseWriter;
     begin
+      AResponseInfo.CustomHeaders.Clear;
       for var pair in AResponse.Headers do
+      begin
+        // This check avoids doubled headers
+        if IsIndyHeader(pair.Key) then
+          Continue;
+
         AResponseInfo.CustomHeaders.AddValue(pair.Key, pair.Value);
+      end;
 
       if Assigned(AResponse.WriterProc) then
       begin
@@ -189,7 +195,19 @@ begin
   Logger.Log(Format('*** Content: %s', [AResponse.Content]), TLogLevel.Trace);
 end;
 
-function TJRPCIndyBridge.ReadContentStream(ARequestInfo: TIdHTTPRequestInfo): string;
+function TJRPCIndyBridge.IsIndyHeader(const Name: string): Boolean;
+const
+  IndyHeaders: array [0..4] of string = ('Date', 'Content-Type', 'Content-Length', 'Connection', 'Transfer-Encoding');
+var
+  IndyHeader: string;
+begin
+  Result := False;
+  for IndyHeader in IndyHeaders do
+    if CompareText(Name, IndyHeader) = 0 then
+      Exit(True);
+end;
+
+  function TJRPCIndyBridge.ReadContentStream(ARequestInfo: TIdHTTPRequestInfo): string;
 var
   LEncoding: IIdTextEncoding;
 begin

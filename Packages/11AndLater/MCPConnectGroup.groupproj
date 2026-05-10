@@ -1,0 +1,48 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{3D4D26BA-B07C-4DE8-958D-C8CBD956A052}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="MCPConnect.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="MCPConnectVCL.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="MCPConnect">
+        <MSBuild Projects="MCPConnect.dproj"/>
+    </Target>
+    <Target Name="MCPConnect:Clean">
+        <MSBuild Projects="MCPConnect.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="MCPConnect:Make">
+        <MSBuild Projects="MCPConnect.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="MCPConnectVCL">
+        <MSBuild Projects="MCPConnectVCL.dproj"/>
+    </Target>
+    <Target Name="MCPConnectVCL:Clean">
+        <MSBuild Projects="MCPConnectVCL.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="MCPConnectVCL:Make">
+        <MSBuild Projects="MCPConnectVCL.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="MCPConnect;MCPConnectVCL"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="MCPConnect:Clean;MCPConnectVCL:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="MCPConnect:Make;MCPConnectVCL:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>

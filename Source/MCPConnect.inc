@@ -64,7 +64,7 @@
   {$DEFINE HAS_WEBBROKER_REQUEST_HEADERS}
 {$ENDIF}
 
-{$IF RTLVersion >= 37.1} // Delphi 13.1 Florence
+{$IF RTLVersion131} // Delphi 13.1 Florence
   {$DEFINE HAS_WEBBROKER_SSE}
 {$ENDIF}
 

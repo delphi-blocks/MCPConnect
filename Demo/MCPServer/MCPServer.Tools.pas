@@ -80,7 +80,8 @@ type
   TDelphiDayTool = class
   private
     [Context] FGC: IGarbageCollector;
-    [Context] FSession: TMCPSessionBase;
+    //[Context] FSession: TShoppingSession;
+    [Context] Responses: TMCPMessageQueue;
 
   public
     [McpTool('get_tickets', 'Get the list of available tickets for the DelphiDay', 'icon=badge.png')]
@@ -154,6 +155,11 @@ type
 
     [McpTool('session_info', 'Get session information (ID, created time, last accessed)', 'icon=gear.png')]
     function GetSessionInfo: string;
+  end;
+
+  TTicketProgressNotification = class(TJRPCNotification)
+  public
+    constructor Create(APosition, ASize: Integer);
   end;
 
 implementation
@@ -272,14 +278,18 @@ function TDelphiDayTool.GetTickets: TTickets;
 begin
   Result := TTickets.Create;
   FGC.Add(Result);
-  Result.Add(TTicket.Create(1, 'Conferenza + Seminari', StrToDate('19/11/2025'), 179.0, ''));
-  Result.Add(TTicket.Create(2, 'Solo Conferenza', StrToDate('19/11/2025'), 0, ''));
-  Result.Add(TTicket.Create(3, 'Young ticket', StrToDate('19/11/2025'), 69.0, ''));
 
-  var n := TJRPCNotification.Create;
-  n.Method := 'notification/logging';
-  n.AddNamedParam('name', 'Paolo');
-  FSession.Outbound.Enqueue(n);
+  Result.Add(TTicket.Create(1, 'Conferenza + Seminari', StrToDate('19/11/2025'), 179.0, ''));
+  Responses.Enqueue(TTicketProgressNotification.Create(1, 3));
+  Sleep(1000);
+
+  Result.Add(TTicket.Create(2, 'Solo Conferenza', StrToDate('19/11/2025'), 0, ''));
+  Responses.Enqueue(TTicketProgressNotification.Create(2, 3));
+  Sleep(1000);
+
+  Result.Add(TTicket.Create(3, 'Young ticket', StrToDate('19/11/2025'), 69.0, ''));
+  Responses.Enqueue(TTicketProgressNotification.Create(3, 3));
+  Sleep(1000);
 end;
 
 { TTicket }
@@ -372,6 +382,16 @@ begin
       DateTimeToStr(FSession.LastAccessedAt)
     ]
   );
+end;
+
+{ TTicketProgressNotification }
+
+constructor TTicketProgressNotification.Create(APosition, ASize: Integer);
+begin
+  inherited Create;
+  Method := 'notification/logging';
+  AddNamedParam('position', APosition);
+  AddNamedParam('size', ASize);
 end;
 
 end.

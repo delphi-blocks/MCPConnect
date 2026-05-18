@@ -71,7 +71,6 @@ type
 
 implementation
 
-
 function DateToHttpStr(ADate: TDateTime): string;
 const
   sDateFormat = '"%s", dd "%s" yyyy hh":"nn":"ss';

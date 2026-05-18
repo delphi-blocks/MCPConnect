@@ -21,7 +21,8 @@ uses
 
   MCPConnect.JRPC.Core,
   MCPConnect.JRPC.Server,
-  MCPConnect.Transport.Base;
+  MCPConnect.Transport.Base,
+  MCPConnect.Transport.MediaType;
 
 type
   TJRPCIndyBridge = class(TComponent)
@@ -40,6 +41,7 @@ type
     procedure HandleRequest(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
 
     property Server: TJRPCServer read FServer write FServer;
+
   end;
 
   TJRPCIndyServer = class(TIdCustomHTTPServer)
@@ -77,7 +79,13 @@ begin
   if not Assigned(FServer) then
     raise EJRPCException.Create('JRPC Server not found');
 
-  LMcpHandler := TMCPTransportHandler.Create(FServer);
+  LMcpHandler := TMCPTransportHandler.Create(FServer, TMCPSSEResponseWriterIndy.Create(AContext.Connection));
+
+  LMcpHandler.SendResponseHeadersProc :=
+    procedure (AResponse: TMCPTransportResponse)
+    begin
+      SendHeaders(AResponse, AContext, AResponseInfo);
+    end;
 
   LMcpHandler.ProcessRequest(
 
@@ -89,47 +97,26 @@ begin
       begin
         var n := ARequestInfo.RawHeaders.Names[LIndex];
         var v := ARequestInfo.RawHeaders.Values[n];
-        ARequest.Headers.AddOrSetValue(n, v);
+        ARequest.AddOrSetHeader(n, v);
       end;
 
       ARequest.Url := ARequestInfo.URI;
       ARequest.Command := ARequestInfo.Command;
       ARequest.Content := ReadContentStream(ARequestInfo);
 
+      Logger.LogInfo('SessionID ' + ARequest.Command + ' - ' + ARequest.GetHeader('Mcp-Session-Id'));
+
       LogRequest(ARequest);
     end,
 
     procedure (AResponse: TMCPTransportResponse)
-    var
-      LWriter: IMCPSSEResponseWriter;
     begin
-      AResponseInfo.CustomHeaders.Clear;
-      for var pair in AResponse.Headers do
-      begin
-        // This check avoids doubled headers
-        if IsIndyHeader(pair.Key) then
-          Continue;
+      AResponseInfo.ResponseNo := AResponse.Code;
+      AResponseInfo.ContentText := AResponse.Content;
+      // SendHeaders after ContentText so indy can handle Content-Length
+      SendHeaders(AResponse, AContext, AResponseInfo);
 
-        AResponseInfo.CustomHeaders.AddValue(pair.Key, pair.Value);
-      end;
-
-      if Assigned(AResponse.WriterProc) then
-      begin
-        AResponseInfo.ContentType := 'text/event-stream';
-        AResponseInfo.ContentLength := -2; // Trick to stop indy to send Content-Length
-        SendHeaders(AResponse, AContext, AResponseInfo);
-
-        LWriter := TMCPSSEResponseWriterIndy.Create(AContext.Connection);
-        AResponse.WriterProc(LWriter);
-      end
-      else
-      begin
-        AResponseInfo.ResponseNo := AResponse.Code;
-        AResponseInfo.ContentText := AResponse.Content;
-        AResponseInfo.ContentType := AResponse.ContentType;
-
-        LogHttpResponse(AResponseInfo);
-      end;
+      LogHttpResponse(AResponseInfo);
     end
   );
 end;
@@ -207,7 +194,7 @@ begin
       Exit(True);
 end;
 
-  function TJRPCIndyBridge.ReadContentStream(ARequestInfo: TIdHTTPRequestInfo): string;
+function TJRPCIndyBridge.ReadContentStream(ARequestInfo: TIdHTTPRequestInfo): string;
 var
   LEncoding: IIdTextEncoding;
 begin
@@ -228,23 +215,13 @@ end;
 
 procedure TJRPCIndyBridge.SendHeaders(const AResponse: TMCPTransportResponse;
   AContext: TIdContext; AHttpResponse: TIdHTTPResponseInfo);
-
-  function IsIndyHeader(const Name: string): Boolean;
-  const
-    IndyHeaders: array [0..4] of string = ('Date', 'Content-Type', 'Content-Length', 'Connection', 'Transfer-Encoding');
-  var
-    IndyHeader: string;
-  begin
-    Result := False;
-    for IndyHeader in IndyHeaders do
-      if CompareText(Name, IndyHeader) = 0 then
-        Exit(True);
-  end;
-
 var
   LHeaderPair: TPair<string, string>;
 begin
   inherited;
+  if AHttpResponse.HeaderHasBeenWritten then
+    Exit;
+
   AHttpResponse.Date := GMTToLocalDateTime(AResponse.GetHeader('Date'));
   AHttpResponse.CustomHeaders.Clear;
 
@@ -254,14 +231,16 @@ begin
       Continue;
     AHttpResponse.CustomHeaders.AddValue(LHeaderPair.Key, LHeaderPair.Value);
   end;
+  AHttpResponse.ContentType := AResponse.ContentType;
   AHttpResponse.TransferEncoding := AResponse.GetHeader('Transfer-Encoding');
-
-  if AResponse.GetHeader('Connection') <> '' then
-    AHttpResponse.Connection := AResponse.GetHeader('Connection');
+  AHttpResponse.Connection := AResponse.GetHeader('Connection');
+  if AResponse.ContentType = TMediaType.TEXT_EVENT_STREAM then
+    AHttpResponse.ContentLength := -2; // Prevents indy from sending Content-Length
 
   //SendCookies;
 
-    AHttpResponse.WriteHeader;
+  AHttpResponse.WriteHeader;
+  AContext.Connection.Socket.WriteBufferFlush;
 end;
 
 { TMCPSSEResponseWriterIndy }
@@ -281,6 +260,7 @@ procedure TMCPSSEResponseWriterIndy.InternalWriteLine(const AValue: string);
 begin
   inherited;
   FConnection.Socket.WriteLn(AValue, IndyTextEncoding_UTF8);
+  FConnection.Socket.WriteBufferFlush;
 end;
 
 end.

@@ -75,21 +75,6 @@ type
   TMCPSessionBase = class;
   TMCPSessionDataClass = class of TMCPSessionBase;
 
-  TMCPNotificationQueue = class (TMCPMessageQueue<TJRPCNotification>)
-  end;
-
-  TMCPResponseQueue = class (TMCPMessageQueue<TJRPCResponse>)
-  end;
-
-  TMCPRequestQueue = class (TMCPMessageQueue<TJRPCRequest>)
-  end;
-
-  TMCPErrorQueue = class (TMCPMessageQueue<TJRPCError>)
-  end;
-
-  TMCPOutboundQueue = class (TMCPMessageQueue<TJRPCMessage>)
-  end;
-
   TMCPSessionQueues = class
     Notifications: TMCPNotificationQueue;
     Responses: TMCPResponseQueue;
@@ -111,7 +96,7 @@ type
     FCreatedAt: TDateTime;
     FLastAccessedAt: TDateTime;
     FInbound: TMCPSessionQueues;
-    FOutbound: TMCPOutboundQueue;
+    FOutbound: TMCPMessageQueue;
   public
     constructor Create;
     destructor Destroy; override;
@@ -132,7 +117,7 @@ type
     property LastAccessedAt: TDateTime read FLastAccessedAt write FLastAccessedAt;
 
     property Inbound: TMCPSessionQueues read FInbound write FInbound;
-    property Outbound: TMCPOutboundQueue read FOutbound write FOutbound;
+    property Outbound: TMCPMessageQueue read FOutbound write FOutbound;
   end;
 
   /// <summary>
@@ -439,7 +424,7 @@ constructor TMCPSessionBase.Create;
 begin
   inherited Create;
   FInbound := TMCPSessionQueues.Create(100);
-  FOutbound := TMCPOutboundQueue.Create(100);
+  FOutbound := TMCPMessageQueue.Create(100);
 end;
 
 destructor TMCPSessionBase.Destroy;

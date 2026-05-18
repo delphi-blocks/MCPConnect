@@ -44,9 +44,9 @@ begin
 
   AServer
 
-    .Plugin.Configure<IAuthTokenConfig>
-      .SetToken('my-secret-token')
-    .ApplyConfig
+//    .Plugin.Configure<IAuthTokenConfig>
+//      .SetToken('my-secret-token')
+//    .ApplyConfig
 
     .Plugin.Configure<ISessionConfig>
       .SetLocation(TSessionIdLocation.Header)

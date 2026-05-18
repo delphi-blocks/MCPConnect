@@ -61,3 +61,6 @@ __recovery/
 
 libs/Neon
 nul
+
+# VSCode
+*.vsdcache.*

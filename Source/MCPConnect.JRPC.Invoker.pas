@@ -50,7 +50,7 @@ type
   TJRPCInvokerContext = record
     Garbage: IGarbageCollector;
     Request: TJRPCRequest;
-    Responses: TJRPCMessages;
+    Responses: TMCPMessageQueue;
 
     ApiInstance: TObject;
     NeonConfig: INeonConfiguration;
@@ -191,7 +191,7 @@ begin
   else
     LResponse.Result := TNeon.ValueToJSON(LResult, FNeonConfig);
 
-  FContext.Responses.AddMessage(LResponse);
+  FContext.Responses.Enqueue(LResponse);
 end;
 
 function TJRPCInvoker.GetParamName(LParam: TRttiParameter): string;

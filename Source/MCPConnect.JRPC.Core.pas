@@ -1,4 +1,4 @@
-{******************************************************************************}
+﻿{******************************************************************************}
 {                                                                              }
 {  Delphi MCP Connect Library                                                  }
 {                                                                              }
@@ -202,6 +202,11 @@ type
     function ToJson: string; virtual;
 
     /// <summary>
+    ///   Serializes the message to a TJSONObject.
+    /// </summary>
+    function ToJsonObject: TJSONObject; virtual;
+
+    /// <summary>
     ///   Deserializes the message from a JSON string.
     /// </summary>
     procedure FromJson(const AJSON: string); virtual;
@@ -236,12 +241,14 @@ type
     procedure FromJsonSingle(const AJSON: TJSONObject);
     function GetMessageType(AMessage: TJSONObject): TJRPCMessageType;
     function GetCount: NativeInt;
+    function GetIsEmpty: Boolean;
   public
     constructor Create(AOwnsObjects: Boolean);
     destructor Destroy; override;
 
     procedure AddMessage(AMsg: TJRPCMessage);
 
+    function GetEnumerator: TEnumerator<TJRPCMessage>;
     function ToJson: string;
     procedure FromJson(const AJSON: string); overload;
     procedure FromJson(AStream: TStream); overload;
@@ -251,6 +258,7 @@ type
     property List: TObjectList<TJRPCMessage> read FList;
     property Types: TJRPCMessageTypes read FTypes;
     property Count: NativeInt read GetCount;
+    property IsEmpty: Boolean read GetIsEmpty;
   public
     class function CreateFromJson(const AJSON: string): TJRPCMessages;
   end;
@@ -597,7 +605,6 @@ type
   protected
     function GetCurrentRequest: TJRPCRequest;
     function GetResponses: TJRPCMessages;
-    procedure AddConfigurations(AObject: TObject);
   public
     constructor Create;
 
@@ -614,7 +621,9 @@ type
     property Responses: TJRPCMessages read GetResponses;
   end;
 
-  TMCPMessageQueue<T: TJRPCMessage> = class
+  TQueueProcessProc<T: TJRPCMessage> = reference to procedure (AMessage: T; var ADispose: Boolean);
+
+  TMCPMessageQueueBase<T: TJRPCMessage> = class
   protected
     FEvent: TEvent;
     FMaxItems: Integer;
@@ -629,6 +638,25 @@ type
     //function TryDequeueWait(ATimeOut: Integer = 1000; out AValue: T): Boolean; inline;
     function Peek: T; inline;
     function Count: NativeInt; inline;
+    // Exit if after the timeout there's not any message
+    procedure Process(AProc: TQueueProcessProc<T>; ATimeOut: Integer = 1000);
+    // At the end the queue will be empty
+    function ToJson: string;
+  end;
+
+  TMCPMessageQueue = class (TMCPMessageQueueBase<TJRPCMessage>)
+  end;
+
+  TMCPNotificationQueue = class (TMCPMessageQueueBase<TJRPCNotification>)
+  end;
+
+  TMCPResponseQueue = class (TMCPMessageQueueBase<TJRPCResponse>)
+  end;
+
+  TMCPRequestQueue = class (TMCPMessageQueueBase<TJRPCRequest>)
+  end;
+
+  TMCPErrorQueue = class (TMCPMessageQueueBase<TJRPCError>)
   end;
 
   /// <summary>
@@ -677,6 +705,11 @@ end;
 function TJRPCMessage.ToJson: string;
 begin
   Result := TNeon.ObjectToJSONString(Self, JRPCNeonConfig);
+end;
+
+function TJRPCMessage.ToJsonObject: TJSONObject;
+begin
+  Result := TNeon.ObjectToJSON(Self, JRPCNeonConfig) as TJSONObject;
 end;
 
 constructor TJRPCMethod.Create;
@@ -1191,11 +1224,27 @@ end;
 
 { TJRPCContext }
 
-procedure TJRPCContext.AddConfigurations(AObject: TObject);
+constructor TJRPCContext.Create;
+begin
+  inherited Create;
+end;
+
+
+procedure TJRPCContext.AddContent(AObject: TObject);
 var
   LApplication: IJRPCApplication;
   LConfig: TJRPCConfiguration;
 begin
+  inherited AddContent(AObject);
+
+  if AObject = nil then
+    Exit;
+
+  if AObject is TJRPCRequest then
+    FCurrentRequest := TJRPCRequest(AObject)
+  else if AObject is TJRPCMessages then
+    FResponses := TJRPCMessages(AObject);
+
   if Supports(AObject, IJRPCApplication, LApplication) then
   begin
     for LConfig in LApplication.GetConfigurations do
@@ -1204,29 +1253,6 @@ begin
     end;
   end;
 end;
-
-constructor TJRPCContext.Create;
-begin
-  inherited Create;
-end;
-
-
-procedure TJRPCContext.AddContent(AObject: TObject);
-begin
-  if AObject = nil then
-    Exit;
-
-  if AObject is TJRPCRequest then
-    FCurrentRequest := TJRPCRequest(AObject)
-  else if AObject is TJRPCMessages then
-    FResponses := TJRPCMessages(AObject)
-  else
-  begin
-    FContextData.Add(AObject.ClassType, AObject);
-    AddConfigurations(AObject);
-  end;
-end;
-
 
 function TJRPCContext.GetCurrentRequest: TJRPCRequest;
 begin
@@ -1386,6 +1412,16 @@ end;
 function TJRPCMessages.GetCount: NativeInt;
 begin
   Result := FList.Count;
+end;
+
+function TJRPCMessages.GetEnumerator: TEnumerator<TJRPCMessage>;
+begin
+  Result := List.GetEnumerator;
+end;
+
+function TJRPCMessages.GetIsEmpty: Boolean;
+begin
+  Result := FList.IsEmpty;
 end;
 
 function TJRPCMessages.GetMessageType(AMessage: TJSONObject): TJRPCMessageType;
@@ -1651,16 +1687,16 @@ begin
   Result := AContext.WriteDataMember(AValue, False);
 end;
 
-{ TMCPMessageQueue<T> }
+{ TMCPMessageQueueBase<T> }
 
-constructor TMCPMessageQueue<T>.Create(AMaxItems: Integer);
+constructor TMCPMessageQueueBase<T>.Create(AMaxItems: Integer);
 begin
   FEvent := TEvent.Create;
   FQueue := TQueue<T>.Create;
   FMaxItems := AMaxItems;
 end;
 
-destructor TMCPMessageQueue<T>.Destroy;
+destructor TMCPMessageQueueBase<T>.Destroy;
 begin
   FEvent.Free;
   while FQueue.Count > 0 do
@@ -1670,23 +1706,30 @@ begin
   inherited;
 end;
 
-function TMCPMessageQueue<T>.Dequeue: T;
+function TMCPMessageQueueBase<T>.Dequeue: T;
 begin
   TMonitor.Enter(FQueue);
   try
     if FQueue.Count = 0 then
       Result := nil
     else
+    begin
       Result := FQueue.Dequeue;
+      // FEvent is manual-reset: reset it when the queue drains so the next
+      // DequeueWait actually blocks for ATimeOut instead of returning immediately.
+      if FQueue.Count = 0 then
+        FEvent.ResetEvent;
+    end;
   finally
     TMonitor.Exit(FQueue);
   end;
 end;
 
-function TMCPMessageQueue<T>.DequeueWait(ATimeOut: Integer = 1000): T;
+function TMCPMessageQueueBase<T>.DequeueWait(ATimeOut: Integer = 1000): T;
 var
   LEventResult: TWaitResult;
 begin
+  Result := nil;
   if FQueue.Count > 0 then
     Exit(Dequeue);
 
@@ -1694,17 +1737,17 @@ begin
   if LEventResult = wrSignaled then
     Exit(Dequeue);
 
-
-
   { TODO -opaolo -c : Finire 27/04/2026 17:53:40 }
 end;
 
-procedure TMCPMessageQueue<T>.Enqueue(const Value: T);
+procedure TMCPMessageQueueBase<T>.Enqueue(const Value: T);
 begin
   TMonitor.Enter(FQueue);
   try
+    // Cap-and-drop: when full, free the oldest item to avoid leaking it
+    // (the queue owns the messages — see Destroy).
     if FQueue.Count = FMaxItems then
-      FQueue.Dequeue;
+      FQueue.Dequeue.Free;
 
     FQueue.Enqueue(Value);
     FEvent.SetEvent;
@@ -1713,7 +1756,7 @@ begin
   end;
 end;
 
-function TMCPMessageQueue<T>.Peek: T;
+function TMCPMessageQueueBase<T>.Peek: T;
 begin
   TMonitor.Enter(FQueue);
   try
@@ -1723,7 +1766,48 @@ begin
   end;
 end;
 
-function TMCPMessageQueue<T>.Count: NativeInt;
+procedure TMCPMessageQueueBase<T>.Process(AProc: TQueueProcessProc<T>; ATimeOut: Integer);
+begin
+  while True do
+  begin
+    var LDispose := True;
+    var LMessage := DequeueWait(ATimeOut);
+    if not Assigned(LMessage) then
+      Break;
+    try
+      AProc(LMessage, LDispose);
+    finally
+      if LDispose then
+        LMessage.Free;
+    end;
+  end;
+end;
+
+function TMCPMessageQueueBase<T>.ToJson: string;
+const
+  QueueReadTimeout = 100;
+begin
+  var LJSONArray := TJSONArray.Create;
+  try
+    Process(
+      procedure (AMessage: T; var ADispose: Boolean)
+      begin
+        LJSONArray.AddElement(AMessage.ToJsonObject);
+      end,
+      QueueReadTimeout
+    );
+    if LJSONArray.Count = 0 then
+      Exit('');
+    if LJSONArray.Count = 1 then
+      Exit(TNeon.ObjectToJSONString(LJSONArray[0], JRPCNeonConfig));
+
+    Result := TNeon.ValueToJSONString(LJSONArray, JRPCNeonConfig);
+  finally
+    LJSONArray.Free;
+  end;
+end;
+
+function TMCPMessageQueueBase<T>.Count: NativeInt;
 begin
   Result := FQueue.Count;
 end;

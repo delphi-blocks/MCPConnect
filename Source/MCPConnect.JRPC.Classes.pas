@@ -544,7 +544,7 @@ begin
   if AObject = nil then
     Exit;
 
-  FContextData.Add(AObject.ClassType, AObject);
+  FContextData.AddOrSetValue(AObject.ClassType, AObject);
 end;
 
 procedure TContextManager.AddContent(AInterface: IInterface);
@@ -642,9 +642,11 @@ end;
 
 { TPathHelper }
 
+{$IFNDEF HAS_APP_PATH}
 class function TPathHelper.GetAppPath: string;
 begin
   Result := ExtractFilePath(ParamStr(0));
 end;
+{$ENDIF}
 
 end.

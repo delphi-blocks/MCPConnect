@@ -67,12 +67,14 @@ type
     procedure Write(AId: Integer; const AEvent, AValue: string); overload;
     procedure WriteComment(const AValue: string); overload;
     function Connected: Boolean;
+    function SSESupport: Boolean;
   end;
 
   TMCPSSEResponseWriter = class(TInterfacedObject, IMCPSSEResponseWriter)
   protected
     function SplitString(const AValue: string): TArray<string>;
     function InternalConnected: Boolean; virtual; abstract;
+    function InternalSSESupport: Boolean; virtual; abstract;
     procedure InternalWriteLine(const AValue: string); virtual; abstract;
   public
     { IMCPSSEResponseWriter }
@@ -85,6 +87,7 @@ type
     procedure Write(AId: Integer; const AEvent, AValue: string); overload;
     procedure WriteComment(const AValue: string); overload;
     function Connected: Boolean;
+    function SSESupport: Boolean;
   end;
 
   TMCPTransportHeaders = class
@@ -415,6 +418,9 @@ const
 
 
 begin
+  if not FResponseWriter.SSESupport then
+    raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, 'SSE not supported');
+
   if not FRequest.AcceptsEventStream then
     raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, 'Only Event Stream response is supported for GET requests');
 
@@ -540,13 +546,14 @@ var
     AResponseList.Process(
       procedure (AMessage: TJRPCMessage; var ADispose: Boolean)
       begin
-        if FRequest.AcceptsEventStream then
+        if FRequest.AcceptsEventStream and FResponseWriter.SSESupport then
           FResponseWriter.Write(AMessage.ToJson)
         else
         begin
           ADispose := False;
           if AMessage is TJRPCNotification then
           begin
+            // TODO: should I add the message to FSession.Outbound also if SSE is not supported?
             if Assigned(FSession) then
               FSession.Outbound.Enqueue(AMessage)
             else
@@ -576,7 +583,7 @@ begin
 
   var LAsyncExecute := CreateAsyncThread(LRequestList, LResponseQueue);
   try
-    if FRequest.AcceptsEventStream then
+    if FRequest.AcceptsEventStream and FResponseWriter.SSESupport then
     begin
       FResponse.ContentType := TMediaType.TEXT_EVENT_STREAM;
       SendResponseHeaders(FResponse);
@@ -589,7 +596,7 @@ begin
     ProcessQueue(LResponseQueue);
 
     // If not an event stream response send all the headers and content
-    if not FRequest.AcceptsEventStream then
+    if not FRequest.AcceptsEventStream or not FResponseWriter.SSESupport then
     begin
       if LResponseList.Count = 0 then
         FResponse.Code := HTTP_CODE_ACCEPTED
@@ -750,6 +757,11 @@ begin
     LLines := [AValue];
 
   Result := LLines;
+end;
+
+function TMCPSSEResponseWriter.SSESupport: Boolean;
+begin
+  Result := InternalSSESupport;
 end;
 
 procedure TMCPSSEResponseWriter.Write(const AEvent, AValue: string;

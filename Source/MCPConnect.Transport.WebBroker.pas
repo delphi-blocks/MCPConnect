@@ -18,7 +18,7 @@ unit MCPConnect.Transport.WebBroker;
 interface
 
 uses
-  System.SysUtils, System.Classes, System.Masks,
+  System.SysUtils, System.Classes, System.Masks, System.Diagnostics,
   Web.HTTPApp,
 
   MCPConnect.Transport.Base,
@@ -33,12 +33,13 @@ type
     FServer: TJRPCServer;
     procedure SetPathInfo(const Value: string);
     procedure SetServer(const Value: TJRPCServer);
-    procedure ConvertHeaders(AWebRequest: TWebRequest; AMCPRequest: TMCPTransportRequest);
+    procedure ConvertRequestHeaders(AWebRequest: TWebRequest; AMCPRequest: TMCPTransportRequest);
+    procedure ConvertResponseHeaders(AWebResponse: TWebResponse; AMCPResponse: TMCPTransportResponse);
   public
     { IWebDispatch }
     function DispatchEnabled: Boolean;
     function DispatchMethodType: TMethodType;
-    function DispatchRequest(Sender: TObject; Request: TWebRequest; Response: TWebResponse): Boolean;
+    function DispatchRequest(Sender: TObject; AWebRequest: TWebRequest; AWebResponse: TWebResponse): Boolean;
     function DispatchMask: TMask;
 
     property PathInfo: string read FPathInfo write SetPathInfo;
@@ -48,12 +49,22 @@ type
     destructor Destroy; override;
   end;
 
-  {$IFDEF HAS_WEBBROKER_SSE}
+  {$IFNDEF HAS_WEBBROKER_SSE}
+  TWebResponseStream = class
+  end;
+  {$ENDIF}
+
+
   TMCPSSEResponseWriterWebBroker = class(TInterfacedObject, IMCPSSEResponseWriter)
   private
     FResponse: TWebResponse;
+    {$IFDEF HAS_WEBBROKER_SSE}
     FSSEStream: TWebResponseStream;
+    FKeepAlive: TStopwatch;
+    {$ENDIF}
   public
+    function SSEStream: TWebResponseStream;
+
     { IMCPSSEResponseWriter }
     procedure Write(const AValue: string); overload;
     procedure Write(const AEvent, AValue: string); overload;
@@ -64,12 +75,18 @@ type
     procedure Write(AId: Integer; const AEvent, AValue: string); overload;
     procedure WriteComment(const AValue: string); overload;
     function Connected: Boolean;
+    function SSESupport: Boolean;
 
     constructor Create(AResponse: TWebResponse);
   end;
-  {$ENDIF}
 
 implementation
+
+uses
+  MCPConnect.Configuration.Session;
+
+const
+  KeepAliveInterval = 15000;
 
 function DateToHttpStr(ADate: TDateTime): string;
 const
@@ -88,13 +105,17 @@ begin
   Result := FormatDateTime(HTTPDateFormat, ADateTime, FS);
 end;
 
-procedure TJRPCDispatcher.ConvertHeaders(AWebRequest: TWebRequest; AMCPRequest: TMCPTransportRequest);
+procedure TJRPCDispatcher.ConvertRequestHeaders(AWebRequest: TWebRequest; AMCPRequest: TMCPTransportRequest);
 begin
-  {$IFDEF HAS_WEBBROKER_ALLHEADERS}
+  {$IFDEF HAS_WEBBROKER_REQUEST_HEADERS}
+  AWebRequest.AllHeaders.NameValueSeparator := ':';
   for var I := 0 to AWebRequest.AllHeaders.Count - 1 do
-    LMCPRequest.Headers.AddOrSet(AWebRequest.AllHeaders.KeyNames[I],
+    AMCPRequest.AddOrSetHeader(AWebRequest.AllHeaders.KeyNames[I],
       AWebRequest.AllHeaders.ValueFromIndex[I]);
   {$ELSE}
+  var LSessionConfig := FServer.GetConfiguration<TSessionConfig>;
+
+  if AWebRequest.CacheControl <> '' then  
     AMCPRequest.Headers.AddOrSetValue('Cache-Control', AWebRequest.CacheControl);
   if AWebRequest.Cookie <> '' then
     AMCPRequest.Headers.AddOrSetValue('Cookie', AWebRequest.Cookie);
@@ -126,7 +147,16 @@ begin
     AMCPRequest.Headers.AddOrSetValue('Expires', DateToHttpStr(AWebRequest.Expires));
   if AWebRequest.Title <> '' then
     AMCPRequest.Headers.AddOrSetValue('Title', AWebRequest.Title);
+  if AWebRequest.GetFieldByName(LSessionConfig.GetHeaderName) <> '' then
+    AMCPRequest.Headers.AddOrSetValue(LSessionConfig.GetHeaderName, AWebRequest.GetFieldByName(LSessionConfig.GetHeaderName));
   {$ENDIF}
+end;
+
+procedure TJRPCDispatcher.ConvertResponseHeaders(AWebResponse: TWebResponse;
+  AMCPResponse: TMCPTransportResponse);
+begin
+  for var pair in AMCPResponse.Headers do
+    AWebResponse.CustomHeaders.AddPair(pair.Key, pair.Value);
 end;
 
 constructor TJRPCDispatcher.Create(AOwner: TComponent);
@@ -161,49 +191,41 @@ begin
   Result := mtAny;
 end;
 
-function TJRPCDispatcher.DispatchRequest(Sender: TObject; Request: TWebRequest; Response: TWebResponse): Boolean;
+function TJRPCDispatcher.DispatchRequest(Sender: TObject; AWebRequest: TWebRequest; AWebResponse: TWebResponse): Boolean;
 var
   LMcpHandler: IMCPTransportHandler;
 begin
   if not Assigned(FServer) then
     raise EJRPCException.Create('Server not found');
 
-  LMcpHandler := TMCPTransportHandler.Create(FServer);
+  var LWriter := TMCPSSEResponseWriterWebBroker.Create(AWebResponse);
+
+  LMcpHandler := TMCPTransportHandler.Create(FServer, LWriter);
+
+  LMcpHandler.SendResponseHeadersProc :=
+    procedure (AResponse: TMCPTransportResponse)
+    begin
+      ConvertResponseHeaders(AWebResponse, AResponse);
+    end;
+
   LMcpHandler.ProcessRequest(
 
     procedure (ARequest: TMCPTransportRequest)
     begin
-      ConvertHeaders(Request, ARequest);
-      ARequest.Command := Request.Method;
-      ARequest.Content := Request.Content;
+      ConvertRequestHeaders(AWebRequest, ARequest);
+      ARequest.Command := AWebRequest.Method;
+      ARequest.Content := AWebRequest.Content;
 
       //LogRequest(ARequest);
     end,
 
     procedure (AResponse: TMCPTransportResponse)
-    var
-      LWriter: IMCPSSEResponseWriter;
     begin
-      for var pair in AResponse.Headers do
-        Response.CustomHeaders.AddPair(pair.Key, pair.Value);
+      ConvertResponseHeaders(AWebResponse, AResponse);
 
-      if Assigned(AResponse.WriterProc) then
-      begin
-        Response.ContentType := 'text/event-stream';
-
-        {$IFDEF HAS_WEBBROKER_SSE}
-        LWriter := TMCPSSEResponseWriterWebBroker.Create(Response);
-        {$ELSE}
-        raise EMCPTransportException.Create(405, 'WebBroker does not support SSE. Upgrade to Delphi 13.1 or higher');
-        {$ENDIF}
-        AResponse.WriterProc(LWriter);
-      end
-      else
-      begin
-        Response.StatusCode := AResponse.Code;
-        Response.Content := AResponse.Content;
-        Response.ContentType := AResponse.ContentType;
-      end;
+      AWebResponse.StatusCode := AResponse.Code;
+      AWebResponse.Content := AResponse.Content;
+      AWebResponse.ContentType := AResponse.ContentType;
     end
   );
 
@@ -223,84 +245,113 @@ end;
 
 { TMCPSSEResponseWriterWebBroker }
 
-{$IFDEF HAS_WEBBROKER_SSE}
 function TMCPSSEResponseWriterWebBroker.Connected: Boolean;
 begin
-  Result := FSSEStream.Connected;
+  {$IFDEF HAS_WEBBROKER_SSE}
+  Result := SSEStream.Connected;
+  if Result and (FKeepAlive.ElapsedMilliseconds >= KeepAliveInterval) then
+  begin
+    WriteComment('keep-alive');
+    Result := FSSEStream.Connected;
+  end;
+  {$ELSE}
+  raise EJRPCException.Create('SSE not supported');
+  {$ENDIF}
 end;
 
 constructor TMCPSSEResponseWriterWebBroker.Create(AResponse: TWebResponse);
 begin
   inherited Create;
   FResponse := AResponse;
-  FSSEStream := TWebResponseStream.BeginStream(FResponse, 'text/event-stream');
+end;
+
+function TMCPSSEResponseWriterWebBroker.SSEStream: TWebResponseStream;
+begin
+  {$IFDEF HAS_WEBBROKER_SSE}
+  if not Assigned(FSSEStream) then
+  begin
+    FSSEStream := TWebResponseStream.BeginStream(FResponse, 'text/event-stream');
+    FKeepAlive := TStopwatch.StartNew;
+  end;
+  Result := FSSEStream;
+  {$ELSE}
+  raise EJRPCException.Create('SSE not supported');
+  {$ENDIF}
+end;
+
+function TMCPSSEResponseWriterWebBroker.SSESupport: Boolean;
+begin
+  {$IFDEF HAS_WEBBROKER_SSE}
+  Result := True;
+  {$ELSE}
+  Result := False;
+  {$ENDIF}
 end;
 
 procedure TMCPSSEResponseWriterWebBroker.Write(const AEvent, AValue: string;
   ARetry: Integer);
 begin
-  FSSEStream.WriteEvent(AEvent);
-  FSSEStream.WriteData(AValue);
-  FSSEStream.WriteRetry(ARetry);
-  FSSEStream.EndEvent;
+  Write('', AEvent, AValue, ARetry);
 end;
 
 procedure TMCPSSEResponseWriterWebBroker.Write(const AEvent, AValue: string);
 begin
-  FSSEStream.WriteEvent(AEvent);
-  FSSEStream.WriteData(AValue);
-  FSSEStream.EndEvent;
+  Write('', AEvent, AValue, -1);
 end;
 
 procedure TMCPSSEResponseWriterWebBroker.Write(const AValue: string);
 begin
-  FSSEStream.WriteData(AValue);
-  FSSEStream.EndEvent;
+  Write('', '', AValue, -1);
 end;
 
 procedure TMCPSSEResponseWriterWebBroker.Write(const AId, AEvent,
   AValue: string; ARetry: Integer);
 begin
-  FSSEStream.WriteID(AId);
-  FSSEStream.WriteEvent(AEvent);
-  FSSEStream.WriteData(AValue);
-  FSSEStream.WriteRetry(ARetry);
-  FSSEStream.EndEvent;
+  {$IFDEF HAS_WEBBROKER_SSE}
+  if AId <> '' then
+    SSEStream.WriteID(AId);
+  if AEvent <> '' then
+    SSEStream.WriteEvent(AEvent);
+
+  SSEStream.WriteData(AValue);
+
+  if ARetry > 0 then
+    SSEStream.WriteRetry(ARetry);
+
+  SSEStream.EndEvent;
+  FKeepAlive := TStopwatch.StartNew;
+  {$ELSE}
+  raise EJRPCException.Create('SSE not supported');
+  {$ENDIF}
 end;
 
 procedure TMCPSSEResponseWriterWebBroker.Write(AId: Integer; const AEvent,
   AValue: string);
 begin
-  FSSEStream.WriteID(AId.ToString);
-  FSSEStream.WriteEvent(AEvent);
-  FSSEStream.WriteData(AValue);
-  FSSEStream.EndEvent;
+  Write(AId.ToString, AEvent, AValue, -1);
 end;
 
 procedure TMCPSSEResponseWriterWebBroker.Write(AId: Integer; const AEvent,
   AValue: string; ARetry: Integer);
 begin
-  FSSEStream.WriteID(AId.ToString);
-  FSSEStream.WriteEvent(AEvent);
-  FSSEStream.WriteData(AValue);
-  FSSEStream.WriteRetry(ARetry);
-  FSSEStream.EndEvent;
+  Write(AId.ToString, AEvent, AValue, ARetry);
 end;
 
 procedure TMCPSSEResponseWriterWebBroker.Write(const AId, AEvent,
   AValue: string);
 begin
-  FSSEStream.WriteID(AId);
-  FSSEStream.WriteEvent(AEvent);
-  FSSEStream.WriteData(AValue);
-  FSSEStream.EndEvent;
+  Write(AId, AEvent, AValue, -1);
 end;
 
 procedure TMCPSSEResponseWriterWebBroker.WriteComment(const AValue: string);
 begin
-  FSSEStream.WriteComment(AValue);
-  FSSEStream.EndEvent;
+  {$IFDEF HAS_WEBBROKER_SSE}
+  SSEStream.WriteComment(AValue);
+  SSEStream.EndEvent;
+  FKeepAlive := TStopwatch.StartNew;
+  {$ELSE}
+  raise EJRPCException.Create('SSE not supported');
+  {$ENDIF}
 end;
-{$ENDIF}
 
 end.

@@ -63,6 +63,7 @@ type
   protected
     function InternalConnected: Boolean; override;
     procedure InternalWriteLine(const AValue: string); override;
+    function InternalSSESupport: Boolean; override;
   public
     constructor Create(AConnection: TIdTCPConnection);
   end;
@@ -254,6 +255,11 @@ end;
 function TMCPSSEResponseWriterIndy.InternalConnected: Boolean;
 begin
   Result := FConnection.Connected;
+end;
+
+function TMCPSSEResponseWriterIndy.InternalSSESupport: Boolean;
+begin
+  Result := True;
 end;
 
 procedure TMCPSSEResponseWriterIndy.InternalWriteLine(const AValue: string);

@@ -55,27 +55,22 @@ type
   {$ENDIF}
 
 
-  TMCPSSEResponseWriterWebBroker = class(TInterfacedObject, IMCPSSEResponseWriter)
+  TMCPTransportWriterWebBroker = class(TInterfacedObject, IMCPTransportWriter)
   private
     FResponse: TWebResponse;
     {$IFDEF HAS_WEBBROKER_SSE}
     FSSEStream: TWebResponseStream;
-    FKeepAlive: TStopwatch;
+    FPing: TStopwatch;
     {$ENDIF}
+    procedure WriteSSEEvent(const AId, AEvent, AValue: string; ARetry: Integer);
   public
     function SSEStream: TWebResponseStream;
 
-    { IMCPSSEResponseWriter }
+    { IMCPTransportWriter }
     procedure Write(const AValue: string); overload;
-    procedure Write(const AEvent, AValue: string); overload;
-    procedure Write(const AEvent, AValue: string; ARetry: Integer); overload;
-    procedure Write(const AId, AEvent, AValue: string; ARetry: Integer); overload;
-    procedure Write(const AId, AEvent, AValue: string); overload;
-    procedure Write(AId: Integer; const AEvent, AValue: string; ARetry: Integer); overload;
-    procedure Write(AId: Integer; const AEvent, AValue: string); overload;
     procedure WriteComment(const AValue: string); overload;
     function Connected: Boolean;
-    function SSESupport: Boolean;
+    function SupportsStreaming: Boolean;
 
     constructor Create(AResponse: TWebResponse);
   end;
@@ -86,7 +81,7 @@ uses
   MCPConnect.Configuration.Session;
 
 const
-  KeepAliveInterval = 15000;
+  PingInterval = 15000;
 
 function DateToHttpStr(ADate: TDateTime): string;
 const
@@ -198,7 +193,7 @@ begin
   if not Assigned(FServer) then
     raise EJRPCException.Create('Server not found');
 
-  var LWriter := TMCPSSEResponseWriterWebBroker.Create(AWebResponse);
+  var LWriter := TMCPTransportWriterWebBroker.Create(AWebResponse);
 
   LMcpHandler := TMCPTransportHandler.Create(FServer, LWriter);
 
@@ -243,15 +238,17 @@ begin
   FServer := Value;
 end;
 
-{ TMCPSSEResponseWriterWebBroker }
+{ TMCPTransportWriterWebBroker }
 
-function TMCPSSEResponseWriterWebBroker.Connected: Boolean;
+function TMCPTransportWriterWebBroker.Connected: Boolean;
 begin
   {$IFDEF HAS_WEBBROKER_SSE}
   Result := SSEStream.Connected;
-  if Result and (FKeepAlive.ElapsedMilliseconds >= KeepAliveInterval) then
+  // Periodic ping: workaround because WebBroker sometimes does not detect the
+  // client disconnection until a write attempt actually fails on the socket.
+  if Result and (FPing.ElapsedMilliseconds >= PingInterval) then
   begin
-    WriteComment('keep-alive');
+    WriteComment('ping');
     Result := FSSEStream.Connected;
   end;
   {$ELSE}
@@ -259,19 +256,19 @@ begin
   {$ENDIF}
 end;
 
-constructor TMCPSSEResponseWriterWebBroker.Create(AResponse: TWebResponse);
+constructor TMCPTransportWriterWebBroker.Create(AResponse: TWebResponse);
 begin
   inherited Create;
   FResponse := AResponse;
 end;
 
-function TMCPSSEResponseWriterWebBroker.SSEStream: TWebResponseStream;
+function TMCPTransportWriterWebBroker.SSEStream: TWebResponseStream;
 begin
   {$IFDEF HAS_WEBBROKER_SSE}
   if not Assigned(FSSEStream) then
   begin
     FSSEStream := TWebResponseStream.BeginStream(FResponse, 'text/event-stream');
-    FKeepAlive := TStopwatch.StartNew;
+    FPing := TStopwatch.StartNew;
   end;
   Result := FSSEStream;
   {$ELSE}
@@ -279,7 +276,7 @@ begin
   {$ENDIF}
 end;
 
-function TMCPSSEResponseWriterWebBroker.SSESupport: Boolean;
+function TMCPTransportWriterWebBroker.SupportsStreaming: Boolean;
 begin
   {$IFDEF HAS_WEBBROKER_SSE}
   Result := True;
@@ -288,23 +285,12 @@ begin
   {$ENDIF}
 end;
 
-procedure TMCPSSEResponseWriterWebBroker.Write(const AEvent, AValue: string;
-  ARetry: Integer);
+procedure TMCPTransportWriterWebBroker.Write(const AValue: string);
 begin
-  Write('', AEvent, AValue, ARetry);
+  WriteSSEEvent('', '', AValue, -1);
 end;
 
-procedure TMCPSSEResponseWriterWebBroker.Write(const AEvent, AValue: string);
-begin
-  Write('', AEvent, AValue, -1);
-end;
-
-procedure TMCPSSEResponseWriterWebBroker.Write(const AValue: string);
-begin
-  Write('', '', AValue, -1);
-end;
-
-procedure TMCPSSEResponseWriterWebBroker.Write(const AId, AEvent,
+procedure TMCPTransportWriterWebBroker.WriteSSEEvent(const AId, AEvent,
   AValue: string; ARetry: Integer);
 begin
   {$IFDEF HAS_WEBBROKER_SSE}
@@ -319,36 +305,18 @@ begin
     SSEStream.WriteRetry(ARetry);
 
   SSEStream.EndEvent;
-  FKeepAlive := TStopwatch.StartNew;
+  FPing := TStopwatch.StartNew;
   {$ELSE}
   raise EJRPCException.Create('SSE not supported');
   {$ENDIF}
 end;
 
-procedure TMCPSSEResponseWriterWebBroker.Write(AId: Integer; const AEvent,
-  AValue: string);
-begin
-  Write(AId.ToString, AEvent, AValue, -1);
-end;
-
-procedure TMCPSSEResponseWriterWebBroker.Write(AId: Integer; const AEvent,
-  AValue: string; ARetry: Integer);
-begin
-  Write(AId.ToString, AEvent, AValue, ARetry);
-end;
-
-procedure TMCPSSEResponseWriterWebBroker.Write(const AId, AEvent,
-  AValue: string);
-begin
-  Write(AId, AEvent, AValue, -1);
-end;
-
-procedure TMCPSSEResponseWriterWebBroker.WriteComment(const AValue: string);
+procedure TMCPTransportWriterWebBroker.WriteComment(const AValue: string);
 begin
   {$IFDEF HAS_WEBBROKER_SSE}
   SSEStream.WriteComment(AValue);
   SSEStream.EndEvent;
-  FKeepAlive := TStopwatch.StartNew;
+  FPing := TStopwatch.StartNew;
   {$ELSE}
   raise EJRPCException.Create('SSE not supported');
   {$ENDIF}

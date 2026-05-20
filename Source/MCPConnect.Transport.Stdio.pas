@@ -98,21 +98,14 @@ type
     property Server: TJRPCServer read FServer write SetServer;
   end;
 
-  TMCPSSEResponseWriterStdio = class(TInterfacedObject, IMCPSSEResponseWriter)
+  TMCPTransportWriterStdio = class(TInterfacedObject, IMCPTransportWriter)
   private
     FStdOutWriter: TStdOutWriter;
   public
-    { IMCPSSEResponseWriter }
-    procedure Write(const AValue: string); overload;
-    procedure Write(const AEvent, AValue: string); overload;
-    procedure Write(const AEvent, AValue: string; ARetry: Integer); overload;
-    procedure Write(const AId, AEvent, AValue: string; ARetry: Integer); overload;
-    procedure Write(const AId, AEvent, AValue: string); overload;
-    procedure Write(AId: Integer; const AEvent, AValue: string; ARetry: Integer); overload;
-    procedure Write(AId: Integer; const AEvent, AValue: string); overload;
-    procedure WriteComment(const AValue: string); overload;
+    { IMCPTransportWriter }
+    procedure Write(const AValue: string);
     function Connected: Boolean;
-    function SSESupport: Boolean;
+    function SupportsStreaming: Boolean;
 
     constructor Create(AStdOutWriter: TStdOutWriter);
   end;
@@ -438,7 +431,7 @@ begin
 
   // Auth??
 
-  LMcpHandler := TMCPTransportHandler.Create(FServer, TMCPSSEResponseWriterStdio.Create(AStdOutWriter));
+  LMcpHandler := TMCPTransportHandler.Create(FServer, TMCPTransportWriterStdio.Create(AStdOutWriter));
 
   LMcpHandler.ProcessRequest(
     procedure (ARequest: TMCPTransportRequest)
@@ -472,66 +465,27 @@ begin
     FSessionConfig := FServer.GetConfiguration<TSessionConfig>;
 end;
 
-{ TMCPSSEResponseWriterStdio }
+{ TMCPTransportWriterStdio }
 
-constructor TMCPSSEResponseWriterStdio.Create(AStdOutWriter: TStdOutWriter);
+constructor TMCPTransportWriterStdio.Create(AStdOutWriter: TStdOutWriter);
 begin
   inherited Create;
   FStdOutWriter := AStdOutWriter;
 end;
 
-function TMCPSSEResponseWriterStdio.SSESupport: Boolean;
+function TMCPTransportWriterStdio.SupportsStreaming: Boolean;
 begin
   Result := True;
 end;
 
-function TMCPSSEResponseWriterStdio.Connected: Boolean;
+function TMCPTransportWriterStdio.Connected: Boolean;
 begin
   Result := True;
 end;
 
-procedure TMCPSSEResponseWriterStdio.Write(const AEvent, AValue: string;
-  ARetry: Integer);
-begin
-  Write('', AEvent, AValue, ARetry);
-end;
-
-procedure TMCPSSEResponseWriterStdio.Write(const AEvent, AValue: string);
-begin
-  Write('', AEvent, AValue, -1);
-end;
-
-procedure TMCPSSEResponseWriterStdio.Write(const AValue: string);
-begin
-  Write('', '', AValue, -1);
-end;
-
-procedure TMCPSSEResponseWriterStdio.Write(const AId, AEvent,
-  AValue: string; ARetry: Integer);
+procedure TMCPTransportWriterStdio.Write(const AValue: string);
 begin
   FStdOutWriter.WriteLine(RemoveLineBreaks(AValue));
-end;
-
-procedure TMCPSSEResponseWriterStdio.Write(AId: Integer; const AEvent,
-  AValue: string);
-begin
-  Write(AId.ToString, AEvent, AValue, -1);
-end;
-
-procedure TMCPSSEResponseWriterStdio.Write(AId: Integer; const AEvent,
-  AValue: string; ARetry: Integer);
-begin
-  Write(AId.ToString, AEvent, AValue, ARetry);
-end;
-
-procedure TMCPSSEResponseWriterStdio.Write(const AId, AEvent,
-  AValue: string);
-begin
-  Write(AId, AEvent, AValue, -1);
-end;
-
-procedure TMCPSSEResponseWriterStdio.WriteComment(const AValue: string);
-begin
 end;
 
 end.

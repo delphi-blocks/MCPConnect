@@ -57,13 +57,17 @@ type
     property Server: TJRPCServer read FServer write SetServer;
   end;
 
-  TMCPSSEResponseWriterIndy = class(TMCPSSEResponseWriter)
+  TMCPTransportWriterIndy = class(TInterfacedObject, IMCPTransportWriter)
   private
     FConnection: TIdTCPConnection;
+    function SplitString(const AValue: string): TArray<string>;
+    procedure WriteSSEEvent(const AId, AEvent, AValue: string; ARetry: Integer);
   protected
-    function InternalConnected: Boolean; override;
-    procedure InternalWriteLine(const AValue: string); override;
-    function InternalSSESupport: Boolean; override;
+    { IMCPTransportWriter }
+    function Connected: Boolean;
+    procedure Write(const AValue: string);
+    procedure WriteComment(const AValue: string); overload;
+    function SupportsStreaming: Boolean;
   public
     constructor Create(AConnection: TIdTCPConnection);
   end;
@@ -80,7 +84,7 @@ begin
   if not Assigned(FServer) then
     raise EJRPCException.Create('JRPC Server not found');
 
-  LMcpHandler := TMCPTransportHandler.Create(FServer, TMCPSSEResponseWriterIndy.Create(AContext.Connection));
+  LMcpHandler := TMCPTransportHandler.Create(FServer, TMCPTransportWriterIndy.Create(AContext.Connection));
 
   LMcpHandler.SendResponseHeadersProc :=
     procedure (AResponse: TMCPTransportResponse)
@@ -244,29 +248,83 @@ begin
   AContext.Connection.Socket.WriteBufferFlush;
 end;
 
-{ TMCPSSEResponseWriterIndy }
+{ TMCPTransportWriterIndy }
 
-constructor TMCPSSEResponseWriterIndy.Create(AConnection: TIdTCPConnection);
+constructor TMCPTransportWriterIndy.Create(AConnection: TIdTCPConnection);
 begin
   inherited Create;
   FConnection := AConnection;
 end;
 
-function TMCPSSEResponseWriterIndy.InternalConnected: Boolean;
+function TMCPTransportWriterIndy.Connected: Boolean;
 begin
   Result := FConnection.Connected;
 end;
 
-function TMCPSSEResponseWriterIndy.InternalSSESupport: Boolean;
+function TMCPTransportWriterIndy.SupportsStreaming: Boolean;
 begin
   Result := True;
 end;
 
-procedure TMCPSSEResponseWriterIndy.InternalWriteLine(const AValue: string);
+procedure TMCPTransportWriterIndy.Write(const AValue: string);
 begin
-  inherited;
-  FConnection.Socket.WriteLn(AValue, IndyTextEncoding_UTF8);
+  WriteSSEEvent('', '', AValue, -1);
+end;
+
+procedure TMCPTransportWriterIndy.WriteComment(const AValue: string);
+var
+  LLines: TArray<string>;
+  LLine: string;
+  LMessage: string;
+begin
+  LLines := SplitString(AValue);
+
+  LMessage := '';
+
+  for LLine in LLines do
+    LMessage := LMessage + ': ' + LLine + #13#10;
+
+  FConnection.Socket.WriteLn(LMessage, IndyTextEncoding_UTF8);
   FConnection.Socket.WriteBufferFlush;
+end;
+
+procedure TMCPTransportWriterIndy.WriteSSEEvent(const AId, AEvent, AValue: string; ARetry: Integer);
+var
+  LLines: TArray<string>;
+  LLine: string;
+  LMessage: string;
+begin
+  LLines := SplitString(AValue);
+
+  LMessage := '';
+  if AId <> '' then
+    LMessage := LMessage + 'id: ' + AId + #13#10;
+  if AEvent <> '' then
+    LMessage := LMessage + 'event: ' + AEvent + #13#10;
+  if ARetry > 0 then
+    LMessage := LMessage + 'retry: ' + IntToStr(ARetry) + #13#10;
+
+  for LLine in LLines do
+    LMessage := LMessage + 'data: ' + LLine + #13#10;
+
+  FConnection.Socket.WriteLn(LMessage, IndyTextEncoding_UTF8);
+  FConnection.Socket.WriteBufferFlush;
+end;
+
+function TMCPTransportWriterIndy.SplitString(
+  const AValue: string): TArray<string>;
+var
+  LLines: TArray<string>;
+begin
+  LLines := AValue.Split([sLineBreak]);
+  if Length(LLines) = 0 then
+    LLines := AValue.Split([#13]);
+  if Length(LLines) = 0 then
+    LLines := AValue.Split([#10]);
+  if Length(LLines) = 0 then
+    LLines := [AValue];
+
+  Result := LLines;
 end;
 
 end.

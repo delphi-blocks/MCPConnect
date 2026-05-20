@@ -56,38 +56,11 @@ type
     property Code: Integer read FCode write FCode;
   end;
 
-  IMCPSSEResponseWriter = interface
+  IMCPTransportWriter = interface
     ['{68598454-50C5-4892-B8E0-81687CC2F4DE}']
-    procedure Write(const AValue: string); overload;
-    procedure Write(const AEvent, AValue: string); overload;
-    procedure Write(const AEvent, AValue: string; ARetry: Integer); overload;
-    procedure Write(const AId, AEvent, AValue: string; ARetry: Integer); overload;
-    procedure Write(const AId, AEvent, AValue: string); overload;
-    procedure Write(AId: Integer; const AEvent, AValue: string; ARetry: Integer); overload;
-    procedure Write(AId: Integer; const AEvent, AValue: string); overload;
-    procedure WriteComment(const AValue: string); overload;
+    procedure Write(const AValue: string);
     function Connected: Boolean;
-    function SSESupport: Boolean;
-  end;
-
-  TMCPSSEResponseWriter = class(TInterfacedObject, IMCPSSEResponseWriter)
-  protected
-    function SplitString(const AValue: string): TArray<string>;
-    function InternalConnected: Boolean; virtual; abstract;
-    function InternalSSESupport: Boolean; virtual; abstract;
-    procedure InternalWriteLine(const AValue: string); virtual; abstract;
-  public
-    { IMCPSSEResponseWriter }
-    procedure Write(const AValue: string); overload;
-    procedure Write(const AEvent, AValue: string); overload;
-    procedure Write(const AEvent, AValue: string; ARetry: Integer); overload;
-    procedure Write(const AId, AEvent, AValue: string; ARetry: Integer); overload;
-    procedure Write(const AId, AEvent, AValue: string); overload;
-    procedure Write(AId: Integer; const AEvent, AValue: string; ARetry: Integer); overload;
-    procedure Write(AId: Integer; const AEvent, AValue: string); overload;
-    procedure WriteComment(const AValue: string); overload;
-    function Connected: Boolean;
-    function SSESupport: Boolean;
+    function SupportsStreaming: Boolean;
   end;
 
   TMCPTransportHeaders = class
@@ -127,7 +100,6 @@ type
 
   TMCPTransportRequestConverter = reference to procedure (ARequest: TMCPTransportRequest);
 
-
   TMCPTransportResponse = class(TMCPTransportHeaders)
   private
     function GetContentType: string;
@@ -165,7 +137,7 @@ type
     FServer: TJRPCServer;
     FAuthTokenConfig: TAuthTokenConfig;
     FSessionConfig: TSessionConfig;
-    FResponseWriter: IMCPSSEResponseWriter;
+    FResponseWriter: IMCPTransportWriter;
     FSendResponseHeadersProc: TProc<TMCPTransportResponse>;
   private
     procedure InjectCORS;
@@ -181,7 +153,7 @@ type
     procedure HandleOPTIONS;
     function CreateAsyncThread(ARequestList: TJRPCMessages; AResponseQueue: TMCPMessageQueue): TThread;
   public
-    constructor Create(AServer: TJRPCServer; AResponseWriter: IMCPSSEResponseWriter);
+    constructor Create(AServer: TJRPCServer; AResponseWriter: IMCPTransportWriter);
     destructor Destroy; override;
 
     { IMCPHttpHandler }
@@ -202,7 +174,7 @@ uses
 
 { TMCPTransportHandler }
 
-constructor TMCPTransportHandler.Create(AServer: TJRPCServer; AResponseWriter: IMCPSSEResponseWriter);
+constructor TMCPTransportHandler.Create(AServer: TJRPCServer; AResponseWriter: IMCPTransportWriter);
 begin
   FRequest := TMCPTransportRequest.Create;
   FResponse := TMCPTransportResponse.Create;
@@ -418,7 +390,7 @@ const
 
 
 begin
-  if not FResponseWriter.SSESupport then
+  if not FResponseWriter.SupportsStreaming then
     raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, 'SSE not supported');
 
   if not FRequest.AcceptsEventStream then
@@ -546,7 +518,7 @@ var
     AResponseList.Process(
       procedure (AMessage: TJRPCMessage; var ADispose: Boolean)
       begin
-        if FRequest.AcceptsEventStream and FResponseWriter.SSESupport then
+        if FRequest.AcceptsEventStream and FResponseWriter.SupportsStreaming then
           FResponseWriter.Write(AMessage.ToJson)
         else
         begin
@@ -583,7 +555,7 @@ begin
 
   var LAsyncExecute := CreateAsyncThread(LRequestList, LResponseQueue);
   try
-    if FRequest.AcceptsEventStream and FResponseWriter.SSESupport then
+    if FRequest.AcceptsEventStream and FResponseWriter.SupportsStreaming then
     begin
       FResponse.ContentType := TMediaType.TEXT_EVENT_STREAM;
       SendResponseHeaders(FResponse);
@@ -596,7 +568,7 @@ begin
     ProcessQueue(LResponseQueue);
 
     // If not an event stream response send all the headers and content
-    if not FRequest.AcceptsEventStream or not FResponseWriter.SSESupport then
+    if not FRequest.AcceptsEventStream or not FResponseWriter.SupportsStreaming then
     begin
       if LResponseList.Count = 0 then
         FResponse.Code := HTTP_CODE_ACCEPTED
@@ -734,106 +706,6 @@ procedure TMCPTransportRequest.SetAccept(const AValue: string);
 begin
   FreeAndNil(FAcceptItems);
   Headers.AddOrSetValue('Accept', AValue);
-end;
-
-{ TMCPSSEResponseWriter }
-
-function TMCPSSEResponseWriter.Connected: Boolean;
-begin
-  Result := InternalConnected;
-end;
-
-function TMCPSSEResponseWriter.SplitString(
-  const AValue: string): TArray<string>;
-var
-  LLines: TArray<string>;
-begin
-  LLines := AValue.Split([sLineBreak]);
-  if Length(LLines) = 0 then
-    LLines := AValue.Split([#13]);
-  if Length(LLines) = 0 then
-    LLines := AValue.Split([#10]);
-  if Length(LLines) = 0 then
-    LLines := [AValue];
-
-  Result := LLines;
-end;
-
-function TMCPSSEResponseWriter.SSESupport: Boolean;
-begin
-  Result := InternalSSESupport;
-end;
-
-procedure TMCPSSEResponseWriter.Write(const AEvent, AValue: string;
-  ARetry: Integer);
-begin
-  Write('', AEvent, AValue, ARetry);
-end;
-
-procedure TMCPSSEResponseWriter.Write(const AEvent, AValue: string);
-begin
-  Write(AEvent, AValue, 0);
-end;
-
-procedure TMCPSSEResponseWriter.Write(const AValue: string);
-begin
-  Write('', AValue);
-end;
-
-procedure TMCPSSEResponseWriter.Write(AId: Integer; const AEvent,
-  AValue: string);
-begin
-  Write(AId.ToString, AEvent, AValue, 0);
-end;
-
-procedure TMCPSSEResponseWriter.Write(AId: Integer; const AEvent,
-  AValue: string; ARetry: Integer);
-begin
-  Write(AId.ToString, AEvent, AValue, ARetry);
-end;
-
-procedure TMCPSSEResponseWriter.Write(const AId, AEvent, AValue: string;
-  ARetry: Integer);
-var
-  LLines: TArray<string>;
-  LLine: string;
-  LMessage: string;
-begin
-  LLines := SplitString(AValue);
-
-  LMessage := '';
-  if AId <> '' then
-    LMessage := LMessage + 'id: ' + AId + #13#10;
-  if AEvent <> '' then
-    LMessage := LMessage + 'event: ' + AEvent + #13#10;
-  if ARetry > 0 then
-    LMessage := LMessage + 'retry: ' + IntToStr(ARetry) + #13#10;
-
-  for LLine in LLines do
-    LMessage := LMessage + 'data: ' + LLine + #13#10;
-
-  InternalWriteLine(LMessage);
-end;
-
-procedure TMCPSSEResponseWriter.Write(const AId, AEvent, AValue: string);
-begin
-  Write(AId, AEvent, AValue, 0);
-end;
-
-procedure TMCPSSEResponseWriter.WriteComment(const AValue: string);
-var
-  LLines: TArray<string>;
-  LLine: string;
-  LMessage: string;
-begin
-  LLines := SplitString(AValue);
-
-  LMessage := '';
-
-  for LLine in LLines do
-    LMessage := LMessage + ': ' + LLine + #13#10;
-
-  InternalWriteLine(LMessage);
 end;
 
 procedure TMCPTransportHeaders.AddOrSetHeader(const AName, AValue: string);

@@ -327,6 +327,7 @@ type
     ///   The parameters for the method call.
     /// </summary>
     [NeonProperty('params')]
+    [NeonInclude(IncludeIf.NotNull)]
     property Params: TJSONValue read FParams write SetParams;
 
   public

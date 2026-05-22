@@ -26,6 +26,7 @@ uses
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
   Neon.Core.Serializers.RTL,
+  MCPConnect.JRPC.Core,
   MCPConnect.JRPC.Classes;
 
 type
@@ -726,6 +727,26 @@ type
     function DataUri(const AFileName, AMimeType: string): string; overload;
 
     function Count: NativeInt;
+  end;
+
+  TToolListChangedNotification = class(TJRPCNotification)
+  public
+    constructor Create;
+  end;
+
+  TPromptListChangedNotification = class(TJRPCNotification)
+  public
+    constructor Create;
+  end;
+
+  TResourceListChangedNotification = class(TJRPCNotification)
+  public
+    constructor Create;
+  end;
+
+  TRootsListChangedNotification = class(TJRPCNotification)
+  public
+    constructor Create;
   end;
 
 function MCPNeonConfig: INeonConfiguration;
@@ -1446,6 +1467,42 @@ begin
     if ExtExists(AExtension, m.Ext) then
       Exit(m.Mime);
   end;
+end;
+
+{ TToolListChangedNotification }
+
+constructor TToolListChangedNotification.Create;
+begin
+  inherited;
+  Method := 'notifications/tools/list_changed';
+  Params := nil;
+end;
+
+{ TPromptListChangedNotification }
+
+constructor TPromptListChangedNotification.Create;
+begin
+  inherited;
+  Method := 'notifications/prompts/list_changed';
+  Params := nil;
+end;
+
+{ TResourceListChangedNotification }
+
+constructor TResourceListChangedNotification.Create;
+begin
+  inherited;
+  Method := 'notifications/resources/list_changed';
+  Params := nil;
+end;
+
+{ TRootsListChangedNotification }
+
+constructor TRootsListChangedNotification.Create;
+begin
+  inherited;
+  Method := 'notifications/roots/list_changed';
+  Params := nil;
 end;
 
 end.

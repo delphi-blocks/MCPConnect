@@ -65,6 +65,11 @@ type
 
   [JRPC('notifications')]
   TMCPNotificationsApi = class
+  private
+    [Context]
+    Context: TJRPCContext;
+    [Context]
+    FConfig: IMCPConfig;
   public
     [JRPC('initialized'), JRPCNotification]
     procedure Initialized;
@@ -86,6 +91,7 @@ type
   [JRPC('logging')]
   TMCPLoggingApi = class
   public
+    [Context] Context: TJRPCContext;
     [Context] MCPConfig: TMCPConfig;
 
     [JRPC('setLevel')]
@@ -153,12 +159,14 @@ end;
 
 procedure TMCPNotificationsApi.Cancelled(ACancelledParams: TCancelledNotificationParams);
 begin
-
+  if Assigned(FConfig.MessageHandling.CancelledProc) then
+    FConfig.MessageHandling.CancelledProc(Context, ACancelledParams);
 end;
 
 procedure TMCPNotificationsApi.Initialized;
 begin
-
+  if Assigned(FConfig.MessageHandling.InitializedProc) then
+    FConfig.MessageHandling.InitializedProc(Context);
 end;
 
 
@@ -302,6 +310,8 @@ end;
 
 function TMCPLoggingApi.SetLevel(ASetLevelParams: TSetLevelRequestParams): TSetLevelResult;
 begin
+  if Assigned(MCPConfig.MessageHandling.SetLogLevelProc) then
+    MCPConfig.MessageHandling.SetLogLevelProc(Context, ASetLevelParams.Level);
   Result := TSetLevelResult.Create;
 end;
 

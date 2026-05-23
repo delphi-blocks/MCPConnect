@@ -7,17 +7,20 @@ uses
   IdGlobal, IdContext, IdBaseComponent, IdComponent,
   IdCustomTCPServer, IdCustomHTTPServer, IdHTTPServer,
 
+  MCPConnect.JRPC.Core,
   MCPConnect.JRPC.Server,
-  MCPConnect.Transport.Indy,
 
   MCPConnect.MCP.Server.Api,
+  MCPConnect.MCP.Types,
 
   MCPConnect.Configuration.MCP,
   MCPConnect.Configuration.Session,
   MCPConnect.Configuration.Auth,
 
   MCPConnect.Content.Writers.RTL,
-  MCPConnect.Content.Writers.VCL;
+  MCPConnect.Content.Writers.VCL,
+
+  Logify;
 
 type
   TServerConfigurator = class
@@ -28,6 +31,7 @@ implementation
 
 uses
   System.IOUtils,
+  System.TypInfo,
   MCPConnect.JRPC.Classes,
   MCPServer.Tools,
   MCPServer.Resources,
@@ -66,6 +70,33 @@ begin
         .RegisterWriter(TMCPPictureWriter)
         .RegisterWriter(TMCPStreamWriter)
         .RegisterWriter(TMCPStringListWriter)
+
+      .BackToMCP
+
+      .MessageHandling
+
+        .OnCancelled(
+          procedure (AContext: TJRPCContext; AParams: TCancelledNotificationParams)
+          begin
+            Logger.LogDebug('Cancelled');
+          end
+        )
+
+        .OnInitialized(
+          procedure (AContext: TJRPCContext)
+          begin
+            Logger.LogDebug('Notification: Initialized');
+          end
+        )
+
+        .OnSetLogLevel(
+          procedure (AContext: TJRPCContext; ALevel: TLogSetLevel)
+          begin
+            Logger.LogDebug('Log level set to %s',
+              [GetEnumName(TypeInfo(TLogSetLevel), Ord(ALevel))]);
+          end
+        )
+
       .BackToMCP
 
       .Security

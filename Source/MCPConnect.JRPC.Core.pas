@@ -624,7 +624,12 @@ type
 
   TQueueProcessProc<T: TJRPCMessage> = reference to procedure (AMessage: T; var ADispose: Boolean);
 
+  TQueueEvent<T: TJRPCMessage> = procedure (Sender: TObject; AMessage: T) of object;
+
   TMCPMessageQueueBase<T: TJRPCMessage> = class
+  private
+    FOnEnqueue: TQueueEvent<T>;
+    FOnDequeue: TQueueEvent<T>;
   protected
     FEvent: TEvent;
     FMaxItems: Integer;
@@ -643,21 +648,12 @@ type
     procedure Process(AProc: TQueueProcessProc<T>; ATimeOut: Integer = 1000);
     // At the end the queue will be empty
     function ToJson: string;
+
+    property OnEnqueue: TQueueEvent<T> read FOnEnqueue write FOnEnqueue;
+    property OnDequeue: TQueueEvent<T> read FOnDequeue write FOnDequeue;
   end;
 
   TMCPMessageQueue = class (TMCPMessageQueueBase<TJRPCMessage>)
-  end;
-
-  TMCPNotificationQueue = class (TMCPMessageQueueBase<TJRPCNotification>)
-  end;
-
-  TMCPResponseQueue = class (TMCPMessageQueueBase<TJRPCResponse>)
-  end;
-
-  TMCPRequestQueue = class (TMCPMessageQueueBase<TJRPCRequest>)
-  end;
-
-  TMCPErrorQueue = class (TMCPMessageQueueBase<TJRPCError>)
   end;
 
   /// <summary>
@@ -1720,6 +1716,8 @@ begin
       // DequeueWait actually blocks for ATimeOut instead of returning immediately.
       if FQueue.Count = 0 then
         FEvent.ResetEvent;
+      if Assigned(FOnDequeue) then
+        FOnDequeue(Self, Result);
     end;
   finally
     TMonitor.Exit(FQueue);
@@ -1752,6 +1750,8 @@ begin
 
     FQueue.Enqueue(Value);
     FEvent.SetEvent;
+    if Assigned(FOnEnqueue) then
+      FOnEnqueue(Self, Value);
   finally
     TMonitor.Exit(FQueue);
   end;

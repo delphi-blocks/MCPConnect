@@ -19,7 +19,8 @@ uses
   System.SysUtils, System.Rtti, System.Classes, System.Generics.Collections,
   System.SyncObjs, System.JSON,
 
-  MCPConnect.JRPC.Core;
+  MCPConnect.JRPC.Core,
+  MCPConnect.JRPC.Server;
 
 const
   /// <summary>
@@ -75,14 +76,20 @@ type
   TMCPSessionBase = class;
   TMCPSessionDataClass = class of TMCPSessionBase;
 
-  TMCPSessionQueues = class
-    Notifications: TMCPNotificationQueue;
-    Responses: TMCPResponseQueue;
-    Requests: TMCPRequestQueue;
-    Errors: TMCPErrorQueue;
-
-    constructor Create(AMaxItems: Integer);
-    destructor Destroy; override;
+  /// <summary>
+  ///   Drains the inbound queue; self-frees via FreeOnTerminate.
+  ///   FIXME: the session destructor doesn't wait for this thread, so freeing
+  ///   FInbound while Dequeue is running can AV.
+  /// </summary>
+  TInboundQueueHander = class(TThread)
+  private
+    FInboundQueue: TMCPMessageQueue;
+    FOutboundQueue: TMCPMessageQueue;
+    FServer: TJRPCServer;
+   protected
+     procedure Execute; override;
+  public
+    constructor Create(AServer: TJRPCServer; AInboundQueue, AOutboundQueue: TMCPMessageQueue);
   end;
 
   /// <summary>
@@ -92,11 +99,16 @@ type
   /// </summary>
   TMCPSessionBase = class abstract
   protected
+    FServer: TJRPCServer;
     FSessionId: string;
     FCreatedAt: TDateTime;
     FLastAccessedAt: TDateTime;
-    FInbound: TMCPSessionQueues;
+    FInbound: TMCPMessageQueue;
     FOutbound: TMCPMessageQueue;
+    FInboundQueueHander: TInboundQueueHander;
+    // This handle start the thread that process the inbound queue
+    procedure HandleInboudQueue(Sender: TObject; AMessage: TJRPCMessage);
+    procedure HandleInboudTerminate(Sender: TObject);
   public
     constructor Create;
     destructor Destroy; override;
@@ -116,7 +128,7 @@ type
     /// </summary>
     property LastAccessedAt: TDateTime read FLastAccessedAt write FLastAccessedAt;
 
-    property Inbound: TMCPSessionQueues read FInbound write FInbound;
+    property Inbound: TMCPMessageQueue read FInbound write FInbound;
     property Outbound: TMCPMessageQueue read FOutbound write FOutbound;
   end;
 
@@ -168,7 +180,7 @@ type
     /// <summary>
     ///   Create a new session with a generated ID
     /// </summary>
-    function CreateSession: TMCPSessionBase;
+    function CreateSession(AServer: TJRPCServer): TMCPSessionBase;
 
     /// <summary>
     ///   Get an existing session by ID. Raises exception if not found or expired.
@@ -210,7 +222,10 @@ implementation
 
 uses
   System.DateUtils,
-  Neon.Core.Utils;
+  Neon.Core.Utils,
+  MCPConnect.Configuration.Neon,
+  MCPConnect.JRPC.Invoker,
+  MCPConnect.JRPC.Classes;
 
 { EMCPSessionException }
 
@@ -287,7 +302,7 @@ begin
   inherited;
 end;
 
-function TMCPSessionManager.CreateSession: TMCPSessionBase;
+function TMCPSessionManager.CreateSession(AServer: TJRPCServer): TMCPSessionBase;
 var
   LSessionId: string;
 begin
@@ -300,6 +315,7 @@ begin
     Result.FSessionId := LSessionId;
     Result.FCreatedAt := Now;
     Result.FLastAccessedAt := Now;
+    Result.FServer := AServer;
     FSessions.Add(LSessionId, Result);
   finally
     FLock.Leave;
@@ -398,33 +414,15 @@ begin
   end;
 end;
 
-{ TMCPSessionQueues }
-
-constructor TMCPSessionQueues.Create(AMaxItems: Integer);
-begin
-  Notifications := TMCPNotificationQueue.Create(AMaxItems);
-  Responses := TMCPResponseQueue.Create(AMaxItems);
-  Requests := TMCPRequestQueue.Create(AMaxItems);
-  Errors := TMCPErrorQueue.Create(AMaxItems);
-end;
-
-destructor TMCPSessionQueues.Destroy;
-begin
-  Notifications.Free;
-  Responses.Free;
-  Requests.Free;
-  Errors.Free;
-
-  inherited;
-end;
-
 { TMCPSessionBase }
 
 constructor TMCPSessionBase.Create;
 begin
   inherited Create;
-  FInbound := TMCPSessionQueues.Create(100);
+  FInbound := TMCPMessageQueue.Create(100);
   FOutbound := TMCPMessageQueue.Create(100);
+
+  FInbound.OnEnqueue := HandleInboudQueue;
 end;
 
 destructor TMCPSessionBase.Destroy;
@@ -432,6 +430,87 @@ begin
   FInbound.Free;
   FOutbound.Free;
   inherited;
+end;
+
+procedure TMCPSessionBase.HandleInboudQueue(Sender: TObject;
+  AMessage: TJRPCMessage);
+begin
+  if not Assigned(FInboundQueueHander) then
+  begin
+    TMonitor.Enter(Self);
+    try
+      if not Assigned(FInboundQueueHander) then
+      begin
+        FInboundQueueHander := TInboundQueueHander.Create(FServer, FInbound, FOutbound);
+        FInboundQueueHander.OnTerminate := HandleInboudTerminate;
+        FInboundQueueHander.Start;
+      end;
+    finally
+      TMonitor.Exit(Self);
+    end;
+  end;
+end;
+
+procedure TMCPSessionBase.HandleInboudTerminate(Sender: TObject);
+begin
+  FInboundQueueHander := nil;
+end;
+
+{ TInboundQueueHander }
+
+constructor TInboundQueueHander.Create(AServer: TJRPCServer; AInboundQueue, AOutboundQueue: TMCPMessageQueue);
+begin
+  inherited Create(True);
+  FreeOnTerminate := True;
+  FInboundQueue := AInboundQueue;
+  FOutboundQueue := AOutboundQueue;
+  FServer := AServer;
+end;
+
+procedure TInboundQueueHander.Execute;
+var
+  LInvokerCtx: TJRPCInvokerContext;
+  LConstructorProxy: TJRPCConstructorProxy;
+  LInstance: TObject;
+begin
+  inherited;
+  var LGarbage := TGarbageCollector.CreateInstance;
+  var LContext := TJRPCContext.Create;
+  LGarbage.Add(LContext);
+  LContext.AddContent(FServer);
+  while not Terminated do
+  begin
+    var LMessage := FInboundQueue.Dequeue;
+    if not Assigned(LMessage) then
+      Break;
+    try
+      // Skip all messages that aren't TJRPCMethod
+      if LMessage is TJRPCMethod then
+      begin
+        var LMethod := TJRPCMethod(LMessage);
+
+        if not TJRPCRegistry.Instance.GetConstructorProxy(LMethod.Method, LConstructorProxy) then
+          raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LMethod.Method]);
+
+        LInstance := LConstructorProxy.ConstructorFunc();
+        LGarbage.Add(LInstance);
+
+        // Injects the context inside the instance
+        LContext.Inject(LInstance);
+
+        LInvokerCtx.Request := LMethod;
+        LInvokerCtx.Garbage := LGarbage;
+        LInvokerCtx.Responses := FOutboundQueue;
+        LInvokerCtx.ApiInstance := LInstance;
+        //LInvokerCtx.NeonConfig := LConstructorProxy.NeonConfig;
+        LInvokerCtx.SelectConfig(LConstructorProxy.NeonConfig, LContext.FindContextDataAs<TJRPCNeonConfig>);
+        TJRPCInvoker.Invoke(LInvokerCtx);
+      end;
+    finally
+      LMessage.Free;
+    end;
+  end;
+  Terminate;
 end;
 
 end.

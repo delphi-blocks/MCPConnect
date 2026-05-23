@@ -421,7 +421,7 @@ begin
     begin
       var LNotification := AMessage as TJRPCNotification;
       Logger.LogDebug('Enqueing notification [%s]', [LNotification.Method]);
-      FSession.Inbound.Notifications.Enqueue(LNotification.Clone);
+      FSession.Inbound.Enqueue(LNotification.Clone);
     end;
     Exit;
   end;
@@ -432,7 +432,7 @@ begin
     begin
       var LRes := AMessage as TJRPCResponse;
       Logger.LogDebug('Enqueing response id [%s]', [LRes.Id.AsString]);
-      FSession.Inbound.Responses.Enqueue(LRes.Clone);
+      FSession.Inbound.Enqueue(LRes.Clone);
     end;
     Exit;
   end;
@@ -447,7 +447,7 @@ begin
       if Assigned(FSession) then
       begin
         Logger.LogDebug('Enqueing error [%s]', [LErr.Error.Message.Value]);
-        FSession.Inbound.Errors.Enqueue(LErr.Clone);
+        FSession.Inbound.Enqueue(LErr.Clone);
       end;
     end
     else
@@ -603,7 +603,7 @@ begin
   else
   begin
     // No session ID provided - auto-create new session
-    Result := TMCPSessionManager.Instance.CreateSession;
+    Result := TMCPSessionManager.Instance.CreateSession(FServer);
   end;
 end;
 

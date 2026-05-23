@@ -49,7 +49,7 @@ type
 
   TJRPCInvokerContext = record
     Garbage: IGarbageCollector;
-    Request: TJRPCRequest;
+    Request: TJRPCMethod;
     Responses: TMCPMessageQueue;
 
     ApiInstance: TObject;
@@ -70,8 +70,8 @@ type
     FNeonConfig: INeonConfiguration;
     FSeparator: string;
 
-    function FindMethod(ARequest: TJRPCRequest): TRttiMethod;
-    function GetRequestMethodName(ARequest: TJRPCRequest): string;
+    function FindMethod(ARequest: TJRPCMethod): TRttiMethod;
+    function GetRequestMethodName(ARequest: TJRPCMethod): string;
     function RetrieveNeonConfig(ANeonConfig: INeonConfiguration): INeonConfiguration;
     function GetParamName(LParam: TRttiParameter): string;
     function RequestToRttiParams(AMethod: TRttiMethod): TArray<TValue>;
@@ -131,7 +131,7 @@ begin
 
 end;
 
-function TJRPCInvoker.FindMethod(ARequest: TJRPCRequest): TRttiMethod;
+function TJRPCInvoker.FindMethod(ARequest: TJRPCMethod): TRttiMethod;
 var
   LMethod: TRttiMethod;
   LJRPCAttrib: JRPCAttribute;
@@ -183,7 +183,8 @@ begin
         [FContext.ApiInstance.ClassName, FContext.Request.Method]);
   end;
 
-  LResponse.Id := FContext.Request.Id;
+  if FContext.Request is TJRPCRequest then
+    LResponse.Id := TJRPCRequest(FContext.Request).Id;
 
   { TODO -opaolo -c :  31/03/2026 10:46:08 }
   if TRttiUtils.HasAttribute<JRPCNotificationAttribute>(LMethod) then
@@ -205,7 +206,7 @@ begin
     Result := LParam.Name;
 end;
 
-function TJRPCInvoker.GetRequestMethodName(ARequest: TJRPCRequest): string;
+function TJRPCInvoker.GetRequestMethodName(ARequest: TJRPCMethod): string;
 var
   LSeparatorIndex: Integer;
 begin

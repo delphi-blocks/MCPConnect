@@ -82,7 +82,6 @@
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_1_Win32)'!=''">
         <DCC_RemoteDebug>false</DCC_RemoteDebug>
-        <Debugger_HostApplication>cmd</Debugger_HostApplication>
         <VerInfo_Locale>1033</VerInfo_Locale>
         <Manifest_File>(None)</Manifest_File>
         <AppDPIAwarenessMode>none</AppDPIAwarenessMode>
@@ -120,6 +119,9 @@
         <DCCReference Include="..\..\..\Source\MCPConnect.Content.Writers.VCL.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.Transport.Stdio.pas"/>
         <DCCReference Include="..\MCPServer.Tools.pas"/>
+        <DCCReference Include="..\MCPServer.Config.pas"/>
+        <DCCReference Include="..\MCPServer.Resources.pas"/>
+        <DCCReference Include="..\MCPServer.Apps.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
@@ -161,7 +163,7 @@
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>
-                <DeployFile LocalName="..\MCPServerStdio.exe" Configuration="Debug" Class="ProjectOutput">
+                <DeployFile LocalName="..\..\MCPServerStdio.exe" Configuration="Debug" Class="ProjectOutput">
                     <Platform Name="Win32">
                         <RemoteName>MCPServerStdio.exe</RemoteName>
                         <Overwrite>true</Overwrite>

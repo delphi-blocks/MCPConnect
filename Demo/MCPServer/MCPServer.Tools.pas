@@ -290,6 +290,9 @@ begin
   Result.Add(TTicket.Create(3, 'Young ticket', StrToDate('19/11/2025'), 69.0, ''));
   Responses.Enqueue(TTicketProgressNotification.Create(3, 3));
   Sleep(1000);
+
+  Responses.Enqueue(TToolListChangedNotification.Create());
+
 end;
 
 { TTicket }

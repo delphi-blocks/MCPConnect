@@ -50,6 +50,7 @@ type
   TMCPServerConfig = class;
   TMCPSecurityConfig = class;
   TMCPResourcesConfig = class;
+  TMCPMessageHandlingConfig = class;
 
   /// <summary>
   ///   Primary configuration interface for Model Context Protocol (MCP) servers.
@@ -102,6 +103,11 @@ type
     /// </summary>
     function Server: TMCPServerConfig;
 
+    /// <summary>
+    ///   Handlers for inbound JSON-RPC messages from the client
+    ///   (notifications such as cancelled/initialized, and requests such as logging/setLevel).
+    /// </summary>
+    function MessageHandling: TMCPMessageHandlingConfig;
 
     /// <summary>
     ///   Security configuration
@@ -221,6 +227,68 @@ type
     ///   the conversion. Built-in writers for basic types are always available.
     /// </remarks>
     function RegisterWriter(AClass: TCustomWriterClass): TMCPServerConfig;
+  end;
+
+  /// <summary>
+  ///   Configuration for handlers invoked when the server receives inbound
+  ///   JSON-RPC messages from the client. Covers both notifications
+  ///   (fire-and-forget, e.g. notifications/cancelled, notifications/initialized)
+  ///   and requests that need a response (e.g. logging/setLevel).
+  /// </summary>
+  TMCPMessageHandlingConfig = class(TMCPBaseConfig)
+  private
+    FCancelledProc: TProc<TJRPCContext, TCancelledNotificationParams>;
+    FInitializedProc: TProc<TJRPCContext>;
+    FSetLogLevelProc: TProc<TJRPCContext, TLogSetLevel>;
+  public
+    /// <summary>
+    ///   Registers a handler for the "notifications/cancelled" notification,
+    ///   sent by the client when it wants to cancel an in-flight request.
+    /// </summary>
+    /// <param name="AProc">
+    ///   Callback receiving the cancellation parameters (request id and optional reason).
+    ///   Pass nil to unregister.
+    /// </param>
+    /// <returns>Self for fluent chaining</returns>
+    function OnCancelled(AProc: TProc<TJRPCContext, TCancelledNotificationParams>): TMCPMessageHandlingConfig;
+
+    /// <summary>
+    ///   Registers a handler for the "notifications/initialized" notification,
+    ///   sent by the client once the initialization handshake is complete.
+    /// </summary>
+    /// <param name="AProc">Callback invoked after initialization. Pass nil to unregister.</param>
+    /// <returns>Self for fluent chaining</returns>
+    function OnInitialized(AProc: TProc<TJRPCContext>): TMCPMessageHandlingConfig;
+
+    /// <summary>
+    ///   Registers a handler for the "logging/setLevel" request, sent by the
+    ///   client to adjust the minimum severity the server should emit.
+    /// </summary>
+    /// <param name="AProc">
+    ///   Callback receiving the requested log level (RFC-5424 severities).
+    ///   The server is expected to apply the level synchronously; the response
+    ///   is sent automatically with an empty result. Pass nil to unregister.
+    /// </param>
+    /// <returns>Self for fluent chaining</returns>
+    function OnSetLogLevel(AProc: TProc<TJRPCContext, TLogSetLevel>): TMCPMessageHandlingConfig;
+
+    /// <summary>
+    ///   Read-only access to the registered "notifications/cancelled" handler.
+    ///   Used by the framework to dispatch incoming cancellation notifications.
+    /// </summary>
+    property CancelledProc: TProc<TJRPCContext, TCancelledNotificationParams> read FCancelledProc;
+
+    /// <summary>
+    ///   Read-only access to the registered "notifications/initialized" handler.
+    ///   Used by the framework to dispatch the post-handshake initialized notification.
+    /// </summary>
+    property InitializedProc: TProc<TJRPCContext> read FInitializedProc;
+
+    /// <summary>
+    ///   Read-only access to the registered "logging/setLevel" handler.
+    ///   Used by the framework to apply log level changes requested by the client.
+    /// </summary>
+    property SetLogLevelProc: TProc<TJRPCContext, TLogSetLevel> read FSetLogLevelProc;
   end;
 
   /// <summary>
@@ -363,9 +431,10 @@ type
   private
     FServer: TMCPServerConfig;
     FSecurity: TMCPSecurityConfig;
+    FMessageHandling: TMCPMessageHandlingConfig;
+
     FTools: TMCPToolsConfig;
     FResources: TMCPResourcesConfig;
-
     FPrompts: TMCPListConfig;
   public
     constructor Create(AApp: IJRPCApplication); override;
@@ -376,6 +445,7 @@ type
     function Security: TMCPSecurityConfig;
     function Tools: TMCPToolsConfig;
     function Resources: TMCPResourcesConfig;
+    function MessageHandling: TMCPMessageHandlingConfig;
 
     function Prompts: TMCPListConfig;
   end;
@@ -393,9 +463,10 @@ uses
 constructor TMCPConfig.Create(AApp: IJRPCApplication);
 begin
   inherited;
-
   FServer := TMCPServerConfig.Create(Self);
   FSecurity := TMCPSecurityConfig.Create(Self);
+  FMessageHandling := TMCPMessageHandlingConfig.Create(Self);
+
   FTools := TMCPToolsConfig.Create(Self);
   FResources := TMCPResourcesConfig.Create(Self);
   FPrompts := TMCPListConfig.Create(Self);
@@ -406,10 +477,16 @@ begin
   FPrompts.Free;
   FResources.Free;
   FTools.Free;
+
+  FMessageHandling.Free;
   FSecurity.Free;
   FServer.Free;
-
   inherited;
+end;
+
+function TMCPConfig.MessageHandling: TMCPMessageHandlingConfig;
+begin
+  Result := FMessageHandling;
 end;
 
 function TMCPConfig.Prompts: TMCPListConfig;
@@ -1149,6 +1226,26 @@ end;
 function TMCPSecurityConfig.SetCORS(AEnable: Boolean): TMCPSecurityConfig;
 begin
   CORS := AEnable;
+  Result := Self;
+end;
+
+{ TMCPMessageHandlingConfig }
+
+function TMCPMessageHandlingConfig.OnCancelled(AProc: TProc<TJRPCContext, TCancelledNotificationParams>): TMCPMessageHandlingConfig;
+begin
+  FCancelledProc := AProc;
+  Result := Self;
+end;
+
+function TMCPMessageHandlingConfig.OnInitialized(AProc: TProc<TJRPCContext>): TMCPMessageHandlingConfig;
+begin
+  FInitializedProc := AProc;
+  Result := Self;
+end;
+
+function TMCPMessageHandlingConfig.OnSetLogLevel(AProc: TProc<TJRPCContext, TLogSetLevel>): TMCPMessageHandlingConfig;
+begin
+  FSetLogLevelProc := AProc;
   Result := Self;
 end;
 

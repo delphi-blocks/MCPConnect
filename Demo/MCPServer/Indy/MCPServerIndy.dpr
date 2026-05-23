@@ -32,7 +32,8 @@ uses
   MCPConnect.JRPC.Classes in '..\..\..\Source\MCPConnect.JRPC.Classes.pas',
   MCPConnect.Transport.Base in '..\..\..\Source\MCPConnect.Transport.Base.pas',
   MCPConnect.Transport.AcceptParser in '..\..\..\Source\MCPConnect.Transport.AcceptParser.pas',
-  MCPConnect.Transport.MediaType in '..\..\..\Source\MCPConnect.Transport.MediaType.pas';
+  MCPConnect.Transport.MediaType in '..\..\..\Source\MCPConnect.Transport.MediaType.pas',
+  MCPServer.Notifications in '..\MCPServer.Notifications.pas';
 
 {$R *.res}
 

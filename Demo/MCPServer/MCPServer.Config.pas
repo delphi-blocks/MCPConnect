@@ -8,6 +8,7 @@ uses
   IdCustomTCPServer, IdCustomHTTPServer, IdHTTPServer,
 
   MCPConnect.JRPC.Core,
+  MCPConnect.JRPC.Classes,
   MCPConnect.JRPC.Server,
 
   MCPConnect.MCP.Server.Api,
@@ -20,7 +21,8 @@ uses
   MCPConnect.Content.Writers.RTL,
   MCPConnect.Content.Writers.VCL,
 
-  Logify;
+  MCPConnect.Session.Core,
+  MCPServer.Notifications;
 
 type
   TServerConfigurator = class
@@ -32,10 +34,10 @@ implementation
 uses
   System.IOUtils,
   System.TypInfo,
-  MCPConnect.JRPC.Classes,
-  MCPServer.Tools,
+  Logify,
   MCPServer.Resources,
-  MCPServer.Apps;
+  MCPServer.Apps,
+  MCPServer.Tools;
 
 
 { TServerConfigurator }
@@ -75,6 +77,11 @@ begin
 
       .MessageHandling
 
+        // Uncomment to register a class that overrides the standard MCP API
+        // (useful especially for notifications)
+        // .RegisterApi(TNotificationHandler)
+
+        // Fires when the client cancels an in-flight request (notifications/cancelled)
         .OnCancelled(
           procedure (AContext: TJRPCContext; AParams: TCancelledNotificationParams)
           begin
@@ -82,6 +89,7 @@ begin
           end
         )
 
+        // Fires once the client completes the initialize handshake (notifications/initialized)
         .OnInitialized(
           procedure (AContext: TJRPCContext)
           begin
@@ -89,6 +97,7 @@ begin
           end
         )
 
+        // Fires when the client adjusts the minimum log severity (logging/setLevel)
         .OnSetLogLevel(
           procedure (AContext: TJRPCContext; ALevel: TLogSetLevel)
           begin

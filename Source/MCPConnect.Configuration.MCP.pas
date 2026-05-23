@@ -110,6 +110,14 @@ type
     function MessageHandling: TMCPMessageHandlingConfig;
 
     /// <summary>
+    ///   Resolves the constructor proxy for an inbound JSON-RPC method name.
+    ///   Looks first in the per-server registry populated via
+    ///   MessageHandling.RegisterApi, then falls back to the global
+    ///   TJRPCRegistry.Instance. Returns False if neither registry has a match.
+    /// </summary>
+    function GetConstructorProxy(const AName: string; out AProxy: TJRPCConstructorProxy): Boolean;
+
+    /// <summary>
     ///   Security configuration
     /// </summary>
     function Security: TMCPSecurityConfig;
@@ -237,10 +245,33 @@ type
   /// </summary>
   TMCPMessageHandlingConfig = class(TMCPBaseConfig)
   private
+    FRegistry: TJRPCRegistry;
     FCancelledProc: TProc<TJRPCContext, TCancelledNotificationParams>;
     FInitializedProc: TProc<TJRPCContext>;
     FSetLogLevelProc: TProc<TJRPCContext, TLogSetLevel>;
   public
+    constructor Create(AConfig: IMCPConfig);
+    destructor Destroy; override;
+
+    /// <summary>
+    ///   Registers a class as an alternative implementation for one or more
+    ///   inbound JSON-RPC handlers. The class is inspected via [JRPC]
+    ///   attributes the same way the global registry does, but lookups for
+    ///   the matching method names will prefer this registration over the
+    ///   built-in classes defined in MCPConnect.MCP.Server.Api.
+    /// </summary>
+    /// <param name="AClass">
+    ///   Class decorated with [JRPC('namespace')] and [JRPC('method')] attributes.
+    /// </param>
+    /// <returns>Self for fluent chaining</returns>
+    function RegisterApi(AClass: TClass): TMCPMessageHandlingConfig;
+
+    /// <summary>
+    ///   Per-server registry used to override the global TJRPCRegistry on a
+    ///   method-by-method basis. Exposed read-only; populate it via RegisterApi.
+    /// </summary>
+    property Registry: TJRPCRegistry read FRegistry;
+
     /// <summary>
     ///   Registers a handler for the "notifications/cancelled" notification,
     ///   sent by the client when it wants to cancel an in-flight request.
@@ -446,6 +477,7 @@ type
     function Tools: TMCPToolsConfig;
     function Resources: TMCPResourcesConfig;
     function MessageHandling: TMCPMessageHandlingConfig;
+    function GetConstructorProxy(const AName: string; out AProxy: TJRPCConstructorProxy): Boolean;
 
     function Prompts: TMCPListConfig;
   end;
@@ -482,6 +514,13 @@ begin
   FSecurity.Free;
   FServer.Free;
   inherited;
+end;
+
+function TMCPConfig.GetConstructorProxy(const AName: string; out AProxy: TJRPCConstructorProxy): Boolean;
+begin
+  Result := FMessageHandling.Registry.GetConstructorProxy(AName, AProxy);
+  if not Result then
+    Result := TJRPCRegistry.Instance.GetConstructorProxy(AName, AProxy);
 end;
 
 function TMCPConfig.MessageHandling: TMCPMessageHandlingConfig;
@@ -1230,6 +1269,24 @@ begin
 end;
 
 { TMCPMessageHandlingConfig }
+
+constructor TMCPMessageHandlingConfig.Create(AConfig: IMCPConfig);
+begin
+  inherited Create(AConfig);
+  FRegistry := TJRPCRegistry.Create;
+end;
+
+destructor TMCPMessageHandlingConfig.Destroy;
+begin
+  FRegistry.Free;
+  inherited;
+end;
+
+function TMCPMessageHandlingConfig.RegisterApi(AClass: TClass): TMCPMessageHandlingConfig;
+begin
+  FRegistry.RegisterClass(AClass, MCPNeonConfig);
+  Result := Self;
+end;
 
 function TMCPMessageHandlingConfig.OnCancelled(AProc: TProc<TJRPCContext, TCancelledNotificationParams>): TMCPMessageHandlingConfig;
 begin

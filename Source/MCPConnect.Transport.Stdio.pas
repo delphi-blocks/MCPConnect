@@ -372,7 +372,7 @@ begin
   // Create session for this STDIO connection (implicit session per connection)
   if Assigned(FSessionConfig) then
   begin
-    FSession := TMCPSessionManager.Instance.CreateSession;
+    FSession := TMCPSessionManager.Instance.CreateSession(FServer);
     LSessionId := FSession.SessionId;  // Save ID before thread ends
   end;
 

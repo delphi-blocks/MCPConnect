@@ -466,7 +466,13 @@ begin
 
     FContext.AddContent(LRequest);
 
-    if not TJRPCRegistry.Instance.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
+    var LMCPConfig := FContext.FindContextDataAs(IMCPConfig) as IMCPConfig;
+    if Assigned(LMCPConfig) then
+    begin
+      if not LMCPConfig.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
+        raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LRequest.Method]);
+    end
+    else if not TJRPCRegistry.Instance.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
       raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LRequest.Method]);
 
     LInstance := LConstructorProxy.ConstructorFunc();

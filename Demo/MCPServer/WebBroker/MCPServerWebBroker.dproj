@@ -161,6 +161,7 @@
             <DesignClass>TWebModule</DesignClass>
         </DCCReference>
         <DCCReference Include="..\MCPServer.Config.pas"/>
+        <DCCReference Include="..\MCPServer.Notifications.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

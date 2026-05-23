@@ -30,7 +30,8 @@ uses
   MCPServer.Apps in '..\MCPServer.Apps.pas',
   MCPServerWebBroker.Form.Main in 'MCPServerWebBroker.Form.Main.pas' {frmMain},
   MCPServerWebBroker.WebModule in 'MCPServerWebBroker.WebModule.pas' {WebModule1: TWebModule},
-  MCPServer.Config in '..\MCPServer.Config.pas';
+  MCPServer.Config in '..\MCPServer.Config.pas',
+  MCPServer.Notifications in '..\MCPServer.Notifications.pas';
 
 {$R *.res}
 

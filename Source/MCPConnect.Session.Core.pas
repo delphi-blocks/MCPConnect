@@ -86,10 +86,11 @@ type
     FInboundQueue: TMCPMessageQueue;
     FOutboundQueue: TMCPMessageQueue;
     FServer: TJRPCServer;
+    FSession: TMCPSessionBase;
    protected
      procedure Execute; override;
   public
-    constructor Create(AServer: TJRPCServer; AInboundQueue, AOutboundQueue: TMCPMessageQueue);
+    constructor Create(AServer: TJRPCServer; ASession: TMCPSessionBase);
   end;
 
   /// <summary>
@@ -224,6 +225,7 @@ uses
   System.DateUtils,
   Neon.Core.Utils,
   MCPConnect.Configuration.Neon,
+  MCPConnect.Configuration.MCP,
   MCPConnect.JRPC.Invoker,
   MCPConnect.JRPC.Classes;
 
@@ -441,7 +443,7 @@ begin
     try
       if not Assigned(FInboundQueueHander) then
       begin
-        FInboundQueueHander := TInboundQueueHander.Create(FServer, FInbound, FOutbound);
+        FInboundQueueHander := TInboundQueueHander.Create(FServer, Self);
         FInboundQueueHander.OnTerminate := HandleInboudTerminate;
         FInboundQueueHander.Start;
       end;
@@ -458,13 +460,14 @@ end;
 
 { TInboundQueueHander }
 
-constructor TInboundQueueHander.Create(AServer: TJRPCServer; AInboundQueue, AOutboundQueue: TMCPMessageQueue);
+constructor TInboundQueueHander.Create(AServer: TJRPCServer; ASession: TMCPSessionBase);
 begin
   inherited Create(True);
   FreeOnTerminate := True;
-  FInboundQueue := AInboundQueue;
-  FOutboundQueue := AOutboundQueue;
+  FInboundQueue := ASession.Inbound;
+  FOutboundQueue := ASession.Outbound;
   FServer := AServer;
+  FSession := ASession;
 end;
 
 procedure TInboundQueueHander.Execute;
@@ -472,12 +475,15 @@ var
   LInvokerCtx: TJRPCInvokerContext;
   LConstructorProxy: TJRPCConstructorProxy;
   LInstance: TObject;
+  LMCPConfig: IMCPConfig;
 begin
   inherited;
   var LGarbage := TGarbageCollector.CreateInstance;
   var LContext := TJRPCContext.Create;
+  LContext.AddContent(FSession);
   LGarbage.Add(LContext);
   LContext.AddContent(FServer);
+  LMCPConfig := LContext.FindContextDataAs(IMCPConfig) as IMCPConfig;
   while not Terminated do
   begin
     var LMessage := FInboundQueue.Dequeue;
@@ -489,10 +495,16 @@ begin
       begin
         var LMethod := TJRPCMethod(LMessage);
 
-        if not TJRPCRegistry.Instance.GetConstructorProxy(LMethod.Method, LConstructorProxy) then
+        if Assigned(LMCPConfig) then
+        begin
+          if not LMCPConfig.GetConstructorProxy(LMethod.Method, LConstructorProxy) then
+            raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LMethod.Method]);
+        end
+        else if not TJRPCRegistry.Instance.GetConstructorProxy(LMethod.Method, LConstructorProxy) then
           raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LMethod.Method]);
 
         LInstance := LConstructorProxy.ConstructorFunc();
+
         LGarbage.Add(LInstance);
 
         // Injects the context inside the instance

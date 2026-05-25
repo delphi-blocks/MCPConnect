@@ -592,6 +592,7 @@ end;
 function TMCPTransportHandler.HandleSession: TMCPSessionBase;
 var
   LSessionId: string;
+  LSessionManager: TMCPSessionManager;
 begin
   Result := nil;
 
@@ -599,17 +600,18 @@ begin
     Exit;
 
   LSessionId := ExtractSessionId;
+  LSessionManager := (FServer.SessionManager as TMCPSessionManager);
 
   // If session ID is provided, try to get existing session
   if not LSessionId.IsEmpty then
   begin
     // GetSession will raise exception if expired or not found
-    Result := TMCPSessionManager.Instance.GetSession(LSessionId);
+    Result := LSessionManager.GetSession(LSessionId);
   end
   else
   begin
     // No session ID provided - auto-create new session
-    Result := TMCPSessionManager.Instance.CreateSession(FServer);
+    Result := LSessionManager.CreateSession(FServer);
   end;
 end;
 

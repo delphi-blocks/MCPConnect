@@ -366,13 +366,16 @@ var
   LError: TStdErrWriter;
   LRequest, LResponse: string;
   LSessionId: string;
+  LSessionManager: TMCPSessionManager;
 begin
   inherited;
+
+  LSessionManager := FServer.SessionManager as TMCPSessionManager;
 
   // Create session for this STDIO connection (implicit session per connection)
   if Assigned(FSessionConfig) then
   begin
-    FSession := TMCPSessionManager.Instance.CreateSession(FServer);
+    FSession := LSessionManager.CreateSession(FServer);
     LSessionId := FSession.SessionId;  // Save ID before thread ends
   end;
 
@@ -415,7 +418,7 @@ begin
     // The session would be automatically destroyed by TSessionManager's destructor
     // at application termination, but we clean it up here for good practice.
     if not LSessionId.IsEmpty then
-      TMCPSessionManager.Instance.DestroySession(LSessionId);
+      LSessionManager.DestroySession(LSessionId);
   end;
 
   Terminate;

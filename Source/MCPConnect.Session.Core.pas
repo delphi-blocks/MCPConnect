@@ -77,11 +77,9 @@ type
   TMCPSessionDataClass = class of TMCPSessionBase;
 
   /// <summary>
-  ///   Drains the inbound queue; self-frees via FreeOnTerminate.
-  ///   FIXME: the session destructor doesn't wait for this thread, so freeing
-  ///   FInbound while Dequeue is running can AV.
+  ///   Drains the inbound queue
   /// </summary>
-  TInboundQueueHander = class(TThread)
+  TInboundQueueHandler = class(TThread)
   private
     FInboundQueue: TMCPMessageQueue;
     FOutboundQueue: TMCPMessageQueue;
@@ -106,10 +104,10 @@ type
     FLastAccessedAt: TDateTime;
     FInbound: TMCPMessageQueue;
     FOutbound: TMCPMessageQueue;
-    FInboundQueueHander: TInboundQueueHander;
+    FInboundQueueHandler: TInboundQueueHandler;
     // This handle start the thread that process the inbound queue
     procedure HandleInboudQueue(Sender: TObject; AMessage: TJRPCMessage);
-    procedure HandleInboudTerminate(Sender: TObject);
+    procedure StartQueueHandler;
   public
     constructor Create;
     destructor Destroy; override;
@@ -159,8 +157,6 @@ type
   /// </summary>
   TMCPSessionManager = class
   private
-    class var FInstance: TMCPSessionManager;
-  private
     FLock: TCriticalSection;
     FSessions: TDictionary<string, TMCPSessionBase>;
     FSessionClass: TMCPSessionDataClass;
@@ -169,11 +165,6 @@ type
     function GenerateSessionId: string;
     function IsExpired(ASession: TMCPSessionBase): Boolean;
     procedure RemoveExpiredSession(const ASessionId: string);
-  protected
-    class function GetInstance: TMCPSessionManager; static;
-  public
-    class constructor Create;
-    class destructor Destroy;
   public
     constructor Create;
     destructor Destroy; override;
@@ -213,10 +204,6 @@ type
     /// </summary>
     property TimeoutMinutes: Integer read FTimeoutMinutes write FTimeoutMinutes;
 
-    /// <summary>
-    ///   Singleton instance of the session manager
-    /// </summary>
-    class property Instance: TMCPSessionManager read GetInstance;
   end;
 
 implementation
@@ -274,11 +261,6 @@ end;
 
 { TMCPSessionManager }
 
-class constructor TMCPSessionManager.Create;
-begin
-  FInstance := nil;
-end;
-
 constructor TMCPSessionManager.Create;
 begin
   inherited;
@@ -286,11 +268,6 @@ begin
   FSessions := TDictionary<string, TMCPSessionBase>.Create;
   FSessionClass := TMCPSessionData;
   FTimeoutMinutes := 30;
-end;
-
-class destructor TMCPSessionManager.Destroy;
-begin
-  FInstance.Free;
 end;
 
 destructor TMCPSessionManager.Destroy;
@@ -318,6 +295,7 @@ begin
     Result.FCreatedAt := Now;
     Result.FLastAccessedAt := Now;
     Result.FServer := AServer;
+    Result.StartQueueHandler;
     FSessions.Add(LSessionId, Result);
   finally
     FLock.Leave;
@@ -348,13 +326,6 @@ begin
   Result := GUIDToString(LGuid);
   // Remove curly braces { and }
   Result := Copy(Result, 2, Length(Result) - 2);
-end;
-
-class function TMCPSessionManager.GetInstance: TMCPSessionManager;
-begin
-  if not Assigned(FInstance) then
-    FInstance := TMCPSessionManager.Create;
-  Result := FInstance;
 end;
 
 function TMCPSessionManager.GetSession(const ASessionId: string): TMCPSessionBase;
@@ -423,12 +394,16 @@ begin
   inherited Create;
   FInbound := TMCPMessageQueue.Create(100);
   FOutbound := TMCPMessageQueue.Create(100);
-
-  FInbound.OnEnqueue := HandleInboudQueue;
 end;
 
 destructor TMCPSessionBase.Destroy;
 begin
+  if Assigned(FInboundQueueHandler) then
+  begin
+    // TThread.Free does Terminate + WaitFor
+    FInboundQueueHandler.Free;
+  end;
+
   FInbound.Free;
   FOutbound.Free;
   inherited;
@@ -437,45 +412,45 @@ end;
 procedure TMCPSessionBase.HandleInboudQueue(Sender: TObject;
   AMessage: TJRPCMessage);
 begin
-  if not Assigned(FInboundQueueHander) then
-  begin
-    TMonitor.Enter(Self);
-    try
-      if not Assigned(FInboundQueueHander) then
-      begin
-        FInboundQueueHander := TInboundQueueHander.Create(FServer, Self);
-        FInboundQueueHander.OnTerminate := HandleInboudTerminate;
-        FInboundQueueHander.Start;
-      end;
-    finally
-      TMonitor.Exit(Self);
+  Inbound.Lock;
+  try
+    if FInboundQueueHandler.Terminated then
+    begin
+      // TThread.Free does Terminate + WaitFor
+      FInboundQueueHandler.Free;
+      StartQueueHandler;
     end;
+  finally
+    Inbound.Unlock;
   end;
 end;
 
-procedure TMCPSessionBase.HandleInboudTerminate(Sender: TObject);
+procedure TMCPSessionBase.StartQueueHandler;
 begin
-  FInboundQueueHander := nil;
+  FInboundQueueHandler := TInboundQueueHandler.Create(FServer, Self);
+  FInbound.OnEnqueue := HandleInboudQueue;
+  FInboundQueueHandler.Start;
 end;
 
-{ TInboundQueueHander }
+{ TInboundQueueHandler }
 
-constructor TInboundQueueHander.Create(AServer: TJRPCServer; ASession: TMCPSessionBase);
+constructor TInboundQueueHandler.Create(AServer: TJRPCServer; ASession: TMCPSessionBase);
 begin
   inherited Create(True);
-  FreeOnTerminate := True;
+  FreeOnTerminate := False;
   FInboundQueue := ASession.Inbound;
   FOutboundQueue := ASession.Outbound;
   FServer := AServer;
   FSession := ASession;
 end;
 
-procedure TInboundQueueHander.Execute;
+procedure TInboundQueueHandler.Execute;
 var
   LInvokerCtx: TJRPCInvokerContext;
   LConstructorProxy: TJRPCConstructorProxy;
   LInstance: TObject;
   LMCPConfig: IMCPConfig;
+  LMessage: TJRPCMessage;
 begin
   inherited;
   var LGarbage := TGarbageCollector.CreateInstance;
@@ -486,9 +461,17 @@ begin
   LMCPConfig := LContext.FindContextDataAs(IMCPConfig) as IMCPConfig;
   while not Terminated do
   begin
-    var LMessage := FInboundQueue.Dequeue;
-    if not Assigned(LMessage) then
-      Break;
+    FInboundQueue.Lock;
+    try
+      LMessage := FInboundQueue.Dequeue;
+      if not Assigned(LMessage) then
+      begin
+        Terminate;
+        Break;
+      end;
+    finally
+      FInboundQueue.Unlock;
+    end;
     try
       // Skip all messages that aren't TJRPCMethod
       if LMessage is TJRPCMethod then
@@ -522,7 +505,6 @@ begin
       LMessage.Free;
     end;
   end;
-  Terminate;
 end;
 
 end.

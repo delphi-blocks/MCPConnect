@@ -638,6 +638,9 @@ type
     constructor Create(AMaxItems: Integer = 1000);
     destructor Destroy; override;
 
+    procedure Lock;
+    procedure Unlock;
+
     procedure Enqueue(const Value: T); inline;
     function Dequeue: T; inline;
     function DequeueWait(ATimeOut: Integer = 1000): T; inline;
@@ -1705,7 +1708,7 @@ end;
 
 function TMCPMessageQueueBase<T>.Dequeue: T;
 begin
-  TMonitor.Enter(FQueue);
+  Lock;
   try
     if FQueue.Count = 0 then
       Result := nil
@@ -1720,7 +1723,7 @@ begin
         FOnDequeue(Self, Result);
     end;
   finally
-    TMonitor.Exit(FQueue);
+    Unlock;
   end;
 end;
 
@@ -1741,7 +1744,7 @@ end;
 
 procedure TMCPMessageQueueBase<T>.Enqueue(const Value: T);
 begin
-  TMonitor.Enter(FQueue);
+  Lock;
   try
     // Cap-and-drop: when full, free the oldest item to avoid leaking it
     // (the queue owns the messages — see Destroy).
@@ -1753,17 +1756,22 @@ begin
     if Assigned(FOnEnqueue) then
       FOnEnqueue(Self, Value);
   finally
-    TMonitor.Exit(FQueue);
+    Unlock;
   end;
+end;
+
+procedure TMCPMessageQueueBase<T>.Lock;
+begin
+  TMonitor.Enter(FQueue);
 end;
 
 function TMCPMessageQueueBase<T>.Peek: T;
 begin
-  TMonitor.Enter(FQueue);
+  Lock;
   try
     Result := FQueue.Peek;
   finally
-    TMonitor.Exit(FQueue);
+    Unlock;
   end;
 end;
 
@@ -1806,6 +1814,11 @@ begin
   finally
     LJSONArray.Free;
   end;
+end;
+
+procedure TMCPMessageQueueBase<T>.Unlock;
+begin
+  TMonitor.Exit(FQueue);
 end;
 
 function TMCPMessageQueueBase<T>.Count: NativeInt;

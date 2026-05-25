@@ -68,11 +68,6 @@ type
     function SetTimeout(AMinutes: Integer): ISessionConfig;
 
     /// <summary>
-    ///   Get the session manager instance
-    /// </summary>
-    function GetManager: TMCPSessionManager;
-
-    /// <summary>
     ///   Get the configured location for session ID
     /// </summary>
     function GetLocation: TSessionIdLocation;
@@ -85,7 +80,6 @@ type
 
   /// <summary>
   ///   Session configuration implementation.
-  ///   Uses TSessionManager.Instance singleton for session storage.
   ///   Sessions are automatically created when session ID is not provided.
   /// </summary>
   [Implements(ISessionConfig)]
@@ -93,18 +87,21 @@ type
   private
     FLocation: TSessionIdLocation;
     FHeaderName: string;
+    FSessionClass: TMCPSessionDataClass;
+    FTimeoutMinutes: Integer;
   public
     { ISessionConfig }
     function SetLocation(ALocation: TSessionIdLocation): ISessionConfig;
     function SetHeaderName(const AName: string): ISessionConfig;
     function SetSessionClass(AClass: TMCPSessionDataClass): ISessionConfig;
     function SetTimeout(AMinutes: Integer): ISessionConfig;
-    function GetManager: TMCPSessionManager;
     function GetLocation: TSessionIdLocation;
     function GetHeaderName: string;
 
+    property TimeoutMinutes: Integer read FTimeoutMinutes;
+    property SessionClass: TMCPSessionDataClass read FSessionClass;
+
     constructor Create(AApp: IJRPCApplication); override;
-    destructor Destroy; override;
   end;
 
 implementation
@@ -118,17 +115,6 @@ begin
   // MCP-friendly defaults
   FLocation := TSessionIdLocation.Header;
   FHeaderName := 'Mcp-Session-Id';
-end;
-
-destructor TSessionConfig.Destroy;
-begin
-  // Session manager is a singleton, don't free it
-  inherited;
-end;
-
-function TSessionConfig.GetManager: TMCPSessionManager;
-begin
-  Result := TMCPSessionManager.Instance;
 end;
 
 function TSessionConfig.GetHeaderName: string;
@@ -155,13 +141,13 @@ end;
 
 function TSessionConfig.SetSessionClass(AClass: TMCPSessionDataClass): ISessionConfig;
 begin
-  TMCPSessionManager.Instance.SessionClass := AClass;
+  FSessionClass := AClass;
   Result := Self;
 end;
 
 function TSessionConfig.SetTimeout(AMinutes: Integer): ISessionConfig;
 begin
-  TMCPSessionManager.Instance.TimeoutMinutes := AMinutes;
+  FTimeoutMinutes := AMinutes;
   Result := Self;
 end;
 

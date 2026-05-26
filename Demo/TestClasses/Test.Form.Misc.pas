@@ -30,7 +30,7 @@ type
   private
     FCount: Integer;
     FDelphi: TThreadedQueue<Integer>;
-    FMCP: TMCPMessageQueue<TJRPCNotification>;
+    FMCP: TMCPMessageQueueBase<TJRPCNotification>;
   public
     { Public declarations }
   end;
@@ -98,7 +98,7 @@ end;
 procedure TfrmMisc.FormCreate(Sender: TObject);
 begin
   FDelphi := TThreadedQueue<Integer>.Create(5);
-  FMCP := TMCPMessageQueue<TJRPCNotification>.Create(5);
+  FMCP := TMCPMessageQueueBase<TJRPCNotification>.Create(5);
 end;
 
 procedure TfrmMisc.btnMatchesClick(Sender: TObject);

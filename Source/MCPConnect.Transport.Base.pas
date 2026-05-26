@@ -611,7 +611,7 @@ begin
   else
   begin
     // No session ID provided - auto-create new session
-    Result := LSessionManager.CreateSession(FServer);
+    Result := LSessionManager.CreateSession;
   end;
 end;
 

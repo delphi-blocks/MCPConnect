@@ -161,18 +161,19 @@ type
     FSessions: TDictionary<string, TMCPSessionBase>;
     FSessionClass: TMCPSessionDataClass;
     FTimeoutMinutes: Integer;
+    FServer: TJRPCServer;
 
     function GenerateSessionId: string;
     function IsExpired(ASession: TMCPSessionBase): Boolean;
     procedure RemoveExpiredSession(const ASessionId: string);
   public
-    constructor Create;
+    constructor Create(AServer: TJRPCServer);
     destructor Destroy; override;
 
     /// <summary>
     ///   Create a new session with a generated ID
     /// </summary>
-    function CreateSession(AServer: TJRPCServer): TMCPSessionBase;
+    function CreateSession: TMCPSessionBase;
 
     /// <summary>
     ///   Get an existing session by ID. Raises exception if not found or expired.
@@ -261,9 +262,10 @@ end;
 
 { TMCPSessionManager }
 
-constructor TMCPSessionManager.Create;
+constructor TMCPSessionManager.Create(AServer: TJRPCServer);
 begin
-  inherited;
+  inherited Create;
+  FServer := AServer;
   FLock := TCriticalSection.Create;
   FSessions := TDictionary<string, TMCPSessionBase>.Create;
   FSessionClass := TMCPSessionData;
@@ -281,7 +283,7 @@ begin
   inherited;
 end;
 
-function TMCPSessionManager.CreateSession(AServer: TJRPCServer): TMCPSessionBase;
+function TMCPSessionManager.CreateSession: TMCPSessionBase;
 var
   LSessionId: string;
 begin
@@ -294,7 +296,7 @@ begin
     Result.FSessionId := LSessionId;
     Result.FCreatedAt := Now;
     Result.FLastAccessedAt := Now;
-    Result.FServer := AServer;
+    Result.FServer := FServer;
     Result.StartQueueHandler;
     FSessions.Add(LSessionId, Result);
   finally

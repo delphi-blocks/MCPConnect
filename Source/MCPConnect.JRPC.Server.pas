@@ -86,7 +86,7 @@ begin
   inherited;
   FAppConfigurator := TAppConfiguratorImpl.Create(Self);
   FConfigRegistry := TJRPCConfigRegistry.Create([doOwnsValues]);
-  FSessionManager := TMCPSessionManager.Create;
+  FSessionManager := TMCPSessionManager.Create(Self);
 end;
 
 destructor TJRPCServer.Destroy;

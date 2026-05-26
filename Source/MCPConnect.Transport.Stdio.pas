@@ -375,7 +375,7 @@ begin
   // Create session for this STDIO connection (implicit session per connection)
   if Assigned(FSessionConfig) then
   begin
-    FSession := LSessionManager.CreateSession(FServer);
+    FSession := LSessionManager.CreateSession;
     LSessionId := FSession.SessionId;  // Save ID before thread ends
   end;
 

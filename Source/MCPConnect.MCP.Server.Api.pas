@@ -122,7 +122,7 @@ var
   LTool: TMCPTool;
   LToolObj: TObject;
 begin
-  if not MCPConfig.Tools.ToolRegistry.TryGetValue(AParams.Name, LTool) then
+  if not MCPConfig.Tools.Registry.TryGetValue(AParams.Name, LTool) then
     raise EMCPException.CreateFmt('Tool [%s] not found', [AParams.Name]);
 
   // Create an instance of the tool class
@@ -181,17 +181,31 @@ begin
     Result.ServerInfo.Version := MCPConfig.Server.Version;
     Result.ServerInfo.Description := MCPConfig.Server.Description;
 
-    if TMCPCapability.Tools in MCPConfig.Server.Capabilities then
-      Result.Capabilities.Tools.ListChanged := False;
-
-    if TMCPCapability.Resources in MCPConfig.Server.Capabilities then
+    if Assigned(MCPConfig.Server.Capabilities) then
     begin
-      Result.Capabilities.Resources.ListChanged := False;
-      Result.Capabilities.Resources.Subscribe := False;
-    end;
+      Result.Capabilities.Free;
+      Result.Capabilities := MCPConfig.Server.Capabilities;
+      Result.OwnCapabilities := False;
+    end
+    else
+    begin
+      if MCPConfig.Tools.Registry.Count > 0 then
+      begin
+        Result.Capabilities.Tools.ListChanged := False;
+      end;
 
-    if TMCPCapability.Prompts in MCPConfig.Server.Capabilities then
-      Result.Capabilities.Prompts.ListChanged := False;
+      if MCPConfig.Resources.Registry.Count + MCPConfig.Resources.TemplateRegistry.Count > 0 then
+      begin
+        Result.Capabilities.Resources.ListChanged := False;
+        Result.Capabilities.Resources.Subscribe := False;
+      end;
+
+      if MCPConfig.Prompts.Registry.Count > 0 then
+      begin
+        Result.Capabilities.Prompts.ListChanged := False;
+      end;
+
+    end;
 
   except
     Result.Free;

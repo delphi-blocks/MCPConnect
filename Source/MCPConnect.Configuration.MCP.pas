@@ -164,7 +164,7 @@ type
     Name: string;
     Description: string;
     Version: string;
-    Capabilities: TMCPCapabilities;
+    Capabilities: TServerCapabilities;
     WriterRegistry: TMCPWriterRegistry;
   public
     constructor Create(AConfig: IMCPConfig);
@@ -212,11 +212,27 @@ type
     function SetVersion(const AVersion: string): TMCPServerConfig;
 
     /// <summary>
-    ///   Sets the capabilities supported by the MCP server (Tools, Resources, Prompts, etc.).
+    ///   Sets the server capabilities explicitly. If never called, MCPConnect infers them
+    ///   from the registered tools, resources and prompts.
     /// </summary>
-    /// <param name="ACapabilities">Set of supported capabilities</param>
+    /// <remarks>
+    ///   Takes ownership of the passed instance; it will be freed by the config.
+    /// </remarks>
     /// <returns>Self for fluent chaining</returns>
-    function SetCapabilities(ACapabilities: TMCPCapabilities): TMCPServerConfig;
+    function SetCapabilities(ACapabilities: TServerCapabilities): TMCPServerConfig; overload;
+
+    /// <summary>
+    ///   Convenience overload: builds a TServerCapabilities from a simple set of flags.
+    /// </summary>
+    /// <returns>Self for fluent chaining</returns>
+    function SetCapabilities(ACapabilities: TMCPCapabilities): TMCPServerConfig; overload;
+
+    /// <summary>
+    ///   Convenience overload: creates a TServerCapabilities and lets the caller configure
+    ///   it inline via an anonymous procedure.
+    /// </summary>
+    /// <returns>Self for fluent chaining</returns>
+    function SetCapabilities(AProc: TProc<TServerCapabilities>): TMCPServerConfig; overload;
 
     /// <summary>
     ///   Registers a custom content writer for handling complex return types.
@@ -342,9 +358,9 @@ type
   ///   Configuration for managing lists of registered classes (prompts, etc.).
   /// </summary>
   TMCPListConfig = class(TMCPBaseConfig)
-  private
-    FClasses: TObjectDictionary<string, TClass>;
   public
+    Registry: TObjectDictionary<string, TClass>;
+
     constructor Create(AConfig: IMCPConfig);
     destructor Destroy; override;
 
@@ -371,7 +387,7 @@ type
     procedure WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
     procedure WriteTool(ATool: TMCPTool; AToolAttr: MCPToolAttribute; AAppAttr: MCPAppAttribute);
   public
-    ToolRegistry: TMCPToolRegistry;
+    Registry: TMCPToolRegistry;
   public
     constructor Create(AConfig: IMCPConfig);
     destructor Destroy; override;
@@ -558,12 +574,12 @@ end;
 constructor TMCPListConfig.Create(AConfig: IMCPConfig);
 begin
   inherited;
-  FClasses := TObjectDictionary<string, TClass>.Create;
+  Registry := TObjectDictionary<string, TClass>.Create;
 end;
 
 destructor TMCPListConfig.Destroy;
 begin
-  FClasses.Free;
+  Registry.Free;
   inherited;
 end;
 
@@ -572,9 +588,9 @@ var
   LPair: TPair<string, TClass>;
   LIndex: Integer;
 begin
-  SetLength(Result, FClasses.Count);
+  SetLength(Result, Registry.Count);
   LIndex := 0;
-  for LPair in FClasses do
+  for LPair in Registry do
   begin
     Result[LIndex].Scope := LPair.Key;
     Result[LIndex].MCPClass := LPair.Value;
@@ -584,7 +600,7 @@ end;
 
 function TMCPListConfig.RegisterClass(AClass: TClass): TMCPListConfig;
 begin
-  FClasses.AddOrSetValue(AClass.ClassName, AClass);
+  Registry.AddOrSetValue(AClass.ClassName, AClass);
   Result := Self;
 end;
 
@@ -592,7 +608,7 @@ function TMCPListConfig.CreateInstance(const ANamespace: string): TObject;
 var
   LClass: TClass;
 begin
-  if not FClasses.TryGetValue('', LClass) then
+  if not Registry.TryGetValue('', LClass) then
     raise EJRPCException.CreateFmt('Tool class not found for namespace "%s"', [ANamespace]);
 
   Result := TRttiUtils.CreateInstance(LClass);
@@ -601,14 +617,14 @@ end;
 constructor TMCPToolsConfig.Create(AConfig: IMCPConfig);
 begin
   inherited;
-  ToolRegistry := TMCPToolRegistry.Create([doOwnsValues]);
+  Registry := TMCPToolRegistry.Create([doOwnsValues]);
 end;
 
 function TMCPToolsConfig.CreateInstance(const ATool: string): TObject;
 var
   LTool: TMCPTool;
 begin
-  if not ToolRegistry.TryGetValue(ATool, LTool) then
+  if not Registry.TryGetValue(ATool, LTool) then
     raise EMCPException.CreateFmt('Tool [%s] not found', [ATool]);
 
   Result := TRttiUtils.CreateInstance(LTool.Classe);
@@ -616,7 +632,7 @@ end;
 
 destructor TMCPToolsConfig.Destroy;
 begin
-  ToolRegistry.Free;
+  Registry.Free;
 
   inherited;
 end;
@@ -624,7 +640,7 @@ end;
 function TMCPToolsConfig.ListEnabled: TListToolsResult;
 begin
   Result := TListToolsResult.Create;
-  for var pair in ToolRegistry do
+  for var pair in Registry do
     if not pair.Value.Disabled then
       Result.Tools.Add(pair.Value);
 end;
@@ -662,7 +678,7 @@ begin
 
       WriteTool(LTool, LToolAttr, LAppAttr);
 
-      ToolRegistry.Add(LTool.Name, LTool);
+      Registry.Add(LTool.Name, LTool);
     except
       LTool.Free;
       raise;
@@ -674,13 +690,13 @@ end;
 function TMCPToolsConfig.ListComplete: TListToolsResult;
 begin
   Result := TListToolsResult.Create;
-  for var pair in ToolRegistry do
+  for var pair in Registry do
     Result.Tools.Add(pair.Value);
 end;
 
 procedure TMCPToolsConfig.FilterList(AList: TListToolsResult; AFilter: TMCPToolFilterFunc);
 begin
-  for var pair in ToolRegistry do
+  for var pair in Registry do
     if AFilter(pair.Value) then
       AList.Tools.Add(pair.Value);
 end;
@@ -768,11 +784,12 @@ begin
 
   IconFolder := TPath.GetAppPath;
   ScopeSeparator := '_';  // Default separator (MCP requires ^[a-zA-Z0-9_-]{1,64}$)
-  Capabilities := [TMCPCapability.Tools, TMCPCapability.Resources, TMCPCapability.Prompts];
+  Capabilities := nil;
 end;
 
 destructor TMCPServerConfig.Destroy;
 begin
+  Capabilities.Free;
   WriterRegistry.Free;
   inherited;
 end;
@@ -783,9 +800,31 @@ begin
   Result := Self;
 end;
 
-function TMCPServerConfig.SetCapabilities(ACapabilities: TMCPCapabilities): TMCPServerConfig;
+function TMCPServerConfig.SetCapabilities(ACapabilities: TServerCapabilities): TMCPServerConfig;
 begin
+  if Assigned(Capabilities) then
+    Capabilities.Free;
   Capabilities := ACapabilities;
+  Result := Self;
+end;
+
+function TMCPServerConfig.SetCapabilities(
+  ACapabilities: TMCPCapabilities): TMCPServerConfig;
+begin
+  if Assigned(Capabilities) then
+    Capabilities.Free;
+  Capabilities := TServerCapabilities.Create;
+
+  if TMCPCapability.Tools in ACapabilities then
+    Capabilities.Tools.ListChanged := False;
+  if TMCPCapability.Resources in ACapabilities then
+  begin
+    Capabilities.Resources.ListChanged := False;
+    Capabilities.Resources.Subscribe := False;
+  end;
+  if TMCPCapability.Prompts in ACapabilities then
+    Capabilities.Prompts.ListChanged := False;
+
   Result := Self;
 end;
 
@@ -1303,6 +1342,17 @@ end;
 function TMCPMessageHandlingConfig.OnSetLogLevel(AProc: TProc<TJRPCContext, TLogSetLevel>): TMCPMessageHandlingConfig;
 begin
   FSetLogLevelProc := AProc;
+  Result := Self;
+end;
+
+function TMCPServerConfig.SetCapabilities(
+  AProc: TProc<TServerCapabilities>): TMCPServerConfig;
+begin
+  if Assigned(Capabilities) then
+    Capabilities.Free;
+  Capabilities := TServerCapabilities.Create;
+
+  AProc(Capabilities);
   Result := Self;
 end;
 

@@ -65,7 +65,17 @@ begin
       .Server
         .SetName('delphi-mcp-server')
         .SetVersion('2.0.0')
-        .SetCapabilities([Tools, Resources])
+
+        // If not set, the server checks the registered tools, resources, etc. and automatically fills the capabilities.
+        //.SetCapabilities([Tools, Resources])
+        //.SetCapabilities(LCapabilities)
+        //.SetCapabilities(
+        //  procedure (ACapabilities: TServerCapabilities)
+        //  begin
+        //    ACapabilities.Tools.ListChanged := True;
+        //  end
+        //)
+
         .SetIconFolder(TPath.Combine(LDataPath, 'icons'))
 
         .RegisterWriter(TMCPImageWriter)
@@ -118,7 +128,7 @@ begin
         .SetBasePath(LDataPath)
 
         .RegisterClass(TWeatherResource)
-        .RegisterClass(TDeplphiDayAppUI)
+        .RegisterClass(TDelphiDayAppUI)
         .RegisterFile('index.md', 'Indice Documentazione')
         .RegisterFile('documentation\mcp\mcpconnect.pdf', 'MCPConnect Introduction')
       .BackToMCP

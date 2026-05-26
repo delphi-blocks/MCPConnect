@@ -181,7 +181,7 @@ type
     Description: NullString;
 
     /// <summary>
-    ///   Intended for UI and end-user contexts — optimized to be human-readable and easily
+    ///   Intended for UI and end-user contexts ï¿½ optimized to be human-readable and easily
     ///   understood, even by those unfamiliar with domain-specific terminology
     /// </summary>
     /// <remarks>
@@ -380,6 +380,13 @@ type
     ///   For example, this information MAY be added to the system prompt.
     /// </summary>
     Instructions: NullString;
+
+    /// <summary>
+    /// When True, the destructor frees Capabilities; when False the instance is shared
+    /// with the owner (e.g. MCPConfig.Server) and must not be freed here.
+    /// </summary>
+    [NeonIgnore]
+    OwnCapabilities: Boolean;
 
   public
     constructor Create;
@@ -773,13 +780,15 @@ end;
 constructor TInitializeResult.Create;
 begin
   Capabilities := TServerCapabilities.Create;
+  OwnCapabilities := True;
   ServerInfo := TImplementation.Create;
 end;
 
 destructor TInitializeResult.Destroy;
 begin
   ServerInfo.Free;
-  Capabilities.Free;
+  if OwnCapabilities then
+    Capabilities.Free;
   inherited;
 end;
 

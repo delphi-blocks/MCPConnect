@@ -65,6 +65,11 @@ type
 
   [JRPC('notifications')]
   TMCPNotificationsApi = class
+  private
+    [Context]
+    Context: TJRPCContext;
+    [Context]
+    FConfig: IMCPConfig;
   public
     [JRPC('initialized'), JRPCNotification]
     procedure Initialized;
@@ -86,6 +91,7 @@ type
   [JRPC('logging')]
   TMCPLoggingApi = class
   public
+    [Context] Context: TJRPCContext;
     [Context] MCPConfig: TMCPConfig;
 
     [JRPC('setLevel')]
@@ -116,7 +122,7 @@ var
   LTool: TMCPTool;
   LToolObj: TObject;
 begin
-  if not MCPConfig.Tools.ToolRegistry.TryGetValue(AParams.Name, LTool) then
+  if not MCPConfig.Tools.Registry.TryGetValue(AParams.Name, LTool) then
     raise EMCPException.CreateFmt('Tool [%s] not found', [AParams.Name]);
 
   // Create an instance of the tool class
@@ -153,12 +159,14 @@ end;
 
 procedure TMCPNotificationsApi.Cancelled(ACancelledParams: TCancelledNotificationParams);
 begin
-
+  if Assigned(FConfig.MessageHandling.CancelledProc) then
+    FConfig.MessageHandling.CancelledProc(Context, ACancelledParams);
 end;
 
 procedure TMCPNotificationsApi.Initialized;
 begin
-
+  if Assigned(FConfig.MessageHandling.InitializedProc) then
+    FConfig.MessageHandling.InitializedProc(Context);
 end;
 
 
@@ -173,17 +181,31 @@ begin
     Result.ServerInfo.Version := MCPConfig.Server.Version;
     Result.ServerInfo.Description := MCPConfig.Server.Description;
 
-    if TMCPCapability.Tools in MCPConfig.Server.Capabilities then
-      Result.Capabilities.Tools.ListChanged := False;
-
-    if TMCPCapability.Resources in MCPConfig.Server.Capabilities then
+    if Assigned(MCPConfig.Server.Capabilities) then
     begin
-      Result.Capabilities.Resources.ListChanged := False;
-      Result.Capabilities.Resources.Subscribe := False;
-    end;
+      Result.Capabilities.Free;
+      Result.Capabilities := MCPConfig.Server.Capabilities;
+      Result.OwnCapabilities := False;
+    end
+    else
+    begin
+      if MCPConfig.Tools.Registry.Count > 0 then
+      begin
+        Result.Capabilities.Tools.ListChanged := False;
+      end;
 
-    if TMCPCapability.Prompts in MCPConfig.Server.Capabilities then
-      Result.Capabilities.Prompts.ListChanged := False;
+      if MCPConfig.Resources.Registry.Count + MCPConfig.Resources.TemplateRegistry.Count > 0 then
+      begin
+        Result.Capabilities.Resources.ListChanged := False;
+        Result.Capabilities.Resources.Subscribe := False;
+      end;
+
+      if MCPConfig.Prompts.Registry.Count > 0 then
+      begin
+        Result.Capabilities.Prompts.ListChanged := False;
+      end;
+
+    end;
 
   except
     Result.Free;
@@ -302,6 +324,8 @@ end;
 
 function TMCPLoggingApi.SetLevel(ASetLevelParams: TSetLevelRequestParams): TSetLevelResult;
 begin
+  if Assigned(MCPConfig.MessageHandling.SetLogLevelProc) then
+    MCPConfig.MessageHandling.SetLogLevelProc(Context, ASetLevelParams.Level);
   Result := TSetLevelResult.Create;
 end;
 

@@ -1,4 +1,4 @@
-{******************************************************************************}
+﻿{******************************************************************************}
 {                                                                              }
 {  Delphi MCP Connect Library                                                  }
 {                                                                              }
@@ -19,7 +19,7 @@ interface
 
 uses
   System.SysUtils, System.Rtti, System.Classes, System.Generics.Collections,
-  System.TypInfo, System.JSON,
+  System.TypInfo, System.JSON, System.SyncObjs,
 
   Neon.Core.Utils,
   Neon.Core.Tags,
@@ -109,6 +109,11 @@ type
   JRPCNotificationAttribute = class(TCustomAttribute);
 
   /// <summary>
+  ///   Status of JSON-RPC notification
+  /// </summary>
+  TJRPCNotificationStatus = (None, Peeked, Deleted);
+
+  /// <summary>
   ///   Base attribute for JSON-RPC related metadata
   /// </summary>
   JRPCAttribute = class(TCustomAttribute)
@@ -166,6 +171,8 @@ type
     class operator Implicit(const ASource: TJRPCID): string;
 
     function IsNull: Boolean;
+    function AsInteger: Integer;
+    function AsString: string;
   end;
 
   /// <summary>
@@ -181,6 +188,7 @@ type
   public const
 	  JSONRPC_VERSION = '2.0';
   protected
+    FInternalId: Integer;
     FJsonRpc: string;
     function GetNeonConfig: INeonConfiguration;
   public
@@ -194,9 +202,23 @@ type
     function ToJson: string; virtual;
 
     /// <summary>
+    ///   Serializes the message to a TJSONObject.
+    /// </summary>
+    function ToJsonObject: TJSONObject; virtual;
+
+    /// <summary>
     ///   Deserializes the message from a JSON string.
     /// </summary>
     procedure FromJson(const AJSON: string); virtual;
+
+    /// <summary>
+    ///   Internal field to identify messages inside a system
+    /// </summary>
+    /// <remarks>
+    ///   This field has no relations with the JSON-RPC id field
+    /// </remarks>
+    [NeonIgnore]
+    property InternalId: Integer read FInternalId write FInternalId;
 
     /// <summary>
     ///   The JSON-RPC version (defaults to "2.0")
@@ -219,12 +241,14 @@ type
     procedure FromJsonSingle(const AJSON: TJSONObject);
     function GetMessageType(AMessage: TJSONObject): TJRPCMessageType;
     function GetCount: NativeInt;
+    function GetIsEmpty: Boolean;
   public
-    constructor Create;
+    constructor Create(AOwnsObjects: Boolean);
     destructor Destroy; override;
 
     procedure AddMessage(AMsg: TJRPCMessage);
 
+    function GetEnumerator: TEnumerator<TJRPCMessage>;
     function ToJson: string;
     procedure FromJson(const AJSON: string); overload;
     procedure FromJson(AStream: TStream); overload;
@@ -234,6 +258,7 @@ type
     property List: TObjectList<TJRPCMessage> read FList;
     property Types: TJRPCMessageTypes read FTypes;
     property Count: NativeInt read GetCount;
+    property IsEmpty: Boolean read GetIsEmpty;
   public
     class function CreateFromJson(const AJSON: string): TJRPCMessages;
   end;
@@ -302,6 +327,7 @@ type
     ///   The parameters for the method call.
     /// </summary>
     [NeonProperty('params')]
+    [NeonInclude(IncludeIf.NotNull)]
     property Params: TJSONValue read FParams write SetParams;
 
   public
@@ -316,8 +342,14 @@ type
   ///   https://json-rpc.dev/learn/examples/notifications
   /// </summary>
   TJRPCNotification = class(TJRPCMethod)
+  private
+    FStatus: TJRPCNotificationStatus;
   public
     function GetType: TJRPCMessageType; override;
+    function Clone: TJRPCNotification;
+
+    [NeonIgnore]
+    property Status: TJRPCNotificationStatus read FStatus write FStatus;
   end;
 
   /// <summary>
@@ -328,6 +360,7 @@ type
     FId: TJRPCID;
   public
     function GetType: TJRPCMessageType; override;
+    function Clone: TJRPCRequest;
 
     /// <summary>
     ///   The unique ID of the request.
@@ -355,6 +388,7 @@ type
     destructor Destroy; override;
 
     function GetType: TJRPCMessageType; override;
+    function Clone: TJRPCResponse;
 
     /// <summary>
     ///   The result of the method invocation.
@@ -572,7 +606,6 @@ type
   protected
     function GetCurrentRequest: TJRPCRequest;
     function GetResponses: TJRPCMessages;
-    procedure AddConfigurations(AObject: TObject);
   public
     constructor Create;
 
@@ -589,10 +622,47 @@ type
     property Responses: TJRPCMessages read GetResponses;
   end;
 
-/// <summary>
-///   Returns the default Neon configuration for JSON-RPC serialization.
-/// </summary>
-function JRPCNeonConfig: INeonConfiguration;
+  TQueueProcessProc<T: TJRPCMessage> = reference to procedure (AMessage: T; var ADispose: Boolean);
+
+  TQueueEvent<T: TJRPCMessage> = procedure (Sender: TObject; AMessage: T) of object;
+
+  TMCPMessageQueueBase<T: TJRPCMessage> = class
+  private
+    FOnEnqueue: TQueueEvent<T>;
+    FOnDequeue: TQueueEvent<T>;
+  protected
+    FEvent: TEvent;
+    FMaxItems: Integer;
+    FQueue: TQueue<T>;
+  public
+    constructor Create(AMaxItems: Integer = 1000);
+    destructor Destroy; override;
+
+    procedure Lock;
+    procedure Unlock;
+
+    procedure Enqueue(const Value: T); inline;
+    function Dequeue: T; inline;
+    function DequeueWait(ATimeOut: Integer = 1000): T; inline;
+    //function TryDequeueWait(ATimeOut: Integer = 1000; out AValue: T): Boolean; inline;
+    function Peek: T; inline;
+    function Count: NativeInt; inline;
+    // Exit if after the timeout there's not any message
+    procedure Process(AProc: TQueueProcessProc<T>; ATimeOut: Integer = 1000);
+    // At the end the queue will be empty
+    function ToJson: string;
+
+    property OnEnqueue: TQueueEvent<T> read FOnEnqueue write FOnEnqueue;
+    property OnDequeue: TQueueEvent<T> read FOnDequeue write FOnDequeue;
+  end;
+
+  TMCPMessageQueue = class (TMCPMessageQueueBase<TJRPCMessage>)
+  end;
+
+  /// <summary>
+  ///   Returns the default Neon configuration for JSON-RPC serialization.
+  /// </summary>
+  function JRPCNeonConfig: INeonConfiguration;
 
 implementation
 
@@ -635,6 +705,11 @@ end;
 function TJRPCMessage.ToJson: string;
 begin
   Result := TNeon.ObjectToJSONString(Self, JRPCNeonConfig);
+end;
+
+function TJRPCMessage.ToJsonObject: TJSONObject;
+begin
+  Result := TNeon.ObjectToJSON(Self, JRPCNeonConfig) as TJSONObject;
 end;
 
 constructor TJRPCMethod.Create;
@@ -770,6 +845,22 @@ begin
   Result.id := nil;
 end;
 
+function TJRPCID.AsString: string;
+begin
+  if id.IsType<string> then
+    Result := id.AsString
+  else
+    Result := id.AsInteger.ToString;
+end;
+
+function TJRPCID.AsInteger: Integer;
+begin
+  if id.IsOrdinal then
+    Result := id.AsInteger
+  else
+    Result := 0;
+end;
+
 class operator TJRPCID.Implicit(const ASource: TJRPCID): string;
 begin
   if ASource.Id.IsType<Integer> then
@@ -793,6 +884,15 @@ end;
 
 
 { TJRPCResponse }
+
+function TJRPCResponse.Clone: TJRPCResponse;
+begin
+  Result := TJRPCResponse.Create;
+  Result.InternalId := FInternalId;
+  Result.Id := FId;
+  Result.JsonRpc := FJsonRpc;
+  Result.Result := FResult.Clone as TJSONValue;
+end;
 
 constructor TJRPCResponse.Create;
 begin
@@ -1124,11 +1224,27 @@ end;
 
 { TJRPCContext }
 
-procedure TJRPCContext.AddConfigurations(AObject: TObject);
+constructor TJRPCContext.Create;
+begin
+  inherited Create;
+end;
+
+
+procedure TJRPCContext.AddContent(AObject: TObject);
 var
   LApplication: IJRPCApplication;
   LConfig: TJRPCConfiguration;
 begin
+  inherited AddContent(AObject);
+
+  if AObject = nil then
+    Exit;
+
+  if AObject is TJRPCRequest then
+    FCurrentRequest := TJRPCRequest(AObject)
+  else if AObject is TJRPCMessages then
+    FResponses := TJRPCMessages(AObject);
+
   if Supports(AObject, IJRPCApplication, LApplication) then
   begin
     for LConfig in LApplication.GetConfigurations do
@@ -1137,29 +1253,6 @@ begin
     end;
   end;
 end;
-
-constructor TJRPCContext.Create;
-begin
-  inherited Create;
-end;
-
-
-procedure TJRPCContext.AddContent(AObject: TObject);
-begin
-  if AObject = nil then
-    Exit;
-
-  if AObject is TJRPCRequest then
-    FCurrentRequest := TJRPCRequest(AObject)
-  else if AObject is TJRPCMessages then
-    FResponses := TJRPCMessages(AObject)
-  else
-  begin
-    FContextData.Add(AObject.ClassType, AObject);
-    AddConfigurations(AObject);
-  end;
-end;
-
 
 function TJRPCContext.GetCurrentRequest: TJRPCRequest;
 begin
@@ -1233,14 +1326,14 @@ begin
   FTypes := FTypes + [AMsg.GetType];
 end;
 
-constructor TJRPCMessages.Create;
+constructor TJRPCMessages.Create(AOwnsObjects: Boolean);
 begin
-  FList := TObjectList<TJRPCMessage>.Create;
+  FList := TObjectList<TJRPCMessage>.Create(AOwnsObjects);
 end;
 
 class function TJRPCMessages.CreateFromJson(const AJSON: string): TJRPCMessages;
 begin
-  Result := TJRPCMessages.Create;
+  Result := TJRPCMessages.Create(True);
   try
     Result.FromJson(AJSON);
   except
@@ -1321,6 +1414,16 @@ begin
   Result := FList.Count;
 end;
 
+function TJRPCMessages.GetEnumerator: TEnumerator<TJRPCMessage>;
+begin
+  Result := List.GetEnumerator;
+end;
+
+function TJRPCMessages.GetIsEmpty: Boolean;
+begin
+  Result := FList.IsEmpty;
+end;
+
 function TJRPCMessages.GetMessageType(AMessage: TJSONObject): TJRPCMessageType;
 var
   LId, LMethod, LResult, LError: TJSONValue;
@@ -1387,6 +1490,15 @@ end;
 
 { TJRPCRequest }
 
+function TJRPCRequest.Clone: TJRPCRequest;
+begin
+  Result := TJRPCRequest.Create;
+  Result.InternalId := FInternalId;
+  Result.Id := FId;
+  Result.Method := FMethod;
+  Result.Params := FParams.Clone as TJSONValue;
+end;
+
 class function TJRPCRequest.CreateFromJson(const AJSON: string): TJRPCRequest;
 begin
   Result := Self.Create;
@@ -1404,6 +1516,14 @@ begin
 end;
 
 { TJRPCNotification }
+
+function TJRPCNotification.Clone: TJRPCNotification;
+begin
+  Result := TJRPCNotification.Create;
+  Result.InternalId := FInternalId;
+  Result.Method := FMethod;
+  Result.Params := FParams.Clone as TJSONValue;
+end;
 
 function TJRPCNotification.GetType: TJRPCMessageType;
 begin
@@ -1565,6 +1685,145 @@ function TJResponseSerializer.Serialize(const AValue: TValue;
   ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue;
 begin
   Result := AContext.WriteDataMember(AValue, False);
+end;
+
+{ TMCPMessageQueueBase<T> }
+
+constructor TMCPMessageQueueBase<T>.Create(AMaxItems: Integer);
+begin
+  FEvent := TEvent.Create;
+  FQueue := TQueue<T>.Create;
+  FMaxItems := AMaxItems;
+end;
+
+destructor TMCPMessageQueueBase<T>.Destroy;
+begin
+  FEvent.Free;
+  while FQueue.Count > 0 do
+    FQueue.Dequeue.Free;
+
+  FQueue.Free;
+  inherited;
+end;
+
+function TMCPMessageQueueBase<T>.Dequeue: T;
+begin
+  Lock;
+  try
+    if FQueue.Count = 0 then
+      Result := nil
+    else
+    begin
+      Result := FQueue.Dequeue;
+      // FEvent is manual-reset: reset it when the queue drains so the next
+      // DequeueWait actually blocks for ATimeOut instead of returning immediately.
+      if FQueue.Count = 0 then
+        FEvent.ResetEvent;
+      if Assigned(FOnDequeue) then
+        FOnDequeue(Self, Result);
+    end;
+  finally
+    Unlock;
+  end;
+end;
+
+function TMCPMessageQueueBase<T>.DequeueWait(ATimeOut: Integer = 1000): T;
+var
+  LEventResult: TWaitResult;
+begin
+  Result := nil;
+  if FQueue.Count > 0 then
+    Exit(Dequeue);
+
+  LEventResult := FEvent.WaitFor(ATimeOut);
+  if LEventResult = wrSignaled then
+    Exit(Dequeue);
+
+  { TODO -opaolo -c : Finire 27/04/2026 17:53:40 }
+end;
+
+procedure TMCPMessageQueueBase<T>.Enqueue(const Value: T);
+begin
+  Lock;
+  try
+    // Cap-and-drop: when full, free the oldest item to avoid leaking it
+    // (the queue owns the messages — see Destroy).
+    if FQueue.Count = FMaxItems then
+      FQueue.Dequeue.Free;
+
+    FQueue.Enqueue(Value);
+    FEvent.SetEvent;
+    if Assigned(FOnEnqueue) then
+      FOnEnqueue(Self, Value);
+  finally
+    Unlock;
+  end;
+end;
+
+procedure TMCPMessageQueueBase<T>.Lock;
+begin
+  TMonitor.Enter(FQueue);
+end;
+
+function TMCPMessageQueueBase<T>.Peek: T;
+begin
+  Lock;
+  try
+    Result := FQueue.Peek;
+  finally
+    Unlock;
+  end;
+end;
+
+procedure TMCPMessageQueueBase<T>.Process(AProc: TQueueProcessProc<T>; ATimeOut: Integer);
+begin
+  while True do
+  begin
+    var LDispose := True;
+    var LMessage := DequeueWait(ATimeOut);
+    if not Assigned(LMessage) then
+      Break;
+    try
+      AProc(LMessage, LDispose);
+    finally
+      if LDispose then
+        LMessage.Free;
+    end;
+  end;
+end;
+
+function TMCPMessageQueueBase<T>.ToJson: string;
+const
+  QueueReadTimeout = 100;
+begin
+  var LJSONArray := TJSONArray.Create;
+  try
+    Process(
+      procedure (AMessage: T; var ADispose: Boolean)
+      begin
+        LJSONArray.AddElement(AMessage.ToJsonObject);
+      end,
+      QueueReadTimeout
+    );
+    if LJSONArray.Count = 0 then
+      Exit('');
+    if LJSONArray.Count = 1 then
+      Exit(TNeon.ObjectToJSONString(LJSONArray[0], JRPCNeonConfig));
+
+    Result := TNeon.ValueToJSONString(LJSONArray, JRPCNeonConfig);
+  finally
+    LJSONArray.Free;
+  end;
+end;
+
+procedure TMCPMessageQueueBase<T>.Unlock;
+begin
+  TMonitor.Exit(FQueue);
+end;
+
+function TMCPMessageQueueBase<T>.Count: NativeInt;
+begin
+  Result := FQueue.Count;
 end;
 
 end.

@@ -48,9 +48,9 @@ type
   end;
 
   TJRPCInvokerContext = record
-    GC: IGarbageCollector;
-    Request: TJRPCRequest;
-    Responses: TJRPCMessages;
+    Garbage: IGarbageCollector;
+    Request: TJRPCMethod;
+    Responses: TMCPMessageQueue;
 
     ApiInstance: TObject;
     NeonConfig: INeonConfiguration;
@@ -70,8 +70,8 @@ type
     FNeonConfig: INeonConfiguration;
     FSeparator: string;
 
-    function FindMethod(ARequest: TJRPCRequest): TRttiMethod;
-    function GetRequestMethodName(ARequest: TJRPCRequest): string;
+    function FindMethod(ARequest: TJRPCMethod): TRttiMethod;
+    function GetRequestMethodName(ARequest: TJRPCMethod): string;
     function RetrieveNeonConfig(ANeonConfig: INeonConfiguration): INeonConfiguration;
     function GetParamName(LParam: TRttiParameter): string;
     function RequestToRttiParams(AMethod: TRttiMethod): TArray<TValue>;
@@ -131,7 +131,7 @@ begin
 
 end;
 
-function TJRPCInvoker.FindMethod(ARequest: TJRPCRequest): TRttiMethod;
+function TJRPCInvoker.FindMethod(ARequest: TJRPCMethod): TRttiMethod;
 var
   LMethod: TRttiMethod;
   LJRPCAttrib: JRPCAttribute;
@@ -166,14 +166,14 @@ begin
 
   try
     LArgs := RequestToRttiParams(LMethod);
-    FContext.GC.Add(LArgs);
+    FContext.Garbage.Add(LArgs);
   except
     raise EJRPCInvalidParamsError.Create('Invalid method parameters.');
   end;
 
   try
     LResult := LMethod.Invoke(FContext.ApiInstance, LArgs);
-    FContext.GC.Add(LResult);
+    FContext.Garbage.Add(LResult);
     LResponse := TJRPCResponse.Create;
   except
     on E: EJRPCException do
@@ -183,7 +183,8 @@ begin
         [FContext.ApiInstance.ClassName, FContext.Request.Method]);
   end;
 
-  LResponse.Id := FContext.Request.Id;
+  if FContext.Request is TJRPCRequest then
+    LResponse.Id := TJRPCRequest(FContext.Request).Id;
 
   { TODO -opaolo -c :  31/03/2026 10:46:08 }
   if TRttiUtils.HasAttribute<JRPCNotificationAttribute>(LMethod) then
@@ -191,7 +192,7 @@ begin
   else
     LResponse.Result := TNeon.ValueToJSON(LResult, FNeonConfig);
 
-  FContext.Responses.AddMessage(LResponse);
+  FContext.Responses.Enqueue(LResponse);
 end;
 
 function TJRPCInvoker.GetParamName(LParam: TRttiParameter): string;
@@ -205,7 +206,7 @@ begin
     Result := LParam.Name;
 end;
 
-function TJRPCInvoker.GetRequestMethodName(ARequest: TJRPCRequest): string;
+function TJRPCInvoker.GetRequestMethodName(ARequest: TJRPCMethod): string;
 var
   LSeparatorIndex: Integer;
 begin

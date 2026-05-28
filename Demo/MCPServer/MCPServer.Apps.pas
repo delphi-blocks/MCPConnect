@@ -16,7 +16,7 @@ uses
   MCPConnect.Session.Core;
 
 type
-  TDeplphiDayAppUI = class
+  TDelphiDayAppUI = class
   public
     [McpAppUI('ticket-app', 'ui://delphiday/ticket-app', 'Shows some info about the DelphiDay event and tickets')]
     function GetUI: string;
@@ -24,13 +24,13 @@ type
 
 implementation
 
-{ TDeplphiDayAppUI }
+{ TDelphiDayAppUI }
 
-function TDeplphiDayAppUI.GetUI: string;
+function TDelphiDayAppUI.GetUI: string;
 var
   LFileName: string;
 begin
-  LFileName := TPath.Combine(ExtractFilePath(ParamStr(0)), 'data');
+  LFileName := TPath.Combine(TPath.GetAppPath, 'data');
   LFileName := TPath.Combine(LFileName, 'delphi-mcp-app.html');
   Result := TFile.ReadAllText(LFileName);
 end;

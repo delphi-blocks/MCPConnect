@@ -102,6 +102,6 @@ end;
 
 initialization
   TLoggerAdapterRegistry.Instance.RegisterFactory(
-    TLogifyAdapterDebugFactory.CreateAdapterFactory('Debug log', TLogLevel.Info));
+    TLogifyAdapterDebugFactory.CreateAdapterFactory('Debug log', TLogLevel.Debug));
 
 end.

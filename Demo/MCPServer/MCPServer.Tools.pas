@@ -11,6 +11,7 @@ uses
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
 
+
   MCPConnect.Configuration.MCP,
   MCPConnect.JRPC.Core,
   MCPConnect.JRPC.Classes,
@@ -79,6 +80,9 @@ type
   TDelphiDayTool = class
   private
     [Context] FGC: IGarbageCollector;
+    //[Context] FSession: TShoppingSession;
+    [Context] Responses: TMCPMessageQueue;
+
   public
     [McpTool('get_tickets', 'Get the list of available tickets for the DelphiDay', 'icon=badge.png')]
     [McpApp('ui://delphiday/ticket-app')]
@@ -151,6 +155,11 @@ type
 
     [McpTool('session_info', 'Get session information (ID, created time, last accessed)', 'icon=gear.png')]
     function GetSessionInfo: string;
+  end;
+
+  TTicketProgressNotification = class(TJRPCNotification)
+  public
+    constructor Create(APosition, ASize: Integer);
   end;
 
 implementation
@@ -269,9 +278,21 @@ function TDelphiDayTool.GetTickets: TTickets;
 begin
   Result := TTickets.Create;
   FGC.Add(Result);
-  Result.Add(TTicket.Create(1, 'Conferenza + Seminari', EncodeDate(2026, 6, 10), 179.0, ''));
-  Result.Add(TTicket.Create(2, 'Solo Conferenza', EncodeDate(2026, 6, 10), 0, ''));
-  Result.Add(TTicket.Create(3, 'Young ticket', EncodeDate(2026, 6, 10), 69.0, ''));
+
+  Result.Add(TTicket.Create(1, 'Conferenza + Seminari', StrToDate('19/11/2025'), 179.0, ''));
+  Responses.Enqueue(TTicketProgressNotification.Create(1, 3));
+  Sleep(1000);
+
+  Result.Add(TTicket.Create(2, 'Solo Conferenza', StrToDate('19/11/2025'), 0, ''));
+  Responses.Enqueue(TTicketProgressNotification.Create(2, 3));
+  Sleep(1000);
+
+  Result.Add(TTicket.Create(3, 'Young ticket', StrToDate('19/11/2025'), 69.0, ''));
+  Responses.Enqueue(TTicketProgressNotification.Create(3, 3));
+  Sleep(1000);
+
+  Responses.Enqueue(TToolListChangedNotification.Create());
+
 end;
 
 { TTicket }
@@ -364,6 +385,16 @@ begin
       DateTimeToStr(FSession.LastAccessedAt)
     ]
   );
+end;
+
+{ TTicketProgressNotification }
+
+constructor TTicketProgressNotification.Create(APosition, ASize: Integer);
+begin
+  inherited Create;
+  Method := 'notification/logging';
+  AddNamedParam('position', APosition);
+  AddNamedParam('size', ASize);
 end;
 
 end.

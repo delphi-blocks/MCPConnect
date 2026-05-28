@@ -38,15 +38,15 @@ package MCPConnectVCL;
 {$IMAGEBASE $400000}
 {$DEFINE DEBUG}
 {$ENDIF IMPLICITBUILDING}
-{$DESCRIPTION 'MCP Library for Delphi (VCL)'}
+{$DESCRIPTION 'MCP Framework for Delphi (VCL)'}
 {$LIBSUFFIX AUTO}
 {$RUNONLY}
 {$IMPLICITBUILD ON}
 
 requires
   rtl,
-  MCPConnect,
-  vcl;
+  vcl,
+  MCPConnect;
 
 contains
   MCPConnect.Content.Writers.VCL in '..\..\Source\MCPConnect.Content.Writers.VCL.pas';

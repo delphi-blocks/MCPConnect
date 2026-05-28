@@ -263,7 +263,7 @@ end;
 
 procedure TfrmMain.actMessagesExecute(Sender: TObject);
 begin
-  var msg := TJRPCMessages.Create;
+  var msg := TJRPCMessages.Create(True);
 
   var nt := TJRPCNotification.Create;
   nt.Method := 'hello-notification';
@@ -457,7 +457,7 @@ end;
 
 procedure TfrmMain.actMessagesReadExecute(Sender: TObject);
 begin
-  var msgs := TJRPCMessages.Create;
+  var msgs := TJRPCMessages.Create(True);
   msgs.FromJson(mmoLog.Lines.Text);
   mmoLog.Lines.Add('Count: ' + msgs.Count.ToString);
   mmoLog.Lines.Add('---------------');

@@ -28,7 +28,11 @@ uses
   MCPConnect.Content.Writers.RTL in '..\..\..\Source\MCPConnect.Content.Writers.RTL.pas',
   MCPConnect.Content.Writers.VCL in '..\..\..\Source\MCPConnect.Content.Writers.VCL.pas',
   MCPConnect.Transport.Stdio in '..\..\..\Source\MCPConnect.Transport.Stdio.pas',
-  MCPServer.Tools in '..\MCPServer.Tools.pas';
+  MCPServer.Tools in '..\MCPServer.Tools.pas',
+  MCPServer.Config in '..\MCPServer.Config.pas',
+  MCPServer.Resources in '..\MCPServer.Resources.pas',
+  MCPServer.Apps in '..\MCPServer.Apps.pas',
+  MCPServer.Notifications in '..\MCPServer.Notifications.pas';
 
 procedure StartServer;
 var
@@ -37,34 +41,7 @@ var
 begin
   LJRPCServer := TJRPCServer.Create(nil);
   try
-    LJRPCServer
-      .Plugin.Configure<IAuthTokenConfig>
-        .SetToken('my-secret-token')
-        .ApplyConfig
-
-      .Plugin.Configure<ISessionConfig>
-        .SetTimeout(30)  // 30 minutes timeout
-        .SetSessionClass(TShoppingSession)  // Use custom typed session
-        .ApplyConfig
-
-      .Plugin.Configure<IMCPConfig>
-        .Server
-          .SetName('delphi-mcp-server')
-          .SetVersion('2.0.0')
-          .SetCapabilities([Tools, Resources])
-
-          .RegisterWriter(TMCPImageWriter)
-          .RegisterWriter(TMCPPictureWriter)
-          .RegisterWriter(TMCPStreamWriter)
-          .RegisterWriter(TMCPStringListWriter)
-        .BackToMCP
-
-      .Tools
-        .RegisterClass(TTestTool)
-        .RegisterClass(TDelphiDayTool)
-        .RegisterClass(TShoppingCartTool)  // Session-based shopping cart
-      .BackToMCP
-    ;
+    TServerConfigurator.ConfigureServer(LJRPCServer);
 
     LStdioServer := TJRPCStdioServer.Create(nil);
     try

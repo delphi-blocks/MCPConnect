@@ -19,13 +19,16 @@ uses
   System.Classes, System.SysUtils,
   IdCustomHTTPServer, IdContext, IdGlobal,
   System.Generics.Collections,
+  System.Generics.Defaults,
 
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
+  MCPConnect.Transport.AcceptParser,
   MCPConnect.Configuration.MCP,
   MCPConnect.Configuration.Auth,
   MCPConnect.Configuration.Session,
   MCPConnect.Session.Core,
+  MCPConnect.MCP.Types,
   MCPConnect.JRPC.Classes,
   MCPConnect.JRPC.Core,
   MCPConnect.JRPC.Server;
@@ -41,139 +44,158 @@ const
   HTTP_CODE_NOTACCEPTABLE = 406;
 
 type
-  TMCPTransportHeaders = record
-    RawHeaders: TArray<TPair<string, string>>;
-
-    function Exists(const AName: string): Boolean;
-    function Get(const AName: string): string;
-    function GetCookie(const AName: string): string;
-    procedure AddOrSet(const AName, AValue: string);
-    function Count: Integer;
+  /// <summary>
+  ///   Exception class for all transport related errors
+  /// </summary>
+  EMCPTransportException = class(EMCPException)
+  private
+    FCode: Integer;
+  public
+    constructor Create(ACode: Integer; const AMsg: string);
+    function ToJSON: string;
+    property Code: Integer read FCode write FCode;
   end;
 
-  TMCPTransportRequest = record
+  IMCPTransportWriter = interface
+    ['{68598454-50C5-4892-B8E0-81687CC2F4DE}']
+    procedure Write(const AValue: string);
+    function Connected: Boolean;
+    function SupportsStreaming: Boolean;
+  end;
+
+  TMCPTransportHeaders = class
+  private type
+    THeaders = class(TDictionary<string, string>)
+    end;
+  public
+    Headers: THeaders;
+
+    constructor Create;
+    destructor Destroy; override;
+
+    function GetHeader(const AName: string): string;
+    procedure AddOrSetHeader(const AName, AValue: string);
+  end;
+
+  TMCPTransportRequest = class(TMCPTransportHeaders)
+  private
+    FAcceptItems: TAcceptItemList<TAcceptItem>;
+    function GetAccept: string;
+    procedure SetAccept(const AValue: string);
+    function GetAcceptItems: TAcceptItemList<TAcceptItem>;
+    function GetAcceptsEventStream: Boolean;
+  public
     Url: string;
     Command: string;
-    Headers: TMCPTransportHeaders;
     Content: string;
 
-    function ToString: string;
+    function GetCookie(const AName: string): string;
+    property Accept: string read GetAccept write SetAccept;
+    property AcceptItems: TAcceptItemList<TAcceptItem> read GetAcceptItems;
+    property AcceptsEventStream: Boolean read GetAcceptsEventStream;
+
+    constructor Create;
+    destructor Destroy; override;
   end;
 
-  TMCPTransportResponse = record
+  TMCPTransportRequestConverter = reference to procedure (ARequest: TMCPTransportRequest);
+
+  TMCPTransportResponse = class(TMCPTransportHeaders)
   private
     function GetContentType: string;
     procedure SetContentType(const AValue: string);
   public
-    Headers: TMCPTransportHeaders;
     Content: string;
     Code: Integer;
+    Outbund: TQueue<string>;
+
+    procedure SetCookie(const AName, AValue: string);
     property ContentType: string read GetContentType write SetContentType;
   end;
 
+  TMCPTransportResponseConverter = reference to procedure (AResponse: TMCPTransportResponse);
+
   IMCPTransportHandler = interface
   ['{B2966C2A-7594-4B30-95D9-D702AE20633E}']
-    procedure HandleRequest(const ARequest: TMCPTransportRequest; var AResponse: TMCPTransportResponse);
-  end;
-
-  TJRPCMsgContext = record
-    GC: IGarbageCollector;
-    JRPCCtx: TJRPCContext;
-    Session: TMCPSessionBase;
-    Requests: TJRPCMessages;
-    Responses: TJRPCMessages;
-  end;
-
-  TMCPRequestHandler = class(TInterfacedObject)
-  private
-    FContext: TJRPCMsgContext;
-  private
-    procedure HandleMessage(AMessage: TJRPCMessage);
-    procedure HandleMessages(AContext: TJRPCMsgContext);
-  public
-    class procedure HandleJRPCRequest(AContext: TJRPCMsgContext);
+    procedure ProcessRequest(ARequestConverter: TMCPTransportRequestConverter;
+      AResponseConverter: TMCPTransportResponseConverter);
+    function GetSendResponseHeadersProc: TProc<TMCPTransportResponse>;
+    procedure SetSendResponseHeadersProc(const Value: TProc<TMCPTransportResponse>);
+    property SendResponseHeadersProc: TProc<TMCPTransportResponse> read GetSendResponseHeadersProc write SetSendResponseHeadersProc;
   end;
 
   TMCPTransportHandler = class(TInterfacedObject, IMCPTransportHandler)
   private
+    FRequest: TMCPTransportRequest;
+    FResponse: TMCPTransportResponse;
+
+    FContext: TJRPCContext;
+    FGarbage: IGarbageCollector;
+    FSession: TMCPSessionBase;
+
     FMCPConfig: TMCPConfig;
     FServer: TJRPCServer;
     FAuthTokenConfig: TAuthTokenConfig;
     FSessionConfig: TSessionConfig;
+    FResponseWriter: IMCPTransportWriter;
+    FSendResponseHeadersProc: TProc<TMCPTransportResponse>;
   private
-    procedure InjectCORS(const ARequest: TMCPTransportRequest; var AResponse: TMCPTransportResponse);
-    function CheckOrigin(const ARequest: TMCPTransportRequest; var AResponse: TMCPTransportResponse): Boolean;
-    function CheckAuthorization(const ARequest: TMCPTransportRequest; var AResponse: TMCPTransportResponse): Boolean;
-    function ExtractSessionId(const ARequest: TMCPTransportRequest): string;
-    function HandleSession(const ARequest: TMCPTransportRequest; out ASessionCreated: Boolean): TMCPSessionBase;
+    procedure InjectCORS;
+    function CheckOrigin: Boolean;
+    function CheckAuthorization: Boolean;
+    function ExtractSessionId: string;
+    function HandleSession: TMCPSessionBase;
+    procedure HandleMessage(AMessage: TJRPCMessage; AResponseQueue: TMCPMessageQueue);
+    procedure SendResponseHeaders(AResponse: TMCPTransportResponse);
 
-    procedure HandleGET(const ARequest: TMCPTransportRequest; var AResponse: TMCPTransportResponse);
-    procedure HandlePOST(const ARequest: TMCPTransportRequest; var AResponse: TMCPTransportResponse);
-    procedure HandleOPTIONS(const ARequest: TMCPTransportRequest; var AResponse: TMCPTransportResponse);
+    procedure HandleGET;
+    procedure HandlePOST;
+    procedure HandleOPTIONS;
+    function CreateAsyncThread(ARequestList: TJRPCMessages; AResponseQueue: TMCPMessageQueue): TThread;
   public
-    constructor Create(AServer:TJRPCServer);
+    constructor Create(AServer: TJRPCServer; AResponseWriter: IMCPTransportWriter);
+    destructor Destroy; override;
 
     { IMCPHttpHandler }
-    procedure HandleRequest(const ARequest: TMCPTransportRequest; var AResponse: TMCPTransportResponse);
+    procedure ProcessRequest(ARequestConverter: TMCPTransportRequestConverter;
+      AResponseConverter: TMCPTransportResponseConverter);
+    function GetSendResponseHeadersProc: TProc<TMCPTransportResponse>;
+    procedure SetSendResponseHeadersProc(const Value: TProc<TMCPTransportResponse>);
   end;
-
-
-
 
 implementation
 
-
 uses
-  System.IOUtils,
+  System.IOUtils, System.JSON, Logify,
+  MCPConnect.Transport.MediaType,
   MCPConnect.Configuration.Neon,
   MCPConnect.JRPC.Invoker;
 
 
-{ TMCPTransportHeaders }
-
-procedure TMCPTransportHeaders.AddOrSet(const AName, AValue: string);
-begin
-  RawHeaders := RawHeaders + [TPair<string, string>.Create(AName, AValue)];
-end;
-
-function TMCPTransportHeaders.Count: Integer;
-begin
-  Result := Length(RawHeaders);
-end;
-
-function TMCPTransportHeaders.Exists(const AName: string): Boolean;
-begin
-  Result := False;
-  for var pair in RawHeaders do
-    if SameText(pair.Key, AName) then
-      Exit(True);
-end;
-
-function TMCPTransportHeaders.Get(const AName: string): string;
-begin
-  Result := '';
-  for var pair in RawHeaders do
-    if SameText(pair.Key, AName) then
-      Exit(pair.Value.Trim);
-end;
-
-
-function TMCPTransportHeaders.GetCookie(const AName: string): string;
-begin
-  var sl := TStringList.Create;
-  try
-    sl.NameValueSeparator := '=';
-    sl.LineBreak := ';';
-    sl.Text := Get('Cookie');
-  finally
-    sl.Free;
-  end;
-end;
-
 { TMCPTransportHandler }
 
-function TMCPTransportHandler.CheckAuthorization(const ARequest: TMCPTransportRequest;
-    var AResponse: TMCPTransportResponse): Boolean;
+constructor TMCPTransportHandler.Create(AServer: TJRPCServer; AResponseWriter: IMCPTransportWriter);
+begin
+  FRequest := TMCPTransportRequest.Create;
+  FResponse := TMCPTransportResponse.Create;
+
+  FServer := AServer;
+  FResponseWriter := AResponseWriter;
+  FMCPConfig := FServer.GetConfiguration<TMCPConfig>;
+  FAuthTokenConfig := FServer.GetConfiguration<TAuthTokenConfig>;
+  FSessionConfig := FServer.GetConfiguration<TSessionConfig>;
+end;
+
+destructor TMCPTransportHandler.Destroy;
+begin
+  FRequest.Free;
+  FResponse.Free;
+
+  Logger.LogDebug('MCPTransportHandler destroyed');
+  inherited;
+end;
+
+function TMCPTransportHandler.CheckAuthorization: Boolean;
 begin
   Result := True;
   if Assigned(FAuthTokenConfig) and (FAuthTokenConfig.Token <> '') then
@@ -181,19 +203,19 @@ begin
     case FAuthTokenConfig.Location of
       TAuthTokenLocation.Bearer:
       begin
-        if ARequest.Headers.Get('Authorization') <> 'Bearer ' + FAuthTokenConfig.Token then
+        if FRequest.GetHeader('Authorization') <> 'Bearer ' + FAuthTokenConfig.Token then
           Exit(False);
       end;
 
       TAuthTokenLocation.Cookie:
       begin
-        if ARequest.Headers.GetCookie(FAuthTokenConfig.CustomHeader) <> FAuthTokenConfig.Token then
+        if FRequest.GetCookie(FAuthTokenConfig.CustomHeader) <> FAuthTokenConfig.Token then
           Exit(False);
       end;
 
       TAuthTokenLocation.Header:
       begin
-        if ARequest.Headers.Get(FAuthTokenConfig.CustomHeader) <> FAuthTokenConfig.Token then
+        if FRequest.GetHeader(FAuthTokenConfig.CustomHeader) <> FAuthTokenConfig.Token then
           Exit(False);
       end;
 
@@ -203,19 +225,18 @@ begin
   end;
 end;
 
-function TMCPTransportHandler.CheckOrigin(const ARequest: TMCPTransportRequest;
-  var AResponse: TMCPTransportResponse): Boolean;
+function TMCPTransportHandler.CheckOrigin: Boolean;
 var
   LOrigin, LHeader: string;
 begin
   if not Assigned(FMCPConfig) then
-    raise EJRPCException.Create('Error retrieving MCP configuration');
+    raise EMCPException.Create('Error retrieving MCP configuration');
 
   Result := True;
   if Length(FMCPConfig.Security.AllowedOrigins) = 0 then
     Exit;
 
-  LHeader := ARequest.Headers.Get('Origin');
+  LHeader := FRequest.GetHeader('Origin');
   if LHeader.IsEmpty then
     Exit;
 
@@ -226,60 +247,96 @@ begin
   Result := False;
 end;
 
-procedure TMCPTransportHandler.HandleRequest(const ARequest: TMCPTransportRequest; var AResponse: TMCPTransportResponse);
+procedure TMCPTransportHandler.ProcessRequest(
+  ARequestConverter: TMCPTransportRequestConverter;
+  AResponseConverter: TMCPTransportResponseConverter);
 begin
-  try
-    if not CheckOrigin(ARequest, AResponse) then
+  ARequestConverter(FRequest);
+
+  try try
+    if not CheckOrigin then
+      raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, 'Cross-Origin Request Blocked: Same Origin Policy');
+
+    if not CheckAuthorization then
+      raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, 'Authorization check failed');
+
+    FGarbage := TGarbageCollector.CreateInstance;
+    FContext := TJRPCContext.Create;
+
+    FGarbage.Add(FContext);
+    FContext.AddContent(FGarbage);
+    FContext.AddContent(FServer);
+
+    // Handle session (get existing or create new)
+    FSession := HandleSession;
+
+    if Assigned(FSession) then
     begin
-      AResponse.Code := HTTP_CODE_FORBIDDEN;
-      AResponse.Content := '';
-      Exit;
+      // Add session to context if available
+      FContext.AddContent(FSession);
+      // Add session header
+      case FSessionConfig.GetLocation of
+        TSessionIdLocation.Header:
+          FResponse.AddOrSetHeader(FSessionConfig.GetHeaderName, FSession.SessionId);
+        TSessionIdLocation.Cookie:
+          FResponse.SetCookie(FSessionConfig.GetHeaderName, FSession.SessionId);
+        else
+          raise EMCPTransportException.Create(500, 'SessionId Location not found');
+      end;
+
     end;
 
-    if not CheckAuthorization(ARequest, AResponse) then
-    begin
-      AResponse.Code := HTTP_CODE_FORBIDDEN;
-      AResponse.Content := '';
-      Exit;
-    end;
+    InjectCORS;
 
-    if ARequest.Command = 'GET' then
-      HandleGET(ARequest, AResponse)
-    else if ARequest.Command = 'POST' then
-      HandlePOST(ARequest, AResponse)
-    else if ARequest.Command = 'OPTIONS' then
-      HandleOPTIONS(ARequest, AResponse)
+    if FRequest.Command = 'GET' then
+      HandleGET
+    else if FRequest.Command = 'POST' then
+      HandlePOST
+    else if FRequest.Command = 'OPTIONS' then
+      HandleOPTIONS
     else
-      AResponse.Code := HTTP_CODE_NOTALLOWED;
+      raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, 'Http method not allowed');
 
-    InjectCORS(ARequest, AResponse);
   except
+    on E: EMCPTransportException do
+    begin
+      FResponse.Code := E.Code;
+      FResponse.ContentType := 'application/json';
+      FResponse.Content := E.ToJSON;
+    end;
+
     on E: EJRPCException do
     begin
-      AResponse.Code := 500;
-      AResponse.ContentType := 'application/json';
-      AResponse.Content := E.ToJSON;
+      FResponse.Code := 500;
+      FResponse.ContentType := 'application/json';
+      FResponse.Content := E.ToJSON;
     end;
 
     on E: Exception do
     begin
-      AResponse.Code := 500;
-      AResponse.ContentType := 'application/json';
-      AResponse.Content := Format('{"message": "%s"}', [E.Message]);
+      FResponse.Code := 500;
+      FResponse.ContentType := 'application/json';
+      FResponse.Content := Format('{"message": "%s"}', [E.Message]);
     end;
+  end;
+  finally
+    AResponseConverter(FResponse);
   end;
 end;
 
-constructor TMCPTransportHandler.Create(AServer: TJRPCServer);
+procedure TMCPTransportHandler.SendResponseHeaders(AResponse: TMCPTransportResponse);
 begin
-  FServer := AServer;
-
-  FMCPConfig := FServer.GetConfiguration<TMCPConfig>;
-  FAuthTokenConfig := FServer.GetConfiguration<TAuthTokenConfig>;
-  FSessionConfig := FServer.GetConfiguration<TSessionConfig>;
+  if Assigned(FSendResponseHeadersProc) then
+    FSendResponseHeadersProc(AResponse);
 end;
 
-function TMCPTransportHandler.ExtractSessionId(const ARequest: TMCPTransportRequest): string;
+procedure TMCPTransportHandler.SetSendResponseHeadersProc(
+  const Value: TProc<TMCPTransportResponse>);
+begin
+  FSendResponseHeadersProc := Value;
+end;
+
+function TMCPTransportHandler.ExtractSessionId: string;
 begin
   Result := '';
 
@@ -288,214 +345,158 @@ begin
 
   case FSessionConfig.GetLocation of
     TSessionIdLocation.Header:
-      Result := ARequest.Headers.Get(FSessionConfig.GetHeaderName);
+      Result := FRequest.GetHeader(FSessionConfig.GetHeaderName);
 
     TSessionIdLocation.Cookie:
-      Result := ARequest.Headers.GetCookie(FSessionConfig.GetHeaderName);
+      Result := FRequest.GetCookie(FSessionConfig.GetHeaderName);
   end;
 
   Result := Result.Trim;
 end;
 
-procedure TMCPTransportHandler.HandleGET(const ARequest: TMCPTransportRequest; var AResponse: TMCPTransportResponse);
+function TMCPTransportHandler.GetSendResponseHeadersProc: TProc<TMCPTransportResponse>;
 begin
-  AResponse.Headers.AddOrSet('Allow', 'POST');
-  AResponse.Code := HTTP_CODE_NOTALLOWED;
+  Result := FSendResponseHeadersProc;
 end;
 
-procedure TMCPTransportHandler.HandleOPTIONS(const ARequest: TMCPTransportRequest; var AResponse: TMCPTransportResponse);
+function TMCPTransportHandler.CreateAsyncThread(ARequestList: TJRPCMessages; AResponseQueue: TMCPMessageQueue): TThread;
 begin
-  AResponse.Code := HTTP_CODE_NOCONTENT;
-  AResponse.Content := '';
+  var LAsyncExecute := TThread.CreateAnonymousThread(
+    procedure
+    begin
+      for var LMessage in ARequestList.List do
+        HandleMessage(LMessage, AResponseQueue);
+    end
+  );
+  LAsyncExecute.FreeOnTerminate := False;
+  LAsyncExecute.Start;
+  Result := LAsyncExecute;
 end;
 
-procedure TMCPTransportHandler.HandlePOST(const ARequest: TMCPTransportRequest; var AResponse: TMCPTransportResponse);
-var
-  LGarbage: IGarbageCollector;
-  LContext: TJRPCContext;
-  LCtx: TJRPCMsgContext;
-  LSession: TMCPSessionBase;
-  LSessionCreated: Boolean;
+procedure TMCPTransportHandler.HandleGET;
+const
+  QueueReadTimeout = 500;
 
-  LRequestList, LResponseList: TJRPCMessages;
-begin
-  LSessionCreated := False;
-  LGarbage := TGarbageCollector.CreateInstance;
-  LContext := TJRPCContext.Create;
-
-  LGarbage.Add(LContext);
-  LContext.AddContent(LGarbage);
-  LContext.AddContent(FServer);
-
-  // Handle session (get existing or create new)
-  LSession := HandleSession(ARequest, LSessionCreated);
-
-  // Add session to context if available
-  if Assigned(LSession) then
-    LContext.AddContent(LSession);
-
-  LRequestList := TJRPCMessages.CreateFromJson(ARequest.Content);
-  LGarbage.Add(LRequestList);
-
-  LResponseList := TJRPCMessages.Create;
-  LGarbage.Add(LResponseList);
-
-  LCtx.GC := LGarbage;
-  LCtx.JRPCCtx := LContext;
-  LCtx.Session := LSession;
-  LCtx.Requests := LRequestList;
-  LCtx.Responses := LResponseList;
-
-  TMCPRequestHandler.HandleJRPCRequest(LCtx);
-
-  { TODO -opaolo -c : To change based on SSE vs JSON reqs 28/03/2026 17:45:47 }
-  AResponse.ContentType := 'application/json';
-  AResponse.Content := LResponseList.ToJson;
-
-  if LResponseList.Count = 0 then
-    AResponse.Code := HTTP_CODE_ACCEPTED
-  else
-    AResponse.Code := HTTP_CODE_OK;
-end;
-
-function TMCPTransportHandler.HandleSession(const ARequest: TMCPTransportRequest; out ASessionCreated: Boolean): TMCPSessionBase;
-var
-  LSessionId: string;
-begin
-  Result := nil;
-  ASessionCreated := False;
-
-  if not Assigned(FSessionConfig) or (not FSessionConfig.IsApplied) then
-    Exit;
-
-  LSessionId := ExtractSessionId(ARequest);
-
-  // If session ID is provided, try to get existing session
-  if not LSessionId.IsEmpty then
+  procedure ProcessQueue(AQueue: TMCPMessageQueue);
   begin
-    // GetSession will raise exception if expired or not found
-    Result := TMCPSessionManager.Instance.GetSession(LSessionId);
-  end
-  else
+    AQueue.Process(
+      procedure (AMessage: TJRPCMessage; var ADispose: Boolean)
+      begin
+        FResponseWriter.Write(AMessage.ToJson);
+      end,
+      QueueReadTimeout
+    );
+  end;
+
+
+begin
+  if not FResponseWriter.SupportsStreaming then
+    raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, 'SSE not supported');
+
+  if not FRequest.AcceptsEventStream then
+    raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, 'Only Event Stream response is supported for GET requests');
+
+  // TODO: handle global messages
+  if not Assigned(FSession) then
+    raise EMCPTransportException.Create(HTTP_CODE_NOTACCEPTABLE, 'Session not found');
+
+  FResponse.Code := HTTP_CODE_OK;
+  FResponse.ContentType := TMediaType.TEXT_EVENT_STREAM;
+  SendResponseHeaders(FResponse);
+  while FResponseWriter.Connected do
   begin
-    // No session ID provided - auto-create new session
-    Result := TMCPSessionManager.Instance.CreateSession;
-    ASessionCreated := True;
+    ProcessQueue(FSession.Outbound);
   end;
 end;
 
-procedure TMCPTransportHandler.InjectCORS(const ARequest: TMCPTransportRequest;
-    var AResponse: TMCPTransportResponse);
+procedure TMCPTransportHandler.HandleMessage(AMessage: TJRPCMessage; AResponseQueue: TMCPMessageQueue);
 var
-  LHValue: string;
-begin
-  if not FMCPConfig.Security.CORS then
-    Exit;
-
-  // Set the allowed origins (from security configuration)
-  LHValue := ARequest.Headers.Get('Origin');
-  if not LHValue.IsEmpty then
-    AResponse.Headers.AddOrSet('Access-Control-Allow-Origin', LHValue);
-
-  // Set the allowed methods supported by the server (from security configuration)
-  LHValue := ARequest.Headers.Get('Access-Control-Request-Method');
-  if not LHValue.IsEmpty then
-    AResponse.Headers.AddOrSet('Access-Control-Allow-Methods', string.Join(',', FMCPConfig.Security.AllowedMethods));
-
-  // Set the allowed headers as requested
-  LHValue := ARequest.Headers.Get('Access-Control-Request-Headers');
-  if not LHValue.IsEmpty then
-    AResponse.Headers.AddOrSet('Access-Control-Allow-Headers', LHValue);
-
-end;
-
-{ TMCPTransportResponse }
-
-function TMCPTransportResponse.GetContentType: string;
-begin
-  Result := Headers.Get('Content-Type');
-end;
-
-procedure TMCPTransportResponse.SetContentType(const AValue: string);
-begin
-  Headers.AddOrSet('Content-Type', AValue);
-end;
-
-procedure TMCPRequestHandler.HandleMessages(AContext: TJRPCMsgContext);
-begin
-  FContext := AContext;
-  for var LRequest in FContext.Requests.List do
-    HandleMessage(LRequest);
-end;
-
-class procedure TMCPRequestHandler.HandleJRPCRequest(AContext: TJRPCMsgContext);
-var
-  LHandler: TMCPRequestHandler;
-begin
-  LHandler := TMCPRequestHandler.Create;
-  try
-    LHandler.HandleMessages(AContext);
-  finally
-    LHandler.Free;
-  end;
-end;
-
-procedure TMCPRequestHandler.HandleMessage(AMessage: TJRPCMessage);
-var
-  LRequest: TJRPCRequest;
   LConstructorProxy: TJRPCConstructorProxy;
   LInstance: TObject;
   LInvokerCtx: TJRPCInvokerContext;
 begin
-  if AMessage is TJRPCNotification then
+  if (AMessage is TJRPCNotification) then
   begin
-    { TODO -opaolo -c : Enqueue the notification 28/03/2026 15:49:20 }
+    if Assigned(FSession) then
+    begin
+      var LNotification := AMessage as TJRPCNotification;
+      Logger.LogDebug('Enqueing notification [%s]', [LNotification.Method]);
+      FSession.Inbound.Enqueue(LNotification.Clone);
+    end;
     Exit;
   end;
 
   if AMessage is TJRPCResponse then
   begin
-    { TODO -opaolo -c : Enqueue the response 28/03/2026 15:49:20 }
+    if Assigned(FSession) then
+    begin
+      var LRes := AMessage as TJRPCResponse;
+      Logger.LogDebug('Enqueing response id [%s]', [LRes.Id.AsString]);
+      FSession.Inbound.Enqueue(LRes.Clone);
+    end;
     Exit;
   end;
 
   if AMessage is TJRPCError then
   begin
-    var LOriginal := AMessage as TJRPCError;
+    var LErr := AMessage as TJRPCError;
 
     // If the error is in the JRPC request messages then process internally the error.
-    if LOriginal.Request then
+    if LErr.Request then
     begin
-      { TODO -opaolo -c : Enqueue the error 28/03/2026 15:49:20 }
+      if Assigned(FSession) then
+      begin
+        Logger.LogDebug('Enqueing error [%s]', [LErr.Error.Message.Value]);
+        FSession.Inbound.Enqueue(LErr.Clone);
+      end;
     end
     else
     begin
       // If the error was generated processing the request, clone the error object
-      FContext.Responses.AddMessage(LOriginal.Clone);
+      Logger.LogDebug('Error detected [%s]', [LErr.Error.Message.Value]);
+      AResponseQueue.Enqueue(LErr.Clone);
     end;
+
     Exit;
   end;
 
-  LRequest := AMessage as TJRPCRequest;
+  var LRequest := AMessage as TJRPCRequest;
   try
-    FContext.JRPCCtx.AddContent(LRequest);
+    Logger.LogDebug('Processing request [%s: %s]', [LRequest.Id.AsString, LRequest.Method]);
 
-    if not TJRPCRegistry.Instance.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
+    FContext.AddContent(LRequest);
+
+    var LMCPConfig := FContext.FindContextDataAs(IMCPConfig) as IMCPConfig;
+    if Assigned(LMCPConfig) then
+    begin
+      if not LMCPConfig.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
+        raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LRequest.Method]);
+    end
+    else if not TJRPCRegistry.Instance.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
       raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LRequest.Method]);
 
     LInstance := LConstructorProxy.ConstructorFunc();
-    FContext.GC.Add(LInstance);
+    FGarbage.Add(LInstance);
 
     // Injects the context inside the instance
-    FContext.JRPCCtx.Inject(LInstance);
+    FContext.Inject(LInstance);
 
-    LInvokerCtx.GC := FContext.GC;
+    LInvokerCtx.Garbage := FGarbage;
     LInvokerCtx.Request := LRequest;
-    LInvokerCtx.Responses := FContext.Responses;
+    LInvokerCtx.Responses := AResponseQueue;
     LInvokerCtx.ApiInstance := LInstance;
-    LInvokerCtx.SelectConfig(LConstructorProxy.NeonConfig, FContext.JRPCCtx.FindContextDataAs<TJRPCNeonConfig>);
+    LInvokerCtx.SelectConfig(LConstructorProxy.NeonConfig, FContext.FindContextDataAs<TJRPCNeonConfig>);
 
     TJRPCInvoker.Invoke(LInvokerCtx);
+
+    if (LRequest.Method = 'initialize') and Assigned(FSession) then
+    begin
+      if FSessionConfig.GetLocation = TSessionIdLocation.Header then
+        FResponse.Headers.AddOrSetValue(FSessionConfig.GetHeaderName, FSession.SessionId)
+      else if FSessionConfig.GetLocation = TSessionIdLocation.Cookie then
+        FResponse.SetCookie(FSessionConfig.GetHeaderName, FSession.SessionId);
+    end;
+
   except
     on E: Exception do
     begin
@@ -503,18 +504,262 @@ begin
       FContext.Responses.AddMessage(err);
     end;
   end;
+
+end;
+
+procedure TMCPTransportHandler.HandleOPTIONS;
+begin
+  FResponse.Code := HTTP_CODE_NOCONTENT;
+  FResponse.Content := '';
+end;
+
+procedure TMCPTransportHandler.HandlePOST;
+const
+  QueueReadTimeout = 500;
+var
+  LResponseList: TJRPCMessages;
+
+  procedure ProcessQueue(AResponseList: TMCPMessageQueue);
+  begin
+    AResponseList.Process(
+      procedure (AMessage: TJRPCMessage; var ADispose: Boolean)
+      begin
+        if FRequest.AcceptsEventStream and FResponseWriter.SupportsStreaming then
+          FResponseWriter.Write(AMessage.ToJson)
+        else
+        begin
+          ADispose := False;
+          if AMessage is TJRPCNotification then
+          begin
+            // TODO: should I add the message to FSession.Outbound also if SSE is not supported?
+            if Assigned(FSession) then
+              FSession.Outbound.Enqueue(AMessage)
+            else
+              ADispose := True;
+          end
+          else
+          begin
+            LResponseList.AddMessage(AMessage);
+          end;
+        end;
+      end,
+      QueueReadTimeout
+    );
+  end;
+
+begin
+  var LRequestList := TJRPCMessages.CreateFromJson(FRequest.Content);
+  FGarbage.Add(LRequestList);
+
+  var LResponseQueue := TMCPMessageQueue.Create;
+  FGarbage.Add(LResponseQueue);
+  FContext.AddContent(LResponseQueue);
+
+  // This list contains the responses in case SSE channel is not active
+  LResponseList := TJRPCMessages.Create(True);
+  FGarbage.Add(LResponseList);
+
+  var LAsyncExecute := CreateAsyncThread(LRequestList, LResponseQueue);
+  try
+    if FRequest.AcceptsEventStream and FResponseWriter.SupportsStreaming then
+    begin
+      FResponse.ContentType := TMediaType.TEXT_EVENT_STREAM;
+      SendResponseHeaders(FResponse);
+    end;
+
+    while not LAsyncExecute.Finished do
+    begin
+      ProcessQueue(LResponseQueue);
+    end;
+    ProcessQueue(LResponseQueue);
+
+    // If not an event stream response send all the headers and content
+    if not FRequest.AcceptsEventStream or not FResponseWriter.SupportsStreaming then
+    begin
+      if LResponseList.Count = 0 then
+        FResponse.Code := HTTP_CODE_ACCEPTED
+      else
+        FResponse.Code := HTTP_CODE_OK;
+      FResponse.ContentType := TMediaType.APPLICATION_JSON;
+      FResponse.Content := LResponseList.ToJson;
+    end;
+  finally
+    LAsyncExecute.Free;
+  end;
+
+end;
+
+function TMCPTransportHandler.HandleSession: TMCPSessionBase;
+var
+  LSessionId: string;
+  LSessionManager: TMCPSessionManager;
+begin
+  Result := nil;
+
+  if not Assigned(FSessionConfig) or (not FSessionConfig.IsApplied) then
+    Exit;
+
+  LSessionId := ExtractSessionId;
+  LSessionManager := (FServer.SessionManager as TMCPSessionManager);
+
+  // If session ID is provided, try to get existing session
+  if not LSessionId.IsEmpty then
+  begin
+    // GetSession will raise exception if expired or not found
+    Result := LSessionManager.GetSession(LSessionId);
+  end
+  else
+  begin
+    // No session ID provided - auto-create new session
+    Result := LSessionManager.CreateSession;
+  end;
+end;
+
+procedure TMCPTransportHandler.InjectCORS;
+var
+  LHValue: string;
+begin
+  if not FMCPConfig.Security.CORS then
+    Exit;
+
+  // Set the allowed origins (from security configuration)
+  LHValue := FRequest.GetHeader('Origin');
+  if not LHValue.IsEmpty then
+    FResponse.Headers.AddOrSetValue('Access-Control-Allow-Origin', LHValue);
+
+  // Set the allowed methods supported by the server (from security configuration)
+  LHValue := FRequest.GetHeader('Access-Control-Request-Method');
+  if not LHValue.IsEmpty then
+    FResponse.Headers.AddOrSetValue('Access-Control-Allow-Methods', string.Join(',', FMCPConfig.Security.AllowedMethods));
+
+  // Set the allowed headers as requested
+  LHValue := FRequest.GetHeader('Access-Control-Request-Headers');
+  if not LHValue.IsEmpty then
+    FResponse.Headers.AddOrSetValue('Access-Control-Allow-Headers', LHValue);
+
+end;
+
+{ TMCPTransportResponse }
+
+function TMCPTransportResponse.GetContentType: string;
+begin
+  Result := GetHeader('Content-Type');
+end;
+
+procedure TMCPTransportResponse.SetContentType(const AValue: string);
+begin
+  Headers.AddOrSetValue('Content-Type', AValue);
+end;
+
+procedure TMCPTransportResponse.SetCookie(const AName, AValue: string);
+begin
+  { TODO -opaolo -c : Finire 29/04/2026 23:34:50 }
 end;
 
 { TMCPTransportRequest }
 
-function TMCPTransportRequest.ToString: string;
+constructor TMCPTransportRequest.Create;
 begin
-  Result := 'Headers: ' + sLineBreak;
-  for var head in Headers.RawHeaders do
-    Result := Result + Format('%s: %s', [head.Key, head.Value]) + sLineBreak;
+  inherited Create;
+  FAcceptItems := nil;
+end;
 
-  Result := '------' + sLineBreak + Format('Request: [%s] %s', [Command, Url]) + sLineBreak + Result;
-  Result := Result + Format('Content: %s', [Content]) + sLineBreak;
+destructor TMCPTransportRequest.Destroy;
+begin
+  FAcceptItems.Free;
+  inherited;
+end;
+
+function TMCPTransportRequest.GetAccept: string;
+begin
+  Result := GetHeader('Accept');
+end;
+
+function TMCPTransportRequest.GetAcceptItems: TAcceptItemList<TAcceptItem>;
+begin
+  if not Assigned(FAcceptItems) then
+  begin
+    FAcceptItems := TAcceptItemList<TAcceptItem>.Create;
+    var LAcceptHeader := GetHeader('Accept');
+    TAcceptHeaderParser<TAcceptItem>.Parse(LAcceptHeader, FAcceptItems);
+  end;
+  Result := FAcceptItems;
+end;
+
+function TMCPTransportRequest.GetAcceptsEventStream: Boolean;
+begin
+  Result := AcceptItems.Contains(TMediaType.TEXT_EVENT_STREAM);
+end;
+
+function TMCPTransportRequest.GetCookie(const AName: string): string;
+begin
+  var LCookies := GetHeader('Cookie');
+  if LCookies.IsEmpty then
+    Exit('');
+
+  var LCookieList := TStringList.Create;
+  try
+    LCookieList.NameValueSeparator := '=';
+    LCookieList.LineBreak := ';';
+    LCookieList.Text := LCookies;
+
+    Result := LCookieList.Values[AName];
+  finally
+    LCookieList.Free;
+  end;
+
+end;
+
+procedure TMCPTransportRequest.SetAccept(const AValue: string);
+begin
+  FreeAndNil(FAcceptItems);
+  Headers.AddOrSetValue('Accept', AValue);
+end;
+
+procedure TMCPTransportHeaders.AddOrSetHeader(const AName, AValue: string);
+begin
+  Headers.AddOrSetValue(AName, AValue);
+end;
+
+constructor TMCPTransportHeaders.Create;
+begin
+  // Case-insensitive <string,string> dictionary
+  Headers := THeaders.Create(TIStringComparer.Ordinal);
+end;
+
+destructor TMCPTransportHeaders.Destroy;
+begin
+  Headers.Free;
+  inherited;
+end;
+
+function TMCPTransportHeaders.GetHeader(const AName: string): string;
+begin
+  if not Headers.TryGetValue(AName, Result) then
+    Result := '';
+end;
+
+{ EMCPTransportException }
+
+constructor EMCPTransportException.Create(ACode: Integer; const AMsg: string);
+begin
+  inherited Create(AMsg);
+  FCode := ACode;
+end;
+
+function EMCPTransportException.ToJSON: string;
+var
+  LJSON: TJSONObject;
+begin
+  LJSON := TJSONObject.Create;
+  try
+    LJSON.AddPair('code', Self.Code);
+    LJSON.AddPair('class', Self.ClassName);
+    LJSON.AddPair('message', Self.Message);
+    Result := LJSON.ToJSON;
+  finally
+    LJSON.Free;
+  end;
 end;
 
 end.

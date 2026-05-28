@@ -31,6 +31,7 @@ type
   end;
 
   IJRPCApplication = interface;
+  IJRPCConfiguration = interface;
 
   {$M+}
   TJRPCConfiguration = class;
@@ -64,6 +65,11 @@ type
     /// </summary>
     /// <returns>Enumerable collection of all active configurations</returns>
     function GetConfigurations: TEnumerable<TJRPCConfiguration>;
+
+    /// <summary>
+    ///   Notify the application that the plugin config is completed.
+    /// </summary>
+    procedure ApplyConfig(AConfig: IJRPCConfiguration);
 
     /// <summary>
     ///   Provides fluent access to configuration interfaces. Use Configure&lt;T&gt;
@@ -190,6 +196,7 @@ end;
 function TJRPCConfiguration.ApplyConfig: IJRPCApplication;
 begin
   FIsApplied := True;
+  FApplication.ApplyConfig(Self);
   Result := FApplication;
 end;
 

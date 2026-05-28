@@ -30,7 +30,10 @@ uses
   MCPConnect.Session.Core in '..\..\..\Source\MCPConnect.Session.Core.pas',
   MCPConnect.Transport.Indy in '..\..\..\Source\MCPConnect.Transport.Indy.pas',
   MCPConnect.JRPC.Classes in '..\..\..\Source\MCPConnect.JRPC.Classes.pas',
-  MCPConnect.Transport.Base in '..\..\..\Source\MCPConnect.Transport.Base.pas';
+  MCPConnect.Transport.Base in '..\..\..\Source\MCPConnect.Transport.Base.pas',
+  MCPConnect.Transport.AcceptParser in '..\..\..\Source\MCPConnect.Transport.AcceptParser.pas',
+  MCPConnect.Transport.MediaType in '..\..\..\Source\MCPConnect.Transport.MediaType.pas',
+  MCPServer.Notifications in '..\MCPServer.Notifications.pas';
 
 {$R *.res}
 

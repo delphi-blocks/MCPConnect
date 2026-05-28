@@ -18,6 +18,8 @@ interface
 uses
   System.SysUtils, System.Classes, System.IOUtils, System.JSON,
 
+  MCPConnect.Transport.Base,
+  MCPConnect.Transport.MediaType,
   MCPConnect.Configuration.Session,
   MCPConnect.Session.Core,
   MCPConnect.JRPC.Server;
@@ -89,12 +91,25 @@ type
     FSession: TMCPSessionBase;
     FSessionConfig: TSessionConfig;
     procedure SetServer(const Value: TJRPCServer);
-    procedure HandleRequest(const ARequestContent: string; out AResponseContent: string);
+    procedure HandleRequest(const ARequestContent: string; out AResponseContent: string; AStdOutWriter: TStdOutWriter);
   protected
     procedure Execute; override;
   public
     property Server: TJRPCServer read FServer write SetServer;
   end;
+
+  TMCPTransportWriterStdio = class(TInterfacedObject, IMCPTransportWriter)
+  private
+    FStdOutWriter: TStdOutWriter;
+  public
+    { IMCPTransportWriter }
+    procedure Write(const AValue: string);
+    function Connected: Boolean;
+    function SupportsStreaming: Boolean;
+
+    constructor Create(AStdOutWriter: TStdOutWriter);
+  end;
+
 
 implementation
 
@@ -107,8 +122,7 @@ uses
   Neon.Core.Persistence.JSON,
   MCPConnect.JRPC.Classes,
   MCPConnect.JRPC.Invoker,
-  MCPConnect.JRPC.Core,
-  MCPConnect.Transport.Base;
+  MCPConnect.JRPC.Core;
 
 function StdInHandle: THandle;
 begin
@@ -199,6 +213,8 @@ begin
   while True do
   begin
     var LValue := FReader.Read;
+    if LValue < 0 then
+      Exit('');
     if LValue = 10 then
     begin
       Exit(TEncoding.UTF8.GetString(LBuffer, 0, LIndex));
@@ -350,13 +366,16 @@ var
   LError: TStdErrWriter;
   LRequest, LResponse: string;
   LSessionId: string;
+  LSessionManager: TMCPSessionManager;
 begin
   inherited;
+
+  LSessionManager := FServer.SessionManager as TMCPSessionManager;
 
   // Create session for this STDIO connection (implicit session per connection)
   if Assigned(FSessionConfig) then
   begin
-    FSession := TMCPSessionManager.Instance.CreateSession;
+    FSession := LSessionManager.CreateSession;
     LSessionId := FSession.SessionId;  // Save ID before thread ends
   end;
 
@@ -371,7 +390,7 @@ begin
           begin
             LRequest := LReader.ReadLine;
             try
-              HandleRequest(LRequest, LResponse);
+              HandleRequest(LRequest, LResponse, LWriter);
               if LResponse <> '' then
               begin
                 LWriter.WriteLine(LResponse);
@@ -399,31 +418,46 @@ begin
     // The session would be automatically destroyed by TSessionManager's destructor
     // at application termination, but we clean it up here for good practice.
     if not LSessionId.IsEmpty then
-      TMCPSessionManager.Instance.DestroySession(LSessionId);
+      LSessionManager.DestroySession(LSessionId);
   end;
 
   Terminate;
 end;
 
-procedure TWorkerThread.HandleRequest(const ARequestContent: string; out AResponseContent: string);
+procedure TWorkerThread.HandleRequest(const ARequestContent: string; out AResponseContent: string; AStdOutWriter: TStdOutWriter);
 var
-  LRequest: TMCPTransportRequest;
-  LResponse: TMCPTransportResponse;
   LMcpHandler: IMCPTransportHandler;
+  LRes: string;
 begin
   if not Assigned(FServer) then
     raise EJRPCException.Create('Server not found');
 
   // Auth??
-  LRequest.Headers.AddOrSet('Accept', 'application/json');
 
-  LRequest.Command := 'POST';
-  LRequest.Content := ARequestContent;
+  LMcpHandler := TMCPTransportHandler.Create(FServer, TMCPTransportWriterStdio.Create(AStdOutWriter));
 
-  LMcpHandler := TMCPTransportHandler.Create(FServer);
-  LMcpHandler.HandleRequest(LRequest, LResponse);
+  LMcpHandler.ProcessRequest(
+    procedure (ARequest: TMCPTransportRequest)
+    begin
+      ARequest.Headers.AddOrSetValue('Accept', 'application/json');
 
-  AResponseContent := LResponse.Content;
+      ARequest.Command := 'POST';
+      ARequest.Content := ARequestContent;
+      ARequest.Accept := TMediaType.TEXT_EVENT_STREAM;
+
+      //LogRequest(ARequest);
+    end,
+
+    procedure (AResponse: TMCPTransportResponse)
+    begin
+      LRes := AResponse.Content;
+
+      //LogHttpResponse(AResponseInfo);
+    end
+
+  );
+
+  AResponseContent := LRes;
 end;
 
 procedure TWorkerThread.SetServer(const Value: TJRPCServer);
@@ -432,6 +466,29 @@ begin
 
   if Assigned(FServer) then
     FSessionConfig := FServer.GetConfiguration<TSessionConfig>;
+end;
+
+{ TMCPTransportWriterStdio }
+
+constructor TMCPTransportWriterStdio.Create(AStdOutWriter: TStdOutWriter);
+begin
+  inherited Create;
+  FStdOutWriter := AStdOutWriter;
+end;
+
+function TMCPTransportWriterStdio.SupportsStreaming: Boolean;
+begin
+  Result := True;
+end;
+
+function TMCPTransportWriterStdio.Connected: Boolean;
+begin
+  Result := True;
+end;
+
+procedure TMCPTransportWriterStdio.Write(const AValue: string);
+begin
+  FStdOutWriter.WriteLine(RemoveLineBreaks(AValue));
 end;
 
 end.

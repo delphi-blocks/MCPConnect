@@ -21,7 +21,8 @@ uses
   DUnitX.TestFramework,
 
   MCPConnect.Session.Core,
-  MCPConnect.JRPC.Core;
+  MCPConnect.JRPC.Core,
+  MCPConnect.JRPC.Server;
 
 type
   // Custom session class for testing
@@ -75,6 +76,7 @@ type
   TMCPSessionManagerTest = class(TObject)
   private
     FManager: TMCPSessionManager;
+    FServer: TJRPCServer;
   public
     [Setup]
     procedure Setup;
@@ -268,13 +270,15 @@ end;
 
 procedure TMCPSessionManagerTest.Setup;
 begin
-  FManager := TMCPSessionManager.Create;
+  FServer := TJRPCServer.Create(nil);
+  FManager := TMCPSessionManager.Create(FServer);
   FManager.TimeoutMinutes := 30;
 end;
 
 procedure TMCPSessionManagerTest.TearDown;
 begin
   FManager.Free;
+  FServer.Free;
 end;
 
 { Session Creation Tests }

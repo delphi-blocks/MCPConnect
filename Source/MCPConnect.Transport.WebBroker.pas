@@ -13,14 +13,13 @@
 {******************************************************************************}
 unit MCPConnect.Transport.WebBroker;
 
+{$I MCPConnect.inc}
+
 interface
 
-{$I 'MCPConnect.inc'}
-
 uses
-  System.SysUtils, System.Classes, System.Masks, System.DateUtils,
+  System.SysUtils, System.Classes, System.Masks, System.Diagnostics,
   Web.HTTPApp,
-
 
   MCPConnect.Transport.Base,
   MCPConnect.JRPC.Core,
@@ -34,8 +33,8 @@ type
     FServer: TJRPCServer;
     procedure SetPathInfo(const Value: string);
     procedure SetServer(const Value: TJRPCServer);
-    procedure ConvertHeaders(AWebRequest: TWebRequest;
-      var LMCPRequest: TMCPTransportRequest);
+    procedure ConvertRequestHeaders(AWebRequest: TWebRequest; AMCPRequest: TMCPTransportRequest);
+    procedure ConvertResponseHeaders(AWebResponse: TWebResponse; AMCPResponse: TMCPTransportResponse);
   public
     { IWebDispatch }
     function DispatchEnabled: Boolean;
@@ -50,13 +49,109 @@ type
     destructor Destroy; override;
   end;
 
+  {$IFNDEF HAS_WEBBROKER_SSE}
+  TWebResponseStream = class
+  end;
+  {$ENDIF}
+
+
+  TMCPTransportWriterWebBroker = class(TInterfacedObject, IMCPTransportWriter)
+  private
+    FResponse: TWebResponse;
+    {$IFDEF HAS_WEBBROKER_SSE}
+    FSSEStream: TWebResponseStream;
+    FPing: TStopwatch;
+    {$ENDIF}
+    procedure WriteSSEEvent(const AId, AEvent, AValue: string; ARetry: Integer);
+  public
+    function SSEStream: TWebResponseStream;
+
+    { IMCPTransportWriter }
+    procedure Write(const AValue: string); overload;
+    procedure WriteComment(const AValue: string); overload;
+    function Connected: Boolean;
+    function SupportsStreaming: Boolean;
+
+    constructor Create(AResponse: TWebResponse);
+  end;
+
 implementation
+
+uses
+  MCPConnect.Configuration.Session;
+
+const
+  PingInterval = 15000;
 
 function DateToHttpStr(ADate: TDateTime): string;
 const
   sDateFormat = '"%s", dd "%s" yyyy hh":"nn":"ss';
 begin
   Result := Format(FormatDateTime(sDateFormat + ' "GMT"', ADate), [DayOfWeekStr(ADate), MonthStr(ADate)]);
+end;
+
+function DateTimeToHTTPDate(ADateTime: TDateTime): string;
+const
+  HTTPDateFormat = 'ddd, dd mmm yyyy hh:nn:ss "GMT"';
+var
+  FS: TFormatSettings;
+begin
+  FS := TFormatSettings.Create('en-US');
+  Result := FormatDateTime(HTTPDateFormat, ADateTime, FS);
+end;
+
+procedure TJRPCDispatcher.ConvertRequestHeaders(AWebRequest: TWebRequest; AMCPRequest: TMCPTransportRequest);
+begin
+  {$IFDEF HAS_WEBBROKER_REQUEST_HEADERS}
+  AWebRequest.AllHeaders.NameValueSeparator := ':';
+  for var I := 0 to AWebRequest.AllHeaders.Count - 1 do
+    AMCPRequest.AddOrSetHeader(AWebRequest.AllHeaders.KeyNames[I],
+      AWebRequest.AllHeaders.ValueFromIndex[I]);
+  {$ELSE}
+  var LSessionConfig := FServer.GetConfiguration<TSessionConfig>;
+
+  if AWebRequest.CacheControl <> '' then  
+    AMCPRequest.Headers.AddOrSetValue('Cache-Control', AWebRequest.CacheControl);
+  if AWebRequest.Cookie <> '' then
+    AMCPRequest.Headers.AddOrSetValue('Cookie', AWebRequest.Cookie);
+  if AWebRequest.Date > 0 then
+    AMCPRequest.Headers.AddOrSetValue('Date', DateToHttpStr(AWebRequest.Date));
+  if AWebRequest.Accept <> '' then
+    AMCPRequest.Headers.AddOrSetValue('Accept', AWebRequest.Accept);
+  if AWebRequest.From <> '' then
+    AMCPRequest.Headers.AddOrSetValue('From', AWebRequest.From);
+  if AWebRequest.Host <> '' then
+    AMCPRequest.Headers.AddOrSetValue('Host', AWebRequest.Host);
+  if AWebRequest.IfModifiedSince > 0 then
+    AMCPRequest.Headers.AddOrSetValue('If-Modified-Since', DateToHttpStr(AWebRequest.IfModifiedSince));
+  if AWebRequest.Referer <> '' then
+    AMCPRequest.Headers.AddOrSetValue('Referer', AWebRequest.Referer);
+  if AWebRequest.UserAgent <> '' then
+    AMCPRequest.Headers.AddOrSetValue('User-Agent', AWebRequest.UserAgent);
+  if AWebRequest.ContentEncoding <> '' then
+    AMCPRequest.Headers.AddOrSetValue('Content-Encoding', AWebRequest.ContentEncoding);
+  if AWebRequest.ContentType <> '' then
+    AMCPRequest.Headers.AddOrSetValue('Content-Type', AWebRequest.ContentType);
+  if AWebRequest.ContentLength <> 0 then
+    AMCPRequest.Headers.AddOrSetValue('Content-Length', AWebRequest.ContentLength.ToString);
+  if AWebRequest.ContentVersion <> '' then
+    AMCPRequest.Headers.AddOrSetValue('Content-Version', AWebRequest.ContentVersion);
+  if AWebRequest.DerivedFrom <> '' then
+    AMCPRequest.Headers.AddOrSetValue('Derived-From', AWebRequest.DerivedFrom);
+  if AWebRequest.Expires > 0 then
+    AMCPRequest.Headers.AddOrSetValue('Expires', DateToHttpStr(AWebRequest.Expires));
+  if AWebRequest.Title <> '' then
+    AMCPRequest.Headers.AddOrSetValue('Title', AWebRequest.Title);
+  if AWebRequest.GetFieldByName(LSessionConfig.GetHeaderName) <> '' then
+    AMCPRequest.Headers.AddOrSetValue(LSessionConfig.GetHeaderName, AWebRequest.GetFieldByName(LSessionConfig.GetHeaderName));
+  {$ENDIF}
+end;
+
+procedure TJRPCDispatcher.ConvertResponseHeaders(AWebResponse: TWebResponse;
+  AMCPResponse: TMCPTransportResponse);
+begin
+  for var pair in AMCPResponse.Headers do
+    AWebResponse.CustomHeaders.AddPair(pair.Key, pair.Value);
 end;
 
 constructor TJRPCDispatcher.Create(AOwner: TComponent);
@@ -88,74 +183,47 @@ end;
 
 function TJRPCDispatcher.DispatchMethodType: TMethodType;
 begin
-  Result := mtPost;
-end;
-
-procedure TJRPCDispatcher.ConvertHeaders(AWebRequest: TWebRequest; var LMCPRequest: TMCPTransportRequest);
-begin
-  {$IFDEF HAS_WEBBROKER_ALLHEADERS}
-  for var I := 0 to AWebRequest.AllHeaders.Count - 1 do
-    LMCPRequest.Headers.AddOrSet(AWebRequest.AllHeaders.KeyNames[I],
-      AWebRequest.AllHeaders.ValueFromIndex[I]);
-  {$ELSE}
-    LMCPRequest.Headers.AddOrSet('Cache-Control', AWebRequest.CacheControl);
-  if AWebRequest.Cookie <> '' then
-    LMCPRequest.Headers.AddOrSet('Cookie', AWebRequest.Cookie);
-  if AWebRequest.Date > 0 then
-    LMCPRequest.Headers.AddOrSet('Date', DateToHttpStr(AWebRequest.Date));
-  if AWebRequest.Accept <> '' then
-    LMCPRequest.Headers.AddOrSet('Accept', AWebRequest.Accept);
-  if AWebRequest.From <> '' then
-    LMCPRequest.Headers.AddOrSet('From', AWebRequest.From);
-  if AWebRequest.Host <> '' then
-    LMCPRequest.Headers.AddOrSet('Host', AWebRequest.Host);
-  if AWebRequest.IfModifiedSince > 0 then
-    LMCPRequest.Headers.AddOrSet('If-Modified-Since', DateToHttpStr(AWebRequest.IfModifiedSince));
-  if AWebRequest.Referer <> '' then
-    LMCPRequest.Headers.AddOrSet('Referer', AWebRequest.Referer);
-  if AWebRequest.UserAgent <> '' then
-    LMCPRequest.Headers.AddOrSet('User-Agent', AWebRequest.UserAgent);
-  if AWebRequest.ContentEncoding <> '' then
-    LMCPRequest.Headers.AddOrSet('Content-Encoding', AWebRequest.ContentEncoding);
-  if AWebRequest.ContentType <> '' then
-    LMCPRequest.Headers.AddOrSet('Content-Type', AWebRequest.ContentType);
-  if AWebRequest.ContentLength <> 0 then
-    LMCPRequest.Headers.AddOrSet('Content-Length', AWebRequest.ContentLength.ToString);
-  if AWebRequest.ContentVersion <> '' then
-    LMCPRequest.Headers.AddOrSet('Content-Version', AWebRequest.ContentVersion);
-  if AWebRequest.DerivedFrom <> '' then
-    LMCPRequest.Headers.AddOrSet('Derived-From', AWebRequest.DerivedFrom);
-  if AWebRequest.Expires > 0 then
-    LMCPRequest.Headers.AddOrSet('Expires', DateToHttpStr(AWebRequest.Expires));
-  if AWebRequest.Title <> '' then
-    LMCPRequest.Headers.AddOrSet('Title', AWebRequest.Title);
-  {$ENDIF}
+  Result := mtAny;
 end;
 
 function TJRPCDispatcher.DispatchRequest(Sender: TObject; AWebRequest: TWebRequest; AWebResponse: TWebResponse): Boolean;
 var
-  LMCPRequest: TMCPTransportRequest;
-  LMCPResponse: TMCPTransportResponse;
-  LMCPHandler: IMCPTransportHandler;
+  LMcpHandler: IMCPTransportHandler;
 begin
   if not Assigned(FServer) then
     raise EJRPCException.Create('Server not found');
 
-  ConvertHeaders(AWebRequest, LMCPRequest);
+  var LWriter := TMCPTransportWriterWebBroker.Create(AWebResponse);
 
-  LMCPRequest.Command := AWebRequest.Method;
-  LMCPRequest.Content := AWebRequest.Content;
+  LMcpHandler := TMCPTransportHandler.Create(FServer, LWriter);
 
-  LMCPHandler := TMCPTransportHandler.Create(FServer);
-  LMCPHandler.HandleRequest(LMCPRequest, LMCPResponse);
+  LMcpHandler.SendResponseHeadersProc :=
+    procedure (AResponse: TMCPTransportResponse)
+    begin
+      ConvertResponseHeaders(AWebResponse, AResponse);
+    end;
 
-  for var I := 0 to LMCPResponse.Headers.Count - 1 do
-    AWebResponse.CustomHeaders.AddPair(LMCPResponse.Headers.RawHeaders[I].Key,
-      LMCPResponse.Headers.RawHeaders[I].Value);
+  LMcpHandler.ProcessRequest(
 
-  AWebResponse.StatusCode := LMCPResponse.Code;
-  AWebResponse.Content := LMCPResponse.Content;
-  AWebResponse.ContentType := LMCPResponse.ContentType;
+    procedure (ARequest: TMCPTransportRequest)
+    begin
+      ConvertRequestHeaders(AWebRequest, ARequest);
+      ARequest.Command := AWebRequest.Method;
+      ARequest.Content := AWebRequest.Content;
+
+      //LogRequest(ARequest);
+    end,
+
+    procedure (AResponse: TMCPTransportResponse)
+    begin
+      ConvertResponseHeaders(AWebResponse, AResponse);
+
+      AWebResponse.StatusCode := AResponse.Code;
+      AWebResponse.Content := AResponse.Content;
+      AWebResponse.ContentType := AResponse.ContentType;
+    end
+  );
+
   Result := True;
 end;
 
@@ -168,6 +236,90 @@ end;
 procedure TJRPCDispatcher.SetServer(const Value: TJRPCServer);
 begin
   FServer := Value;
+end;
+
+{ TMCPTransportWriterWebBroker }
+
+function TMCPTransportWriterWebBroker.Connected: Boolean;
+begin
+  {$IFDEF HAS_WEBBROKER_SSE}
+  Result := SSEStream.Connected;
+  // Periodic ping: workaround because WebBroker sometimes does not detect the
+  // client disconnection until a write attempt actually fails on the socket.
+  if Result and (FPing.ElapsedMilliseconds >= PingInterval) then
+  begin
+    WriteComment('ping');
+    Result := FSSEStream.Connected;
+  end;
+  {$ELSE}
+  raise EJRPCException.Create('SSE not supported');
+  {$ENDIF}
+end;
+
+constructor TMCPTransportWriterWebBroker.Create(AResponse: TWebResponse);
+begin
+  inherited Create;
+  FResponse := AResponse;
+end;
+
+function TMCPTransportWriterWebBroker.SSEStream: TWebResponseStream;
+begin
+  {$IFDEF HAS_WEBBROKER_SSE}
+  if not Assigned(FSSEStream) then
+  begin
+    FSSEStream := TWebResponseStream.BeginStream(FResponse, 'text/event-stream');
+    FPing := TStopwatch.StartNew;
+  end;
+  Result := FSSEStream;
+  {$ELSE}
+  raise EJRPCException.Create('SSE not supported');
+  {$ENDIF}
+end;
+
+function TMCPTransportWriterWebBroker.SupportsStreaming: Boolean;
+begin
+  {$IFDEF HAS_WEBBROKER_SSE}
+  Result := True;
+  {$ELSE}
+  Result := False;
+  {$ENDIF}
+end;
+
+procedure TMCPTransportWriterWebBroker.Write(const AValue: string);
+begin
+  WriteSSEEvent('', '', AValue, -1);
+end;
+
+procedure TMCPTransportWriterWebBroker.WriteSSEEvent(const AId, AEvent,
+  AValue: string; ARetry: Integer);
+begin
+  {$IFDEF HAS_WEBBROKER_SSE}
+  if AId <> '' then
+    SSEStream.WriteID(AId);
+  if AEvent <> '' then
+    SSEStream.WriteEvent(AEvent);
+
+  SSEStream.WriteData(AValue);
+
+  if ARetry > 0 then
+    SSEStream.WriteRetry(ARetry);
+
+  SSEStream.EndEvent;
+  FPing := TStopwatch.StartNew;
+  {$ELSE}
+  raise EJRPCException.Create('SSE not supported');
+  {$ENDIF}
+end;
+
+procedure TMCPTransportWriterWebBroker.WriteComment(const AValue: string);
+begin
+  {$IFDEF HAS_WEBBROKER_SSE}
+  SSEStream.WriteComment(AValue);
+  SSEStream.EndEvent;
+  FPing := TStopwatch.StartNew;
+  {$ELSE}
+  raise EJRPCException.Create('SSE not supported');
+  {$ENDIF}
 end;
 
 end.

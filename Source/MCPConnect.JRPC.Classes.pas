@@ -18,7 +18,7 @@ unit MCPConnect.JRPC.Classes;
 interface
 
 uses
-  System.Classes, System.SysUtils, System.Rtti, System.TypInfo,
+  System.Classes, System.SysUtils, System.Rtti, System.TypInfo, System.IOUtils,
   System.Generics.Collections, System.Generics.Defaults,
   System.RegularExpressions;
 
@@ -26,6 +26,13 @@ type
   {$IFNDEF HAS_NO_REF_COUNT}
   TNoRefCountObject = TSingletonImplementation;
   {$ENDIF}
+
+  {$IFNDEF HAS_APP_PATH}
+  TPathHelper = record helper for TPath
+    class function GetAppPath: string; static;
+  end;
+  {$ENDIF}
+
 
   /// <summary>
   ///   Anonymous method type that defines a custom disposal action.
@@ -537,7 +544,7 @@ begin
   if AObject = nil then
     Exit;
 
-  FContextData.Add(AObject.ClassType, AObject);
+  FContextData.AddOrSetValue(AObject.ClassType, AObject);
 end;
 
 procedure TContextManager.AddContent(AInterface: IInterface);
@@ -632,5 +639,14 @@ begin
     end
   );
 end;
+
+{ TPathHelper }
+
+{$IFNDEF HAS_APP_PATH}
+class function TPathHelper.GetAppPath: string;
+begin
+  Result := ExtractFilePath(ParamStr(0));
+end;
+{$ENDIF}
 
 end.

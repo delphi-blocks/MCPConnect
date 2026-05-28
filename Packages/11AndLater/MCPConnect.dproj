@@ -48,6 +48,7 @@
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base)'!=''">
         <RuntimeOnlyPackage>true</RuntimeOnlyPackage>
+        <DCC_UnitSearchPath>..\..\Source;..\..\Libs\Neon\Source;..\..\Libs\Logify\Source;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <SanitizedProjectName>MCPConnect</SanitizedProjectName>
         <VerInfo_Locale>1040</VerInfo_Locale>
         <DCC_Description>MCP Library for Delphi</DCC_Description>
@@ -114,6 +115,8 @@
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.MCP.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.Neon.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.Session.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Content.Writers.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Content.Writers.RTL.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.JRPC.Classes.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.JRPC.Core.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.JRPC.Invoker.pas"/>
@@ -127,12 +130,12 @@
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Tools.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Session.Core.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Transport.AcceptParser.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Transport.MediaType.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Transport.Base.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Transport.Indy.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Transport.Stdio.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Transport.WebBroker.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.Content.Writers.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.Content.Writers.RTL.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

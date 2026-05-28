@@ -50,6 +50,7 @@ type
   TMCPServerConfig = class;
   TMCPSecurityConfig = class;
   TMCPResourcesConfig = class;
+  TMCPMessageHandlingConfig = class;
 
   /// <summary>
   ///   Primary configuration interface for Model Context Protocol (MCP) servers.
@@ -102,6 +103,19 @@ type
     /// </summary>
     function Server: TMCPServerConfig;
 
+    /// <summary>
+    ///   Handlers for inbound JSON-RPC messages from the client
+    ///   (notifications such as cancelled/initialized, and requests such as logging/setLevel).
+    /// </summary>
+    function MessageHandling: TMCPMessageHandlingConfig;
+
+    /// <summary>
+    ///   Resolves the constructor proxy for an inbound JSON-RPC method name.
+    ///   Looks first in the per-server registry populated via
+    ///   MessageHandling.RegisterApi, then falls back to the global
+    ///   TJRPCRegistry.Instance. Returns False if neither registry has a match.
+    /// </summary>
+    function GetConstructorProxy(const AName: string; out AProxy: TJRPCConstructorProxy): Boolean;
 
     /// <summary>
     ///   Security configuration
@@ -150,7 +164,7 @@ type
     Name: string;
     Description: string;
     Version: string;
-    Capabilities: TMCPCapabilities;
+    Capabilities: TServerCapabilities;
     WriterRegistry: TMCPWriterRegistry;
   public
     constructor Create(AConfig: IMCPConfig);
@@ -198,11 +212,27 @@ type
     function SetVersion(const AVersion: string): TMCPServerConfig;
 
     /// <summary>
-    ///   Sets the capabilities supported by the MCP server (Tools, Resources, Prompts, etc.).
+    ///   Sets the server capabilities explicitly. If never called, MCPConnect infers them
+    ///   from the registered tools, resources and prompts.
     /// </summary>
-    /// <param name="ACapabilities">Set of supported capabilities</param>
+    /// <remarks>
+    ///   Takes ownership of the passed instance; it will be freed by the config.
+    /// </remarks>
     /// <returns>Self for fluent chaining</returns>
-    function SetCapabilities(ACapabilities: TMCPCapabilities): TMCPServerConfig;
+    function SetCapabilities(ACapabilities: TServerCapabilities): TMCPServerConfig; overload;
+
+    /// <summary>
+    ///   Convenience overload: builds a TServerCapabilities from a simple set of flags.
+    /// </summary>
+    /// <returns>Self for fluent chaining</returns>
+    function SetCapabilities(ACapabilities: TMCPCapabilities): TMCPServerConfig; overload;
+
+    /// <summary>
+    ///   Convenience overload: creates a TServerCapabilities and lets the caller configure
+    ///   it inline via an anonymous procedure.
+    /// </summary>
+    /// <returns>Self for fluent chaining</returns>
+    function SetCapabilities(AProc: TProc<TServerCapabilities>): TMCPServerConfig; overload;
 
     /// <summary>
     ///   Registers a custom content writer for handling complex return types.
@@ -221,6 +251,91 @@ type
     ///   the conversion. Built-in writers for basic types are always available.
     /// </remarks>
     function RegisterWriter(AClass: TCustomWriterClass): TMCPServerConfig;
+  end;
+
+  /// <summary>
+  ///   Configuration for handlers invoked when the server receives inbound
+  ///   JSON-RPC messages from the client. Covers both notifications
+  ///   (fire-and-forget, e.g. notifications/cancelled, notifications/initialized)
+  ///   and requests that need a response (e.g. logging/setLevel).
+  /// </summary>
+  TMCPMessageHandlingConfig = class(TMCPBaseConfig)
+  private
+    FRegistry: TJRPCRegistry;
+    FCancelledProc: TProc<TJRPCContext, TCancelledNotificationParams>;
+    FInitializedProc: TProc<TJRPCContext>;
+    FSetLogLevelProc: TProc<TJRPCContext, TLogSetLevel>;
+  public
+    constructor Create(AConfig: IMCPConfig);
+    destructor Destroy; override;
+
+    /// <summary>
+    ///   Registers a class as an alternative implementation for one or more
+    ///   inbound JSON-RPC handlers. The class is inspected via [JRPC]
+    ///   attributes the same way the global registry does, but lookups for
+    ///   the matching method names will prefer this registration over the
+    ///   built-in classes defined in MCPConnect.MCP.Server.Api.
+    /// </summary>
+    /// <param name="AClass">
+    ///   Class decorated with [JRPC('namespace')] and [JRPC('method')] attributes.
+    /// </param>
+    /// <returns>Self for fluent chaining</returns>
+    function RegisterApi(AClass: TClass): TMCPMessageHandlingConfig;
+
+    /// <summary>
+    ///   Per-server registry used to override the global TJRPCRegistry on a
+    ///   method-by-method basis. Exposed read-only; populate it via RegisterApi.
+    /// </summary>
+    property Registry: TJRPCRegistry read FRegistry;
+
+    /// <summary>
+    ///   Registers a handler for the "notifications/cancelled" notification,
+    ///   sent by the client when it wants to cancel an in-flight request.
+    /// </summary>
+    /// <param name="AProc">
+    ///   Callback receiving the cancellation parameters (request id and optional reason).
+    ///   Pass nil to unregister.
+    /// </param>
+    /// <returns>Self for fluent chaining</returns>
+    function OnCancelled(AProc: TProc<TJRPCContext, TCancelledNotificationParams>): TMCPMessageHandlingConfig;
+
+    /// <summary>
+    ///   Registers a handler for the "notifications/initialized" notification,
+    ///   sent by the client once the initialization handshake is complete.
+    /// </summary>
+    /// <param name="AProc">Callback invoked after initialization. Pass nil to unregister.</param>
+    /// <returns>Self for fluent chaining</returns>
+    function OnInitialized(AProc: TProc<TJRPCContext>): TMCPMessageHandlingConfig;
+
+    /// <summary>
+    ///   Registers a handler for the "logging/setLevel" request, sent by the
+    ///   client to adjust the minimum severity the server should emit.
+    /// </summary>
+    /// <param name="AProc">
+    ///   Callback receiving the requested log level (RFC-5424 severities).
+    ///   The server is expected to apply the level synchronously; the response
+    ///   is sent automatically with an empty result. Pass nil to unregister.
+    /// </param>
+    /// <returns>Self for fluent chaining</returns>
+    function OnSetLogLevel(AProc: TProc<TJRPCContext, TLogSetLevel>): TMCPMessageHandlingConfig;
+
+    /// <summary>
+    ///   Read-only access to the registered "notifications/cancelled" handler.
+    ///   Used by the framework to dispatch incoming cancellation notifications.
+    /// </summary>
+    property CancelledProc: TProc<TJRPCContext, TCancelledNotificationParams> read FCancelledProc;
+
+    /// <summary>
+    ///   Read-only access to the registered "notifications/initialized" handler.
+    ///   Used by the framework to dispatch the post-handshake initialized notification.
+    /// </summary>
+    property InitializedProc: TProc<TJRPCContext> read FInitializedProc;
+
+    /// <summary>
+    ///   Read-only access to the registered "logging/setLevel" handler.
+    ///   Used by the framework to apply log level changes requested by the client.
+    /// </summary>
+    property SetLogLevelProc: TProc<TJRPCContext, TLogSetLevel> read FSetLogLevelProc;
   end;
 
   /// <summary>
@@ -243,9 +358,9 @@ type
   ///   Configuration for managing lists of registered classes (prompts, etc.).
   /// </summary>
   TMCPListConfig = class(TMCPBaseConfig)
-  private
-    FClasses: TObjectDictionary<string, TClass>;
   public
+    Registry: TObjectDictionary<string, TClass>;
+
     constructor Create(AConfig: IMCPConfig);
     destructor Destroy; override;
 
@@ -272,7 +387,7 @@ type
     procedure WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
     procedure WriteTool(ATool: TMCPTool; AToolAttr: MCPToolAttribute; AAppAttr: MCPAppAttribute);
   public
-    ToolRegistry: TMCPToolRegistry;
+    Registry: TMCPToolRegistry;
   public
     constructor Create(AConfig: IMCPConfig);
     destructor Destroy; override;
@@ -363,9 +478,10 @@ type
   private
     FServer: TMCPServerConfig;
     FSecurity: TMCPSecurityConfig;
+    FMessageHandling: TMCPMessageHandlingConfig;
+
     FTools: TMCPToolsConfig;
     FResources: TMCPResourcesConfig;
-
     FPrompts: TMCPListConfig;
   public
     constructor Create(AApp: IJRPCApplication); override;
@@ -376,6 +492,8 @@ type
     function Security: TMCPSecurityConfig;
     function Tools: TMCPToolsConfig;
     function Resources: TMCPResourcesConfig;
+    function MessageHandling: TMCPMessageHandlingConfig;
+    function GetConstructorProxy(const AName: string; out AProxy: TJRPCConstructorProxy): Boolean;
 
     function Prompts: TMCPListConfig;
   end;
@@ -393,9 +511,10 @@ uses
 constructor TMCPConfig.Create(AApp: IJRPCApplication);
 begin
   inherited;
-
   FServer := TMCPServerConfig.Create(Self);
   FSecurity := TMCPSecurityConfig.Create(Self);
+  FMessageHandling := TMCPMessageHandlingConfig.Create(Self);
+
   FTools := TMCPToolsConfig.Create(Self);
   FResources := TMCPResourcesConfig.Create(Self);
   FPrompts := TMCPListConfig.Create(Self);
@@ -406,10 +525,23 @@ begin
   FPrompts.Free;
   FResources.Free;
   FTools.Free;
+
+  FMessageHandling.Free;
   FSecurity.Free;
   FServer.Free;
-
   inherited;
+end;
+
+function TMCPConfig.GetConstructorProxy(const AName: string; out AProxy: TJRPCConstructorProxy): Boolean;
+begin
+  Result := FMessageHandling.Registry.GetConstructorProxy(AName, AProxy);
+  if not Result then
+    Result := TJRPCRegistry.Instance.GetConstructorProxy(AName, AProxy);
+end;
+
+function TMCPConfig.MessageHandling: TMCPMessageHandlingConfig;
+begin
+  Result := FMessageHandling;
 end;
 
 function TMCPConfig.Prompts: TMCPListConfig;
@@ -442,12 +574,12 @@ end;
 constructor TMCPListConfig.Create(AConfig: IMCPConfig);
 begin
   inherited;
-  FClasses := TObjectDictionary<string, TClass>.Create;
+  Registry := TObjectDictionary<string, TClass>.Create;
 end;
 
 destructor TMCPListConfig.Destroy;
 begin
-  FClasses.Free;
+  Registry.Free;
   inherited;
 end;
 
@@ -456,9 +588,9 @@ var
   LPair: TPair<string, TClass>;
   LIndex: Integer;
 begin
-  SetLength(Result, FClasses.Count);
+  SetLength(Result, Registry.Count);
   LIndex := 0;
-  for LPair in FClasses do
+  for LPair in Registry do
   begin
     Result[LIndex].Scope := LPair.Key;
     Result[LIndex].MCPClass := LPair.Value;
@@ -468,7 +600,7 @@ end;
 
 function TMCPListConfig.RegisterClass(AClass: TClass): TMCPListConfig;
 begin
-  FClasses.AddOrSetValue(AClass.ClassName, AClass);
+  Registry.AddOrSetValue(AClass.ClassName, AClass);
   Result := Self;
 end;
 
@@ -476,7 +608,7 @@ function TMCPListConfig.CreateInstance(const ANamespace: string): TObject;
 var
   LClass: TClass;
 begin
-  if not FClasses.TryGetValue('', LClass) then
+  if not Registry.TryGetValue('', LClass) then
     raise EJRPCException.CreateFmt('Tool class not found for namespace "%s"', [ANamespace]);
 
   Result := TRttiUtils.CreateInstance(LClass);
@@ -485,14 +617,14 @@ end;
 constructor TMCPToolsConfig.Create(AConfig: IMCPConfig);
 begin
   inherited;
-  ToolRegistry := TMCPToolRegistry.Create([doOwnsValues]);
+  Registry := TMCPToolRegistry.Create([doOwnsValues]);
 end;
 
 function TMCPToolsConfig.CreateInstance(const ATool: string): TObject;
 var
   LTool: TMCPTool;
 begin
-  if not ToolRegistry.TryGetValue(ATool, LTool) then
+  if not Registry.TryGetValue(ATool, LTool) then
     raise EMCPException.CreateFmt('Tool [%s] not found', [ATool]);
 
   Result := TRttiUtils.CreateInstance(LTool.Classe);
@@ -500,7 +632,7 @@ end;
 
 destructor TMCPToolsConfig.Destroy;
 begin
-  ToolRegistry.Free;
+  Registry.Free;
 
   inherited;
 end;
@@ -508,7 +640,7 @@ end;
 function TMCPToolsConfig.ListEnabled: TListToolsResult;
 begin
   Result := TListToolsResult.Create;
-  for var pair in ToolRegistry do
+  for var pair in Registry do
     if not pair.Value.Disabled then
       Result.Tools.Add(pair.Value);
 end;
@@ -546,7 +678,7 @@ begin
 
       WriteTool(LTool, LToolAttr, LAppAttr);
 
-      ToolRegistry.Add(LTool.Name, LTool);
+      Registry.Add(LTool.Name, LTool);
     except
       LTool.Free;
       raise;
@@ -558,13 +690,13 @@ end;
 function TMCPToolsConfig.ListComplete: TListToolsResult;
 begin
   Result := TListToolsResult.Create;
-  for var pair in ToolRegistry do
+  for var pair in Registry do
     Result.Tools.Add(pair.Value);
 end;
 
 procedure TMCPToolsConfig.FilterList(AList: TListToolsResult; AFilter: TMCPToolFilterFunc);
 begin
-  for var pair in ToolRegistry do
+  for var pair in Registry do
     if AFilter(pair.Value) then
       AList.Tools.Add(pair.Value);
 end;
@@ -652,11 +784,12 @@ begin
 
   IconFolder := ExtractFilePath(ParamStr(0));
   ScopeSeparator := '_';  // Default separator (MCP requires ^[a-zA-Z0-9_-]{1,64}$)
-  Capabilities := [TMCPCapability.Tools, TMCPCapability.Resources, TMCPCapability.Prompts];
+  Capabilities := nil;
 end;
 
 destructor TMCPServerConfig.Destroy;
 begin
+  Capabilities.Free;
   WriterRegistry.Free;
   inherited;
 end;
@@ -667,9 +800,31 @@ begin
   Result := Self;
 end;
 
-function TMCPServerConfig.SetCapabilities(ACapabilities: TMCPCapabilities): TMCPServerConfig;
+function TMCPServerConfig.SetCapabilities(ACapabilities: TServerCapabilities): TMCPServerConfig;
 begin
+  if Assigned(Capabilities) then
+    Capabilities.Free;
   Capabilities := ACapabilities;
+  Result := Self;
+end;
+
+function TMCPServerConfig.SetCapabilities(
+  ACapabilities: TMCPCapabilities): TMCPServerConfig;
+begin
+  if Assigned(Capabilities) then
+    Capabilities.Free;
+  Capabilities := TServerCapabilities.Create;
+
+  if TMCPCapability.Tools in ACapabilities then
+    Capabilities.Tools.ListChanged := False;
+  if TMCPCapability.Resources in ACapabilities then
+  begin
+    Capabilities.Resources.ListChanged := False;
+    Capabilities.Resources.Subscribe := False;
+  end;
+  if TMCPCapability.Prompts in ACapabilities then
+    Capabilities.Prompts.ListChanged := False;
+
   Result := Self;
 end;
 
@@ -1149,6 +1304,55 @@ end;
 function TMCPSecurityConfig.SetCORS(AEnable: Boolean): TMCPSecurityConfig;
 begin
   CORS := AEnable;
+  Result := Self;
+end;
+
+{ TMCPMessageHandlingConfig }
+
+constructor TMCPMessageHandlingConfig.Create(AConfig: IMCPConfig);
+begin
+  inherited Create(AConfig);
+  FRegistry := TJRPCRegistry.Create;
+end;
+
+destructor TMCPMessageHandlingConfig.Destroy;
+begin
+  FRegistry.Free;
+  inherited;
+end;
+
+function TMCPMessageHandlingConfig.RegisterApi(AClass: TClass): TMCPMessageHandlingConfig;
+begin
+  FRegistry.RegisterClass(AClass, MCPNeonConfig);
+  Result := Self;
+end;
+
+function TMCPMessageHandlingConfig.OnCancelled(AProc: TProc<TJRPCContext, TCancelledNotificationParams>): TMCPMessageHandlingConfig;
+begin
+  FCancelledProc := AProc;
+  Result := Self;
+end;
+
+function TMCPMessageHandlingConfig.OnInitialized(AProc: TProc<TJRPCContext>): TMCPMessageHandlingConfig;
+begin
+  FInitializedProc := AProc;
+  Result := Self;
+end;
+
+function TMCPMessageHandlingConfig.OnSetLogLevel(AProc: TProc<TJRPCContext, TLogSetLevel>): TMCPMessageHandlingConfig;
+begin
+  FSetLogLevelProc := AProc;
+  Result := Self;
+end;
+
+function TMCPServerConfig.SetCapabilities(
+  AProc: TProc<TServerCapabilities>): TMCPServerConfig;
+begin
+  if Assigned(Capabilities) then
+    Capabilities.Free;
+  Capabilities := TServerCapabilities.Create;
+
+  AProc(Capabilities);
   Result := Self;
 end;
 

@@ -26,6 +26,7 @@ uses
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
   Neon.Core.Serializers.RTL,
+  MCPConnect.JRPC.Core,
   MCPConnect.JRPC.Classes;
 
 type
@@ -180,7 +181,7 @@ type
     Description: NullString;
 
     /// <summary>
-    ///   Intended for UI and end-user contexts — optimized to be human-readable and easily
+    ///   Intended for UI and end-user contexts ï¿½ optimized to be human-readable and easily
     ///   understood, even by those unfamiliar with domain-specific terminology
     /// </summary>
     /// <remarks>
@@ -379,6 +380,13 @@ type
     ///   For example, this information MAY be added to the system prompt.
     /// </summary>
     Instructions: NullString;
+
+    /// <summary>
+    /// When True, the destructor frees Capabilities; when False the instance is shared
+    /// with the owner (e.g. MCPConfig.Server) and must not be freed here.
+    /// </summary>
+    [NeonIgnore]
+    OwnCapabilities: Boolean;
 
   public
     constructor Create;
@@ -728,6 +736,26 @@ type
     function Count: NativeInt;
   end;
 
+  TToolListChangedNotification = class(TJRPCNotification)
+  public
+    constructor Create;
+  end;
+
+  TPromptListChangedNotification = class(TJRPCNotification)
+  public
+    constructor Create;
+  end;
+
+  TResourceListChangedNotification = class(TJRPCNotification)
+  public
+    constructor Create;
+  end;
+
+  TRootsListChangedNotification = class(TJRPCNotification)
+  public
+    constructor Create;
+  end;
+
 function MCPNeonConfig: INeonConfiguration;
 
 
@@ -752,13 +780,15 @@ end;
 constructor TInitializeResult.Create;
 begin
   Capabilities := TServerCapabilities.Create;
+  OwnCapabilities := True;
   ServerInfo := TImplementation.Create;
 end;
 
 destructor TInitializeResult.Destroy;
 begin
   ServerInfo.Free;
-  Capabilities.Free;
+  if OwnCapabilities then
+    Capabilities.Free;
   inherited;
 end;
 
@@ -1446,6 +1476,42 @@ begin
     if ExtExists(AExtension, m.Ext) then
       Exit(m.Mime);
   end;
+end;
+
+{ TToolListChangedNotification }
+
+constructor TToolListChangedNotification.Create;
+begin
+  inherited;
+  Method := 'notifications/tools/list_changed';
+  Params := nil;
+end;
+
+{ TPromptListChangedNotification }
+
+constructor TPromptListChangedNotification.Create;
+begin
+  inherited;
+  Method := 'notifications/prompts/list_changed';
+  Params := nil;
+end;
+
+{ TResourceListChangedNotification }
+
+constructor TResourceListChangedNotification.Create;
+begin
+  inherited;
+  Method := 'notifications/resources/list_changed';
+  Params := nil;
+end;
+
+{ TRootsListChangedNotification }
+
+constructor TRootsListChangedNotification.Create;
+begin
+  inherited;
+  Method := 'notifications/roots/list_changed';
+  Params := nil;
 end;
 
 end.

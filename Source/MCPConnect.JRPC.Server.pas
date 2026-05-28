@@ -25,6 +25,7 @@ type
   private
     FAppConfigurator: TAppConfigurator;
     FConfigRegistry: TJRPCConfigRegistry;
+    FSessionManager: TObject;
   public
     { IJRPCApplication }
     function GetConfigByClassRef(AClass: TJRPCConfigurationClass): TJRPCConfiguration;
@@ -33,8 +34,10 @@ type
 
     function GetConfiguration<T: TJRPCConfiguration>: T;
     function GetConfigByInterfaceRef(AInterfaceRef: TGUID): IInterface;
+    procedure ApplyConfig(AConfig: IJRPCConfiguration);
 
     property Plugin: TAppConfigurator read GetAppConfigurator;
+    property SessionManager: TObject read FSessionManager;
 
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -56,6 +59,8 @@ implementation
 { TJRPCServer }
 
 uses
+  MCPConnect.Session.Core,
+  MCPConnect.Configuration.Session,
   MCPConnect.JRPC.Core;
 
 //function TJRPCServer.Configure<T>: T;
@@ -63,15 +68,30 @@ uses
 //
 //end;
 
+procedure TJRPCServer.ApplyConfig(AConfig: IJRPCConfiguration);
+begin
+  if Supports(AConfig, ISessionConfig) then
+  begin
+    var LSessionManager := FSessionManager as TMCPSessionManager;
+    var LSessionConfig := AConfig as TSessionConfig;
+    if LSessionConfig.TimeoutMinutes > 0 then
+      LSessionManager.TimeoutMinutes := LSessionConfig.TimeoutMinutes;
+    if Assigned(LSessionConfig.SessionClass) then
+      LSessionManager.SessionClass := LSessionConfig.SessionClass;
+  end;
+end;
+
 constructor TJRPCServer.Create(AOwner: TComponent);
 begin
   inherited;
   FAppConfigurator := TAppConfiguratorImpl.Create(Self);
   FConfigRegistry := TJRPCConfigRegistry.Create([doOwnsValues]);
+  FSessionManager := TMCPSessionManager.Create(Self);
 end;
 
 destructor TJRPCServer.Destroy;
 begin
+  FSessionManager.Free;
   FAppConfigurator.Free;
   FConfigRegistry.Free;
   inherited;

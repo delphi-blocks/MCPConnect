@@ -19,7 +19,8 @@ uses
   System.SysUtils, System.Rtti, System.Classes, System.Generics.Collections,
   System.SyncObjs, System.JSON,
 
-  MCPConnect.JRPC.Core;
+  MCPConnect.JRPC.Core,
+  MCPConnect.JRPC.Server;
 
 const
   /// <summary>
@@ -76,16 +77,41 @@ type
   TMCPSessionDataClass = class of TMCPSessionBase;
 
   /// <summary>
+  ///   Drains the inbound queue
+  /// </summary>
+  TInboundQueueHandler = class(TThread)
+  private
+    FInboundQueue: TMCPMessageQueue;
+    FOutboundQueue: TMCPMessageQueue;
+    FServer: TJRPCServer;
+    FSession: TMCPSessionBase;
+   protected
+     procedure Execute; override;
+  public
+    constructor Create(AServer: TJRPCServer; ASession: TMCPSessionBase);
+  end;
+
+  /// <summary>
   ///   Abstract base class for session data.
   ///   Contains only core session properties (ID, timestamps).
   ///   Extend this class to create custom session data with typed properties.
   /// </summary>
   TMCPSessionBase = class abstract
-  private
+  protected
+    FServer: TJRPCServer;
     FSessionId: string;
     FCreatedAt: TDateTime;
     FLastAccessedAt: TDateTime;
+    FInbound: TMCPMessageQueue;
+    FOutbound: TMCPMessageQueue;
+    FInboundQueueHandler: TInboundQueueHandler;
+    // This handle start the thread that process the inbound queue
+    procedure HandleInboudQueue(Sender: TObject; AMessage: TJRPCMessage);
+    procedure StartQueueHandler;
   public
+    constructor Create;
+    destructor Destroy; override;
+
     /// <summary>
     ///   Unique session identifier
     /// </summary>
@@ -100,6 +126,9 @@ type
     ///   Timestamp of last access (updated on each request)
     /// </summary>
     property LastAccessedAt: TDateTime read FLastAccessedAt write FLastAccessedAt;
+
+    property Inbound: TMCPMessageQueue read FInbound write FInbound;
+    property Outbound: TMCPMessageQueue read FOutbound write FOutbound;
   end;
 
   /// <summary>
@@ -128,19 +157,19 @@ type
   /// </summary>
   TMCPSessionManager = class
   private
-    class var FInstance: TMCPSessionManager;
-  private
     FLock: TCriticalSection;
     FSessions: TDictionary<string, TMCPSessionBase>;
     FSessionClass: TMCPSessionDataClass;
     FTimeoutMinutes: Integer;
+    FServer: TJRPCServer;
 
     function GenerateSessionId: string;
     function IsExpired(ASession: TMCPSessionBase): Boolean;
     procedure RemoveExpiredSession(const ASessionId: string);
-  protected
-    class function GetInstance: TMCPSessionManager; static;
   public
+    constructor Create(AServer: TJRPCServer);
+    destructor Destroy; override;
+
     /// <summary>
     ///   Create a new session with a generated ID
     /// </summary>
@@ -176,22 +205,17 @@ type
     /// </summary>
     property TimeoutMinutes: Integer read FTimeoutMinutes write FTimeoutMinutes;
 
-    /// <summary>
-    ///   Singleton instance of the session manager
-    /// </summary>
-    class property Instance: TMCPSessionManager read GetInstance;
-
-    class constructor Create;
-    class destructor Destroy;
-    constructor Create;
-    destructor Destroy; override;
   end;
 
 implementation
 
 uses
   System.DateUtils,
-  Neon.Core.Utils;
+  Neon.Core.Utils,
+  MCPConnect.Configuration.Neon,
+  MCPConnect.Configuration.MCP,
+  MCPConnect.JRPC.Invoker,
+  MCPConnect.JRPC.Classes;
 
 { EMCPSessionException }
 
@@ -238,23 +262,14 @@ end;
 
 { TMCPSessionManager }
 
-class constructor TMCPSessionManager.Create;
+constructor TMCPSessionManager.Create(AServer: TJRPCServer);
 begin
-  FInstance := nil;
-end;
-
-constructor TMCPSessionManager.Create;
-begin
-  inherited;
+  inherited Create;
+  FServer := AServer;
   FLock := TCriticalSection.Create;
   FSessions := TDictionary<string, TMCPSessionBase>.Create;
   FSessionClass := TMCPSessionData;
   FTimeoutMinutes := 30;
-end;
-
-class destructor TMCPSessionManager.Destroy;
-begin
-  FInstance.Free;
 end;
 
 destructor TMCPSessionManager.Destroy;
@@ -281,6 +296,8 @@ begin
     Result.FSessionId := LSessionId;
     Result.FCreatedAt := Now;
     Result.FLastAccessedAt := Now;
+    Result.FServer := FServer;
+    Result.StartQueueHandler;
     FSessions.Add(LSessionId, Result);
   finally
     FLock.Leave;
@@ -311,13 +328,6 @@ begin
   Result := GUIDToString(LGuid);
   // Remove curly braces { and }
   Result := Copy(Result, 2, Length(Result) - 2);
-end;
-
-class function TMCPSessionManager.GetInstance: TMCPSessionManager;
-begin
-  if not Assigned(FInstance) then
-    FInstance := TMCPSessionManager.Create;
-  Result := FInstance;
 end;
 
 function TMCPSessionManager.GetSession(const ASessionId: string): TMCPSessionBase;
@@ -376,6 +386,126 @@ begin
     end;
   finally
     FLock.Leave;
+  end;
+end;
+
+{ TMCPSessionBase }
+
+constructor TMCPSessionBase.Create;
+begin
+  inherited Create;
+  FInbound := TMCPMessageQueue.Create(100);
+  FOutbound := TMCPMessageQueue.Create(100);
+end;
+
+destructor TMCPSessionBase.Destroy;
+begin
+  if Assigned(FInboundQueueHandler) then
+  begin
+    // TThread.Free does Terminate + WaitFor
+    FInboundQueueHandler.Free;
+  end;
+
+  FInbound.Free;
+  FOutbound.Free;
+  inherited;
+end;
+
+procedure TMCPSessionBase.HandleInboudQueue(Sender: TObject;
+  AMessage: TJRPCMessage);
+begin
+  Inbound.Lock;
+  try
+    if FInboundQueueHandler.Terminated then
+    begin
+      // TThread.Free does Terminate + WaitFor
+      FInboundQueueHandler.Free;
+      StartQueueHandler;
+    end;
+  finally
+    Inbound.Unlock;
+  end;
+end;
+
+procedure TMCPSessionBase.StartQueueHandler;
+begin
+  FInboundQueueHandler := TInboundQueueHandler.Create(FServer, Self);
+  FInbound.OnEnqueue := HandleInboudQueue;
+  FInboundQueueHandler.Start;
+end;
+
+{ TInboundQueueHandler }
+
+constructor TInboundQueueHandler.Create(AServer: TJRPCServer; ASession: TMCPSessionBase);
+begin
+  inherited Create(True);
+  FreeOnTerminate := False;
+  FInboundQueue := ASession.Inbound;
+  FOutboundQueue := ASession.Outbound;
+  FServer := AServer;
+  FSession := ASession;
+end;
+
+procedure TInboundQueueHandler.Execute;
+var
+  LInvokerCtx: TJRPCInvokerContext;
+  LConstructorProxy: TJRPCConstructorProxy;
+  LInstance: TObject;
+  LMCPConfig: IMCPConfig;
+  LMessage: TJRPCMessage;
+begin
+  inherited;
+  var LGarbage := TGarbageCollector.CreateInstance;
+  var LContext := TJRPCContext.Create;
+  LContext.AddContent(FSession);
+  LGarbage.Add(LContext);
+  LContext.AddContent(FServer);
+  LMCPConfig := LContext.FindContextDataAs(IMCPConfig) as IMCPConfig;
+  while not Terminated do
+  begin
+    FInboundQueue.Lock;
+    try
+      LMessage := FInboundQueue.Dequeue;
+      if not Assigned(LMessage) then
+      begin
+        Terminate;
+        Break;
+      end;
+    finally
+      FInboundQueue.Unlock;
+    end;
+    try
+      // Skip all messages that aren't TJRPCMethod
+      if LMessage is TJRPCMethod then
+      begin
+        var LMethod := TJRPCMethod(LMessage);
+
+        if Assigned(LMCPConfig) then
+        begin
+          if not LMCPConfig.GetConstructorProxy(LMethod.Method, LConstructorProxy) then
+            raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LMethod.Method]);
+        end
+        else if not TJRPCRegistry.Instance.GetConstructorProxy(LMethod.Method, LConstructorProxy) then
+          raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LMethod.Method]);
+
+        LInstance := LConstructorProxy.ConstructorFunc();
+
+        LGarbage.Add(LInstance);
+
+        // Injects the context inside the instance
+        LContext.Inject(LInstance);
+
+        LInvokerCtx.Request := LMethod;
+        LInvokerCtx.Garbage := LGarbage;
+        LInvokerCtx.Responses := FOutboundQueue;
+        LInvokerCtx.ApiInstance := LInstance;
+        //LInvokerCtx.NeonConfig := LConstructorProxy.NeonConfig;
+        LInvokerCtx.SelectConfig(LConstructorProxy.NeonConfig, LContext.FindContextDataAs<TJRPCNeonConfig>);
+        TJRPCInvoker.Invoke(LInvokerCtx);
+      end;
+    finally
+      LMessage.Free;
+    end;
   end;
 end;
 

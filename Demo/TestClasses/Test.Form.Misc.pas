@@ -4,7 +4,11 @@ interface
 
 uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
-  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls;
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls,
+
+  System.Generics.Collections,
+  MCPConnect.JRPC.Core,
+  MCPConnect.Session.Core;
 
 type
   TfrmMisc = class(TForm)
@@ -13,10 +17,20 @@ type
     Button2: TButton;
     btnMatches: TButton;
     memoLog: TMemo;
+    btnDelphiQueue: TButton;
+    btnMCPQueue: TButton;
+    btnPrintQueue: TButton;
+    procedure FormDestroy(Sender: TObject);
+    procedure FormCreate(Sender: TObject);
     procedure btnMatchesClick(Sender: TObject);
+    procedure btnDelphiQueueClick(Sender: TObject);
+    procedure btnMCPQueueClick(Sender: TObject);
+    procedure btnPrintQueueClick(Sender: TObject);
     procedure Button2Click(Sender: TObject);
   private
-    { Private declarations }
+    FCount: Integer;
+    FDelphi: TThreadedQueue<Integer>;
+    FMCP: TMCPMessageQueueBase<TJRPCNotification>;
   public
     { Public declarations }
   end;
@@ -29,6 +43,7 @@ implementation
 uses
   MCPConnect.MCP.Types,
   MCPConnect.JRPC.Classes,
+
   System.RegularExpressions;
 
 {$R *.dfm}
@@ -74,6 +89,18 @@ begin
     Result := Result + [TStringPair.Create(LName, LMatch.Groups[LName].Value)];
 end;
 
+procedure TfrmMisc.FormDestroy(Sender: TObject);
+begin
+  FDelphi.Free;
+  FMCP.Free;
+end;
+
+procedure TfrmMisc.FormCreate(Sender: TObject);
+begin
+  FDelphi := TThreadedQueue<Integer>.Create(5);
+  FMCP := TMCPMessageQueueBase<TJRPCNotification>.Create(5);
+end;
+
 procedure TfrmMisc.btnMatchesClick(Sender: TObject);
 begin
   var res: TArray<string> := [];
@@ -84,6 +111,45 @@ begin
     res := res + [match.Value];
     memoLog.Lines.Add(match.Value);
   end;
+end;
+
+procedure TfrmMisc.btnDelphiQueueClick(Sender: TObject);
+begin
+  memoLog.Lines.Add(Format('Enqueing %d', [FCount]));
+  FDelphi.Enqueue(FCount);
+  Inc(FCount);
+
+  memoLog.Lines.Add(Format('Queue has %d items', [FDelphi.Count]));
+
+end;
+
+procedure TfrmMisc.btnMCPQueueClick(Sender: TObject);
+begin
+  memoLog.Lines.Add(Format('Enqueing %d', [FCount]));
+
+  var n := TJRPCNotification.Create;
+  n.InternalId := FCount;
+  n.Method := 'notification/log';
+  n.AddNamedParam('level', 'Debug');
+  FMCP.Enqueue(n);
+  Inc(FCount);
+
+  memoLog.Lines.Add(Format('Queue has %d items', [FMCP.Count]));
+end;
+
+procedure TfrmMisc.btnPrintQueueClick(Sender: TObject);
+begin
+  var n := FMCP.Dequeue;
+  if not Assigned(n) then
+  begin
+    memoLog.Lines.Add('Nothing to deque');
+    Exit;
+  end;
+
+  memoLog.Lines.Add(Format('Dequeuing [%d]', [n.InternalId]));
+  n.Free;
+
+  memoLog.Lines.Add(Format('Queue has %d items', [FMCP.Count]));
 end;
 
 procedure TfrmMisc.Button2Click(Sender: TObject);

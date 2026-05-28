@@ -1421,7 +1421,8 @@ end;
 
 function TJRPCMessages.GetIsEmpty: Boolean;
 begin
-  Result := FList.IsEmpty;
+  // Delphi 11 doesn't have FList.IsEmpty
+  Result := FList.Count = 0;
 end;
 
 function TJRPCMessages.GetMessageType(AMessage: TJSONObject): TJRPCMessageType;

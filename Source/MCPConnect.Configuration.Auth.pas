@@ -16,7 +16,7 @@ unit MCPConnect.Configuration.Auth;
 interface
 
 uses
-  System.Classes, System.SysUtils,
+  System.Classes, System.SysUtils, System.Net.URLClient,
   MCPConnect.Configuration.Core;
 
 {$SCOPEDENUMS ON}
@@ -100,6 +100,40 @@ type
     function SetTokenCustomHeader(const ACustomHeader: string): IAuthTokenConfig;
   end;
 
+  IOAuthConfig =  interface(IJRPCConfiguration)
+    ['{00A0F0C3-5865-43DF-A710-782815D3989E}']
+    function SetRealm(const ARealm: string): IOAuthConfig;
+    function SetResource(const AUrl: string): IOAuthConfig;
+    function AddAuthorizationServer(const AAuthorizationServer: string): IOAuthConfig;
+    function AddScopesSupported(const AScopesSupported: string): IOAuthConfig;
+  end;
+
+  [Implements(IOAuthConfig)]
+  TOAuthConfig = class(TJRPCConfiguration, IOAuthConfig)
+  public const
+    ProtectedResourcePath = '/.well-known/oauth-protected-resource';
+  private
+    FResource: string;
+    FRealm: string;
+    FAuthorizationServers: TArray<string>;
+    FScopesSupported: TArray<string>;
+    function GetResourceMetadata: string;
+  public
+    function SetRealm(const ARealm: string): IOAuthConfig;
+    function SetResource(const AUrl: string): IOAuthConfig;
+    function AddAuthorizationServer(const AAuthorizationServer: string): IOAuthConfig;
+    function AddScopesSupported(const AScopesSupported: string): IOAuthConfig;
+
+    property Realm: string read FRealm;
+    property Resource: string read FResource;
+    property AuthorizationServers: TArray<string> read FAuthorizationServers;
+    property ScopesSupported: TArray<string> read FScopesSupported;
+    property ResourceMetadata: string read GetResourceMetadata;
+
+    constructor Create(AApp: IJRPCApplication); override;
+  end;
+
+
   [Implements(IAuthTokenConfig)]
   TAuthTokenConfig = class(TJRPCConfiguration, IAuthTokenConfig)
   private
@@ -142,7 +176,55 @@ begin
   Result := Self;
 end;
 
+{ TOAuthConfig }
+
+function TOAuthConfig.AddAuthorizationServer(
+  const AAuthorizationServer: string): IOAuthConfig;
+begin
+  FAuthorizationServers := FAuthorizationServers + [AAuthorizationServer];
+  Result := Self;
+end;
+
+function TOAuthConfig.AddScopesSupported(
+  const AScopesSupported: string): IOAuthConfig;
+begin
+  FScopesSupported := FScopesSupported + [AScopesSupported];
+  Result := Self;
+end;
+
+constructor TOAuthConfig.Create(AApp: IJRPCApplication);
+begin
+  inherited;
+  FRealm := 'mcp';
+  FAuthorizationServers := [];
+  FScopesSupported := [];
+end;
+
+function TOAuthConfig.GetResourceMetadata: string;
+begin
+  if FResource = '' then
+    raise Exception.Create('OAuth resource config not specified');
+
+  var LURI := TURI.Create(FResource);
+  LURI.Path := ProtectedResourcePath;
+
+  Result := LURI.ToString;
+end;
+
+function TOAuthConfig.SetRealm(const ARealm: string): IOAuthConfig;
+begin
+  FRealm := ARealm;
+  Result := Self;
+end;
+
+function TOAuthConfig.SetResource(const AUrl: string): IOAuthConfig;
+begin
+  FResource := AUrl;
+  Result := Self;
+end;
+
 initialization
   TJRPCConfigClassRegistry.Instance.RegisterConfigClass(TAuthTokenConfig);
+  TJRPCConfigClassRegistry.Instance.RegisterConfigClass(TOAuthConfig);
 
 end.

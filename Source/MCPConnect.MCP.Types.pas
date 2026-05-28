@@ -1,4 +1,4 @@
-{******************************************************************************}
+﻿{******************************************************************************}
 {                                                                              }
 {  Delphi MCP Connect Library                                                  }
 {                                                                              }
@@ -44,6 +44,86 @@ type
   TAnyMapOwned = class(TDictionary<string, TValue>)
   public
     destructor Destroy; override;
+  end;
+
+  TOAuthProtectedResourceMetadata = class
+  private
+    FResource: string;
+    FAuthorizationServers: TArray<string>;
+    FScopesSupported: TArray<string>;
+    FBearerMethodsSupported: TArray<string>;
+    FResourceName: string;
+    FResourceDocumentation: string;
+  public
+
+    /// <summary>
+    /// REQUIRED - The URI of the protected resource (es. http://localhost:8080/mcp)
+    /// </summary>
+    property Resource: string read FResource write FResource;
+
+    /// <summary>
+    /// REQUIRED - Lista degli authorization server che possono emettere token per questa risorsa
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)]
+    property AuthorizationServers: TArray<string> read FAuthorizationServers write FAuthorizationServers;
+
+    /// <summary>
+    /// OPTIONAL - Scopes supportati dalla risorsa
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)]
+    property ScopesSupported: TArray<string> read FScopesSupported write FScopesSupported;
+
+    /// <summary>
+    /// OPTIONAL - Metodi Bearer supportati (es. 'header', 'body', 'query')
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)]
+    property BearerMethodsSupported: TArray<string> read FBearerMethodsSupported write FBearerMethodsSupported;
+
+    /// <summary>
+    /// OPTIONAL - Nome leggibile della risorsa
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)]
+    property ResourceName: string read FResourceName write FResourceName;
+
+    /// <summary>
+    /// OPTIONAL - URL alla documentazione della risorsa
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)]
+    property ResourceDocumentation: string read FResourceDocumentation write FResourceDocumentation;
+  end;
+
+  /// <summary>
+  ///   Holds the decoded payload (claims) of the OAuth access token.
+  ///   Always instantiated and injected into the request context.
+  /// </summary>
+  TMCPAccessToken = class
+  private
+    FPayload: TJSONObject;
+    function GetName: string;
+    function GetEMail: string;
+    function GetSubject: string;
+    function GetScope: string;
+    function GetEmailVerified: Boolean;
+    function GetPreferredUsername: string;
+    function GetGivenName: string;
+    function GetFamilyName: string;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    procedure FromString(const AJsonString :string);
+    function ToString: string; override;
+
+    property Payload: TJSONObject read FPayload;
+
+    property Subject: string read GetSubject;
+    property Name: string read GetName;
+    property EMail: string read GetEMail;
+    property Scope: string read GetScope;
+    property EmailVerified: Boolean read GetEmailVerified;
+    property PreferredUsername: string read GetPreferredUsername;
+    property GivenName: string read GetGivenName;
+    property FamilyName: string read GetFamilyName;
   end;
 
   TMetaClass = class
@@ -906,6 +986,77 @@ destructor TEmbeddedResourceBlob.Destroy;
 begin
   Resource.Free;
   inherited;
+end;
+
+{ TMCPAccessToken }
+
+constructor TMCPAccessToken.Create;
+begin
+  inherited Create;
+  FPayload := TJSONObject.Create;
+end;
+
+destructor TMCPAccessToken.Destroy;
+begin
+  FPayload.Free;
+  inherited;
+end;
+
+procedure TMCPAccessToken.FromString(const AJsonString: string);
+begin
+  var LPayload := TJSONObject.ParseJSONValue(AJsonString, True, True);
+  try
+    var LTempPayload := FPayload;
+    FPayload := LPayload as TJSONObject;
+    LPayload := LTempPayload;
+  finally
+    LPayload.Free;
+  end;
+end;
+
+function TMCPAccessToken.GetEMail: string;
+begin
+  Result := FPayload.GetValue<string>('email', '');
+end;
+
+function TMCPAccessToken.GetName: string;
+begin
+  Result := FPayload.GetValue<string>('name', '');
+end;
+
+function TMCPAccessToken.GetSubject: string;
+begin
+  Result := FPayload.GetValue<string>('sub', '');
+end;
+
+function TMCPAccessToken.GetScope: string;
+begin
+  Result := FPayload.GetValue<string>('scope', '');
+end;
+
+function TMCPAccessToken.GetEmailVerified: Boolean;
+begin
+  Result := FPayload.GetValue<Boolean>('email_verified', False);
+end;
+
+function TMCPAccessToken.GetPreferredUsername: string;
+begin
+  Result := FPayload.GetValue<string>('preferred_username', '');
+end;
+
+function TMCPAccessToken.GetGivenName: string;
+begin
+  Result := FPayload.GetValue<string>('given_name', '');
+end;
+
+function TMCPAccessToken.GetFamilyName: string;
+begin
+  Result := FPayload.GetValue<string>('family_name', '');
+end;
+
+function TMCPAccessToken.ToString: string;
+begin
+  Result := FPayload.ToJSON;
 end;
 
 { TMetaClass }

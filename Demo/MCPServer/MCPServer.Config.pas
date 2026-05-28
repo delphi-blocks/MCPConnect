@@ -54,6 +54,14 @@ begin
 //      .SetToken('my-secret-token')
 //    .ApplyConfig
 
+    .Plugin.Configure<IOAuthConfig>
+      .SetResource('http://localhost:8080/mcp')
+      .AddAuthorizationServer(GetEnvironmentVariable('OIDC_AUTH_SERVER'))
+      .AddScopesSupported('openid')
+      .AddScopesSupported('email')
+      .AddScopesSupported('profile')
+    .ApplyConfig
+
     .Plugin.Configure<ISessionConfig>
       .SetLocation(TSessionIdLocation.Header)
       .SetHeaderName('Mcp-Session-Id')
@@ -120,8 +128,8 @@ begin
 
       .Security
         .SetCORS(True)
-        .SetAllowedMethods(['POST'])
-        .SetAllowedOrigins(['http://localhost'])
+        .SetAllowedMethods(['GET','POST', 'OPTIONS'])
+        .SetAllowedOrigins(['http://localhost', 'http://127.0.0.1'])
       .BackToMCP
 
       .Resources

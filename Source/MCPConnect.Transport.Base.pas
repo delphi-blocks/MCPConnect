@@ -132,10 +132,12 @@ type
     FContext: TJRPCContext;
     FGarbage: IGarbageCollector;
     FSession: TMCPSessionBase;
+    FAccessToken: TMCPAccessToken;
 
     FMCPConfig: TMCPConfig;
     FServer: TJRPCServer;
     FAuthTokenConfig: TAuthTokenConfig;
+    FOAuthConfig: TOAuthConfig;
     FSessionConfig: TSessionConfig;
     FResponseWriter: IMCPTransportWriter;
     FSendResponseHeadersProc: TProc<TMCPTransportResponse>;
@@ -143,6 +145,7 @@ type
     procedure InjectCORS;
     function CheckOrigin: Boolean;
     function CheckAuthorization: Boolean;
+    function CheckOAuth: Boolean;
     function ExtractSessionId: string;
     function HandleSession: TMCPSessionBase;
     procedure HandleMessage(AMessage: TJRPCMessage; AResponseQueue: TMCPMessageQueue);
@@ -166,10 +169,23 @@ type
 implementation
 
 uses
-  System.IOUtils, System.JSON, Logify,
+  System.IOUtils, System.JSON, System.NetEncoding, Logify,
   MCPConnect.Transport.MediaType,
   MCPConnect.Configuration.Neon,
   MCPConnect.JRPC.Invoker;
+
+
+function Base64UrlDecode(const AInput: string): string;
+var
+  LValue: string;
+begin
+  LValue := AInput.Replace('-', '+').Replace('_', '/');
+  case Length(LValue) mod 4 of
+    2: LValue := LValue + '==';
+    3: LValue := LValue + '=';
+  end;
+  Result := TEncoding.UTF8.GetString(TNetEncoding.Base64.DecodeStringToBytes(LValue));
+end;
 
 
 { TMCPTransportHandler }
@@ -178,18 +194,21 @@ constructor TMCPTransportHandler.Create(AServer: TJRPCServer; AResponseWriter: I
 begin
   FRequest := TMCPTransportRequest.Create;
   FResponse := TMCPTransportResponse.Create;
+  FAccessToken := TMCPAccessToken.Create;
 
   FServer := AServer;
   FResponseWriter := AResponseWriter;
   FMCPConfig := FServer.GetConfiguration<TMCPConfig>;
   FAuthTokenConfig := FServer.GetConfiguration<TAuthTokenConfig>;
   FSessionConfig := FServer.GetConfiguration<TSessionConfig>;
+  FOAuthConfig := FServer.GetConfiguration<TOAuthConfig>;
 end;
 
 destructor TMCPTransportHandler.Destroy;
 begin
   FRequest.Free;
   FResponse.Free;
+  FAccessToken.Free;
 
   Logger.LogDebug('MCPTransportHandler destroyed');
   inherited;
@@ -222,6 +241,50 @@ begin
     else
       raise EJRPCException.Create('Invalid token location');
     end;
+  end;
+end;
+
+function TMCPTransportHandler.CheckOAuth: Boolean;
+begin
+  if Length(FOAuthConfig.AuthorizationServers) < 1 then
+    Exit(True);
+
+  if SameText(FRequest.Command, 'OPTIONS') then
+    Exit(True);
+
+  Result := False;
+  if (SameText(FRequest.Url, TOAuthConfig.ProtectedResourcePath) or SameText(FRequest.Url, TOAuthConfig.ProtectedResourcePath + '/mcp')) and (FRequest.Command = 'GET') then
+  begin
+    FResponse.Code := HTTP_CODE_OK;
+    FResponse.ContentType := TMediaType.APPLICATION_JSON;
+
+    var LMetadata := TOAuthProtectedResourceMetadata.Create;
+    try
+      LMetadata.Resource := FOAuthConfig.Resource;
+      LMetadata.AuthorizationServers := FOAuthConfig.AuthorizationServers;
+      LMetadata.ScopesSupported := FOAuthConfig.ScopesSupported;
+      FResponse.Content := TNeon.ObjectToJSONString(LMetadata, TNeonConfiguration.Snake);
+    finally
+      LMetadata.Free;
+    end;
+  end
+  else
+  begin
+    var LAuthHeader := FRequest.GetHeader('Authorization');
+    if LAuthHeader.StartsWith('Bearer ') then
+    begin
+      // TODO: validate the token (signature, issuer, audience, expiration)
+      // For now just extract and decode the payload into the access token object
+      var LToken := LAuthHeader.Substring(Length('Bearer '));
+      var LParts := LToken.Split(['.']);
+      if Length(LParts) >= 2 then
+      begin
+        FAccessToken.FromString(Base64UrlDecode(LParts[1]));
+      end;
+      Exit(True);
+    end;
+    FResponse.Code := HTTP_CODE_UNAUTHORIZED;
+    FResponse.Headers.AddOrSetValue('WWW-Authenticate', Format('Bearer realm="%s", resource_metadata=%s', [FOAuthConfig.Realm, FOAuthConfig.ResourceMetadata]));
   end;
 end;
 
@@ -260,12 +323,16 @@ begin
     if not CheckAuthorization then
       raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, 'Authorization check failed');
 
+    if not CheckOAuth then
+      Exit;
+
     FGarbage := TGarbageCollector.CreateInstance;
     FContext := TJRPCContext.Create;
 
     FGarbage.Add(FContext);
     FContext.AddContent(FGarbage);
     FContext.AddContent(FServer);
+    FContext.AddContent(FAccessToken);
 
     // Handle session (get existing or create new)
     FSession := HandleSession;

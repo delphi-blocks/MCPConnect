@@ -39,6 +39,7 @@ MCPConnect handles the serialization, routing, and context management required f
   * **Automatic Routing:** The framework automatically scans and registers methods decorated with the appropriate attributes, handling all request routing.
   * **Easy-to-use** classes for tools, prompts, and resources
   * **Session Management:** Thread-safe session support with configurable timeout, automatic cleanup, and support for both generic (TJSONObject) and custom typed session data. Sessions are automatically injected via `[Context]` attribute.
+  * **Notifications:** Full bidirectional notification support. Server-to-client: tools can push notifications *while running* — e.g. progress updates or `list_changed` events (`tools/list_changed`, `resources/list_changed`, `prompts/list_changed`) — by enqueuing them on a `[Context]`-injected message queue, streamed over HTTP (Server-Sent Events) and STDIO. Client-to-server: inbound client notifications can be handled too.
   * **API-Key** authentication for http transport (more to be implemented)
   * **JSON-RPC** MCPConnect contains a JSON-RPC library (`JRPC`) a comprehensive, high-performance **JSON-RPC 2.0** library built specifically for Delphi.
  *  **Automatic JSON Schema generation** - Using the powerful Neon TSchemaGenaerator, MCPConnect support any Delphi type as parameter or result. 

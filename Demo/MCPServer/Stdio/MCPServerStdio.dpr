@@ -32,28 +32,20 @@ uses
   MCPServer.Config in '..\MCPServer.Config.pas',
   MCPServer.Resources in '..\MCPServer.Resources.pas',
   MCPServer.Apps in '..\MCPServer.Apps.pas',
-  MCPServer.Notifications in '..\MCPServer.Notifications.pas';
+  MCPServer.Notifications in '..\MCPServer.Notifications.pas',
+  MCPServer.Prompts in '..\MCPServer.Prompts.pas';
 
 procedure StartServer;
 var
-  LJRPCServer: TJRPCServer;
-  LStdioServer: TJRPCStdioServer;
+  LServer: TJRPCStdioServer;
 begin
-  LJRPCServer := TJRPCServer.Create(nil);
+  LServer := TJRPCStdioServer.Create(nil);
   try
-    TServerConfigurator.ConfigureServer(LJRPCServer);
-
-    LStdioServer := TJRPCStdioServer.Create(nil);
-    try
-      LStdioServer.Server := LJRPCServer;
-      LStdioServer.StartServerAndWait;
-    finally
-      LStdioServer.Free;
-    end;
+    TServerConfigurator.ConfigureServer(LServer.JRPCServer);
+    LServer.StartServerAndWait;
   finally
-    LJRPCServer.Free;
+    LServer.Free;
   end;
-
 end;
 
 begin

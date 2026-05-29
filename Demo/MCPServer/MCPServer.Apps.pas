@@ -10,9 +10,9 @@ uses
   Neon.Core.Persistence.JSON,
 
   MCPConnect.JRPC.Core,
+  MCPConnect.JRPC.Classes,
   MCPConnect.MCP.Types,
   MCPConnect.MCP.Attributes,
-  MCPConnect.JRPC.Classes,
   MCPConnect.Session.Core;
 
 type

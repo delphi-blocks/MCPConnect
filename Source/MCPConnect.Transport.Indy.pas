@@ -27,7 +27,7 @@ uses
 type
   TJRPCIndyBridge = class(TComponent)
   private
-    FServer: TJRPCServer;
+    FJRPCServer: TJRPCServer;
     procedure LogRequest(const ARequest: TMCPTransportRequest);
     {$HINTS OFF}
     procedure LogResponse(const AResponse: TMCPTransportResponse);
@@ -40,21 +40,21 @@ type
   public
     procedure HandleRequest(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
 
-    property Server: TJRPCServer read FServer write FServer;
-
+    property JRPCServer: TJRPCServer read FJRPCServer write FJRPCServer;
   end;
 
   TJRPCIndyServer = class(TIdCustomHTTPServer)
   private
-    FServer: TJRPCServer;
+    FJRPCServer: TJRPCServer;
     FBridge: TJRPCIndyBridge;
     procedure ParseAuthentication(AContext: TIdContext; const AAuthType, AAuthData: string; var VUsername, VPassword: String; var VHandled: Boolean);
-    procedure SetServer(const Value: TJRPCServer);
   public
     constructor Create(AOwner: TComponent);
     destructor Destroy; override;
 
-    property Server: TJRPCServer read FServer write SetServer;
+    property JRPCServer: TJRPCServer read FJRPCServer;
+  public
+    class function CreateMCPServer(AOwner: TComponent): TJRPCIndyServer;
   end;
 
   TMCPTransportWriterIndy = class(TInterfacedObject, IMCPTransportWriter)
@@ -81,10 +81,10 @@ procedure TJRPCIndyBridge.HandleRequest(AContext: TIdContext; ARequestInfo: TIdH
 var
   LMcpHandler: IMCPTransportHandler;
 begin
-  if not Assigned(FServer) then
-    raise EJRPCException.Create('JRPC Server not found');
+  if not Assigned(FJRPCServer) then
+    raise EJRPCException.Create('JRPC JRPCServer not found');
 
-  LMcpHandler := TMCPTransportHandler.Create(FServer, TMCPTransportWriterIndy.Create(AContext.Connection));
+  LMcpHandler := TMCPTransportHandler.Create(FJRPCServer, TMCPTransportWriterIndy.Create(AContext.Connection));
 
   LMcpHandler.SendResponseHeadersProc :=
     procedure (AResponse: TMCPTransportResponse)
@@ -132,15 +132,23 @@ constructor TJRPCIndyServer.Create(AOwner: TComponent);
 begin
   inherited;
   FBridge := TJRPCIndyBridge.Create(nil);
+  FJRPCServer := TJRPCServer.Create(nil);
+  FBridge.JRPCServer := FJRPCServer;
 
   OnParseAuthentication := ParseAuthentication;
   OnCommandGet := FBridge.HandleRequest;
   OnCommandOther := FBridge.HandleRequest;
 end;
 
+class function TJRPCIndyServer.CreateMCPServer(AOwner: TComponent): TJRPCIndyServer;
+begin
+  Result := TJRPCIndyServer.Create(AOwner);
+end;
+
 destructor TJRPCIndyServer.Destroy;
 begin
   FBridge.Free;
+  FJRPCServer.Free;
   inherited;
 end;
 
@@ -149,12 +157,6 @@ procedure TJRPCIndyServer.ParseAuthentication(AContext: TIdContext;
   var VHandled: Boolean);
 begin
   VHandled := True;
-end;
-
-procedure TJRPCIndyServer.SetServer(const Value: TJRPCServer);
-begin
-  FServer := Value;
-  FBridge.Server := Value;
 end;
 
 procedure TJRPCIndyBridge.LogHttpResponse(const AResponse: TIdHTTPResponseInfo);

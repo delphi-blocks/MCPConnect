@@ -17,6 +17,7 @@ interface
 
 uses
   System.SysUtils,
+  System.Classes,
   System.Rtti,
   System.JSON,
   System.Types,
@@ -62,6 +63,8 @@ type
     ///   annotations.title should be given precedence over using name, if present)
     /// </remarks>
     Title: NullString;
+
+    class function New(const AName, ADescription: string): TPromptArgument; static;
   end;
 
   TPromptArguments = TArray<TPromptArgument>;
@@ -71,6 +74,11 @@ type
   /// Represents a known resource that the server is capable of reading.
   /// </summary>
   TMCPPrompt = class(TMetaClass)
+  public
+    [NeonIgnore] Classe: TClass;
+    [NeonIgnore] Method: TRttiMethod;
+    [NeonIgnore] Category: string;
+    [NeonIgnore] Disabled: Boolean;
   public
 
     /// <summary>
@@ -108,18 +116,19 @@ type
   end;
 
   TMCPPrompts = TObjectList<TMCPPrompt>;
+  TMCPPromptRegistry = class(TObjectDictionary<string, TMCPPrompt>);
 
 
   TGetPromptParams = class(TMetaClass)
     /// <summary>
     ///  The name of the prompt or prompt template.
     /// </summary>
-    [NeonProperty('name')] Name: string;
+    Name: string;
 
     /// <summary>
     /// Arguments to use for templating the prompt.
     /// </summary>
-    [NeonProperty('arguments')] [NeonInclude(IncludeIf.NotEmpty)] Arguments: TJSONObject;
+    [NeonInclude(IncludeIf.NotEmpty)] Arguments: TJSONObject;
   public
     constructor Create;
     destructor Destroy; override;
@@ -129,20 +138,15 @@ type
   ///   Used by the client to get a prompt provided by the server.
   /// </summary>
   TGetPromptRequest = class
-    [NeonProperty('method')] Method: string;
+    Method: string;
 
-    [NeonProperty('params')] Params: TGetPromptParams;
+    Params: TGetPromptParams;
   public
     constructor Create;
     destructor Destroy; override;
   end;
 
-  /// <summary>
-  /// PromptMessage describes a message returned as part of a prompt.
-  /// This is similar to `SamplingMessage`, but also supports the embedding of
-  /// resources from the MCP server.
-  /// </summary>
-  TPromptMessage = class(TToolContent)
+  TPromptMessageBase = class
   public
     /// <summary>
     ///   The sender or recipient of messages and data in a conversation.
@@ -150,10 +154,40 @@ type
     /// <remarks>
     ///   Valid values: `assistant`, `user`
     /// </remarks>
-    [NeonProperty('rule')] Role: string;
-  end;
-  TPromptMessages = TObjectList<TPromptMessage>;
+    Role: string;
 
+    //[NeonIgnore] ContentType: TResultContentType;
+  end;
+
+  /// <summary>
+  ///   PromptMessage with a variable content
+  /// </summary>
+  TPromptMessage<T: TToolContent, constructor> = class(TPromptMessageBase)
+  public
+    /// <summary>
+    ///   Can be TextContent, ImageContent, AudioContent, ResourceLink or EmbeddedResource
+    /// </summary>
+    Content: T;
+
+    constructor Create(const ARole: string);
+    destructor Destroy; override;
+  end;
+
+  TPromptMessages = class(TObjectList<TPromptMessageBase>)
+  public
+    function AddText(const ARole, AText: string): TTextContent;
+
+    procedure AddImage(const ARole, AMime, ABase64: string); overload;
+    procedure AddImage(const ARole, AMime: string; AImage: TStream); overload;
+
+    procedure AddAudio(const ARole, AMime, ABase64: string); overload;
+    procedure AddAudio(const ARole, AMime: string; AAudio: TStream); overload;
+
+    procedure AddLink(const ARole, AMime, AUri, ADescription: string);
+
+    procedure AddBlob(const ARole, AMime, ABlob: string); overload;
+    procedure AddBlob(const ARole, AMime: string; ABlob: TStream); overload;
+  end;
 
   /// <summary>
   ///  The server's response to a prompts/get request from the client.
@@ -165,12 +199,12 @@ type
     /// A description of what this resource represents.
     /// </summary>
     /// <remarks>This can be used by clients to improve the LLM's understanding of available resources. It can be thought of like a 'hint' to the model.</remarks>
-    [NeonProperty('description')] Description: NullString;
+    Description: NullString;
 
     /// <summary>
     /// The MIME type of this resource, if known.
     /// </summary>
-    [NeonProperty('messages ')] Messages: TPromptMessages;
+    Messages: TPromptMessages;
   public
     constructor Create;
     destructor Destroy; override;
@@ -255,13 +289,115 @@ end;
 constructor TListPromptsResult.Create;
 begin
   inherited;
-  Prompts := TMCPPrompts.Create;
+  Prompts := TMCPPrompts.Create(False);
 end;
 
 destructor TListPromptsResult.Destroy;
 begin
   Prompts.Free;
   inherited;
+end;
+
+{ TPromptArgument }
+
+class function TPromptArgument.New(const AName, ADescription: string): TPromptArgument;
+begin
+  Result.Name := AName;
+  Result.Description := ADescription;
+end;
+
+{ TPromptMessage<T> }
+
+constructor TPromptMessage<T>.Create(const ARole: string);
+begin
+  if ARole.IsEmpty then
+    Role := 'user'
+  else
+    Role := ARole;
+  Content := T.Create;
+end;
+
+destructor TPromptMessage<T>.Destroy;
+begin
+  Content.Free;
+  inherited;
+end;
+
+{ TPromptMessages }
+
+procedure TPromptMessages.AddImage(const ARole, AMime, ABase64: string);
+begin
+  var p := TPromptMessage<TImageContent>.Create(ARole);
+
+  p.Content.Data := ABase64;
+  p.Content.&Type := 'image';
+  p.Content.MimeType := AMime;
+  Self.Add(p);
+end;
+
+procedure TPromptMessages.AddBlob(const ARole, AMime, ABlob: string);
+begin
+  var p := TPromptMessage<TEmbeddedResourceBlob>.Create(ARole);
+
+  p.Content.Resource.MimeType := AMime;
+  p.Content.Resource.Blob := ABlob;
+  Self.Add(p);
+end;
+
+procedure TPromptMessages.AddImage(const ARole, AMime: string; AImage: TStream);
+begin
+  var p := TPromptMessage<TImageContent>.Create(ARole);
+
+  p.Content.Data := p.Content.DataFromStream(AImage);
+  p.Content.MimeType := AMime;
+  Self.Add(p);
+end;
+
+procedure TPromptMessages.AddLink(const ARole, AMime, AUri, ADescription: string);
+begin
+  var p := TPromptMessage<TResourceLink>.Create(ARole);
+
+  p.Content.Uri := AUri;
+  p.Content.MimeType := AMime;
+  p.Content.Description := ADescription;
+  Self.Add(p);
+end;
+
+function TPromptMessages.AddText(const ARole, AText: string): TTextContent;
+begin
+  var p := TPromptMessage<TTextContent>.Create(ARole);
+
+  p.Content.Text := AText;
+  Self.Add(p);
+
+  Result := p.Content;
+end;
+
+procedure TPromptMessages.AddAudio(const ARole, AMime: string; AAudio: TStream);
+begin
+  var p := TPromptMessage<TAudioContent>.Create(ARole);
+
+  p.Content.Data := p.Content.DataFromStream(AAudio);
+  p.Content.MimeType := AMime;
+  Self.Add(p);
+end;
+
+procedure TPromptMessages.AddAudio(const ARole, AMime, ABase64: string);
+begin
+  var p := TPromptMessage<TAudioContent>.Create(ARole);
+
+  p.Content.Data := ABase64;
+  p.Content.MimeType := AMime;
+  Self.Add(p);
+end;
+
+procedure TPromptMessages.AddBlob(const ARole, AMime: string; ABlob: TStream);
+begin
+  var p := TPromptMessage<TEmbeddedResourceBlob>.Create(ARole);
+
+  p.Content.Resource.MimeType := AMime;
+  p.Content.Resource.Blob := p.Content.DataFromStream(ABlob);
+  Self.Add(p);
 end;
 
 end.

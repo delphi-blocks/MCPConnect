@@ -20,12 +20,18 @@ uses
 
   MCPConnect.MCP.Attributes,
   MCPConnect.MCP.Types,
-  MCPConnect.MCP.Tools;
+  MCPConnect.MCP.Tools,
+  MCPConnect.MCP.Prompts;
 
 
 type
   TMCPToolContext = record
     Result: TContentList;
+    Attributes: TAttributes;
+  end;
+
+  TMCPPromptContext = record
+    Result: TPromptMessages;
     Attributes: TAttributes;
   end;
 
@@ -48,6 +54,7 @@ type
     class function CanHandle(AType: PTypeInfo): Boolean; virtual; abstract;
   public
     procedure WriteTool(const AValue: TValue; AContext: TMCPToolContext); virtual; abstract;
+    procedure WritePrompt(const AValue: TValue; AContext: TMCPPromptContext); virtual; abstract;
     procedure WriteResource(const AValue: TValue; AContext: TMCPresourceContext); virtual; abstract;
   end;
   TCustomWriterClass = class of TMCPCustomWriter;

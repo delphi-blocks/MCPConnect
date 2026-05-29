@@ -3,25 +3,11 @@ unit MCPServerWebBroker.Form.Main;
 interface
 
 uses
-  Winapi.Messages, System.SysUtils, System.Variants,System.Types,
-  System.Classes, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs,
-  Vcl.AppEvnts, Vcl.StdCtrls, IdHTTPWebBrokerBridge, IdGlobal, Web.HTTPApp,
-  IdContext,
+  Winapi.Messages, System.SysUtils, System.Types, System.Classes,
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.AppEvnts, Vcl.StdCtrls,
+  IdHTTPWebBrokerBridge, IdGlobal, Web.HTTPApp, IdContext,
 
-  MCPServerWebBroker.WebModule,
-
-  Neon.Core.Nullables,
-  Neon.Core.Tags,
-  Neon.Core.Attributes,
-
-  MCPConnect.MCP.Tools,
-  MCPConnect.MCP.Prompts,
-  MCPConnect.MCP.Resources,
-
-  MCPConnect.MCP.Config,
-  MCPConnect.MCP.Invoker,
-  MCPConnect.MCP.Types,
-  MCPConnect.MCP.Attributes;
+  MCPServerWebBroker.WebModule;
 
 type
   TfrmMain = class(TForm)
@@ -56,20 +42,8 @@ implementation
 
 uses
 {$IFDEF MSWINDOWS}
-  WinApi.Windows, Winapi.ShellApi,
+  WinApi.Windows, Winapi.ShellApi;
 {$ENDIF}
-  System.Generics.Collections,
-
-  Neon.Core.Types,
-  Neon.Core.Serializers.RTL,
-  Neon.Core.Persistence,
-  Neon.Core.Persistence.JSON,
-
-  MCPServer.Resources,
-  MCPServer.Tools,
-  MCPConnect.JRPC.Classes,
-  MCPConnect.Configuration.Neon,
-  MCPConnect.MCP.Server.Api;
 
 { TfrmMain }
 
@@ -82,6 +56,7 @@ end;
 
 procedure TfrmMain.btnConfigClick(Sender: TObject);
 begin
+{
   var mcp := TMCPConfig.Create;
 
   var remote := TMCPConfigServerRemote.Create;
@@ -108,6 +83,7 @@ begin
   memoLog.Lines.Add(s);
 
   mcp.Free;
+}
 end;
 
 procedure TfrmMain.ButtonOpenBrowserClick(Sender: TObject);

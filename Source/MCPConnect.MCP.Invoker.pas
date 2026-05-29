@@ -79,6 +79,17 @@ type
     function Invoke(AParams: TReadResourceParams; AResult: TReadResourceResult): Boolean;
   end;
 
+  TMCPPromptInvoker = class(TMCPInvoker)
+  protected
+    FPrompt: TMCPPrompt;
+    procedure ResultToPrompt(const APromptResult: TValue; AMessageList: TPromptMessages);
+  public
+    constructor Create(AInstance: TObject; APrompt: TMCPPrompt);
+
+    function Invoke(AParams: TGetPromptParams; AResult: TGetPromptResult): Boolean;
+  end;
+
+
 
 implementation
 
@@ -559,6 +570,109 @@ begin
   end;
 
   AContentList.Add(LContent);
+end;
+
+{ TMCPPromptInvoker }
+
+constructor TMCPPromptInvoker.Create(AInstance: TObject; APrompt: TMCPPrompt);
+begin
+  inherited Create(AInstance);
+  FPrompt := APrompt;
+end;
+
+function TMCPPromptInvoker.Invoke(AParams: TGetPromptParams; AResult: TGetPromptResult): Boolean;
+var
+  LArgs: TArray<TValue>;
+  LResult: TValue;
+begin
+  Result := True;
+  LArgs := ArgumentsToRttiParams(AParams.Arguments, FPrompt.Method.GetParameters);
+  FGC.Add(LArgs);
+  LResult := FPrompt.Method.Invoke(FInstance, LArgs);
+  try
+    // If the result is already a TPromptMessages just assign it
+    if LResult.IsType<TPromptMessages> then
+    begin
+      AResult.Messages.Free;
+      AResult.Messages := TPromptMessages(LResult.AsObject);
+      LResult := nil;
+    end
+    else
+      ResultToPrompt(LResult, AResult.Messages);
+  finally
+    FGC.Add(LResult);
+  end;
+end;
+
+procedure TMCPPromptInvoker.ResultToPrompt(const APromptResult: TValue; AMessageList: TPromptMessages);
+var
+  LWriter: TMCPCustomWriter;
+  LContext: TMCPPromptContext;
+begin
+
+  LWriter := FConfig.Server.WriterRegistry.GetWriter(APromptResult);
+  if Assigned(LWriter) then
+  begin
+    LContext.Result := AMessageList;
+    LContext.Attributes := FPrompt.Method.GetAttributes;
+
+    LWriter.WritePrompt(APromptResult, LContext);
+    Exit;
+  end;
+
+  case APromptResult.Kind of
+
+    // As it is
+    tkInt64,
+    tkInteger,
+    tkFloat: AMessageList.AddText('user', APromptResult.ToString);
+
+    // Dequote
+    tkEnumeration,
+    tkChar,
+    tkWChar,
+    tkString,
+    tkLString,
+    tkWString,
+    tkUString: AMessageList.AddText('user', APromptResult.ToString);
+
+    // JSON response
+    tkSet,
+    tkClass,
+    tkRecord, tkMRecord:
+    begin
+      // Check if the tool is configured to return an embedded resource
+      //  { TODO -opaolo -c : Change the Neon configuration!!! 14/11/2025 10:25:55 }
+      var LResult := TNeon.ValueToJSONString(APromptResult, TNeonConfiguration.Default);
+      var LMCPPrompt := TRttiUtils.FindAttribute<MCPToolAttribute>(FPrompt.Method);
+      if Assigned(LMCPPrompt) and (LMCPPrompt.Tags.Exists('embedded')) then
+        AMessageList.AddBlob('user', 'application/json', LResult)
+      else
+        AMessageList.AddText('user', LResult);
+    end;
+
+
+    tkArray, tkDynArray:
+    begin
+      var LBlob, LMime: string;
+      if APromptResult.TypeInfo = TypeInfo(TBytes) then
+      begin
+        LBlob := TNetEncoding.Base64String.EncodeBytesToString(APromptResult.AsType<TBytes>);
+        LMime := 'application/octect-stream';
+      end
+      else
+      begin
+        LBlob := TNeon.ValueToJSONString(APromptResult, TNeonConfiguration.Default);
+        LMime := 'application/json';
+      end;
+      AMessageList.AddBlob('user', LMime, LBlob);
+    end;
+
+  else
+    raise EMCPException.Create('Type kind not supported');
+
+  end;
+
 end;
 
 end.

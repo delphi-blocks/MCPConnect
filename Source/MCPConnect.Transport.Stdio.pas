@@ -27,26 +27,30 @@ uses
 type
   TWorkerThread = class;
 
-  EJRPCStdioServerError = class(Exception)
-  end;
+  EJRPCStdioServerError = class(Exception);
 
   TJRPCStdioServer = class(TComponent)
   private
-    FServer: TJRPCServer;
+    FJRPCServer: TJRPCServer;
     FActive: Boolean;
     FWorker: TWorkerThread;
-    procedure SetServer(const Value: TJRPCServer);
     procedure SetActive(const Value: Boolean);
     function GetTerminated: Boolean;
   public
+    constructor Create(AOwner: TComponent); override;
+    destructor Destroy; override;
+
     procedure BeforeDestruction; override;
     procedure ProcessRequests;
     procedure StartServer;
     procedure StartServerAndWait;
     procedure StopServer;
-    property Server: TJRPCServer read FServer write SetServer;
     property Active: Boolean read FActive write SetActive;
     property Terminated: Boolean read GetTerminated;
+
+    property JRPCServer: TJRPCServer read FJRPCServer;
+  public
+    class function CreateMCPServer(AOwner: TComponent): TJRPCStdioServer;
   end;
 
   TStdInReader = class(TObject)
@@ -302,6 +306,23 @@ begin
   StopServer;
 end;
 
+constructor TJRPCStdioServer.Create(AOwner: TComponent);
+begin
+  inherited;
+  FJRPCServer := TJRPCServer.Create(nil);
+end;
+
+class function TJRPCStdioServer.CreateMCPServer(AOwner: TComponent): TJRPCStdioServer;
+begin
+  Result := TJRPCStdioServer.Create(nil);
+end;
+
+destructor TJRPCStdioServer.Destroy;
+begin
+  FJRPCServer.Free;
+  inherited;
+end;
+
 function TJRPCStdioServer.GetTerminated: Boolean;
 begin
   Result := not Assigned(FWorker) or FWorker.Terminated;
@@ -320,18 +341,13 @@ begin
     StopServer;
 end;
 
-procedure TJRPCStdioServer.SetServer(const Value: TJRPCServer);
-begin
-  FServer := Value;
-end;
-
 procedure TJRPCStdioServer.StartServer;
 begin
   if not FActive then
   begin
     FActive := True;
     FWorker := TWorkerThread.Create(True);
-    FWorker.Server := FServer;
+    FWorker.Server := FJRPCServer;
     FWorker.FreeOnTerminate := False;
     FWorker.Start;
   end;
@@ -392,14 +408,10 @@ begin
             try
               HandleRequest(LRequest, LResponse, LWriter);
               if LResponse <> '' then
-              begin
                 LWriter.WriteLine(LResponse);
-              end;
             except
               on E: Exception do
-              begin
                 LError.WriteLine(E.Message);
-              end;
             end;
           end;
         finally
@@ -437,6 +449,7 @@ begin
   LMcpHandler := TMCPTransportHandler.Create(FServer, TMCPTransportWriterStdio.Create(AStdOutWriter));
 
   LMcpHandler.ProcessRequest(
+
     procedure (ARequest: TMCPTransportRequest)
     begin
       ARequest.Headers.AddOrSetValue('Accept', 'application/json');
@@ -444,17 +457,12 @@ begin
       ARequest.Command := 'POST';
       ARequest.Content := ARequestContent;
       ARequest.Accept := TMediaType.TEXT_EVENT_STREAM;
-
-      //LogRequest(ARequest);
     end,
 
     procedure (AResponse: TMCPTransportResponse)
     begin
       LRes := AResponse.Content;
-
-      //LogHttpResponse(AResponseInfo);
     end
-
   );
 
   AResponseContent := LRes;

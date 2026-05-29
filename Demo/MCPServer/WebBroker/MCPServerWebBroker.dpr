@@ -31,7 +31,8 @@ uses
   MCPServerWebBroker.Form.Main in 'MCPServerWebBroker.Form.Main.pas' {frmMain},
   MCPServerWebBroker.WebModule in 'MCPServerWebBroker.WebModule.pas' {WebModule1: TWebModule},
   MCPServer.Config in '..\MCPServer.Config.pas',
-  MCPServer.Notifications in '..\MCPServer.Notifications.pas';
+  MCPServer.Notifications in '..\MCPServer.Notifications.pas',
+  MCPServer.Prompts in '..\MCPServer.Prompts.pas';
 
 {$R *.res}
 

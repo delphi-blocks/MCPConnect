@@ -112,7 +112,16 @@ type
     constructor Create(const AName: string);
   end;
 
-  MCPPromptAttribute = class(McpAttribute);
+  MCPPromptAttribute = class(McpAttribute)
+  private
+    FTitle: string;
+  public
+    property Title: string read FTitle;
+
+    constructor Create(const AName, ATitle, ADescription: string; const AAdditionalTags: string = '');
+  end;
+
+  MCPArgumentAttribute = class(McpAttribute);
 
   //MCPToolNoteAttribute = class(TCustomAttribute);
 
@@ -207,6 +216,14 @@ constructor MCPAppAttribute.Create(const AUI, AAdditionalTags: string);
 begin
   inherited Create;
   FUI := AUI;
+end;
+
+{ MCPPromptAttribute }
+
+constructor MCPPromptAttribute.Create(const AName, ATitle, ADescription, AAdditionalTags: string);
+begin
+  inherited Create(AName, ADescription, AAdditionalTags);
+  FTitle := ATitle;
 end;
 
 end.

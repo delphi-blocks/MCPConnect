@@ -181,7 +181,7 @@ type
     Description: NullString;
 
     /// <summary>
-    ///   Intended for UI and end-user contexts � optimized to be human-readable and easily
+    ///   Intended for UI and end-user contexts - optimized to be human-readable and easily
     ///   understood, even by those unfamiliar with domain-specific terminology
     /// </summary>
     /// <remarks>
@@ -438,6 +438,8 @@ type
 
   { ************ Contents ************ }
 
+  TResultContentType = (Text, Audio, Image, Link, EmbeddedText, EmbeddedBlob);
+
   /// <summary>
   ///   Base class for the content(s)
   /// </summary>
@@ -626,7 +628,10 @@ type
   /// <summary>
   ///   List of Resource Contents. Used in ReadResourceResult
   /// </summary>
-  TResourceContentsList = class(TObjectList<TResourceContents>);
+  TResourceContentsList = class(TObjectList<TResourceContents>)
+    function AddText(const AUri, AMime, AText: string): TResourceContentsList;
+    function AddBlob(const AUri, AMime, ABase64: string): TResourceContentsList;
+  end;
 
   /// <summary>
   ///   The contents of a resource, embedded into a prompt or tool call result. It is up to the
@@ -669,44 +674,20 @@ type
   /// <summary>
   ///   List of Contents. Used in CallToolResult
   /// </summary>
-  TContentList = class(TObjectList<TToolContent>);
+  TContentList = class(TObjectList<TToolContent>)
+    function AddText(const AText: string): TContentList;
 
-  /// <summary>
-  ///   Interface for the CallToolResult array
-  /// </summary>
-  IToolResultBuilder = interface
-  ['{62895467-E05D-4B86-A26D-E057F3684267}']
-    function AddText(const AText: string): IToolResultBuilder;
-    function AddImage(const AMime: string; AImage: TStream): IToolResultBuilder;
-    function AddAudio(const AMime: string; AAudio: TStream): IToolResultBuilder;
-    function AddLink(const AMime, AURL, ADescription: string): IToolResultBuilder;
-    function AddBlob(const AMime: string; ABlob: TStream): IToolResultBuilder;
+    function AddImage(const AMime, ABase64: string): TContentList; overload;
+    function AddImage(const AMime: string; AImage: TStream): TContentList; overload;
 
-    function Build(): TContentList;
+    function AddAudio(const AMime, ABase64: string): TContentList; overload;
+    function AddAudio(const AMime: string; AAudio: TStream): TContentList; overload;
+
+    function AddLink(const AMime, AUri, ADescription: string): TContentList;
+
+    function AddBlob(const AMime, ABase64: string): TContentList; overload;
+    function AddBlob(const AMime: string; ABlob: TStream): TContentList; overload;
   end;
-
-  /// <summary>
-  ///   Implementation for the CallToolResult array. To be called inside a tool method.
-  /// </summary>
-  TToolResultBuilder = class(TInterfacedObject, IToolResultBuilder)
-  private
-    FContents: TContentList;
-    FOwnItems: Boolean;
-  public
-    class function CreateInstance: IToolResultBuilder; static;
-  public
-    constructor Create;
-    destructor Destroy; override;
-
-    function AddText(const AText: string): IToolResultBuilder;
-    function AddImage(const AMime: string; AImage: TStream): IToolResultBuilder;
-    function AddAudio(const AMime: string; AAudio: TStream): IToolResultBuilder;
-    function AddLink(const AMime, AUri, ADescription: string): IToolResultBuilder;
-    function AddBlob(const AMime: string; ABlob: TStream): IToolResultBuilder;
-
-    function Build(): TContentList;
-  end;
-
 
   TMimeList = (Standard, Complete);
   TMimeEncoding = (Plain, Base64);
@@ -928,94 +909,6 @@ begin
   inherited Create;
   &Type := 'text';
   Text := AText;
-end;
-
-{ TToolResultBuilder }
-
-function TToolResultBuilder.AddAudio(const AMime: string; AAudio: TStream): IToolResultBuilder;
-var
-  LContent: TAudioContent;
-begin
-  LContent := TAudioContent.Create;
-  LContent.Data := LContent.DataFromStream(AAudio);
-  LContent.MimeType := AMime;
-  FContents.Add(LContent);
-  Result := Self;
-end;
-
-function TToolResultBuilder.AddBlob(const AMime: string; ABlob: TStream): IToolResultBuilder;
-var
-  LBlob: TBlobResourceContents;
-  LContent: TEmbeddedResourceBlob;
-begin
-  LContent := TEmbeddedResourceBlob.Create;
-  LBlob := LContent.Resource as TBlobResourceContents;
-  LBlob.MimeType := AMime;
-  LBlob.Blob := LContent.DataFromStream(ABlob);
-  FContents.Add(LContent);
-  Result := Self;
-end;
-
-function TToolResultBuilder.AddImage(const AMime: string; AImage: TStream): IToolResultBuilder;
-var
-  LContent: TImageContent;
-begin
-  LContent := TImageContent.Create;
-  LContent.Data := LContent.DataFromStream(AImage);
-  LContent.MimeType := AMime;
-  FContents.Add(LContent);
-  Result := Self;
-end;
-
-function TToolResultBuilder.AddLink(const AMime, AUri, ADescription: string): IToolResultBuilder;
-begin
-  var LResource := TResourceLink.Create;
-  LResource.URI := AUri;
-  LResource.MimeType := AMime;
-  LResource.Description := ADescription;
-  FContents.Add(LResource);
-  Result := Self;
-end;
-
-function TToolResultBuilder.AddText(const AText: string): IToolResultBuilder;
-begin
-  FContents.Add(TTextContent.Create(AText));
-  Result := Self;
-end;
-
-function TToolResultBuilder.Build: TContentList;
-begin
-  Result := TContentList.Create;
-  for var LItem in FContents do
-  begin
-    Result.Add(LItem);
-  end;
-  FOwnItems := False;
-end;
-
-constructor TToolResultBuilder.Create;
-begin
-  FContents := TContentList.Create(False);
-  FOwnItems := True;
-end;
-
-destructor TToolResultBuilder.Destroy;
-var
-  LItem: TBaseContent;
-begin
-  if FOwnItems then
-  begin
-    for LItem in FContents do
-      LItem.Free;
-  end;
-
-  FContents.Free;
-  inherited;
-end;
-
-class function TToolResultBuilder.CreateInstance: IToolResultBuilder;
-begin
-  Result := TToolResultBuilder.Create;
 end;
 
 { TImageContent }
@@ -1512,6 +1405,132 @@ begin
   inherited;
   Method := 'notifications/roots/list_changed';
   Params := nil;
+end;
+
+{ TContentList }
+
+function TContentList.AddAudio(const AMime: string; AAudio: TStream): TContentList;
+var
+  LContent: TAudioContent;
+begin
+  LContent := TAudioContent.Create;
+  LContent.Data := LContent.DataFromStream(AAudio);
+  LContent.MimeType := AMime;
+  Self.Add(LContent);
+
+  Result := Self;
+end;
+
+function TContentList.AddAudio(const AMime, ABase64: string): TContentList;
+var
+  LContent: TAudioContent;
+begin
+  LContent := TAudioContent.Create;
+  LContent.Data := ABase64;
+  LContent.MimeType := AMime;
+  Self.Add(LContent);
+
+  Result := Self;
+end;
+
+function TContentList.AddBlob(const AMime: string; ABlob: TStream): TContentList;
+var
+  LBlob: TBlobResourceContents;
+  LContent: TEmbeddedResourceBlob;
+begin
+  LContent := TEmbeddedResourceBlob.Create;
+  LBlob := LContent.Resource as TBlobResourceContents;
+  LBlob.MimeType := AMime;
+  LBlob.Blob := LContent.DataFromStream(ABlob);
+  Self.Add(LContent);
+
+  Result := Self;
+end;
+
+function TContentList.AddBlob(const AMime, ABase64: string): TContentList;
+var
+  LBlob: TBlobResourceContents;
+  LContent: TEmbeddedResourceBlob;
+begin
+  LContent := TEmbeddedResourceBlob.Create;
+  LBlob := LContent.Resource as TBlobResourceContents;
+  LBlob.MimeType := AMime;
+  LBlob.Blob := ABase64;
+  Self.Add(LContent);
+
+  Result := Self;
+end;
+
+function TContentList.AddImage(const AMime, ABase64: string): TContentList;
+var
+  LContent: TImageContent;
+begin
+  LContent := TImageContent.Create;
+  LContent.Data := ABase64;
+  LContent.MimeType := AMime;
+  Self.Add(LContent);
+
+  Result := Self;
+end;
+
+function TContentList.AddImage(const AMime: string; AImage: TStream): TContentList;
+var
+  LContent: TImageContent;
+begin
+  LContent := TImageContent.Create;
+  LContent.Data := LContent.DataFromStream(AImage);
+  LContent.MimeType := AMime;
+  Self.Add(LContent);
+
+  Result := Self;
+end;
+
+function TContentList.AddLink(const AMime, AUri, ADescription: string): TContentList;
+var
+  LResource: TResourceLink;
+begin
+  LResource := TResourceLink.Create;
+  LResource.URI := AUri;
+  LResource.MimeType := AMime;
+  LResource.Description := ADescription;
+  Self.Add(LResource);
+
+  Result := Self;
+end;
+
+function TContentList.AddText(const AText: string): TContentList;
+begin
+  Self.Add(TTextContent.Create(AText));
+
+  Result := Self;
+end;
+
+{ TResourceContentsList }
+
+function TResourceContentsList.AddBlob(const AUri, AMime, ABase64: string): TResourceContentsList;
+var
+  LContent: TBlobResourceContents;
+begin
+  LContent := TBlobResourceContents.Create;
+  LContent.Blob := ABase64;
+  LContent.Uri := AUri;
+  LContent.MimeType := AMime;
+  Self.Add(LContent);
+
+  Result := Self;
+end;
+
+function TResourceContentsList.AddText(const AUri, AMime, AText: string): TResourceContentsList;
+var
+  LContent: TTextResourceContents;
+begin
+  LContent := TTextResourceContents.Create;
+  LContent.Text := AText;
+  LContent.Uri := AUri;
+  LContent.MimeType := AMime;
+  Self.Add(LContent);
+
+  Result := Self;
 end;
 
 end.

@@ -37,7 +37,8 @@ uses
   Logify,
   MCPServer.Resources,
   MCPServer.Apps,
-  MCPServer.Tools;
+  MCPServer.Tools,
+  MCPServer.Prompts;
 
 
 { TServerConfigurator }
@@ -132,6 +133,12 @@ begin
         .RegisterFile('index.md', 'Indice Documentazione')
         .RegisterFile('documentation\mcp\mcpconnect.pdf', 'MCPConnect Introduction')
       .BackToMCP
+
+      .Prompts
+        .RegisterClass(TSamplePrompts)
+      .BackToMCP
+
+
 
       .Tools
         .RegisterClass(TTestTool)

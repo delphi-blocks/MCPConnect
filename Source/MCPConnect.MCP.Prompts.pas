@@ -157,6 +157,8 @@ type
     Role: string;
 
     //[NeonIgnore] ContentType: TResultContentType;
+
+    constructor Create;
   end;
 
   /// <summary>
@@ -169,7 +171,8 @@ type
     /// </summary>
     Content: T;
 
-    constructor Create(const ARole: string);
+    constructor Create; overload;
+    constructor Create(const ARole: string); overload;
     destructor Destroy; override;
   end;
 
@@ -185,7 +188,7 @@ type
 
     procedure AddLink(const ARole, AMime, AUri, ADescription: string);
 
-    procedure AddBlob(const ARole, AMime, ABlob: string); overload;
+    procedure AddBlob(const ARole, AMime, ABase64: string); overload;
     procedure AddBlob(const ARole, AMime: string; ABlob: TStream); overload;
   end;
 
@@ -310,10 +313,17 @@ end;
 
 constructor TPromptMessage<T>.Create(const ARole: string);
 begin
-  if ARole.IsEmpty then
-    Role := 'user'
-  else
+  inherited Create;
+
+  Content := T.Create;
+
+  if not ARole.IsEmpty then
     Role := ARole;
+end;
+
+constructor TPromptMessage<T>.Create;
+begin
+  inherited;
   Content := T.Create;
 end;
 
@@ -330,17 +340,16 @@ begin
   var p := TPromptMessage<TImageContent>.Create(ARole);
 
   p.Content.Data := ABase64;
-  p.Content.&Type := 'image';
   p.Content.MimeType := AMime;
   Self.Add(p);
 end;
 
-procedure TPromptMessages.AddBlob(const ARole, AMime, ABlob: string);
+procedure TPromptMessages.AddBlob(const ARole, AMime, ABase64: string);
 begin
   var p := TPromptMessage<TEmbeddedResourceBlob>.Create(ARole);
 
   p.Content.Resource.MimeType := AMime;
-  p.Content.Resource.Blob := ABlob;
+  p.Content.Resource.Blob := ABase64;
   Self.Add(p);
 end;
 
@@ -398,6 +407,13 @@ begin
   p.Content.Resource.MimeType := AMime;
   p.Content.Resource.Blob := p.Content.DataFromStream(ABlob);
   Self.Add(p);
+end;
+
+{ TPromptMessageBase }
+
+constructor TPromptMessageBase.Create;
+begin
+  Role := 'user';
 end;
 
 end.

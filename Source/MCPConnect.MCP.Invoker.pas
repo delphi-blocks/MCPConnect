@@ -206,7 +206,7 @@ begin
     // As it is
     tkInt64,
     tkInteger,
-    tkFloat: LText := TTextContent.Create(AToolResult.ToString);
+    tkFloat: LText := TTextContent.CreateWithText(AToolResult.ToString);
 
     // Dequote
     tkEnumeration,
@@ -215,7 +215,7 @@ begin
     tkString,
     tkLString,
     tkWString,
-    tkUString: LText := TTextContent.Create(AToolResult.ToString);
+    tkUString: LText := TTextContent.CreateWithText(AToolResult.ToString);
 
     // JSON response
     tkSet,
@@ -235,7 +235,7 @@ begin
       end
       else
       begin
-        LText := TTextContent.Create(LResult);
+        LText := TTextContent.CreateWithText(LResult);
       end;
     end;
 

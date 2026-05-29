@@ -451,7 +451,7 @@ type
     /// </summary>
     [NeonInclude(IncludeIf.NotEmpty)] Annotations: TAnnotations;
   public
-    constructor Create;
+    constructor Create; virtual;
     destructor Destroy; override;
 
     function DataFromStream(AStream: TStream): string;
@@ -476,7 +476,8 @@ type
     /// </summary>
     Text: string;
   public
-    constructor Create(const AText: string = ''); overload;
+    constructor Create; override;
+    constructor CreateWithText(const AText: string);
   end;
 
   /// <summary>
@@ -498,7 +499,7 @@ type
     /// </summary>
     MimeType: string;
 
-    constructor Create; overload;
+    constructor Create; override;
   end;
 
   /// <summary>
@@ -521,7 +522,7 @@ type
     MimeType: string;
 
   public
-    constructor Create;
+    constructor Create; override;
   end;
 
   /// <summary>
@@ -575,7 +576,7 @@ type
     /// </summary>
     [NeonInclude(IncludeIf.NotEmpty)] MimeType: string;
 
-    constructor Create;
+    constructor Create; override;
   end;
 
   /// <summary>
@@ -648,7 +649,7 @@ type
     /// </summary>
     Resource: TBlobResourceContents;
   public
-    constructor Create;
+    constructor Create; override;
     destructor Destroy; override;
   end;
 
@@ -667,7 +668,7 @@ type
     /// </summary>
     Resource: TTextResourceContents;
   public
-    constructor Create;
+    constructor Create; override;
     destructor Destroy; override;
   end;
 
@@ -902,13 +903,10 @@ begin
   inherited;
 end;
 
-{ TTextContent }
-
-constructor TTextContent.Create(const AText: string);
+constructor TTextContent.Create;
 begin
   inherited Create;
   &Type := 'text';
-  Text := AText;
 end;
 
 { TImageContent }
@@ -1499,8 +1497,12 @@ begin
 end;
 
 function TContentList.AddText(const AText: string): TContentList;
+var
+  LText: TTextContent;
 begin
-  Self.Add(TTextContent.Create(AText));
+  LText := TTextContent.Create;
+  LText.Text := AText;
+  Self.Add(LText);
 
   Result := Self;
 end;
@@ -1531,6 +1533,12 @@ begin
   Self.Add(LContent);
 
   Result := Self;
+end;
+
+constructor TTextContent.CreateWithText(const AText: string);
+begin
+  Create;
+  Text := AText;
 end;
 
 end.

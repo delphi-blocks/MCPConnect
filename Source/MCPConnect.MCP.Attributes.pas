@@ -121,7 +121,7 @@ type
     constructor Create(const AName, ATitle, ADescription: string; const AAdditionalTags: string = '');
   end;
 
-  MCPArgumentAttribute = class(McpAttribute);
+  MCPArgumentAttribute = MCPParamAttribute;
 
   //MCPToolNoteAttribute = class(TCustomAttribute);
 

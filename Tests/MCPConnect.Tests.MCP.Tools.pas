@@ -230,7 +230,7 @@ begin
   try
     Assert.IsNotNull(LResult, 'TCallToolResult should be created');
     Assert.IsNotNull(LResult.Content, 'Content list should be initialized');
-    Assert.IsNotNull(LResult.StructuredContent, 'StructuredContent should be initialized');
+    Assert.IsNull(LResult.StructuredContent, 'StructuredContent should not be initialized');
     Assert.AreEqual(0, LResult.Content.Count, 'Content list should be empty initially');
   finally
     LResult.Free;

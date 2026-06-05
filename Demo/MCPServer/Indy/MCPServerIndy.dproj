@@ -160,6 +160,7 @@
         <DCCReference Include="..\..\..\Source\MCPConnect.Transport.Base.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.Transport.AcceptParser.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.Transport.MediaType.pas"/>
+        <DCCReference Include="..\MCPServer.Prompts.pas"/>
         <DCCReference Include="..\MCPServer.Notifications.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>

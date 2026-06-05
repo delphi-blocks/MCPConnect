@@ -62,16 +62,14 @@ type
     FTitle: string;
     FDate: TDateTime;
     FPrice: Currency;
-    FDescription: string;
     FId: Integer;
   public
     property Id: Integer read FId write FId;
     property Title: string read FTitle write FTitle;
     property Price: Currency read FPrice write FPrice;
     property Date: TDateTime read FDate write FDate;
-    property Description: string read FDescription write FDescription;
 
-    constructor Create(AId: Integer; const ATitle: string; ADate: TDateTime; APrice: Currency; const ADescription: string);
+    constructor Create(AId: Integer; const ATitle: string; ADate: TDateTime; APrice: Currency);
   end;
 
   TTickets = class(TObjectList<TTicket>)
@@ -85,11 +83,11 @@ type
     [Context] Responses: TMCPMessageQueue;
 
   public
-    [McpTool('get_tickets', 'Get the list of available tickets for the DelphiDay', 'icon=badge.png')]
+    [McpTool('get-tickets', 'Get the list of available tickets for the DelphiDay', 'icon=badge.png,structured')]
     [McpApp('ui://delphiday/ticket-app')]
     function GetTickets: TTickets;
 
-    [McpTool('buy_ticket', 'Buy tickets for the DelphiDay', 'icon=cart-full.png')]
+    [McpTool('buy-tickets', 'Buy tickets for the DelphiDay', 'icon=cart-full.png')]
     function BuyTicket(
       [McpParam('id', 'ID of the ticket to buy')] AId: Integer;
       [McpParam('quantity', 'Number of tickets to buy')] AQuantity: Integer
@@ -122,7 +120,7 @@ type
       [McpParam('value', 'The string to work with')] const AValue: string
     ): TContentList;
 
-    [McpTool('get-person', 'Get a person info given his name', 'icon=person.png')]
+    [McpTool('get-person', 'Get a person info given his name', 'icon=person.png,structured')]
     function GetPerson(
       [McpParam('name', 'The name of the person to get')] const AName: string
     ): TPerson;
@@ -277,15 +275,15 @@ begin
   Result := TTickets.Create;
   FGC.Add(Result);
 
-  Result.Add(TTicket.Create(1, 'Conferenza + Seminari', EncodeDate(2026, 6, 10), 179.0, ''));
+  Result.Add(TTicket.Create(1, 'Conferenza + Seminari', EncodeDate(2026, 6, 9), 179.0));
   Responses.Enqueue(TTicketProgressNotification.Create(1, 3));
   Sleep(1000);
 
-  Result.Add(TTicket.Create(2, 'Solo Conferenza', EncodeDate(2026, 6, 10), 0, ''));
+  Result.Add(TTicket.Create(2, 'Solo Conferenza', EncodeDate(2026, 6, 10), 0));
   Responses.Enqueue(TTicketProgressNotification.Create(2, 3));
   Sleep(1000);
 
-  Result.Add(TTicket.Create(3, 'Young ticket', EncodeDate(2026, 6, 10), 69.0, ''));
+  Result.Add(TTicket.Create(3, 'Young Ticket', EncodeDate(2026, 6, 10), 69.0));
   Responses.Enqueue(TTicketProgressNotification.Create(3, 3));
   Sleep(1000);
 
@@ -295,15 +293,13 @@ end;
 
 { TTicket }
 
-constructor TTicket.Create(AId: Integer; const ATitle: string; ADate: TDateTime;
-  APrice: Currency; const ADescription: string);
+constructor TTicket.Create(AId: Integer; const ATitle: string; ADate: TDateTime; APrice: Currency);
 begin
   inherited Create;
   FId := AId;
   FTitle := ATitle;
   FDate := ADate;
   FPrice := APrice;
-  FDescription := ADescription;
 end;
 
 { TShoppingCartTool }

@@ -44,10 +44,10 @@ type
   [JRPC('resources')]
   TMCPResourcesApi = class
   private
-    procedure InternalReadResource(AParams: TReadResourceParams;
-      AResource: TMCPResource; AResult: TReadResourceResult);
-    procedure InternalReadTemplate(AParams: TReadResourceParams;
-      ATemplate: TMCPResourceTemplate; AResult: TReadResourceResult);
+    function InternalReadResource(AParams: TReadResourceParams; AResource:
+        TMCPResource): TReadResourceResult;
+    function InternalReadTemplate(AParams: TReadResourceParams; ATemplate:
+        TMCPResourceTemplate): TReadResourceResult;
   public
     [Context] RPCContext: TJRPCContext;
     [Context] MCPConfig: TMCPConfig;
@@ -135,7 +135,7 @@ begin
   if not MCPConfig.Tools.Registry.TryGetValue(AParams.Name, LTool) then
     raise EMCPException.CreateFmt('Tool [%s] not found', [AParams.Name]);
 
-  // Create an instance of the tool class
+  // Instance of the tool class
   LToolObj := TRttiUtils.CreateInstance(LTool.Classe);
   try
     RPCContext.Inject(LToolObj);
@@ -143,14 +143,7 @@ begin
     LInvoker := TMCPToolInvoker.Create(LToolObj, LTool);
     try
       RPCContext.Inject(LInvoker);
-
-      Result := TCallToolResult.Create;
-      try
-        LInvoker.Invoke(AParams, Result);
-      except
-        Result.Free;
-        raise;
-      end;
+      Result := LInvoker.Invoke(AParams);
     finally
       LInvoker.Free;
     end;
@@ -225,37 +218,39 @@ end;
 
 { TMCPResourcesApi }
 
-procedure TMCPResourcesApi.InternalReadResource(AParams: TReadResourceParams;
-  AResource: TMCPResource; AResult: TReadResourceResult);
+function TMCPResourcesApi.InternalReadResource(AParams: TReadResourceParams;
+    AResource: TMCPResource): TReadResourceResult;
 var
   LInvoker: TMCPResourceInvoker;
   LResObj: TObject;
 begin
   // If it's a static resource serve the file directly
   if AResource.FileName <> '' then
-    TMCPStaticResource.GetResource(MCPConfig, AResource, AResult)
-  else
   begin
-    // Create an instance of the resource class
-    LResObj := TRttiUtils.CreateInstance(AResource.Classe);
-    try
-      RPCContext.Inject(LResObj);
+    Result := TReadResourceResult.Create;
+    TMCPStaticResource.GetResource(MCPConfig, AResource, Result);
+    Exit;
+  end;
 
-      LInvoker := TMCPResourceInvoker.Create(LResObj, AResource);
-      try
-        RPCContext.Inject(LInvoker);
-        LInvoker.Invoke(AParams, AResult);
-      finally
-        LInvoker.Free;
-      end;
+  // Create an instance of the resource class
+  LResObj := TRttiUtils.CreateInstance(AResource.Classe);
+  try
+    RPCContext.Inject(LResObj);
+
+    LInvoker := TMCPResourceInvoker.Create(LResObj, AResource);
+    try
+      RPCContext.Inject(LInvoker);
+      Result := LInvoker.Invoke(AParams);
     finally
-      LResObj.Free;
+      LInvoker.Free;
     end;
+  finally
+    LResObj.Free;
   end;
 end;
 
-procedure TMCPResourcesApi.InternalReadTemplate(AParams: TReadResourceParams;
-  ATemplate: TMCPResourceTemplate; AResult: TReadResourceResult);
+function TMCPResourcesApi.InternalReadTemplate(AParams: TReadResourceParams;
+    ATemplate: TMCPResourceTemplate): TReadResourceResult;
 var
   LInvoker: TMCPTemplateInvoker;
   LTplObj: TObject;
@@ -268,7 +263,7 @@ begin
     LInvoker := TMCPTemplateInvoker.Create(LTplObj, ATemplate);
     try
       RPCContext.Inject(LInvoker);
-      LInvoker.Invoke(AParams, AResult);
+      Result := LInvoker.Invoke(AParams);
     finally
       LInvoker.Free;
     end;
@@ -296,16 +291,10 @@ begin
       raise EMCPException.CreateFmt('Resource [%s] not found', [AParams.Uri]);
   end;
 
-  Result := TReadResourceResult.Create;
-  try
-    if Assigned(LRes) then
-      InternalReadResource(AParams, LRes, Result)
-    else
-      InternalReadTemplate(AParams, LTpl, Result);
-  except
-    Result.Free;
-    raise;
-  end;
+  if Assigned(LRes) then
+    Result := InternalReadResource(AParams, LRes)
+  else
+    Result := InternalReadTemplate(AParams, LTpl);
 end;
 
 function TMCPResourcesApi.ResourcesList: TListResourcesResult;
@@ -370,14 +359,7 @@ begin
     LInvoker := TMCPPromptInvoker.Create(LPromptObj, LPrompt);
     try
       RPCContext.Inject(LInvoker);
-
-      Result := TGetPromptResult.Create;
-      try
-        LInvoker.Invoke(AParams, Result);
-      except
-        Result.Free;
-        raise;
-      end;
+      Result := LInvoker.Invoke(AParams);
     finally
       LInvoker.Free;
     end;

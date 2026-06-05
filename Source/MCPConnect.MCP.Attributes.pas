@@ -26,7 +26,6 @@ type
     function GetTags: TAttributeTags;
   public
     property AdditionalTags: string read FAdditionalTags write FAdditionalTags;
-
     property Tags: TAttributeTags read GetTags write FTags;
 
     constructor Create;

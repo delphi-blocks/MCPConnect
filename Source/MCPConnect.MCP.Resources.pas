@@ -283,7 +283,8 @@ type
     /// </summary>
     Contents: TResourceContentsList;
   public
-    constructor Create;
+    constructor Create; overload;
+    constructor Create(AContents: TResourceContentsList); overload;
     destructor Destroy; override;
 
     procedure AddContent(AContent: TResourceContents);
@@ -328,43 +329,6 @@ type
   end;
 
 
-  /// <summary>
-  ///   MCP Resources List Generator
-  /// </summary>
-  TMCPResourcesListGenerator = class
-  protected
-    /// <summary>
-    ///   Writer for a method's params
-    /// </summary>
-    procedure WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
-  public
-    /// <summary>
-    ///   Serialize a Delphi method as a MCP Resource
-    ///   The Delphi method must be marked with the MCP attributes
-    /// </summary>
-    class function MethodToResource(AMethod: TRttiMethod): TMCPResource;
-
-    /// <summary>
-    ///   Serialize a Delphi method as a MCP Resource Template
-    ///   The Delphi method must be marked with the MCP attributes
-    /// </summary>
-    class function MethodToTemplate(AMethod: TRttiMethod): TMCPResourceTemplate;
-
-    /// <summary>
-    ///   Loops through the methods of a class/record and populate a structure
-    ///   in response to the resources/list from a LLM client
-    /// </summary>
-    class procedure ListResources(AClass: TClass; AList: TListResourcesResult); overload;
-
-    /// <summary>
-    ///   Loops through the methods of a class/record and populate a structure
-    ///   in response to the resources/templates/list from a LLM client
-    /// </summary>
-    class procedure ListTemplates(AClass: TClass; AList: TListResourceTemplatesResult); overload;
-  end;
-
-
-
 implementation
 
 uses
@@ -403,6 +367,14 @@ begin
   text.MimeType := AMime;
   text.text := AText;
   Contents.Add(text);
+end;
+
+constructor TReadResourceResult.Create(AContents: TResourceContentsList);
+begin
+  Assert(Assigned(AContents), ClassName + ': AContents cannot be nil');
+
+  inherited Create;
+  Contents := AContents;
 end;
 
 constructor TReadResourceResult.Create;
@@ -461,101 +433,6 @@ destructor TListResourceTemplatesResult.Destroy;
 begin
   ResourceTemplates.Free;
   inherited;
-end;
-
-{ TMCPResourcesListGenerator }
-
-class procedure TMCPResourcesListGenerator.ListResources(AClass: TClass; AList: TListResourcesResult);
-var
-  LMethod: TRttiMethod;
-  LMethods: TArray<TRttiMethod>;
-  LResource: TMCPResource;
-begin
-  LMethods := TRttiUtils.Context.GetType(AClass).GetMethods;
-  for LMethod in LMethods do
-    if Assigned(LMethod.GetAttribute(MCPResourceAttribute)) then
-    begin
-      LResource := MethodToResource(LMethod);
-
-      AList.Resources.Add(LResource);
-    end;
-end;
-
-class procedure TMCPResourcesListGenerator.ListTemplates(AClass: TClass; AList: TListResourceTemplatesResult);
-var
-  LMethod: TRttiMethod;
-  LMethods: TArray<TRttiMethod>;
-  LTemplate: TMCPResourceTemplate;
-begin
-  LMethods := TRttiUtils.Context.GetType(AClass).GetMethods;
-  for LMethod in LMethods do
-    if Assigned(LMethod.GetAttribute(MCPTemplateAttribute)) then
-    begin
-      LTemplate := MethodToTemplate(LMethod);
-      AList.ResourceTemplates.Add(LTemplate);
-    end;
-end;
-
-class function TMCPResourcesListGenerator.MethodToResource(AMethod: TRttiMethod): TMCPResource;
-var
-  LAttr: MCPResourceAttribute;
-begin
-  LAttr := AMethod.GetAttribute<MCPResourceAttribute>;
-  if not Assigned(LAttr) then
-    raise EMCPException.CreateFmt('Attribute [MCPResource] not found in method %s', [AMethod.Name]);
-
-  Result := TMCPResource.Create;
-  try
-    Result.Name := LAttr.Name;
-    Result.Uri := LAttr.Uri;
-    Result.MIMEType := LAttr.MimeType;
-    Result.Description := LAttr.Description;
-  except
-    Result.Free;
-    raise;
-  end;
-end;
-
-class function TMCPResourcesListGenerator.MethodToTemplate(AMethod: TRttiMethod): TMCPResourceTemplate;
-var
-  LAttr: MCPTemplateAttribute;
-begin
-  LAttr := AMethod.GetAttribute<MCPTemplateAttribute>;
-  if not Assigned(LAttr) then
-    raise EMCPException.CreateFmt('Attribute [MCPTemplate] not found in method %s', [AMethod.Name]);
-
-  // Controllo UriTemplate e parametri?
-
-  Result := TMCPResourceTemplate.Create;
-  try
-    Result.Name := LAttr.Name;
-    Result.UriTemplate := LAttr.UriTemplate;
-    Result.MIMEType := LAttr.MimeType;
-    Result.Description := LAttr.Description;
-  except
-    Result.Free;
-    raise;
-  end;
-end;
-
-procedure TMCPResourcesListGenerator.WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
-var
-  LJSONObj: TJSONObject;
-  LParam: TRttiParameter;
-  LAttr: MCPParamAttribute;
-begin
-  for LParam in AMethod.GetParameters do
-  begin
-    LAttr := LParam.GetAttribute<MCPParamAttribute>;
-      if not Assigned(LAttr) then
-        raise EJRPCException.Create('Non-annotated params are not permitted');
-
-    LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LParam.ParamType, MCPNeonConfig);
-
-    LJSONObj.AddPair('description', TJSONString.Create(LAttr.Description));
-    AProps.AddPair(LAttr.Name, LJSONObj);
-    ARequired.Add(LAttr.Name);
-  end;
 end;
 
 constructor TUIResourcePermissions.Create;

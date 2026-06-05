@@ -23,6 +23,7 @@ uses
   System.JSON,
 
   Neon.Core.Nullables,
+  Neon.Core.Persistence,
 
   MCPConnect.JRPC.Classes,
   MCPConnect.JRPC.Core,
@@ -386,15 +387,18 @@ type
   TMCPToolsConfig = class(TMCPBaseConfig)
   private
     procedure WriteInputSchema(ATool: TMCPTool);
+    procedure WriteOutputSchema(ATool: TMCPTool);
     procedure WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
     procedure WriteTool(ATool: TMCPTool; AToolAttr: MCPToolAttribute; AAppAttr: MCPAppAttribute);
   public
     Registry: TMCPToolRegistry;
+    NeonConfig: INeonConfiguration;
   public
     constructor Create(AConfig: IMCPConfig);
     destructor Destroy; override;
 
     function RegisterClass(AClass: TClass): TMCPToolsConfig;
+    function SetSchemaNeonConfig(ANeonConfig: INeonConfiguration): TMCPToolsConfig;
 
     /// <summary>
     ///   Creates an instance of a class by namespace.
@@ -642,6 +646,7 @@ constructor TMCPToolsConfig.Create(AConfig: IMCPConfig);
 begin
   inherited;
   Registry := TMCPToolRegistry.Create([doOwnsValues]);
+  NeonConfig := TNeonConfiguration.Camel;
 end;
 
 function TMCPToolsConfig.CreateInstance(const ATool: string): TObject;
@@ -725,6 +730,12 @@ begin
       AList.Tools.Add(pair.Value);
 end;
 
+function TMCPToolsConfig.SetSchemaNeonConfig(ANeonConfig: INeonConfiguration): TMCPToolsConfig;
+begin
+  NeonConfig := ANeonConfig;
+  Result := Self;
+end;
+
 procedure TMCPToolsConfig.WriteTool(ATool: TMCPTool; AToolAttr: MCPToolAttribute; AAppAttr: MCPAppAttribute);
 var
   LIcon: TMCPIcon;
@@ -750,6 +761,9 @@ begin
     ATool.Annotations.OpenWorldHint := AToolAttr.Tags.GetBoolValue('openworld');
 
   WriteInputSchema(ATool);
+
+  if AToolAttr.Tags.Exists('structured') then
+    WriteOutputSchema(ATool);
 end;
 
 procedure TMCPToolsConfig.WriteInputSchema(ATool: TMCPTool);
@@ -781,6 +795,19 @@ begin
   ATool.ExchangeInputSchema(LInputSchema);
 end;
 
+procedure TMCPToolsConfig.WriteOutputSchema(ATool: TMCPTool);
+var
+  LJSONObj: TJSONObject;
+  LType: TRttiType;
+begin
+  LType := ATool.Method.ReturnType;
+  if not Assigned(LType) then
+    raise EMCPException.Create('Tool must be a function');
+
+  LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LType, NeonConfig);
+  ATool.ExchangeOutputSchema(LJSONObj);
+end;
+
 procedure TMCPToolsConfig.WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
 var
   LJSONObj: TJSONObject;
@@ -793,7 +820,7 @@ begin
       if not Assigned(LAttr) then
         raise EJRPCException.Create('Non-annotated params are not permitted');
 
-    LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LParam.ParamType, MCPNeonConfig);
+    LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LParam.ParamType, NeonConfig);
 
     LJSONObj.AddPair('description', TJSONString.Create(LAttr.Description));
     AProps.AddPair(LAttr.Name, LJSONObj);
@@ -1398,20 +1425,6 @@ begin
 
   APrompt.Category := APromptAttr.Tags.GetValueAs<string>('category');
   APrompt.Disabled := APromptAttr.Tags.GetBoolValue('disabled');
-
-  {
-  if APromptAttr.Tags.Exists('readonly') then
-    APrompt.Annotations.ReadOnlyHint := APromptAttr.Tags.GetBoolValue('readonly');
-  if APromptAttr.Tags.Exists('destructive') then
-    APrompt.Annotations.DestructiveHint := APromptAttr.Tags.GetBoolValue('destructive');
-  if APromptAttr.Tags.Exists('idempotent') then
-    APrompt.Annotations.IdempotentHint := APromptAttr.Tags.GetBoolValue('idempotent');
-  if APromptAttr.Tags.Exists('openworld') then
-    APrompt.Annotations.OpenWorldHint := APromptAttr.Tags.GetBoolValue('openworld');
-
-  WriteInputSchema(APrompt);
-  }
-
 end;
 
 

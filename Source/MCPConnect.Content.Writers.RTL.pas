@@ -72,7 +72,7 @@ end;
 
 procedure TMCPStringListWriter.WritePrompt(const AValue: TValue; AContext: TMCPPromptContext);
 begin
-  AContext.Result.AddText('user', ValueAsList(AValue).CommaText);
+  AContext.Result.Messages.AddText('user', ValueAsList(AValue).CommaText);
 end;
 
 procedure TMCPStringListWriter.WriteResource(const AValue: TValue; AContext: TMCPresourceContext);
@@ -86,12 +86,12 @@ begin
   else
     LMime := 'text/plain';
 
-  AContext.Result.AddText(LMCP.Uri, LMime, ValueAsList(AValue).CommaText);
+  AContext.Result.Contents.AddText(LMCP.Uri, LMime, ValueAsList(AValue).CommaText);
 end;
 
 procedure TMCPStringListWriter.WriteTool(const AValue: TValue; AContext: TMCPToolContext);
 begin
-  AContext.Result.AddText(ValueAsList(AValue).CommaText);
+  AContext.Result.Content.AddText(ValueAsList(AValue).CommaText);
 end;
 
 { TMCPStreamWriter }
@@ -117,7 +117,7 @@ end;
 
 procedure TMCPStreamWriter.WritePrompt(const AValue: TValue; AContext: TMCPPromptContext);
 begin
-  AContext.Result.AddBlob('user', 'application/octect-stream', StreamToBase64(AValue));
+  AContext.Result.Messages.AddBlob('user', 'application/octect-stream', StreamToBase64(AValue));
 end;
 
 procedure TMCPStreamWriter.WriteResource(const AValue: TValue; AContext: TMCPresourceContext);
@@ -141,12 +141,12 @@ begin
     LBlob.MimeType := 'application/octect-stream';
 
   LBlob.Blob := LBase64;
-  AContext.Result.Add(LBlob);
+  AContext.Result.Contents.Add(LBlob);
 end;
 
 procedure TMCPStreamWriter.WriteTool(const AValue: TValue; AContext: TMCPToolContext);
 begin
-  AContext.Result.AddBlob('application/octect-stream', StreamToBase64(AValue));
+  AContext.Result.Content.AddBlob('application/octect-stream', StreamToBase64(AValue));
 end;
 
 end.

@@ -25,21 +25,19 @@ type
   /// <summary>
   ///   Configuration interface for customizing Neon serialization behavior in
   ///   JSON-RPC servers. Allows you to configure JSON serialization settings
-  ///   such as naming conventions, visibility, type handling, and custom serializers.
+  ///   such as naming conventions, visibility, type handling, and custom
+  ///   serializers.
   /// </summary>
   /// <remarks>
   ///   The Neon library (https://github.com/paolo-rossi/delphi-neon) is used
-  ///   internally for all JSON serialization/deserialization in MCPConnect.
-  ///   Use this configuration to customize how Delphi objects are converted
-  ///   to/from JSON, including:
-  ///   - Property naming conventions (camelCase, PascalCase, snake_case)
-  ///   - Member visibility (public only, published, etc.)
-  ///   - Custom type converters and serializers
-  ///   - Date/time formatting
-  ///   - Enum handling
+  ///   internally for all JSON serialization/deserialization in MCPConnect. Use
+  ///   this configuration to customize how Delphi objects are converted to/from
+  ///   JSON, including: - Property naming conventions (camelCase, PascalCase,
+  ///   snake_case) - Member visibility (public only, published, etc.) - Custom
+  ///   type converters and serializers - Date/time formatting - Enum handling
   /// </remarks>
   /// <example>
-  ///   <code>
+  ///   <code lang="">
   ///   // Configure Neon to use camelCase for JSON properties:
   ///   var
   ///     LNeonConfig: INeonConfiguration;
@@ -54,7 +52,7 @@ type
   ///   end;
   ///
   ///   // Now all JSON serialization will use camelCase:
-  ///   // Delphi property: FirstName -> JSON: "firstName"
+  ///   // Delphi property: FirstName -&gt; JSON: "firstName"
   ///   </code>
   /// </example>
   IJRPCNeonConfig = interface(IJRPCConfiguration)

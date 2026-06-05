@@ -21,22 +21,23 @@ uses
   MCPConnect.MCP.Attributes,
   MCPConnect.MCP.Types,
   MCPConnect.MCP.Tools,
-  MCPConnect.MCP.Prompts;
+  MCPConnect.MCP.Prompts,
+  MCPConnect.MCP.Resources;
 
 
 type
   TMCPToolContext = record
-    Result: TContentList;
+    Result: TCallToolResult;
     Attributes: TAttributes;
   end;
 
   TMCPPromptContext = record
-    Result: TPromptMessages;
+    Result: TGetPromptResult;
     Attributes: TAttributes;
   end;
 
   TMCPresourceContext = record
-    Result: TResourceContentsList;
+    Result: TReadResourceResult;
     Attributes: TAttributes;
   end;
 

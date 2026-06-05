@@ -153,6 +153,7 @@ type
     destructor Destroy; override;
 
     procedure ExchangeInputSchema(ASchema: TJSONObject);
+    procedure ExchangeOutputSchema(ASchema: TJSONObject);
     function ToJSON(APrettyPrint: Boolean = False): string;
   end;
 
@@ -199,7 +200,7 @@ type
     ///   structured content SHOULD also return functionally equivalent
     ///   unstructured content.
     /// </summary>
-    [NeonInclude(IncludeIf.NotEmpty)] StructuredContent: TJSONObject;
+    [NeonInclude(IncludeIf.NotEmpty)] StructuredContent: TJSONValue;
 
     /// <summary>
     ///   Whether the tool call ended in an error. If not set, this is assumed
@@ -208,7 +209,9 @@ type
     [NeonIgnore] IsError: Nullable<Boolean>;
 
   public
-    constructor Create;
+    constructor Create; overload;
+    constructor Create(AContent: TContentList); overload;
+
     destructor Destroy; override;
 
     procedure AddContent(AContent: TToolContent);
@@ -240,11 +243,20 @@ end;
 
 procedure TMCPTool.ExchangeInputSchema(ASchema: TJSONObject);
 begin
-  if Aschema = nil then
+  if ASchema = nil then
     Exit;
 
   InputSchema.Free;
   InputSchema := ASchema;
+end;
+
+procedure TMCPTool.ExchangeOutputSchema(ASchema: TJSONObject);
+begin
+  if ASchema = nil then
+    Exit;
+
+  OutputSchema.Free;
+  OutputSchema := ASchema;
 end;
 
 function TMCPTool.ToJSON(APrettyPrint: Boolean): string;
@@ -289,7 +301,16 @@ constructor TCallToolResult.Create;
 begin
   inherited;
   Content := TContentList.Create;
-  StructuredContent := TJSONObject.Create;
+  //StructuredContent := TJSONNull.Create;
+end;
+
+constructor TCallToolResult.Create(AContent: TContentList);
+begin
+  Assert(Assigned(AContent), ClassName + ': AContent cannot be nil');
+
+  inherited Create;
+  Content := AContent;
+  //StructuredContent := TJSONNull.Create;
 end;
 
 destructor TCallToolResult.Destroy;

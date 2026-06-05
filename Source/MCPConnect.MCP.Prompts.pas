@@ -209,7 +209,8 @@ type
     /// </summary>
     Messages: TPromptMessages;
   public
-    constructor Create;
+    constructor Create; overload;
+    constructor Create(AMessages: TPromptMessages); overload;
     destructor Destroy; override;
   end;
 
@@ -245,6 +246,14 @@ implementation
 constructor TGetPromptResult.Create;
 begin
   Messages := TPromptMessages.Create;
+end;
+
+constructor TGetPromptResult.Create(AMessages: TPromptMessages);
+begin
+  Assert(Assigned(AMessages), ClassName + ': AMessages cannot be nil');
+
+  inherited Create;
+  Messages := AMessages;
 end;
 
 destructor TGetPromptResult.Destroy;

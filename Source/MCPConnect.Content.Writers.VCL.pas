@@ -110,7 +110,7 @@ end;
 
 procedure TMCPGraphicWriter.WritePrompt(const AValue: TValue; AContext: TMCPPromptContext);
 begin
-  AContext.Result.AddImage('user', 'image', ValueToBase64(AValue));
+  AContext.Result.Messages.AddImage('user', 'image', ValueToBase64(AValue));
 end;
 
 procedure TMCPGraphicWriter.WriteResource(const AValue: TValue; AContext: TMCPresourceContext);
@@ -129,12 +129,12 @@ begin
 
   LBlob.Blob := ValueToBase64(AValue);
 
-  AContext.Result.Add(LBlob);
+  AContext.Result.Contents.Add(LBlob);
 end;
 
 procedure TMCPGraphicWriter.WriteTool(const AValue: TValue; AContext: TMCPToolContext);
 begin
-  AContext.Result.AddImage('image', ValueToBase64(AValue));
+  AContext.Result.Content.AddImage('image', ValueToBase64(AValue));
 end;
 
 end.

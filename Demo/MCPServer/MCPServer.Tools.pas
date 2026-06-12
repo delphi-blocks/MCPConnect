@@ -6,7 +6,9 @@ uses
   System.Classes, System.SysUtils, System.JSON, System.Generics.Collections,
   System.IOUtils, System.Rtti,
 
+  {$IFDEF FRAMEWORK_VCL}
   Vcl.Graphics, Vcl.ExtCtrls, Vcl.Dialogs,
+  {$ENDIF}
 
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
@@ -109,12 +111,6 @@ type
       [McpParam('itemType', 'The type of item to filter. Valid values: ''courses'', ''product'', ''consulting''')] const AItemType: string
     ): string;
 
-
-    [McpTool('course_image', 'Retrieves the image for the selected course', 'disabled, icon=photo.png')]
-    function GetImage(
-      [McpParam('name', 'Course name')] const AName: string
-    ): TPicture;
-
     [McpTool('splitstring', 'Gets the content by splitting the string (e.g. "hello,world" -> ["hello", "world"])', 'icon=tags.png')]
     function GetSplitString(
       [McpParam('value', 'The string to work with')] const AValue: string
@@ -124,6 +120,14 @@ type
     function GetPerson(
       [McpParam('name', 'The name of the person to get')] const AName: string
     ): TPerson;
+
+
+    {$IFDEF FRAMEWORK_VCL}
+    [McpTool('course_image', 'Retrieves the image for the selected course', 'disabled, icon=photo.png')]
+    function GetImage(
+      [McpParam('name', 'Course name')] const AName: string
+    ): TPicture;
+    {$ENDIF}
 
   end;
 
@@ -211,12 +215,13 @@ begin
   end;
 end;
 
-
+{$IFDEF FRAMEWORK_VCL}
 function TTestTool.GetImage(const AName: string): TPicture;
 begin
   Result := TPicture.Create;
   Result.LoadFromFile(TPath.Combine(GetCurrentDir, 'data\italy.bmp'));
 end;
+{$ENDIF}
 
 function TTestTool.GetPerson(const AName: string): TPerson;
 begin

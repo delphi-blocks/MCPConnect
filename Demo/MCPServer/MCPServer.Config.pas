@@ -19,7 +19,9 @@ uses
   MCPConnect.Configuration.Auth,
 
   MCPConnect.Content.Writers.RTL,
+  {$IFDEF FRAMEWORK_VCL}
   MCPConnect.Content.Writers.VCL,
+  {$ENDIF}
 
   MCPConnect.Session.Core,
   MCPServer.Notifications;
@@ -79,8 +81,10 @@ begin
 
         .SetIconFolder(TPath.Combine(LDataPath, 'icons'))
 
+        {$IFDEF FRAMEWORK_VCL}
         .RegisterWriter(TMCPImageWriter)
         .RegisterWriter(TMCPPictureWriter)
+        {$ENDIF}
         .RegisterWriter(TMCPStreamWriter)
         .RegisterWriter(TMCPStringListWriter)
 

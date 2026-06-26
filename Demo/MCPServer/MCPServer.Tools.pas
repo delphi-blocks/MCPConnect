@@ -85,7 +85,7 @@ type
     [Context] Responses: TMCPMessageQueue;
 
   public
-    [McpTool('get-tickets', 'Get the list of available tickets for the DelphiDay', 'icon=badge.png,structured')]
+    [McpTool('get-tickets', 'Get the list of available tickets for the DelphiDay', 'icon=badge.png')]
     [McpApp('ui://delphiday/ticket-app')]
     function GetTickets: TTickets;
 
@@ -116,7 +116,7 @@ type
       [McpParam('value', 'The string to work with')] const AValue: string
     ): TContentList;
 
-    [McpTool('get-person', 'Get a person info given his name', 'icon=person.png,structured')]
+    [McpTool('get-person', 'Get a person info given his name', 'icon=person.png')]
     function GetPerson(
       [McpParam('name', 'The name of the person to get')] const AName: string
     ): TPerson;

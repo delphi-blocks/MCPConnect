@@ -833,7 +833,7 @@ begin
   inherited;
   WriterRegistry := TMCPWriterRegistry.Create;
 
-  IconFolder := ExtractFilePath(ParamStr(0));
+  IconFolder := '';
   ScopeSeparator := '_';  // Default separator (MCP requires ^[a-zA-Z0-9_-]{1,64}$)
   Capabilities := nil;
 end;
@@ -921,6 +921,9 @@ begin
     AIcon.Src := ASrc;
     Exit(True);
   end;
+
+  if FConfig.Server.IconFolder.IsEmpty then
+    Exit(False);
 
   AIcon.FromFile(TPath.Combine(FConfig.Server.IconFolder, ASrc));
   Exit(True);

@@ -31,7 +31,8 @@ uses
   MCPServer.Resources in '..\MCPServer.Resources.pas',
   MCPServer.Apps in '..\MCPServer.Apps.pas',
   MCPServer.Notifications in '..\MCPServer.Notifications.pas',
-  MCPServer.Prompts in '..\MCPServer.Prompts.pas';
+  MCPServer.Prompts in '..\MCPServer.Prompts.pas',
+  MCPServer.Tools.Test in '..\MCPServer.Tools.Test.pas';
 
 procedure StartServer;
 var

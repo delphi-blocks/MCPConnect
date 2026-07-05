@@ -40,6 +40,7 @@ uses
   MCPServer.Resources,
   MCPServer.Apps,
   MCPServer.Tools,
+  MCPServer.Tools.Test,
   MCPServer.Prompts;
 
 
@@ -141,8 +142,6 @@ begin
       .Prompts
         .RegisterClass(TSamplePrompts)
       .BackToMCP
-
-
 
       .Tools
         .RegisterClass(TTestTool)

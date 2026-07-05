@@ -5,10 +5,11 @@
         <FrameworkType>None</FrameworkType>
         <Base>True</Base>
         <Config Condition="'$(Config)'==''">Debug</Config>
-        <Platform Condition="'$(Platform)'==''">Linux64</Platform>
+        <Platform Condition="'$(Platform)'==''">Win32</Platform>
         <TargetedPlatforms>131</TargetedPlatforms>
         <AppType>Console</AppType>
         <MainSource>MCPServerStdio.dpr</MainSource>
+        <ProjectName Condition="'$(ProjectName)'==''">MCPServerStdio</ProjectName>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Base' or '$(Base)'!=''">
         <Base>true</Base>
@@ -139,6 +140,7 @@
         <DCCReference Include="..\MCPServer.Apps.pas"/>
         <DCCReference Include="..\MCPServer.Notifications.pas"/>
         <DCCReference Include="..\MCPServer.Prompts.pas"/>
+        <DCCReference Include="..\MCPServer.Tools.Test.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

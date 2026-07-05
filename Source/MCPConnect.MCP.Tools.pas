@@ -200,7 +200,11 @@ type
     ///   structured content SHOULD also return functionally equivalent
     ///   unstructured content.
     /// </summary>
-    [NeonInclude(IncludeIf.NotEmpty)] StructuredContent: TJSONValue;
+    /// <remarks>
+    ///   Currently limited to a JSONObject ( <see
+    ///   href="https://github.com/modelcontextprotocol/php-sdk/issues/357" />)
+    /// </remarks>
+    [NeonInclude(IncludeIf.NotEmpty)] StructuredContent: TJSONObject;
 
     /// <summary>
     ///   Whether the tool call ended in an error. If not set, this is assumed

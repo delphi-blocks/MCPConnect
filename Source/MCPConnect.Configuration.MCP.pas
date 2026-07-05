@@ -797,6 +797,7 @@ end;
 
 procedure TMCPToolsConfig.WriteOutputSchema(ATool: TMCPTool);
 var
+  LSchemaType: TJSONPair;
   LJSONObj: TJSONObject;
   LType: TRttiType;
 begin
@@ -805,6 +806,16 @@ begin
     raise EMCPException.Create('Tool must be a function');
 
   LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LType, NeonConfig);
+
+  // outputSchema and structuredContent are (for now) limited to a JSON Object
+  // See: https://github.com/modelcontextprotocol/php-sdk/issues/357
+  LSchemaType := LJSONObj.Get('type');
+  if not (LSchemaType.JsonValue.Value = 'object') then
+  begin
+    LJSONObj.Free;
+    raise EMCPException.CreateFmt('outputSchema can only be a JSON object. [%s]', [ATool.Name]);
+  end;
+
   ATool.ExchangeOutputSchema(LJSONObj);
 end;
 

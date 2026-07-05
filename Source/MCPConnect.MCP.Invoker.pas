@@ -203,7 +203,7 @@ begin
       try
         // Check if the tool is configured to return a structured content
         if Assigned(LMCPAttr) and LMCPAttr.Tags.Exists('structured') then
-          AResult.StructuredContent := LJSON.Clone as TJSONValue;
+          AResult.StructuredContent := LJSON.Clone as TJSONObject;
 
         if Assigned(LMCPAttr) and (LMCPAttr.Tags.Exists('embedded')) then
         begin
@@ -234,9 +234,12 @@ begin
       begin
         var LJSON := TNeon.ValueToJSON(AToolResult, FConfig.Tools.NeonConfig);
         try
+          // outputSchema and structuredContent are (for now) limited to a JSON Object
+          // See: https://github.com/modelcontextprotocol/php-sdk/issues/357
+
           // Check if the tool is configured to return a structured content
           if Assigned(LMCPAttr) and (LMCPAttr.Tags.Exists('structured')) then
-            AResult.StructuredContent := LJSON.Clone as TJSONValue;
+            raise EMCPException.Create('Structured content can only be a JSON object');
 
           LResBlob.Resource.MIMEType := 'application/json';
           LResBlob.Resource.Blob := LJSON.ToJSON;

@@ -76,6 +76,8 @@ begin
     var LSessionConfig := AConfig as TSessionConfig;
     if LSessionConfig.TimeoutMinutes > 0 then
       LSessionManager.TimeoutMinutes := LSessionConfig.TimeoutMinutes;
+    if LSessionConfig.ReplayBufferSize > 0 then
+      LSessionManager.ReplayBufferSize := LSessionConfig.ReplayBufferSize;
     if Assigned(LSessionConfig.SessionClass) then
       LSessionManager.SessionClass := LSessionConfig.SessionClass;
   end;

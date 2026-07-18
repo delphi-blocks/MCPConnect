@@ -65,7 +65,7 @@ type
   protected
     { IMCPTransportWriter }
     function Connected: Boolean;
-    procedure Write(const AValue: string);
+    procedure Write(const AValue: string; const AEventId: string = '');
     procedure WriteComment(const AValue: string); overload;
     function SupportsStreaming: Boolean;
   public
@@ -268,9 +268,9 @@ begin
   Result := True;
 end;
 
-procedure TMCPTransportWriterIndy.Write(const AValue: string);
+procedure TMCPTransportWriterIndy.Write(const AValue: string; const AEventId: string);
 begin
-  WriteSSEEvent('', '', AValue, -1);
+  WriteSSEEvent(AEventId, '', AValue, -1);
 end;
 
 procedure TMCPTransportWriterIndy.WriteComment(const AValue: string);

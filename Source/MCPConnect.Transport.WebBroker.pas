@@ -67,7 +67,7 @@ type
     function SSEStream: TWebResponseStream;
 
     { IMCPTransportWriter }
-    procedure Write(const AValue: string); overload;
+    procedure Write(const AValue: string; const AEventId: string = ''); overload;
     procedure WriteComment(const AValue: string); overload;
     function Connected: Boolean;
     function SupportsStreaming: Boolean;
@@ -285,9 +285,9 @@ begin
   {$ENDIF}
 end;
 
-procedure TMCPTransportWriterWebBroker.Write(const AValue: string);
+procedure TMCPTransportWriterWebBroker.Write(const AValue: string; const AEventId: string);
 begin
-  WriteSSEEvent('', '', AValue, -1);
+  WriteSSEEvent(AEventId, '', AValue, -1);
 end;
 
 procedure TMCPTransportWriterWebBroker.WriteSSEEvent(const AId, AEvent,

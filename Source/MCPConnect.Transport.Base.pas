@@ -58,7 +58,7 @@ type
 
   IMCPTransportWriter = interface
     ['{68598454-50C5-4892-B8E0-81687CC2F4DE}']
-    procedure Write(const AValue: string);
+    procedure Write(const AValue: string; const AEventId: string = '');
     function Connected: Boolean;
     function SupportsStreaming: Boolean;
   end;
@@ -439,13 +439,39 @@ const
   begin
     AQueue.Process(
       procedure (AMessage: TJRPCMessage; var ADispose: Boolean)
+      var
+        LJson: string;
+        LEventId: Int64;
       begin
-        FResponseWriter.Write(AMessage.ToJson);
+        LJson := AMessage.ToJson;
+        LEventId := FSession.RecordEvent(LJson);
+        FResponseWriter.Write(LJson, LEventId.ToString);
       end,
       QueueReadTimeout
     );
   end;
 
+  // Replays events the client missed while disconnected, identified by the
+  // "Last-Event-ID" header it sends back on reconnect (SSE resumption).
+  procedure ReplayMissedEvents;
+  var
+    LHeader: string;
+    LLastEventId: Int64;
+    LEvent: TPair<Int64, string>;
+  begin
+    LHeader := FRequest.GetHeader('Last-Event-ID').Trim;
+    if LHeader.IsEmpty then
+      Exit;
+
+    if not TryStrToInt64(LHeader, LLastEventId) then
+    begin
+      Logger.LogWarning('HandleGET: ignoring malformed Last-Event-ID "%s"', [LHeader]);
+      Exit;
+    end;
+
+    for LEvent in FSession.GetEventsAfter(LLastEventId) do
+      FResponseWriter.Write(LEvent.Value, LEvent.Key.ToString);
+  end;
 
 begin
   if not FResponseWriter.SupportsStreaming then
@@ -461,6 +487,9 @@ begin
   FResponse.Code := HTTP_CODE_OK;
   FResponse.ContentType := TMediaType.TEXT_EVENT_STREAM;
   SendResponseHeaders(FResponse);
+
+  ReplayMissedEvents;
+
   while FResponseWriter.Connected do
   begin
     ProcessQueue(FSession.Outbound);
@@ -583,7 +612,13 @@ var
       procedure (AMessage: TJRPCMessage; var ADispose: Boolean)
       begin
         if FRequest.AcceptsEventStream and FResponseWriter.SupportsStreaming then
-          FResponseWriter.Write(AMessage.ToJson)
+        begin
+          var LJson := AMessage.ToJson;
+          if Assigned(FSession) then
+            FResponseWriter.Write(LJson, FSession.RecordEvent(LJson).ToString)
+          else
+            FResponseWriter.Write(LJson);
+        end
         else
         begin
           ADispose := False;

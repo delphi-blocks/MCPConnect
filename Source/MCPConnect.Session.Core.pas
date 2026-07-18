@@ -105,6 +105,10 @@ type
     FInbound: TMCPMessageQueue;
     FOutbound: TMCPMessageQueue;
     FInboundQueueHandler: TInboundQueueHandler;
+    FNextEventId: Int64;
+    FReplayBufferSize: Integer;
+    FReplayBuffer: TQueue<TPair<Int64, string>>;
+    FReplayLock: TCriticalSection;
     // This handle start the thread that process the inbound queue
     procedure HandleInboudQueue(Sender: TObject; AMessage: TJRPCMessage);
     procedure StartQueueHandler;
@@ -129,6 +133,26 @@ type
 
     property Inbound: TMCPMessageQueue read FInbound write FInbound;
     property Outbound: TMCPMessageQueue read FOutbound write FOutbound;
+
+    /// <summary>
+    ///   Maximum number of recently-sent SSE events kept for resumption (Last-Event-ID replay).
+    ///   Default: 100.
+    /// </summary>
+    property ReplayBufferSize: Integer read FReplayBufferSize write FReplayBufferSize;
+
+    /// <summary>
+    ///   Assigns the next SSE event ID for this session and records the event's JSON
+    ///   in the replay buffer (evicting the oldest entry once ReplayBufferSize is exceeded).
+    ///   Call once per outgoing SSE message, right before writing it to the wire.
+    /// </summary>
+    function RecordEvent(const AJson: string): Int64;
+
+    /// <summary>
+    ///   Returns the buffered events with an ID greater than ALastEventId, in send order.
+    ///   Used to replay events a client missed while disconnected. If ALastEventId is
+    ///   older than everything still buffered, only the events still available are returned.
+    /// </summary>
+    function GetEventsAfter(ALastEventId: Int64): TArray<TPair<Int64, string>>;
   end;
 
   /// <summary>
@@ -161,6 +185,7 @@ type
     FSessions: TDictionary<string, TMCPSessionBase>;
     FSessionClass: TMCPSessionDataClass;
     FTimeoutMinutes: Integer;
+    FReplayBufferSize: Integer;
     FServer: TJRPCServer;
 
     function GenerateSessionId: string;
@@ -204,6 +229,11 @@ type
     ///   Session timeout in minutes (default: 30)
     /// </summary>
     property TimeoutMinutes: Integer read FTimeoutMinutes write FTimeoutMinutes;
+
+    /// <summary>
+    ///   Per-session SSE replay buffer size, applied to sessions as they are created (default: 100)
+    /// </summary>
+    property ReplayBufferSize: Integer read FReplayBufferSize write FReplayBufferSize;
 
   end;
 
@@ -270,6 +300,7 @@ begin
   FSessions := TDictionary<string, TMCPSessionBase>.Create;
   FSessionClass := TMCPSessionData;
   FTimeoutMinutes := 30;
+  FReplayBufferSize := 100;
 end;
 
 destructor TMCPSessionManager.Destroy;
@@ -297,6 +328,7 @@ begin
     Result.FCreatedAt := Now;
     Result.FLastAccessedAt := Now;
     Result.FServer := FServer;
+    Result.ReplayBufferSize := FReplayBufferSize;
     Result.StartQueueHandler;
     FSessions.Add(LSessionId, Result);
   finally
@@ -396,6 +428,9 @@ begin
   inherited Create;
   FInbound := TMCPMessageQueue.Create(100);
   FOutbound := TMCPMessageQueue.Create(100);
+  FReplayBufferSize := 100;
+  FReplayBuffer := TQueue<TPair<Int64, string>>.Create;
+  FReplayLock := TCriticalSection.Create;
 end;
 
 destructor TMCPSessionBase.Destroy;
@@ -408,6 +443,8 @@ begin
 
   FInbound.Free;
   FOutbound.Free;
+  FReplayBuffer.Free;
+  FReplayLock.Free;
   inherited;
 end;
 
@@ -432,6 +469,41 @@ begin
   FInboundQueueHandler := TInboundQueueHandler.Create(FServer, Self);
   FInbound.OnEnqueue := HandleInboudQueue;
   FInboundQueueHandler.Start;
+end;
+
+function TMCPSessionBase.RecordEvent(const AJson: string): Int64;
+begin
+  FReplayLock.Enter;
+  try
+    Inc(FNextEventId);
+    Result := FNextEventId;
+    FReplayBuffer.Enqueue(TPair<Int64, string>.Create(Result, AJson));
+    while FReplayBuffer.Count > FReplayBufferSize do
+      FReplayBuffer.Dequeue;
+  finally
+    FReplayLock.Leave;
+  end;
+end;
+
+function TMCPSessionBase.GetEventsAfter(ALastEventId: Int64): TArray<TPair<Int64, string>>;
+var
+  LItem: TPair<Int64, string>;
+  LResult: TList<TPair<Int64, string>>;
+begin
+  FReplayLock.Enter;
+  try
+    LResult := TList<TPair<Int64, string>>.Create;
+    try
+      for LItem in FReplayBuffer do
+        if LItem.Key > ALastEventId then
+          LResult.Add(LItem);
+      Result := LResult.ToArray;
+    finally
+      LResult.Free;
+    end;
+  finally
+    FReplayLock.Leave;
+  end;
 end;
 
 { TInboundQueueHandler }

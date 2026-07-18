@@ -68,6 +68,12 @@ type
     function SetTimeout(AMinutes: Integer): ISessionConfig;
 
     /// <summary>
+    ///   Set how many recent SSE events are kept per session for Last-Event-ID
+    ///   resumption after a dropped connection. Default: 100
+    /// </summary>
+    function SetReplayBufferSize(ACount: Integer): ISessionConfig;
+
+    /// <summary>
     ///   Get the configured location for session ID
     /// </summary>
     function GetLocation: TSessionIdLocation;
@@ -89,16 +95,19 @@ type
     FHeaderName: string;
     FSessionClass: TMCPSessionDataClass;
     FTimeoutMinutes: Integer;
+    FReplayBufferSize: Integer;
   public
     { ISessionConfig }
     function SetLocation(ALocation: TSessionIdLocation): ISessionConfig;
     function SetHeaderName(const AName: string): ISessionConfig;
     function SetSessionClass(AClass: TMCPSessionDataClass): ISessionConfig;
     function SetTimeout(AMinutes: Integer): ISessionConfig;
+    function SetReplayBufferSize(ACount: Integer): ISessionConfig;
     function GetLocation: TSessionIdLocation;
     function GetHeaderName: string;
 
     property TimeoutMinutes: Integer read FTimeoutMinutes;
+    property ReplayBufferSize: Integer read FReplayBufferSize;
     property SessionClass: TMCPSessionDataClass read FSessionClass;
 
     constructor Create(AApp: IJRPCApplication); override;
@@ -116,6 +125,7 @@ begin
   FLocation := TSessionIdLocation.Header;
   FHeaderName := 'Mcp-Session-Id';
   FTimeoutMinutes := 30;
+  FReplayBufferSize := 100;
 end;
 
 function TSessionConfig.GetHeaderName: string;
@@ -149,6 +159,12 @@ end;
 function TSessionConfig.SetTimeout(AMinutes: Integer): ISessionConfig;
 begin
   FTimeoutMinutes := AMinutes;
+  Result := Self;
+end;
+
+function TSessionConfig.SetReplayBufferSize(ACount: Integer): ISessionConfig;
+begin
+  FReplayBufferSize := ACount;
   Result := Self;
 end;
 

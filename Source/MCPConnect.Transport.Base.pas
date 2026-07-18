@@ -109,7 +109,7 @@ type
     Code: Integer;
     Outbund: TQueue<string>;
 
-    procedure SetCookie(const AName, AValue: string);
+    procedure SetCookie(const AName, AValue: string; ASecure: Boolean = True);
     property ContentType: string read GetContentType write SetContentType;
   end;
 
@@ -142,6 +142,8 @@ type
   private
     procedure InjectCORS;
     function CheckOrigin: Boolean;
+    class function MatchesOriginPattern(const AOrigin, APattern: string): Boolean; static;
+    class function ConstantTimeEquals(const A, B: string): Boolean; static;
     function CheckAuthorization: Boolean;
     function ExtractSessionId: string;
     function HandleSession: TMCPSessionBase;
@@ -195,6 +197,30 @@ begin
   inherited;
 end;
 
+class function TMCPTransportHandler.ConstantTimeEquals(const A, B: string): Boolean;
+var
+  I, LMaxLen: Integer;
+  LDiff: Integer;
+  LCharA, LCharB: Word;
+begin
+  // Compares the full length of both strings regardless of where they first differ,
+  // so the running time does not leak how many leading characters of a guessed
+  // token/secret matched (a classic side channel for '<>' / early-exit comparisons).
+  LMaxLen := Length(A);
+  if Length(B) > LMaxLen then
+    LMaxLen := Length(B);
+
+  LDiff := Length(A) xor Length(B);
+  for I := 1 to LMaxLen do
+  begin
+    if I <= Length(A) then LCharA := Word(A[I]) else LCharA := 0;
+    if I <= Length(B) then LCharB := Word(B[I]) else LCharB := 0;
+    LDiff := LDiff or (LCharA xor LCharB);
+  end;
+
+  Result := LDiff = 0;
+end;
+
 function TMCPTransportHandler.CheckAuthorization: Boolean;
 begin
   Result := True;
@@ -203,19 +229,19 @@ begin
     case FAuthTokenConfig.Location of
       TAuthTokenLocation.Bearer:
       begin
-        if FRequest.GetHeader('Authorization') <> 'Bearer ' + FAuthTokenConfig.Token then
+        if not ConstantTimeEquals(FRequest.GetHeader('Authorization'), 'Bearer ' + FAuthTokenConfig.Token) then
           Exit(False);
       end;
 
       TAuthTokenLocation.Cookie:
       begin
-        if FRequest.GetCookie(FAuthTokenConfig.CustomHeader) <> FAuthTokenConfig.Token then
+        if not ConstantTimeEquals(FRequest.GetCookie(FAuthTokenConfig.CustomHeader), FAuthTokenConfig.Token) then
           Exit(False);
       end;
 
       TAuthTokenLocation.Header:
       begin
-        if FRequest.GetHeader(FAuthTokenConfig.CustomHeader) <> FAuthTokenConfig.Token then
+        if not ConstantTimeEquals(FRequest.GetHeader(FAuthTokenConfig.CustomHeader), FAuthTokenConfig.Token) then
           Exit(False);
       end;
 
@@ -225,6 +251,32 @@ begin
   end;
 end;
 
+class function TMCPTransportHandler.MatchesOriginPattern(const AOrigin, APattern: string): Boolean;
+var
+  LStar: Integer;
+  LPrefix, LSuffix: string;
+begin
+  // Exact match (case-insensitive: scheme and host are case-insensitive per RFC 6454)
+  if SameText(AOrigin, APattern) then
+    Exit(True);
+
+  // Single-wildcard glob, e.g. 'https://*.example.com' matches 'https://sub.example.com'
+  // but never the bare 'https://example.com' or a different suffix/prefix.
+  LStar := APattern.IndexOf('*');
+  if (LStar >= 0) and (APattern.IndexOf('*', LStar + 1) < 0) then
+  begin
+    LPrefix := APattern.Substring(0, LStar);
+    LSuffix := APattern.Substring(LStar + 1);
+    Exit(
+      (AOrigin.Length > LPrefix.Length + LSuffix.Length) and
+      AOrigin.StartsWith(LPrefix, True) and
+      AOrigin.EndsWith(LSuffix, True)
+    );
+  end;
+
+  Result := False;
+end;
+
 function TMCPTransportHandler.CheckOrigin: Boolean;
 var
   LOrigin, LHeader: string;
@@ -232,18 +284,24 @@ begin
   if not Assigned(FMCPConfig) then
     raise EMCPException.Create('Error retrieving MCP configuration');
 
-  Result := True;
   if Length(FMCPConfig.Security.AllowedOrigins) = 0 then
-    Exit;
+    Exit(True);
 
-  LHeader := FRequest.GetHeader('Origin');
-  if LHeader.IsEmpty then
-    Exit;
+  LHeader := FRequest.GetHeader('Origin').Trim;
+
+  // Reject requests with no Origin header, or the opaque "null" origin sent by
+  // sandboxed iframes/file:// pages, once an allowlist has been configured.
+  if LHeader.IsEmpty or SameText(LHeader, 'null') then
+  begin
+    Logger.LogWarning('CheckOrigin: request blocked, missing or null Origin header');
+    Exit(False);
+  end;
 
   for LOrigin in FMCPConfig.Security.AllowedOrigins do
-    if LHeader.StartsWith(LOrigin) then
-      Exit;
+    if MatchesOriginPattern(LHeader, LOrigin) then
+      Exit(True);
 
+  Logger.LogWarning('CheckOrigin: request blocked, Origin "%s" not in allowlist', [LHeader]);
   Result := False;
 end;
 
@@ -279,7 +337,7 @@ begin
         TSessionIdLocation.Header:
           FResponse.AddOrSetHeader(FSessionConfig.GetHeaderName, FSession.SessionId);
         TSessionIdLocation.Cookie:
-          FResponse.SetCookie(FSessionConfig.GetHeaderName, FSession.SessionId);
+          FResponse.SetCookie(FSessionConfig.GetHeaderName, FSession.SessionId, FMCPConfig.Security.CookieSecure);
         else
           raise EMCPTransportException.Create(500, 'SessionId Location not found');
       end;
@@ -494,7 +552,7 @@ begin
       if FSessionConfig.GetLocation = TSessionIdLocation.Header then
         FResponse.Headers.AddOrSetValue(FSessionConfig.GetHeaderName, FSession.SessionId)
       else if FSessionConfig.GetLocation = TSessionIdLocation.Cookie then
-        FResponse.SetCookie(FSessionConfig.GetHeaderName, FSession.SessionId);
+        FResponse.SetCookie(FSessionConfig.GetHeaderName, FSession.SessionId, FMCPConfig.Security.CookieSecure);
     end;
 
   except
@@ -651,9 +709,18 @@ begin
   Headers.AddOrSetValue('Content-Type', AValue);
 end;
 
-procedure TMCPTransportResponse.SetCookie(const AName, AValue: string);
+procedure TMCPTransportResponse.SetCookie(const AName, AValue: string; ASecure: Boolean);
+var
+  LCookie: string;
 begin
-  { TODO -opaolo -c : Finire 29/04/2026 23:34:50 }
+  // HttpOnly: not readable from JS (mitigates session-id theft via XSS)
+  // SameSite=Strict: never sent on cross-site requests (mitigates CSRF)
+  // Secure: HTTPS-only transmission; opt out via Security.SetCookieSecure(False) for plain-HTTP/dev setups
+  LCookie := Format('%s=%s; Path=/; HttpOnly; SameSite=Strict', [AName, AValue]);
+  if ASecure then
+    LCookie := LCookie + '; Secure';
+
+  Headers.AddOrSetValue('Set-Cookie', LCookie);
 end;
 
 { TMCPTransportRequest }

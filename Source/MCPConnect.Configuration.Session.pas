@@ -115,6 +115,7 @@ begin
   // MCP-friendly defaults
   FLocation := TSessionIdLocation.Header;
   FHeaderName := 'Mcp-Session-Id';
+  FTimeoutMinutes := 30;
 end;
 
 function TSessionConfig.GetHeaderName: string;

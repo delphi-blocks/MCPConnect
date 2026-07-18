@@ -349,12 +349,20 @@ type
     CORS: Boolean;
     AllowedMethods: TArray<string>;
     AllowedOrigins: TArray<string>;
+
+    /// <summary>
+    ///   Whether session/auth cookies are sent with the "Secure" attribute (HTTPS only).
+    ///   Default: True. Set to False only for plain-HTTP local/dev deployments,
+    ///   where browsers would otherwise silently drop the cookie.
+    /// </summary>
+    CookieSecure: Boolean;
   public
     constructor Create(AConfig: IMCPConfig);
 
     function SetCORS(AEnable: Boolean): TMCPSecurityConfig;
     function SetAllowedMethods(const AMethods: TArray<string>): TMCPSecurityConfig;
     function SetAllowedOrigins(const AOrigins: TArray<string>): TMCPSecurityConfig;
+    function SetCookieSecure(AEnable: Boolean): TMCPSecurityConfig;
   end;
 
   /// <summary>
@@ -1448,6 +1456,13 @@ constructor TMCPSecurityConfig.Create(AConfig: IMCPConfig);
 begin
   inherited Create(AConfig);
   AllowedMethods := ['POST'];
+  CookieSecure := True;
+end;
+
+function TMCPSecurityConfig.SetCookieSecure(AEnable: Boolean): TMCPSecurityConfig;
+begin
+  CookieSecure := AEnable;
+  Result := Self;
 end;
 
 function TMCPSecurityConfig.SetAllowedMethods(const AMethods: TArray<string>): TMCPSecurityConfig;

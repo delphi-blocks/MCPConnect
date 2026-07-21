@@ -40,9 +40,13 @@ MCPConnect handles the serialization, routing, and context management required f
   * **Easy-to-use** classes for tools, prompts, and resources
   * **Session Management:** Thread-safe session support with configurable timeout, automatic cleanup, and support for both generic (TJSONObject) and custom typed session data. Sessions are automatically injected via `[Context]` attribute.
   * **Notifications:** Full bidirectional notification support. Server-to-client: tools can push notifications *while running* — e.g. progress updates or `list_changed` events (`tools/list_changed`, `resources/list_changed`, `prompts/list_changed`) — by enqueuing them on a `[Context]`-injected message queue, streamed over HTTP (Server-Sent Events) and STDIO. Client-to-server: inbound client notifications can be handled too.
+  * **Resumable Streaming:** HTTP SSE messages are tagged with a per-session event ID; if a connection drops, the client reconnects with `Last-Event-ID` and the server replays everything it missed from a configurable replay buffer.
+  * **Security:** Built-in CORS support with an allowed-methods/allowed-origins allowlist for HTTP transports, plus secure-by-default session cookies.
+  * **Prompts:** Expose reusable, parameterized prompt templates with `[MCPPrompt]`/`[MCPArgument]`.
   * **API-Key** authentication for http transport (more to be implemented)
   * **JSON-RPC** MCPConnect contains a JSON-RPC library (`JRPC`) a comprehensive, high-performance **JSON-RPC 2.0** library built specifically for Delphi.
  *  **Automatic JSON Schema generation** - Using the powerful Neon TSchemaGenaerator, MCPConnect support any Delphi type as parameter or result. 
+  * **Attribute-Free Tool Registration:** Tools can also be registered programmatically via `RegisterTool`/`WithParam`/`EndTool` instead of `[McpTool]`/`[McpParam]` attributes — useful for classes that can't declare Delphi custom attributes (e.g. compiled from C++ Builder).
   
 
 ## 📡What is JSON-RPC?
@@ -133,8 +137,15 @@ FJRPCServer
       .SetName('delphi-mcp-server')
       .SetVersion('2.0.0')
       .SetCapabilities([Tools, Resources])  // Declare which capabilities to expose
+      .SetIconFolder(GetCurrentDir + '\data\icons')  // Base folder for icon= tags (Tools/Prompts)
       .RegisterWriter(TMCPImageWriter)       // Register content writers for complex types
       .RegisterWriter(TMCPStreamWriter)
+    .BackToMCP
+
+    .Security
+      .SetCORS(True)                            // Enable CORS (required by browser-based clients/inspectors)
+      .SetAllowedMethods(['POST'])
+      .SetAllowedOrigins(['http://localhost'])   // Leaving this empty allows ANY origin — lock it down for production
     .BackToMCP
 
     .Resources
@@ -154,13 +165,16 @@ FJRPCDispatcher.PathInfo := '/mcp';  // Set the endpoint path
 FJRPCDispatcher.Server := FJRPCServer;  // Connect to the server
 ```
 
-The configuration is split into three sections:
+The configuration is split into four sections:
 
-- **`.Server`** — server identity, declared capabilities, and content writers
+- **`.Server`** — server identity, declared capabilities, icon folder, and content writers
+- **`.Security`** — CORS and allowed-origin settings for HTTP transports
 - **`.Resources`** — resource classes and static files
 - **`.Tools`** — tool classes
 
 Each section ends with `.BackToMCP` to return to the root config builder.
+
+> **Note:** `AllowedOrigins` defaults to empty, which means *any* Origin is accepted — convenient for local development and tools like MCPJam Inspector, but you should set an explicit allowlist before exposing a server beyond localhost.
 
 #### Step 3: Understand the Automatic Integration
 
@@ -231,6 +245,7 @@ FJRPCServer
     .SetHeaderName('Mcp-Session-Id')         // Default for MCP
     .SetTimeout(30)                           // Minutes
     .SetSessionClass(TMCPSessionData)         // Or your custom class
+    .SetReplayBufferSize(100)                 // Recent SSE messages kept per session for Last-Event-ID resumption
   .ApplyConfig
 
   .Plugin.Configure<IMCPConfig>
@@ -247,6 +262,8 @@ FJRPCServer
 **Session Behavior by Transport:**
 - **HTTP (WebBroker/Indy)**: Session ID passed via header or cookie. Server returns `Mcp-Session-Id` header on first request.
 - **STDIO**: Implicit session per connection - no session ID needed.
+
+**Resumable Streaming (HTTP/SSE):** Every outgoing SSE message is tagged with a per-session event ID. If the connection drops, a client that reconnects with a `Last-Event-ID` header gets replayed everything sent after that ID, from a per-session buffer sized by `SetReplayBufferSize` (default 100).
 
 #### Using Sessions in Your Tools
 
@@ -444,7 +461,53 @@ Remember to declare `Resources` in `.SetCapabilities`:
 
 -----------------------------
 
-### 5. Organizing Tools with Scopes
+### 5. Prompts
+
+Prompts are reusable, parameterized templates a client can pull from your server to kick off an LLM interaction. Decorate a class's methods with `[MCPPrompt]` and its parameters with `[MCPArgument]`.
+
+```delphi
+type
+  TSamplePrompts = class
+  public
+    [MCPPrompt('simple-prompt', 'Simple Prompt', 'A prompt with no arguments')]
+    function SimplePrompt: string;
+
+    [MCPPrompt('argument-prompt', 'Argument Prompt', 'A prompt with 2 arguments')]
+    function ArgumentPrompt(
+      [MCPArgument('city', 'Name of the city', 'required')] const ACity: string;
+      [MCPArgument('country', 'Name of the country')] const ACountry: string
+    ): string;
+  end;
+
+function TSamplePrompts.SimplePrompt: string;
+begin
+  Result := 'This is a simple prompt without arguments';
+end;
+
+function TSamplePrompts.ArgumentPrompt(const ACity, ACountry: string): string;
+begin
+  Result := Format('What''s the weather in %s, %s?', [ACity, ACountry]);
+end;
+```
+
+`[MCPPrompt]` takes `(name, title, description)`. `[MCPArgument]` takes `(name, description, tags)` — the `required` tag marks an argument as mandatory. A prompt method can return a plain `string` (turned into a single user message) or a `TGetPromptResult`/`TPromptMessages` for full control over the returned message list.
+
+Register prompt classes in the `.Prompts` section and declare the `Prompts` capability:
+
+```delphi
+FJRPCServer
+  .Plugin.Configure<IMCPConfig>
+    .Server
+      .SetCapabilities([Tools, Resources, Prompts])
+    .BackToMCP
+    .Prompts
+      .RegisterClass(TSamplePrompts)
+    .BackToMCP;
+```
+
+-----------------------------
+
+### 6. Organizing Tools with Scopes
 
 When building larger MCP servers with multiple tool classes, you can assign a **scope** (namespace prefix) to a class using the `[McpScope]` attribute. This avoids name conflicts and produces a cleaner, more organized API.
 
@@ -505,10 +568,56 @@ Supported built-in annotations:
 |-----|---------|---------|
 | `app` | `app=ui://my-app/index.html` | Links tool to an MCP App UI |
 | `disabled` | `disabled` | Hides the tool from the tools list |
+| `icon` | `icon=money.png` | Tool icon — a filename resolved against `.Server.SetIconFolder(...)`, or a full `scheme://` URL |
+| `category` | `category=finance` | Free-form grouping label for the tool |
+| `readonly` | `readonly` | Sets the `readOnlyHint` annotation |
+| `destructive` | `destructive` | Sets the `destructiveHint` annotation |
+| `idempotent` | `idempotent` | Sets the `idempotentHint` annotation |
+| `openworld` | `openworld` | Sets the `openWorldHint` annotation |
+| `structured` | `structured` | Also generates `outputSchema`/`structuredContent` from the method's return type, which must be a JSON object (a record or class, not an array/scalar) |
+
+Combine multiple tags with commas, e.g. `'app=ui://my-app/index.html,category=demo,readonly'`.
 
 -----------------------------
 
-### 6. Connecting LLM Clients to Your MCP Server
+### 7. Registering Tools Without Attributes (C++ Builder Compatibility)
+
+`[McpTool]`/`[McpParam]` are Delphi custom attributes, which can't be declared on classes compiled from C++ Builder. For plain classes — Delphi or C++ Builder — `TMCPToolsConfig` also exposes a fluent, attribute-free way to register a single method as a tool: `RegisterTool` → one or more `WithParam` → `EndTool`.
+
+```delphi
+type
+  TMathTool = class
+  public
+    function DoubleOrZero(AValue: Integer; ADouble: Boolean): Integer;
+  end;
+
+function TMathTool.DoubleOrZero(AValue: Integer; ADouble: Boolean): Integer;
+begin
+  if ADouble then
+    Result := AValue * 2
+  else
+    Result := 0;
+end;
+```
+
+```delphi
+.Tools
+  .RegisterTool(TMathTool, 'DoubleOrZero', 'double_or_zero', 'Doubles or zeroes the value', 'icon=money.png')
+    .WithParam('AValue', 'value', 'The value to process')
+    .WithParam('ADouble', 'double', 'Whether to double it')
+    .EndTool
+.BackToMCP
+```
+
+- **`RegisterTool(AClass, AMethodName, AName, ADescription, ATags)`** looks up `AMethodName` on `AClass` via RTTI and returns a builder for it. `AName`/`ADescription`/`ATags` work exactly like the corresponding `[McpTool]` arguments, including the same tag vocabulary (`app`, `disabled`, `icon`, `category`, `readonly`, `destructive`, `idempotent`, `openworld`, `structured`) described above.
+- **`WithParam(AParamName, AName, ADescription, ATags)`** maps one Delphi parameter — matched by `AParamName`, the actual parameter name on the method — to its JSON-facing name and description, the equivalent of `[McpParam]`. Every parameter of the method must be covered by a `WithParam` call, or `EndTool` raises an exception.
+- **`EndTool`** finalizes the tool (generating its input/output schema) and returns to the `.Tools` builder, so calls can be chained like any other registration.
+
+This path works alongside the attribute-driven one — a server can freely mix `.RegisterClass(...)` calls with `.RegisterTool(...) ... .EndTool` calls in the same `.Tools` section.
+
+-----------------------------
+
+### 8. Connecting LLM Clients to Your MCP Server
 
 Once your MCP server is running, you need to configure your LLM client to connect to it. Below are configuration examples for popular clients.
 

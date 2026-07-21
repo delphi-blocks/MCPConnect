@@ -22,6 +22,7 @@ uses
   System.Rtti,
   System.JSON,
 
+  Neon.Core.Tags,
   Neon.Core.Nullables,
   Neon.Core.Persistence,
 
@@ -46,7 +47,6 @@ type
   end;
 
   TMCPBaseConfig = class;
-  TMCPListConfig = class;
   TMCPToolsConfig = class;
   TMCPPromptsConfig = class;
   TMCPResourcesConfig = class;
@@ -138,7 +138,6 @@ type
     ///   Resources configuration
     /// </summary>
     function Resources: TMCPResourcesConfig;
-
   end;
 
   /// <summary>
@@ -151,7 +150,7 @@ type
     constructor Create(AConfig: IMCPConfig);
     function SetIcon(const ASrc: string; var AIcon: TMCPIcon): Boolean;
 
-    function BackToMCP: IMCPConfig;
+    function BackToMCP: IMCPConfig; virtual;
   end;
 
   TMCPCapability = (Tools, Resources, Prompts, Tasks, Logging, Completions);
@@ -365,39 +364,59 @@ type
     function SetCookieSecure(AEnable: Boolean): TMCPSecurityConfig;
   end;
 
-  /// <summary>
-  ///   Configuration for managing lists of registered classes (prompts, etc.).
-  /// </summary>
-  TMCPListConfig = class(TMCPBaseConfig)
-  public
-    Registry: TObjectDictionary<string, TClass>;
+  TMCPParamConfig = class
+    ParamName: string;
+    Name: string;
+    Description: string;
+    TagStr: string;
+    Tags: TAttributeTags;
 
-    constructor Create(AConfig: IMCPConfig);
+    constructor Create;
     destructor Destroy; override;
-
-    function RegisterClass(AClass: TClass): TMCPListConfig; overload;
-    function GetClasses: TArray<TMCPClassInfo>;
-
-    /// <summary>
-    ///   Creates an instance of a class by namespace.
-    ///   Used internally by the framework to instantiate tools.
-    /// </summary>
-    /// <param name="ANamespace">Namespace of the tool class to instantiate</param>
-    /// <returns>New instance of the tool class</returns>
-    /// <exception cref="EJRPCException">Raised if namespace not found</exception>
-    function CreateInstance(const ANamespace: string): TObject;
   end;
 
+  TMCPToolConfig = class
+  private
+    Parent: TMCPToolsConfig;
+  public
+    ToolClass: TClass;
+    Prefix: string;
+    MethodName: string;
+    Method: TRttiMethod;
+    Name: string;
+    Description: string;
+    Tags: TAttributeTags;
+    Params: TObjectList<TMCPParamConfig>;
+
+    constructor Create(AParent: TMCPToolsConfig);
+    destructor Destroy; override;
+    function FindParam(const AName: string): TMCPParamConfig;
+    function WithParam(const AParamName, AName, ADescription: string; const ATags: string = ''): TMCPToolConfig;
+    function EndTool: TMCPToolsConfig;
+  end;
+
+  {
+  TMCPToolClassConfig = class(TMCPToolBaseConfig)
+    ToolClass: TClass;
+    Prefix: string;
+    function AddTool(const AMethodName, AName, ADescription: string; const ATags: string = ''): TMCPToolConfig;
+  end;
+  }
 
   /// <summary>
   ///   Configuration for MCP tools registration and discovery.
   /// </summary>
   TMCPToolsConfig = class(TMCPBaseConfig)
   private
-    procedure WriteInputSchema(ATool: TMCPTool);
+    Configs: TObjectList<TMCPToolConfig>;
+    procedure WriteInputSchema(ATool: TMCPTool; AConfig: TMCPToolConfig);
     procedure WriteOutputSchema(ATool: TMCPTool);
-    procedure WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
-    procedure WriteTool(ATool: TMCPTool; AToolAttr: MCPToolAttribute; AAppAttr: MCPAppAttribute);
+    procedure WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray); overload;
+    procedure WriteParams(AConfig: TMCPToolConfig; AProps: TJSONObject; ARequired: TJSONArray); overload;
+
+    procedure WriteTool(ATool: TMCPTool; ATags: TAttributeTags);
+
+    procedure EndTool(AConfig: TMCPToolConfig);
   public
     Registry: TMCPToolRegistry;
     NeonConfig: INeonConfiguration;
@@ -406,6 +425,7 @@ type
     destructor Destroy; override;
 
     function RegisterClass(AClass: TClass): TMCPToolsConfig;
+    function RegisterTool(AClass: TClass; const AMethodName, AName, ADescription: string; const ATags: string = ''): TMCPToolConfig;
     function SetSchemaNeonConfig(ANeonConfig: INeonConfiguration): TMCPToolsConfig;
 
     /// <summary>
@@ -421,6 +441,8 @@ type
     function ListEnabled: TListToolsResult;
 
     procedure FilterList(AList: TListToolsResult; AFilter: TMCPToolFilterFunc);
+    
+    function BackToMCP: IMCPConfig; override;
   end;
 
   TMCPPromptsConfig = class(TMCPBaseConfig)
@@ -605,55 +627,17 @@ begin
   Result := FServer;
 end;
 
-{ TMCPListConfig }
-
-constructor TMCPListConfig.Create(AConfig: IMCPConfig);
+function TMCPToolsConfig.BackToMCP: IMCPConfig;
 begin
-  inherited;
-  Registry := TObjectDictionary<string, TClass>.Create;
-end;
-
-destructor TMCPListConfig.Destroy;
-begin
-  Registry.Free;
-  inherited;
-end;
-
-function TMCPListConfig.GetClasses: TArray<TMCPClassInfo>;
-var
-  LPair: TPair<string, TClass>;
-  LIndex: Integer;
-begin
-  SetLength(Result, Registry.Count);
-  LIndex := 0;
-  for LPair in Registry do
-  begin
-    Result[LIndex].Scope := LPair.Key;
-    Result[LIndex].MCPClass := LPair.Value;
-    Inc(LIndex);
-  end;
-end;
-
-function TMCPListConfig.RegisterClass(AClass: TClass): TMCPListConfig;
-begin
-  Registry.AddOrSetValue(AClass.ClassName, AClass);
-  Result := Self;
-end;
-
-function TMCPListConfig.CreateInstance(const ANamespace: string): TObject;
-var
-  LClass: TClass;
-begin
-  if not Registry.TryGetValue('', LClass) then
-    raise EJRPCException.CreateFmt('Tool class not found for namespace "%s"', [ANamespace]);
-
-  Result := TRttiUtils.CreateInstance(LClass);
+  Configs.Clear;
+  inherited;  
 end;
 
 constructor TMCPToolsConfig.Create(AConfig: IMCPConfig);
 begin
   inherited;
   Registry := TMCPToolRegistry.Create([doOwnsValues]);
+  Configs := TObjectList<TMCPToolConfig>.Create(True);
   NeonConfig := TNeonConfiguration.Camel;
 end;
 
@@ -670,8 +654,33 @@ end;
 destructor TMCPToolsConfig.Destroy;
 begin
   Registry.Free;
-
+  Configs.Free;
   inherited;
+end;
+
+procedure TMCPToolsConfig.EndTool(AConfig: TMCPToolConfig);
+var
+  LTool: TMCPTool;
+begin
+  LTool := TMCPTool.Create;
+  try
+    LTool.Name := AConfig.Name;
+    LTool.Description := AConfig.Description;
+    LTool.Classe := AConfig.ToolClass;
+    LTool.Method := AConfig.Method;
+
+    WriteTool(LTool, AConfig.Tags);
+
+    WriteInputSchema(LTool, AConfig);
+
+    if AConfig.Tags.Exists('structured') then
+      WriteOutputSchema(LTool);
+
+    Registry.Add(LTool.Name, LTool);
+  except
+    LTool.Free;
+    raise;
+  end;
 end;
 
 function TMCPToolsConfig.ListEnabled: TListToolsResult;
@@ -704,8 +713,6 @@ begin
     if not Assigned(LToolAttr) then
       Continue;
 
-    LAppAttr := TRttiUtils.FindAttribute<MCPAppAttribute>(LMethod);
-
     LTool := TMCPTool.Create;
     try
       LTool.Name := LScope + LToolAttr.Name;
@@ -713,7 +720,16 @@ begin
       LTool.Classe := AClass;
       LTool.Method := LMethod;
 
-      WriteTool(LTool, LToolAttr, LAppAttr);
+      LAppAttr := TRttiUtils.FindAttribute<MCPAppAttribute>(LMethod);
+      if Assigned(LAppAttr) then
+        LToolAttr.Tags.TagMap.AddOrSetValue('app', LAppAttr.UI);
+
+      WriteTool(LTool, LToolAttr.Tags);
+
+      WriteInputSchema(LTool, nil);
+
+      if LToolAttr.Tags.Exists('structured') then
+        WriteOutputSchema(LTool);
 
       Registry.Add(LTool.Name, LTool);
     except
@@ -722,6 +738,30 @@ begin
     end;
   end;
   Result := Self;
+end;
+
+function TMCPToolsConfig.RegisterTool(AClass: TClass;
+  const AMethodName, AName, ADescription, ATags: string): TMCPToolConfig;
+var
+  LClassType: TRttiType;
+  LMethod: TRttiMethod;
+begin
+  LClassType := TRttiUtils.Context.GetType(AClass);
+  LMethod := LClassType.GetMethod(AMethodName);
+  if not Assigned(LMethod) then
+    raise EMCPException.CreateFmt('Method [%s] in class [%s] not found', [AMethodName, AClass.ClassName]);
+
+  Result := TMCPToolConfig.Create(Self);
+  Configs.Add(Result);
+
+  Result.ToolClass := AClass;
+  Result.MethodName := AMethodName;
+  Result.Method := LMethod;
+
+  Result.Name := AName;
+  Result.Description := ADescription;
+  Result.Tags.TagMap.Clear;
+  Result.Tags.Parse(ATags);
 end;
 
 function TMCPToolsConfig.ListComplete: TListToolsResult;
@@ -744,37 +784,30 @@ begin
   Result := Self;
 end;
 
-procedure TMCPToolsConfig.WriteTool(ATool: TMCPTool; AToolAttr: MCPToolAttribute; AAppAttr: MCPAppAttribute);
+procedure TMCPToolsConfig.WriteTool(ATool: TMCPTool; ATags: TAttributeTags);
 var
   LIcon: TMCPIcon;
 begin
-  if SetIcon(AToolAttr.Tags.GetValueAs<string>('icon'), LIcon) then
+  if SetIcon(ATags.GetValueAs<string>('icon'), LIcon) then
     ATool.Icons := ATool.Icons + [LIcon];
 
-  ATool.Category := AToolAttr.Tags.GetValueAs<string>('category');
-  ATool.Disabled := AToolAttr.Tags.GetBoolValue('disabled');
+  ATool.Category := ATags.GetValueAs<string>('category');
+  ATool.Disabled := ATags.GetBoolValue('disabled');
 
-  if Assigned(AAppAttr) then
-    ATool.UI.ResourceUri := AAppAttr.UI
-  else if AToolAttr.Tags.Exists('app') then
-    ATool.UI.ResourceUri := AToolAttr.Tags.GetValueAs<string>('app');
+  if ATags.Exists('app') then
+    ATool.UI.ResourceUri := ATags.GetValueAs<string>('app');
 
-  if AToolAttr.Tags.Exists('readonly') then
-    ATool.Annotations.ReadOnlyHint := AToolAttr.Tags.GetBoolValue('readonly');
-  if AToolAttr.Tags.Exists('destructive') then
-    ATool.Annotations.DestructiveHint := AToolAttr.Tags.GetBoolValue('destructive');
-  if AToolAttr.Tags.Exists('idempotent') then
-    ATool.Annotations.IdempotentHint := AToolAttr.Tags.GetBoolValue('idempotent');
-  if AToolAttr.Tags.Exists('openworld') then
-    ATool.Annotations.OpenWorldHint := AToolAttr.Tags.GetBoolValue('openworld');
-
-  WriteInputSchema(ATool);
-
-  if AToolAttr.Tags.Exists('structured') then
-    WriteOutputSchema(ATool);
+  if ATags.Exists('readonly') then
+    ATool.Annotations.ReadOnlyHint := ATags.GetBoolValue('readonly');
+  if ATags.Exists('destructive') then
+    ATool.Annotations.DestructiveHint := ATags.GetBoolValue('destructive');
+  if ATags.Exists('idempotent') then
+    ATool.Annotations.IdempotentHint := ATags.GetBoolValue('idempotent');
+  if ATags.Exists('openworld') then
+    ATool.Annotations.OpenWorldHint := ATags.GetBoolValue('openworld');
 end;
 
-procedure TMCPToolsConfig.WriteInputSchema(ATool: TMCPTool);
+procedure TMCPToolsConfig.WriteInputSchema(ATool: TMCPTool; AConfig: TMCPToolConfig);
 var
   LProps, LInputSchema: TJSONObject;
   LRequired: TJSONArray;
@@ -782,7 +815,11 @@ begin
   LProps := TJSONObject.Create;
   LRequired := TJSONArray.Create;
   try
-    WriteParams(ATool.Method, LProps, LRequired);
+    if not Assigned(AConfig) then
+      WriteParams(ATool.Method, LProps, LRequired)
+    else
+      WriteParams(AConfig, LProps, LRequired);
+
   except
     LProps.Free;
     LRequired.Free;
@@ -825,6 +862,30 @@ begin
   end;
 
   ATool.ExchangeOutputSchema(LJSONObj);
+end;
+
+procedure TMCPToolsConfig.WriteParams(AConfig: TMCPToolConfig;
+  AProps: TJSONObject; ARequired: TJSONArray);
+var
+  LJSONObj: TJSONObject;
+  LParam: TRttiParameter;
+begin
+  if AConfig.Params.Count <> Length(AConfig.Method.GetParameters) then
+    raise EJRPCException.Create('Non-configured params are not permitted');
+  
+  for LParam in AConfig.Method.GetParameters do
+  begin
+    var par := AConfig.FindParam(LParam.Name);
+    if not Assigned(par) then
+      raise EJRPCException.CreateFmt('The [%s] parameter has no configuration', [LParam.Name]);
+      
+    LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LParam.ParamType, NeonConfig);
+
+    LJSONObj.AddPair('description', TJSONString.Create(par.Description));
+    AProps.AddPair(par.Name, LJSONObj);
+    ARequired.Add(par.Name);
+  end;
+
 end;
 
 procedure TMCPToolsConfig.WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
@@ -1530,6 +1591,62 @@ begin
 
   AProc(Capabilities);
   Result := Self;
+end;
+
+{ TMCPToolConfig }
+
+constructor TMCPToolConfig.Create(AParent: TMCPToolsConfig);
+begin
+  Parent := AParent;
+  Params := TObjectList<TMCPParamConfig>.Create(True);
+  Tags := TAttributeTags.Create();
+end;
+
+destructor TMCPToolConfig.Destroy;
+begin
+  Params.Free;
+  Tags.Free;
+  inherited;
+end;
+
+function TMCPToolConfig.EndTool: TMCPToolsConfig;
+begin
+  Parent.EndTool(Self);
+  Result := Parent;
+end;
+
+function TMCPToolConfig.FindParam(const AName: string): TMCPParamConfig;
+begin
+  Result := nil;
+  for var par in Params do
+    if SameText(par.ParamName, AName) then
+      Exit(par);
+end;
+
+function TMCPToolConfig.WithParam(const AParamName, AName, ADescription: string;
+  const ATags: string): TMCPToolConfig;
+begin
+  var p := TMCPParamConfig.Create();
+  p.ParamName := AParamName;
+  p.Name := AName;
+  p.Description := ADescription;
+  p.Tags.Parse(ATags);
+  Params.Add(p);
+
+  Result := Self;
+end;
+
+{ TMCPParamConfig }
+
+constructor TMCPParamConfig.Create;
+begin
+  Tags := TAttributeTags.Create();
+end;
+
+destructor TMCPParamConfig.Destroy;
+begin
+  Tags.Free;
+  inherited;
 end;
 
 initialization

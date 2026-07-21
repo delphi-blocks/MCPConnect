@@ -127,7 +127,9 @@ begin
       .Security
         .SetCORS(True)
         .SetAllowedMethods(['POST'])
+        {$IFNDEF DEBUG}
         .SetAllowedOrigins(['http://localhost'])
+        {$ENDIF}
       .BackToMCP
 
       .Resources
@@ -144,9 +146,21 @@ begin
       .BackToMCP
 
       .Tools
+
+        .RegisterTool(TTestTool, 'TestParam', 'double_or_nothing', 'Doubles or zeroes the param value', 'icon=money.png')
+          .WithParam('AValue', 'value1', 'Test Parameter 1 for MCP')
+          .WithParam('ADouble', 'value2', 'Test Parameter 2 for MCP')
+          .EndTool
+{
+        .RegisterTool(TTestTool, 'TestParam', 'double_or_nothing', 'Doubles or zeroes the param value', 'icon=money.png')
+          .WithParam('AValue', 'value1', 'Test Parameter 1 for MCP')
+          .WithParam('ADouble', 'value2', 'Test Parameter 2 for MCP')
+          .EndTool
+
         .RegisterClass(TTestTool)
         .RegisterClass(TDelphiDayTool)
         .RegisterClass(TShoppingCartTool)  // Session-based shopping cart
+}
       .BackToMCP
   ;
 end;

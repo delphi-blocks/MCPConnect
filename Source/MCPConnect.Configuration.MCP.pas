@@ -380,7 +380,6 @@ type
     Parent: TMCPToolsConfig;
   public
     ToolClass: TClass;
-    Prefix: string;
     MethodName: string;
     Method: TRttiMethod;
     Name: string;

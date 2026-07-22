@@ -342,7 +342,8 @@ var
   LList: TListToolsResult;
   LTool: TMCPTool;
 begin
-  FConfig.Tools.RegisterTool(TManualToolClass, 'NoParams', 'disabled_tool', 'y', 'disabled')
+  FConfig.Tools
+    .RegisterTool(TManualToolClass, 'NoParams', 'disabled_tool', 'y', 'disabled')
     .EndTool;
 
   Assert.IsTrue(FConfig.Tools.Registry.ContainsKey('disabled_tool'), 'Disabled tool should still be in the registry');

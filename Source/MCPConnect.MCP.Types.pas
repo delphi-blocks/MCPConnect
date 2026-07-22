@@ -20,6 +20,7 @@ interface
 uses
   System.SysUtils, System.Classes, System.Generics.Collections, System.JSON, System.Rtti,
 
+  Neon.Core.Tags,
   Neon.Core.Types,
   Neon.Core.Attributes,
   Neon.Core.Nullables,
@@ -28,6 +29,25 @@ uses
   Neon.Core.Serializers.RTL,
   MCPConnect.JRPC.Core,
   MCPConnect.JRPC.Classes;
+
+const
+  MCP_PROTOCOL_VERSION_2025_06_18 = '2025-06-18';
+  MCP_PROTOCOL_VERSION_2025_11_25 = '2025-11-25';
+
+  /// <summary>
+  ///   The protocol version the server proposes when the client requests a version
+  ///   the server does not support.
+  /// </summary>
+  MCP_LATEST_PROTOCOL_VERSION = MCP_PROTOCOL_VERSION_2025_11_25;
+
+  /// <summary>
+  ///   Protocol versions this server is able to speak, checked during the
+  ///   initialize handshake against the client-requested version.
+  /// </summary>
+  MCP_SUPPORTED_PROTOCOL_VERSIONS: array[0..1] of string = (
+    MCP_PROTOCOL_VERSION_2025_06_18,
+    MCP_PROTOCOL_VERSION_2025_11_25
+  );
 
 type
   EMCPException = class(Exception);
@@ -48,6 +68,8 @@ type
 
   TMetaClass = class
   public
+    [NeonIgnore] Tags: TAttributeTags;
+
     /// <summary>
     /// Meta is a metadata object that is reserved by MCP for storing additional information
     /// </summary>
@@ -331,7 +353,7 @@ type
   TInitializeParams = class
 
     /// <summary>
-    /// T  he latest version of the Model Context Protocol that the client supports.
+    /// The latest version of the Model Context Protocol that the client supports.
     /// </summary>
     ProtocolVersion: string;
 
@@ -894,12 +916,14 @@ end;
 
 constructor TMetaClass.Create;
 begin
+  Tags := TAttributeTags.Create();
   Meta := TJSONObject.Create;
 end;
 
 destructor TMetaClass.Destroy;
 begin
   Meta.Free;
+  Tags.Free;
   inherited;
 end;
 

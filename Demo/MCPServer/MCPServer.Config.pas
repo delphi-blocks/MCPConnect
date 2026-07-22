@@ -147,20 +147,14 @@ begin
 
       .Tools
 
-        .RegisterTool(TTestTool, 'TestParam', 'double_or_nothing', 'Doubles or zeroes the param value', 'icon=money.png')
-          .WithParam('AValue', 'value1', 'Test Parameter 1 for MCP')
-          .WithParam('ADouble', 'value2', 'Test Parameter 2 for MCP')
-          .EndTool
-{
-        .RegisterTool(TTestTool, 'TestParam', 'double_or_nothing', 'Doubles or zeroes the param value', 'icon=money.png')
-          .WithParam('AValue', 'value1', 'Test Parameter 1 for MCP')
-          .WithParam('ADouble', 'value2', 'Test Parameter 2 for MCP')
+        .RegisterTool(TRegisterToolTest, 'RandomNumber', 'random', 'Generates random numbers within a specified range', 'icon=money.png')
+          .WithParam('AMax', 'range', 'Range parameter for Random')
           .EndTool
 
         .RegisterClass(TTestTool)
         .RegisterClass(TDelphiDayTool)
         .RegisterClass(TShoppingCartTool)  // Session-based shopping cart
-}
+
       .BackToMCP
   ;
 end;

@@ -63,6 +63,11 @@ type
 
   TTickets = class(TObjectList<TTicket>);
 
+  TRegisterToolTest = class
+  public
+    function RandomNumber(AMax: Integer): Integer;
+  end;
+
   //[McpNamespace('delphiday')]
   TDelphiDayTool = class
   private
@@ -284,5 +289,15 @@ begin
   FDate := ADate;
   FPrice := APrice;
 end;
+
+{ TRegisterToolTest }
+
+function TRegisterToolTest.RandomNumber(AMax: Integer): Integer;
+begin
+  Result := Random(AMax);
+end;
+
+initialization
+  Randomize();
 
 end.

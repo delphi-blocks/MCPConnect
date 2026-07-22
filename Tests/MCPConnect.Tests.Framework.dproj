@@ -156,6 +156,7 @@
         <DCCReference Include="MCPConnect.Tests.Session.Core.pas"/>
         <DCCReference Include="MCPConnect.Tests.Core.Utils.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Configuration.pas"/>
+        <DCCReference Include="MCPConnect.Tests.MCP.Server.Api.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

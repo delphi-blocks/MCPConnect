@@ -16,7 +16,7 @@ unit MCPConnect.MCP.Server.Api;
 interface
 
 uses
-  System.Classes, System.SysUtils, System.JSON,
+  System.Classes, System.SysUtils, System.StrUtils, System.JSON,
   MCPConnect.JRPC.Classes,
   MCPConnect.JRPC.Core,
   MCPConnect.Configuration.MCP,
@@ -179,7 +179,10 @@ function TMCPInitializeApi.Initialize(AInitializeParams: TInitializeParams): TIn
 begin
   Result := TInitializeResult.Create;
   try
-    Result.ProtocolVersion := AInitializeParams.ProtocolVersion;
+    if MatchStr(AInitializeParams.ProtocolVersion, MCP_SUPPORTED_PROTOCOL_VERSIONS) then
+      Result.ProtocolVersion := AInitializeParams.ProtocolVersion
+    else
+      Result.ProtocolVersion := MCP_LATEST_PROTOCOL_VERSION;
     Result.ServerInfo.Name := MCPConfig.Server.Name;
     Result.ServerInfo.Version := MCPConfig.Server.Version;
     Result.ServerInfo.Description := MCPConfig.Server.Description;

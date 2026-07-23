@@ -463,7 +463,7 @@ begin
     Exit(False);
 
   if FRequest.ContentJSON is TJSONObject then
-    Result := MethodIsInitialize(TJSONObject(FRequest.ContentJSON))
+    Exit(MethodIsInitialize(TJSONObject(FRequest.ContentJSON)))
   else if FRequest.ContentJSON is TJSONArray then
     for var LItem in TJSONArray(FRequest.ContentJSON) do
       if (LItem is TJSONObject) and MethodIsInitialize(TJSONObject(LItem)) then
@@ -752,10 +752,8 @@ var
   LSessionId: string;
   LSessionManager: TMCPSessionManager;
 begin
-  Result := nil;
-
   if not Assigned(FSessionConfig) or (not FSessionConfig.IsApplied) then
-    Exit;
+    Exit(nil);
 
   LSessionId := ExtractSessionId;
   LSessionManager := (FServer.SessionManager as TMCPSessionManager);

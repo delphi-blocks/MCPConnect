@@ -24,6 +24,9 @@ uses
   MCPConnect.Transport.Base,
   MCPConnect.Transport.MediaType;
 
+resourcestring
+  SJRPCServerNotFound = 'JRPC JRPCServer not found';
+
 type
   TJRPCIndyBridge = class(TComponent)
   private
@@ -82,7 +85,7 @@ var
   LMcpHandler: IMCPTransportHandler;
 begin
   if not Assigned(FJRPCServer) then
-    raise EJRPCException.Create('JRPC JRPCServer not found');
+    raise EJRPCException.Create(SJRPCServerNotFound);
 
   LMcpHandler := TMCPTransportHandler.Create(FJRPCServer, TMCPTransportWriterIndy.Create(AContext.Connection));
 

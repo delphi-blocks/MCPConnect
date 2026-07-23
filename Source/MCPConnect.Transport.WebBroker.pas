@@ -25,6 +25,10 @@ uses
   MCPConnect.JRPC.Core,
   MCPConnect.JRPC.Server;
 
+resourcestring
+  SServerNotFound = 'Server not found';
+  SWebBrokerSSENotSupported = 'SSE not supported';
+
 type
   TJRPCDispatcher = class(TComponent, IWebDispatch)
   private
@@ -191,7 +195,7 @@ var
   LMcpHandler: IMCPTransportHandler;
 begin
   if not Assigned(FServer) then
-    raise EJRPCException.Create('Server not found');
+    raise EJRPCException.Create(SServerNotFound);
 
   var LWriter := TMCPTransportWriterWebBroker.Create(AWebResponse);
 
@@ -252,7 +256,7 @@ begin
     Result := FSSEStream.Connected;
   end;
   {$ELSE}
-  raise EJRPCException.Create('SSE not supported');
+  raise EJRPCException.Create(SWebBrokerSSENotSupported);
   {$ENDIF}
 end;
 
@@ -272,7 +276,7 @@ begin
   end;
   Result := FSSEStream;
   {$ELSE}
-  raise EJRPCException.Create('SSE not supported');
+  raise EJRPCException.Create(SWebBrokerSSENotSupported);
   {$ENDIF}
 end;
 
@@ -307,7 +311,7 @@ begin
   SSEStream.EndEvent;
   FPing := TStopwatch.StartNew;
   {$ELSE}
-  raise EJRPCException.Create('SSE not supported');
+  raise EJRPCException.Create(SWebBrokerSSENotSupported);
   {$ENDIF}
 end;
 
@@ -318,7 +322,7 @@ begin
   SSEStream.EndEvent;
   FPing := TStopwatch.StartNew;
   {$ELSE}
-  raise EJRPCException.Create('SSE not supported');
+  raise EJRPCException.Create(SWebBrokerSSENotSupported);
   {$ENDIF}
 end;
 

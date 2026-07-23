@@ -49,6 +49,24 @@ const
     MCP_PROTOCOL_VERSION_2025_11_25
   );
 
+resourcestring
+  // Localizable messages for the MCP layer (MCPConnect.MCP.Types/Invoker/Server.Api)
+
+  // MCPConnect.MCP.Types
+  SMCPMediaTypeNotFoundForExt = 'MediaType for extension [%s] not found';
+  SMCPDataUriFileNotFound = 'Building data uri: file [%s] not found';
+
+  // MCPConnect.MCP.Invoker
+  SMCPStructuredContentMustBeObject = 'Structured content can only be a JSON object';
+  SMCPTypeKindNotSupported = 'Type kind not supported';
+  SMCPUriNotCompatibleWithTemplate = 'URI not compatible with the template';
+  SMCPParamsCountMismatch = 'Parameters count from method and URI are different';
+
+  // MCPConnect.MCP.Server.Api
+  SMCPToolNotFound = 'Tool [%s] not found';
+  SMCPResourceNotFound = 'Resource [%s] not found';
+  SMCPPromptNotFound = 'Prompt [%s] not found';
+
 type
   EMCPException = class(Exception);
 
@@ -982,7 +1000,7 @@ begin
     var ext := TPath.GetExtension(AIcon);
     MimeType := mm.MediaByExtension(ext);
     if MimeType.Value.IsEmpty then
-      raise EMCPException.CreateFmt('MediaType for extension [%s] not found', [ext]);
+      raise EMCPException.CreateFmt(SMCPMediaTypeNotFoundForExt, [ext]);
 
     Src := mm.DataUri(AIcon, MimeType);
     if MimeType = 'image/png' then
@@ -1252,7 +1270,7 @@ begin
   var ext := TPath.GetExtension(AFileName);
   var mime := MediaByExtension(ext);
   if mime.IsEmpty then
-    raise EMCPException.CreateFmt('MediaType for extension [%s] not found', [ext]);
+    raise EMCPException.CreateFmt(SMCPMediaTypeNotFoundForExt, [ext]);
 
   Result := DataUri(AFileName, mime);
 end;
@@ -1260,7 +1278,7 @@ end;
 function TMCPMimeTypes.DataUri(const AFileName, AMimeType: string): string;
 begin
   if not TFile.Exists(AFileName) then
-    raise EMCPException.CreateFmt('Building data uri: file [%s] not found', [AFileName]);
+    raise EMCPException.CreateFmt(SMCPDataUriFileNotFound, [AFileName]);
 
   var input := TFileStream.Create(AFileName, fmOpenRead);
   var output := TStringStream.Create;

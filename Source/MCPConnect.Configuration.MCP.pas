@@ -37,6 +37,30 @@ uses
   MCPConnect.Content.Writers,
   MCPConnect.Configuration.Core;
 
+resourcestring
+  SToolNotFoundFmt = 'Tool [%s] not found';
+  SMethodInClassNotFoundFmt = 'Method [%s] in class [%s] not found';
+  SToolMustBeFunction = 'Tool must be a function';
+  SOutputSchemaMustBeObjectFmt = 'outputSchema can only be a JSON object. [%s]';
+  SNonConfiguredParamsNotPermitted = 'Non-configured params are not permitted';
+  SParamHasNoConfigurationFmt = 'The [%s] parameter has no configuration';
+  SNonAnnotatedParamsNotPermitted = 'Non-annotated params are not permitted';
+  SConfigResourceNotFoundFmt = 'Resource [%s] not found';
+  SStandardMethodNoParamsFmt = 'Standard method for resource [%s] cannot have parameters';
+  SAppsUIUriScheme = 'Apps UI uri must use the "ui://" scheme';
+  SResourceUriNoTemplateParams = 'Resource uri cannot have template parameters';
+  SMethodNotFoundInClassFmt = 'Method [%s] not found in class [%s]';
+  SResourceMethodNoParams = 'Resource''s method cannot have parameters';
+  STemplateUriMustHaveParams = 'Template uri must have parameters: {}';
+  STemplateMethodParamsMismatchFmt = 'Parameters for template method [%s] must match uri parameters';
+  STemplateMethodParamsNeedAttribute = 'Template method parameters must have the [MCPParam] attribute';
+  SParamTypeNotSupported = 'Parameter type is not supported';
+  SAppMethodNoParams = 'App''s method cannot have parameters';
+  SMimeTypeNotFoundFmt = 'No MIME type found for [%s] extension, please specify a MIME type';
+  SNoFilenameForResourceFmt = 'No filename specified for static resource [%s]';
+  SFileNotFoundForResourceFmt = 'File [%s] not found for resource [%s]';
+  SPromptNotFoundFmt = 'Prompt [%s] not found';
+
 type
   /// <summary>
   ///   Represents a tools/resources/prompts class registration with its namespace.
@@ -645,7 +669,7 @@ var
   LTool: TMCPTool;
 begin
   if not Registry.TryGetValue(ATool, LTool) then
-    raise EMCPException.CreateFmt('Tool [%s] not found', [ATool]);
+    raise EMCPException.CreateFmt(SToolNotFoundFmt, [ATool]);
 
   Result := TRttiUtils.CreateInstance(LTool.Classe);
 end;
@@ -748,7 +772,7 @@ begin
   LClassType := TRttiUtils.Context.GetType(AClass);
   LMethod := LClassType.GetMethod(AMethodName);
   if not Assigned(LMethod) then
-    raise EMCPException.CreateFmt('Method [%s] in class [%s] not found', [AMethodName, AClass.ClassName]);
+    raise EMCPException.CreateFmt(SMethodInClassNotFoundFmt, [AMethodName, AClass.ClassName]);
 
   Result := TMCPToolConfig.Create(Self);
   Configs.Add(Result);
@@ -847,7 +871,7 @@ var
 begin
   LType := ATool.Method.ReturnType;
   if not Assigned(LType) then
-    raise EMCPException.Create('Tool must be a function');
+    raise EMCPException.Create(SToolMustBeFunction);
 
   LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LType, NeonConfig);
 
@@ -857,7 +881,7 @@ begin
   if not (LSchemaType.JsonValue.Value = 'object') then
   begin
     LJSONObj.Free;
-    raise EMCPException.CreateFmt('outputSchema can only be a JSON object. [%s]', [ATool.Name]);
+    raise EMCPException.CreateFmt(SOutputSchemaMustBeObjectFmt, [ATool.Name]);
   end;
 
   ATool.ExchangeOutputSchema(LJSONObj);
@@ -870,13 +894,13 @@ var
   LParam: TRttiParameter;
 begin
   if AConfig.Params.Count <> Length(AConfig.Method.GetParameters) then
-    raise EJRPCException.Create('Non-configured params are not permitted');
+    raise EJRPCException.Create(SNonConfiguredParamsNotPermitted);
   
   for LParam in AConfig.Method.GetParameters do
   begin
     var par := AConfig.FindParam(LParam.Name);
     if not Assigned(par) then
-      raise EJRPCException.CreateFmt('The [%s] parameter has no configuration', [LParam.Name]);
+      raise EJRPCException.CreateFmt(SParamHasNoConfigurationFmt, [LParam.Name]);
       
     LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LParam.ParamType, NeonConfig);
 
@@ -897,7 +921,7 @@ begin
   begin
     LAttr := LParam.GetAttribute<MCPParamAttribute>;
       if not Assigned(LAttr) then
-        raise EJRPCException.Create('Non-annotated params are not permitted');
+        raise EJRPCException.Create(SNonAnnotatedParamsNotPermitted);
 
     LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LParam.ParamType, NeonConfig);
 
@@ -1064,7 +1088,7 @@ var
   LResource: TMCPResource;
 begin
   if not Registry.TryGetValue(AUri, LResource) then
-    raise EMCPException.CreateFmt('Resource [%s] not found', [AUri]);
+    raise EMCPException.CreateFmt(SConfigResourceNotFoundFmt, [AUri]);
 
   Result := TRttiUtils.CreateInstance(LResource.Classe);
 end;
@@ -1108,13 +1132,13 @@ var
   LRes: TMCPResource;
 begin
   if Length(AMethod.GetParameters) > 0 then
-    raise EMCPException.CreateFmt('Standard method for resource [%s] cannot have parameters', [AAttr.Name]);
+    raise EMCPException.CreateFmt(SStandardMethodNoParamsFmt, [AAttr.Name]);
 
   if not AAttr.Uri.StartsWith('ui://') then
-    raise EMCPException.Create('Apps UI uri must use the "ui://" scheme');
+    raise EMCPException.Create(SAppsUIUriScheme);
 
   if not ValidUriResource(AAttr.Uri) then
-    raise EMCPException.Create('Resource uri cannot have template parameters');
+    raise EMCPException.Create(SResourceUriNoTemplateParams);
 
   LRes := TMCPResource.Create;
   try
@@ -1137,10 +1161,10 @@ var
   LRes: TMCPResource;
 begin
   if Length(AMethod.GetParameters) > 0 then
-    raise EMCPException.CreateFmt('Standard method for resource [%s] cannot have parameters', [AAttr.Name]);
+    raise EMCPException.CreateFmt(SStandardMethodNoParamsFmt, [AAttr.Name]);
 
   if not ValidUriResource(AAttr.Uri) then
-    raise EMCPException.Create('Resource uri cannot have template parameters');
+    raise EMCPException.Create(SResourceUriNoTemplateParams);
 
   LRes := TMCPResource.Create;
   try
@@ -1205,10 +1229,10 @@ begin
   LClassType := TRttiUtils.Context.GetType(AClass);
   LMethod := LClassType.GetMethod(AMethod);
   if not Assigned(LMethod) then
-    raise EMCPException.CreateFmt('Method [%s] not found in class [%s]', [AMethod, AClass.ClassName]);
+    raise EMCPException.CreateFmt(SMethodNotFoundInClassFmt, [AMethod, AClass.ClassName]);
 
   if Length(LMethod.GetParameters) > 0 then
-    raise EMCPException.Create('Resource''s method cannot have parameters');
+    raise EMCPException.Create(SResourceMethodNoParams);
 
   LRes := TMCPResource.Create;
   try
@@ -1239,10 +1263,10 @@ begin
   LClassType := TRttiUtils.Context.GetType(AClass);
   LMethod := LClassType.GetMethod(AMethod);
   if not Assigned(LMethod) then
-    raise EMCPException.CreateFmt('Method [%s] not found in class [%s]', [AMethod, AClass.ClassName]);
+    raise EMCPException.CreateFmt(SMethodNotFoundInClassFmt, [AMethod, AClass.ClassName]);
 
   if Length(LMethod.GetParameters) > 0 then
-    raise EMCPException.Create('Resource''s method cannot have parameters');
+    raise EMCPException.Create(SResourceMethodNoParams);
 
   LRes := TMCPResourceTemplate.Create;
   try
@@ -1264,18 +1288,18 @@ begin
   var uriParams := GetUriParams(AAttr.UriTemplate);
 
   if Length(uriParams) = 0 then
-    raise EMCPException.Create('Template uri must have parameters: {}');
+    raise EMCPException.Create(STemplateUriMustHaveParams);
 
   if Length(AMethod.GetParameters) <> Length(uriParams) then
-    raise EMCPException.CreateFmt('Parameters for template method [%s] must match uri parameters', [AMethod.Name]);
+    raise EMCPException.CreateFmt(STemplateMethodParamsMismatchFmt, [AMethod.Name]);
 
   for var par in AMethod.GetParameters do
   begin
     if not par.HasAttribute<MCPParamAttribute> then
-      raise EMCPException.Create('Template method parameters must have the [MCPParam] attribute');
+      raise EMCPException.Create(STemplateMethodParamsNeedAttribute);
 
     if not ParamIsType(par, [tkChar, tkWChar, tkString, tkLString, tkWString, tkUString]) then
-      raise EMCPException.Create('Parameter type is not supported');
+      raise EMCPException.Create(SParamTypeNotSupported);
   end;
 
   LTpl := TMCPResourceTemplate.Create;
@@ -1305,10 +1329,10 @@ begin
   LClassType := TRttiUtils.Context.GetType(AClass);
   LMethod := LClassType.GetMethod(AMethod);
   if not Assigned(LMethod) then
-    raise EMCPException.CreateFmt('Method [%s] not found in class [%s]', [AMethod, AClass.ClassName]);
+    raise EMCPException.CreateFmt(SMethodNotFoundInClassFmt, [AMethod, AClass.ClassName]);
 
   if Length(LMethod.GetParameters) > 0 then
-    raise EMCPException.Create('App''s method cannot have parameters');
+    raise EMCPException.Create(SAppMethodNoParams);
 
   LApp := TMCPResource.Create;
   try
@@ -1345,7 +1369,7 @@ begin
   LClassType := TRttiUtils.Context.GetType(RES_CLASS);
   LMethod := LClassType.GetMethod(RES_METHOD);
   if not Assigned(LMethod) then
-    raise EMCPException.CreateFmt('Method [%s] not found in class [%s]', [RES_METHOD, RES_CLASS.ClassName]);
+    raise EMCPException.CreateFmt(SMethodNotFoundInClassFmt, [RES_METHOD, RES_CLASS.ClassName]);
 
   LMime := AMime;
   LExt := ExtractFileExt(AFileName);
@@ -1353,7 +1377,7 @@ begin
   if LMime = '' then
     LMime := MimeTypes.MediaByExtension(LExt);
   if LMime = '' then
-    raise EMCPException.CreateFmt('No MIME type found for [%s] extension, please specify a MIME type', [LExt]);
+    raise EMCPException.CreateFmt(SMimeTypeNotFoundFmt, [LExt]);
 
   LRes := TMCPResource.Create;
   try
@@ -1397,12 +1421,12 @@ var
   LEncoding: TMimeEncoding;
 begin
   if AResource.FileName.IsEmpty then
-    raise EMCPException.CreateFmt('No filename specified for static resource [%s]', [AResource.Name]);
+    raise EMCPException.CreateFmt(SNoFilenameForResourceFmt, [AResource.Name]);
 
   LFileName := TPath.Combine(AConfig.Resources.BasePath, AResource.FileName);
 
   if not FileExists(LFileName) then
-    raise EMCPException.CreateFmt('File [%s] not found for resource [%s]', [LFileName, AResource.Name]);
+    raise EMCPException.CreateFmt(SFileNotFoundForResourceFmt, [LFileName, AResource.Name]);
 
   { TODO -opaolo -c : check the mime type and serve accordingly 16/02/2026 12:44:47 }
   LEncoding := AConfig.Resources.MimeTypes.EncodingByMedia(AResource.MimeType);
@@ -1427,7 +1451,7 @@ var
   LPrompt: TMCPPrompt;
 begin
   if not Registry.TryGetValue(APrompt, LPrompt) then
-    raise EMCPException.CreateFmt('Prompt [%s] not found', [APrompt]);
+    raise EMCPException.CreateFmt(SPromptNotFoundFmt, [APrompt]);
 
   Result := TRttiUtils.CreateInstance(LPrompt.Classe);
 end;
@@ -1480,7 +1504,7 @@ begin
       begin
         var LAttr := LParam.GetAttribute<MCPArgumentAttribute>;
           if not Assigned(LAttr) then
-            raise EJRPCException.Create('Non-annotated params are not permitted');
+            raise EJRPCException.Create(SNonAnnotatedParamsNotPermitted);
 
         var LArg := TPromptArgument.New(LAttr.Name, LAttr.Description);
         if LAttr.Tags.Exists('required') then

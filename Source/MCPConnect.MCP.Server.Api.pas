@@ -133,7 +133,7 @@ var
   LToolObj: TObject;
 begin
   if not MCPConfig.Tools.Registry.TryGetValue(AParams.Name, LTool) then
-    raise EMCPException.CreateFmt('Tool [%s] not found', [AParams.Name]);
+    raise EMCPException.CreateFmt(SMCPToolNotFound, [AParams.Name]);
 
   // Instance of the tool class
   LToolObj := TRttiUtils.CreateInstance(LTool.Classe);
@@ -291,7 +291,7 @@ begin
     LTpl := MCPConfig.Resources.GetTemplate(AParams.Uri);
 
     if not Assigned(LTpl) then
-      raise EMCPException.CreateFmt('Resource [%s] not found', [AParams.Uri]);
+      raise EMCPException.CreateFmt(SMCPResourceNotFound, [AParams.Uri]);
   end;
 
   if Assigned(LRes) then
@@ -352,7 +352,7 @@ var
   LPromptObj: TObject;
 begin
   if not MCPConfig.Prompts.Registry.TryGetValue(AParams.Name, LPrompt) then
-    raise EMCPException.CreateFmt('Tool [%s] not found', [AParams.Name]);
+    raise EMCPException.CreateFmt(SMCPPromptNotFound, [AParams.Name]);
 
   // Create an instance of the tool class
   LPromptObj := TRttiUtils.CreateInstance(LPrompt.Classe);

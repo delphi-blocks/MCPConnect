@@ -24,6 +24,9 @@ uses
   MCPConnect.MCP.Attributes,
   MCPConnect.Content.Writers;
 
+resourcestring
+  STypeNotSupportedFmt = 'Type %s not supported';
+
 type
   TMCPGraphicWriter = class(TMCPCustomWriter)
   protected
@@ -92,7 +95,7 @@ begin
   else if LGraphic is TPicture then
     LPicture := LGraphic as TPicture
   else
-    raise EMCPException.CreateFmt('Type %s not supported', [LGraphic.ClassName]);
+    raise EMCPException.CreateFmt(STypeNotSupportedFmt, [LGraphic.ClassName]);
 
   LStream := TMemoryStream.Create;
   try

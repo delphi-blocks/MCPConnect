@@ -38,6 +38,12 @@ const
   /// </summary>
   JRPC_SESSION_INVALID = -32003;
 
+resourcestring
+  SSessionNotFoundFmt = 'Session "%s" not found';
+  SSessionExpiredFmt = 'Session "%s" has expired';
+  SSessionIdInvalidFmt = 'Session ID "%s" is invalid';
+  SSessionMethodNotFoundFmt = 'Method "%s" not found';
+
 type
   /// <summary>
   ///   Base exception for all session-related errors.
@@ -259,21 +265,21 @@ end;
 
 constructor EMCPSessionNotFoundError.Create(const ASessionId: string);
 begin
-  inherited Create(Format('Session "%s" not found', [ASessionId]), JRPC_SESSION_NOT_FOUND);
+  inherited Create(Format(SSessionNotFoundFmt, [ASessionId]), JRPC_SESSION_NOT_FOUND);
 end;
 
 { EMCPSessionExpiredError }
 
 constructor EMCPSessionExpiredError.Create(const ASessionId: string);
 begin
-  inherited Create(Format('Session "%s" has expired', [ASessionId]), JRPC_SESSION_EXPIRED);
+  inherited Create(Format(SSessionExpiredFmt, [ASessionId]), JRPC_SESSION_EXPIRED);
 end;
 
 { EMCPSessionInvalidError }
 
 constructor EMCPSessionInvalidError.Create(const ASessionId: string);
 begin
-  inherited Create(Format('Session ID "%s" is invalid', [ASessionId]), JRPC_SESSION_INVALID);
+  inherited Create(Format(SSessionIdInvalidFmt, [ASessionId]), JRPC_SESSION_INVALID);
 end;
 
 { TMCPSessionData }
@@ -555,10 +561,10 @@ begin
         if Assigned(LMCPConfig) then
         begin
           if not LMCPConfig.GetConstructorProxy(LMethod.Method, LConstructorProxy) then
-            raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LMethod.Method]);
+            raise EJRPCMethodNotFoundError.CreateFmt(SSessionMethodNotFoundFmt, [LMethod.Method]);
         end
         else if not TJRPCRegistry.Instance.GetConstructorProxy(LMethod.Method, LConstructorProxy) then
-          raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LMethod.Method]);
+          raise EJRPCMethodNotFoundError.CreateFmt(SSessionMethodNotFoundFmt, [LMethod.Method]);
 
         LInstance := LConstructorProxy.ConstructorFunc();
 

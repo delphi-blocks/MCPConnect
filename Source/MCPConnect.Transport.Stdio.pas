@@ -24,6 +24,9 @@ uses
   MCPConnect.Session.Core,
   MCPConnect.JRPC.Server;
 
+resourcestring
+  SServerNotFound = 'Server not found';
+
 type
   TWorkerThread = class;
 
@@ -442,7 +445,7 @@ var
   LRes: string;
 begin
   if not Assigned(FServer) then
-    raise EJRPCException.Create('Server not found');
+    raise EJRPCException.Create(SServerNotFound);
 
   // Auth??
 

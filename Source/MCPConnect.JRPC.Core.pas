@@ -39,6 +39,43 @@ const
 	JRPC_INVALID_PARAMS   = -32602; // Invalid method parameter(s).
 	JRPC_INTERNAL_ERROR   = -32603; // Internal error.	Internal JSON-RPC error.
 
+resourcestring
+  // Localizable messages for the JRPC layer (MCPConnect.JRPC.Core/Classes/Server/Invoker)
+
+  // MCPConnect.JRPC.Core
+  SJRPCOnlyNamedParamsAllowed = 'Only named params are allowed';
+  SJRPCNotValidTypeForNamed = 'Not a valid type for named allowed';
+  SJRPCOnlyPositionParamsAllowed = 'Only position params are allowed';
+  SJRPCNotValidTypeForPosition = 'Not a valid type for position allowed';
+  SJRPCIdIsInteger = 'The Id is an integer';
+  SJRPCIdIsString = 'The Id is a string';
+  SJRPCCurrentRequestNotFound = 'CurrentRequest not found';
+  SJRPCResponsesNotFound = 'Responses not found';
+  SJRPCInvalidJSONReceived = 'An invalid JSON was received by the server';
+  SJRPCInvalidRequest = 'Invalid JRPC Request';
+
+  // MCPConnect.JRPC.Classes
+  SJRPCErrorCreatingType = 'Error creating type: %s';
+  SJRPCContextObjectNotFound = 'Context: object "%s" not found';
+  SJRPCContextInterfaceNotFound = 'Context: interface "%s" not found';
+  SJRPCContextVarsInvalid = 'Context variables should be an object or interface';
+
+  // MCPConnect.JRPC.Server
+  SJRPCInvalidConfig = 'Invalid config';
+
+  // MCPConnect.JRPC.Invoker
+  SJRPCInvalidParamForNumber = 'Invalid parameter for number [%s]';
+  SJRPCInvalidParamForString = 'Invalid parameter for string [%s]';
+  SJRPCInvalidParamForObject = 'Invalid parameter for object [%s]';
+  SJRPCInvalidParamForArray = 'Invalid parameter for array [%s]';
+  SJRPCInvalidParam = 'Invalid parameter [%s]';
+  SJRPCMethodNonFound = 'Method [%s] non found';
+  SJRPCInvalidMethodParameters = 'Invalid method parameters.';
+  SJRPCErrorCallingApiMethod = 'Error calling Api method [%s.%s]';
+  SJRPCParamIndexNotFound = 'Parameter with index "%d" not found (only %d parameters available)';
+  SJRPCParamNotFound = 'Parameter "%s" not found';
+  SJRPCUnknownParamsType = 'Unknown params type';
+
 type
   /// <summary>
   ///   Base class for all JSON-RPC related exceptions
@@ -738,7 +775,7 @@ end;
 function TJRPCMethod.GetNamedParams: TJSONObject;
 begin
   if FParams is TJSONArray then
-    raise EJRPCException.Create('Only named params are allowed');
+    raise EJRPCException.Create(SJRPCOnlyNamedParamsAllowed);
 
   if FParams is TJSONObject then
     Exit(FParams as TJSONObject);
@@ -751,13 +788,13 @@ begin
     Exit(FParams as TJSONObject);
   end;
   // This should never happen
-  raise EJRPCException.Create('Not a valid type for named allowed');
+  raise EJRPCException.Create(SJRPCNotValidTypeForNamed);
 end;
 
 function TJRPCMethod.GetPositionParams: TJSONArray;
 begin
   if FParams is TJSONObject then
-    raise EJRPCException.Create('Only position params are allowed');
+    raise EJRPCException.Create(SJRPCOnlyPositionParamsAllowed);
 
   if FParams is TJSONArray then
     Exit(FParams as TJSONArray);
@@ -770,7 +807,7 @@ begin
     Exit(FParams as TJSONArray);
   end;
   // This should never happen
-  raise EJRPCException.Create('Not a valid type for position allowed');
+  raise EJRPCException.Create(SJRPCNotValidTypeForPosition);
 end;
 
 function TJRPCMethod.ParamsCount: Integer;
@@ -864,7 +901,7 @@ end;
 class operator TJRPCID.Implicit(const ASource: TJRPCID): string;
 begin
   if ASource.Id.IsType<Integer> then
-    raise EJRPCParseError.Create('The Id is an integer');
+    raise EJRPCParseError.Create(SJRPCIdIsInteger);
 
   Result := ASource.Id.AsString;
 end;
@@ -877,7 +914,7 @@ end;
 class operator TJRPCID.Implicit(const ASource: TJRPCID): Integer;
 begin
   if ASource.Id.IsType<string> then
-    raise EJRPCParseError.Create('The Id is a string');
+    raise EJRPCParseError.Create(SJRPCIdIsString);
 
   Result := ASource.Id.AsInteger;
 end;
@@ -1257,7 +1294,7 @@ end;
 function TJRPCContext.GetCurrentRequest: TJRPCRequest;
 begin
   if not Assigned(FCurrentRequest) then
-    raise EJRPCException.Create('CurrentRequest not found');
+    raise EJRPCException.Create(SJRPCCurrentRequestNotFound);
 
   Result := FCurrentRequest;
 end;
@@ -1265,7 +1302,7 @@ end;
 function TJRPCContext.GetResponses: TJRPCMessages;
 begin
   if not Assigned(FResponses) then
-    raise EJRPCException.Create('Responses not found');
+    raise EJRPCException.Create(SJRPCResponsesNotFound);
 
   Result := FResponses;
 end;
@@ -1354,7 +1391,7 @@ var
 begin
   LJSON := TJSONObject.ParseJSONValue(AJSON);
   if not Assigned(LJSON) then
-    raise EJRPCParseError.Create('An invalid JSON was received by the server');
+    raise EJRPCParseError.Create(SJRPCInvalidJSONReceived);
   try
     FromJson(LJSON);
   finally
@@ -1446,7 +1483,7 @@ begin
   if Assigned(LError) then
     Exit(TJRPCMessageType.Error);
 
-  raise EJRPCInvalidRequestError.Create('Invalid JRPC Request');
+  raise EJRPCInvalidRequestError.Create(SJRPCInvalidRequest);
 end;
 
 function TJRPCMessages.ToJson: string;

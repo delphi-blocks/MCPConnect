@@ -92,25 +92,25 @@ begin
   if AValue is TJSONNumber then
   begin
     if not (AParam.ParamType.TypeKind in [tkInteger, tkFloat, tkInt64]) then
-      raise EJRPCInvokerError.Create(JRPC_INVALID_PARAMS, Format('Invalid parameter for number [%s]', [AParam.Name]));
+      raise EJRPCInvokerError.Create(JRPC_INVALID_PARAMS, Format(SJRPCInvalidParamForNumber, [AParam.Name]));
   end
   else if AValue is TJSONString then
   begin
     if not (AParam.ParamType.TypeKind in [tkString, tkWChar, tkLString, tkWString, tkUString]) then
-      raise EJRPCInvokerError.Create(JRPC_INVALID_PARAMS, Format('Invalid parameter for string [%s]', [AParam.Name]));
+      raise EJRPCInvokerError.Create(JRPC_INVALID_PARAMS, Format(SJRPCInvalidParamForString, [AParam.Name]));
   end
   else if AValue is TJSONObject then
   begin
     if not (AParam.ParamType.TypeKind in [tkClass, tkRecord, tkInterface]) then
-      raise EJRPCInvokerError.Create(JRPC_INVALID_PARAMS, Format('Invalid parameter for object [%s]', [AParam.Name]));
+      raise EJRPCInvokerError.Create(JRPC_INVALID_PARAMS, Format(SJRPCInvalidParamForObject, [AParam.Name]));
   end
   else if AValue is TJSONArray then
   begin
     if not (AParam.ParamType.TypeKind in [tkArray, tkDynArray]) then
-      raise EJRPCInvokerError.Create(JRPC_INVALID_PARAMS, Format('Invalid parameter for array [%s]', [AParam.Name]));
+      raise EJRPCInvokerError.Create(JRPC_INVALID_PARAMS, Format(SJRPCInvalidParamForArray, [AParam.Name]));
   end
   else
-    raise EJRPCInvokerError.Create(JRPC_INVALID_PARAMS, Format('Invalid parameter [%s]', [AParam.Name]));
+    raise EJRPCInvokerError.Create(JRPC_INVALID_PARAMS, Format(SJRPCInvalidParam, [AParam.Name]));
 end;
 
 constructor TJRPCInvoker.Create(AContext: TJRPCInvokerContext);
@@ -162,13 +162,13 @@ var
 begin
   LMethod := FindMethod(FContext.Request);
   if not Assigned(LMethod) then
-    raise EJRPCMethodNotFoundError.CreateFmt('Method [%s] non found', [FContext.Request.Method]);
+    raise EJRPCMethodNotFoundError.CreateFmt(SJRPCMethodNonFound, [FContext.Request.Method]);
 
   try
     LArgs := RequestToRttiParams(LMethod);
     FContext.Garbage.Add(LArgs);
   except
-    raise EJRPCInvalidParamsError.Create('Invalid method parameters.');
+    raise EJRPCInvalidParamsError.Create(SJRPCInvalidMethodParameters);
   end;
 
   try
@@ -179,7 +179,7 @@ begin
     on E: EJRPCException do
       raise;
     on E: Exception do
-      raise EJRPCException.CreateFmt('Error calling Api method [%s.%s]',
+      raise EJRPCException.CreateFmt(SJRPCErrorCallingApiMethod,
         [FContext.ApiInstance.ClassName, FContext.Request.Method]);
   end;
 
@@ -303,7 +303,7 @@ begin
         TJRPCParamsType.ByPos:
         begin
           if LParamIndex >= (FContext.Request.Params as TJSONArray).Count then
-            raise EJRPCInvokerError.CreateFmt('Parameter with index "%d" not found (only %d parameters available)', [LParamIndex, (FContext.Request.Params as TJSONArray).Count]);
+            raise EJRPCInvokerError.CreateFmt(SJRPCParamIndexNotFound, [LParamIndex, (FContext.Request.Params as TJSONArray).Count]);
 
           LParamJSON := (FContext.Request.Params as TJSONArray).Items[LParamIndex];
         end;
@@ -311,10 +311,10 @@ begin
         TJRPCParamsType.ByName:
         begin
           if not (FContext.Request.Params as TJSONObject).TryGetValue(GetParamName(LParam), LParamJSON) then
-            raise EJRPCInvokerError.CreateFmt('Parameter "%s" not found', [GetParamName(LParam)]);
+            raise EJRPCInvokerError.CreateFmt(SJRPCParamNotFound, [GetParamName(LParam)]);
         end;
       else
-        raise EJRPCInvokerError.Create(JRPC_INTERNAL_ERROR, 'Unknown params type');
+        raise EJRPCInvokerError.Create(JRPC_INTERNAL_ERROR, SJRPCUnknownParamsType);
       end;
 
       Result := Result + [CastJSONValue(LParam, LParamJSON)];

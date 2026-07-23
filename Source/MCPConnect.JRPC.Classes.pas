@@ -362,7 +362,8 @@ implementation
 
 uses
   System.NetEncoding,
-  Neon.Core.Utils;
+  Neon.Core.Utils,
+  MCPConnect.JRPC.Core;
 
 function CreateNewValue(AType: TRttiType): TValue;
 var
@@ -389,7 +390,7 @@ begin
       end;
     end;
   else
-    raise Exception.CreateFmt('Error creating type: %s', [AType.Name]);
+    raise Exception.CreateFmt(SJRPCErrorCreatingType, [AType.Name]);
   end;
 end;
 
@@ -592,14 +593,14 @@ function TContextManager.GetContextDataAs(AClass: TClass): TObject;
 begin
   Result := FindContextDataAs(AClass);
   if not Assigned(Result) then
-    raise ECtxException.CreateFmt('Context: object "%s" not found', [AClass.ClassName]);
+    raise ECtxException.CreateFmt(SJRPCContextObjectNotFound, [AClass.ClassName]);
 end;
 
 function TContextManager.GetContextDataAs(AInterface: TGUID): IInterface;
 begin
   Result := FindContextDataAs(AInterface);
   if not Assigned(Result) then
-    raise ECtxException.CreateFmt('Context: interface "%s" not found', [AInterface.ToString]);
+    raise ECtxException.CreateFmt(SJRPCContextInterfaceNotFound, [AInterface.ToString]);
 end;
 
 function TContextManager.GetContextDataAs<T>: T;
@@ -635,7 +636,7 @@ begin
         Result := True;
       end
       else
-        raise ECtxException.Create('Context variables should be an object or interface');
+        raise ECtxException.Create(SJRPCContextVarsInvalid);
     end
   );
 end;

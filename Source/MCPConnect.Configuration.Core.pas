@@ -22,6 +22,12 @@ uses
   MCPConnect.JRPC.Classes,
   MCPConnect.JRPC.Core;
 
+resourcestring
+  SImplementationClassNotFound = 'Implementation class not found';
+  SAttributeImplementsNotFoundFmt = 'Attribute [Implements] not found for [%s] class';
+  SConfigInvalidConfig = 'Invalid config';
+  SConfigExceptionFmt = '%s (%s)';
+
 type
   TAppConfigurator = class(TInterfacedObject)
   protected
@@ -227,7 +233,7 @@ end;
 function TJRPCConfigClassRegistry.GetImplementationOf(AInterfaceRef: TGUID): TJRPCConfigurationClass;
 begin
   if not TryGetValue(AInterfaceRef, Result) then
-    raise EJRPCException.Create('Implementation class not found');
+    raise EJRPCException.Create(SImplementationClassNotFound);
 end;
 
 class function TJRPCConfigClassRegistry.GetInstance: TJRPCConfigClassRegistry;
@@ -243,7 +249,7 @@ var
 begin
   LImplementsAttribute := TRttiUtils.FindAttribute<ImplementsAttribute>(TRttiUtils.Context.GetType(AConfigurationClass));
   if not Assigned(LImplementsAttribute) then
-    raise EJRPCException.CreateFmt('Attribute [Implements] not found for [%s] class', [AConfigurationClass.ClassName]);
+    raise EJRPCException.CreateFmt(SAttributeImplementsNotFoundFmt, [AConfigurationClass.ClassName]);
   Add(LImplementsAttribute.InterfaceRef, AConfigurationClass);
 end;
 
@@ -259,11 +265,11 @@ begin
 
     LConfig := GetConfigByInterfaceRef(LInterfaceRef);
     if not Supports(LConfig, LInterfaceRef, Result) then
-      raise EJRPCException.Create('Invalid config');
+      raise EJRPCException.Create(SConfigInvalidConfig);
   except
     on E: Exception do
     begin
-      raise EJRPCException.CreateFmt('%s (%s)', [E.Message, GetTypeName(TypeInfo(T))]);
+      raise EJRPCException.CreateFmt(SConfigExceptionFmt, [E.Message, GetTypeName(TypeInfo(T))]);
     end;
   end;
 end;

@@ -239,7 +239,7 @@ begin
 
           // Check if the tool is configured to return a structured content
           if Assigned(LMCPAttr) and (LMCPAttr.Tags.Exists('structured')) then
-            raise EMCPException.Create('Structured content can only be a JSON object');
+            raise EMCPException.Create(SMCPStructuredContentMustBeObject);
 
           LResBlob.Resource.MIMEType := 'application/json';
           LResBlob.Resource.Blob := LJSON.ToJSON;
@@ -250,7 +250,7 @@ begin
     end;
 
   else
-    raise EMCPException.Create('Type kind not supported');
+    raise EMCPException.Create(SMCPTypeKindNotSupported);
   end;
 
   AResult.Content.Add(LContent);
@@ -410,7 +410,7 @@ begin
     end;
 
   else
-    raise EMCPException.Create('Type kind not supported');
+    raise EMCPException.Create(SMCPTypeKindNotSupported);
 
   end;
 
@@ -430,10 +430,10 @@ begin
   var router := TRouteMatcher.Create;
   try
     if not router.Match(FTemplate.UriTemplate, AUri) then
-      raise EMCPException.Create('URI not compatible with the template');
+      raise EMCPException.Create(SMCPUriNotCompatibleWithTemplate);
 
     if router.Params.Count <> Length(AParams) then
-      raise EMCPException.Create('Parameters count from method and URI are different');
+      raise EMCPException.Create(SMCPParamsCountMismatch);
 
     for LParam in AParams do
     begin
@@ -575,7 +575,7 @@ begin
     end;
 
   else
-    raise EMCPException.Create('Type kind not supported');
+    raise EMCPException.Create(SMCPTypeKindNotSupported);
 
   end;
 
@@ -676,7 +676,7 @@ begin
     end;
 
   else
-    raise EMCPException.Create('Type kind not supported');
+    raise EMCPException.Create(SMCPTypeKindNotSupported);
 
   end;
 

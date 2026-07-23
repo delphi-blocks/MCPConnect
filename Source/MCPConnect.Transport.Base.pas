@@ -16,10 +16,9 @@ unit MCPConnect.Transport.Base;
 interface
 
 uses
-  System.Classes, System.SysUtils,
+  System.Classes, System.SysUtils, System.JSON,
+  System.Generics.Collections, System.Generics.Defaults,
   IdCustomHTTPServer, IdContext, IdGlobal,
-  System.Generics.Collections,
-  System.Generics.Defaults,
 
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
@@ -43,6 +42,19 @@ const
   HTTP_CODE_NOTFOUND = 404;
   HTTP_CODE_NOTALLOWED = 405;
   HTTP_CODE_NOTACCEPTABLE = 406;
+
+resourcestring
+  SInvalidTokenLocation = 'Invalid token location';
+  SErrorRetrievingMCPConfig = 'Error retrieving MCP configuration';
+  SCrossOriginBlocked = 'Cross-Origin Request Blocked: Same Origin Policy';
+  SAuthorizationCheckFailed = 'Authorization check failed';
+  SSessionIdLocationNotFound = 'SessionId Location not found';
+  SHttpMethodNotAllowed = 'Http method not allowed';
+  STransportSSENotSupported = 'SSE not supported';
+  SEventStreamOnlyForGET = 'Only Event Stream response is supported for GET requests';
+  STransportSessionNotFound = 'Session not found';
+  STransportMethodNotFoundFmt = 'Method "%s" not found';
+  SSessionIdHeaderRequired = 'Mcp-Session-Id header is required';
 
 type
   /// <summary>
@@ -89,6 +101,7 @@ type
     Url: string;
     Command: string;
     Content: string;
+    ContentJSON: TJSONValue;
 
     function GetCookie(const AName: string): string;
     property Accept: string read GetAccept write SetAccept;
@@ -170,7 +183,7 @@ type
 implementation
 
 uses
-  System.IOUtils, System.JSON, Logify,
+  System.IOUtils, Logify,
   MCPConnect.Transport.MediaType,
   MCPConnect.Configuration.Neon,
   MCPConnect.JRPC.Invoker;
@@ -248,7 +261,7 @@ begin
       end;
 
     else
-      raise EJRPCException.Create('Invalid token location');
+      raise EJRPCException.Create(SInvalidTokenLocation);
     end;
   end;
 end;
@@ -284,7 +297,7 @@ var
   LOrigin, LHeader: string;
 begin
   if not Assigned(FMCPConfig) then
-    raise EMCPException.Create('Error retrieving MCP configuration');
+    raise EMCPException.Create(SErrorRetrievingMCPConfig);
 
   if Length(FMCPConfig.Security.AllowedOrigins) = 0 then
     Exit(True);
@@ -315,10 +328,10 @@ begin
 
   try try
     if not CheckOrigin then
-      raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, 'Cross-Origin Request Blocked: Same Origin Policy');
+      raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, SCrossOriginBlocked);
 
     if not CheckAuthorization then
-      raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, 'Authorization check failed');
+      raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, SAuthorizationCheckFailed);
 
     FGarbage := TGarbageCollector.CreateInstance;
     FContext := TJRPCContext.Create;
@@ -341,7 +354,7 @@ begin
         TSessionIdLocation.Cookie:
           FResponse.SetCookie(FSessionConfig.GetHeaderName, FSession.SessionId, FMCPConfig.Security.CookieSecure);
         else
-          raise EMCPTransportException.Create(500, 'SessionId Location not found');
+          raise EMCPTransportException.Create(500, SSessionIdLocationNotFound);
       end;
 
     end;
@@ -355,7 +368,7 @@ begin
     else if FRequest.Command = 'OPTIONS' then
       HandleOPTIONS
     else
-      raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, 'Http method not allowed');
+      raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, SHttpMethodNotAllowed);
 
   except
     on E: EMCPTransportException do
@@ -443,7 +456,6 @@ begin
   if (FRequest.Command <> 'POST') or FRequest.Content.Trim.IsEmpty then
     Exit;
 
-  LJson := nil;
   try
     LJson := TJSONObject.ParseJSONValue(FRequest.Content);
   except
@@ -529,14 +541,14 @@ const
 
 begin
   if not FResponseWriter.SupportsStreaming then
-    raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, 'SSE not supported');
+    raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, STransportSSENotSupported);
 
   if not FRequest.AcceptsEventStream then
-    raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, 'Only Event Stream response is supported for GET requests');
+    raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, SEventStreamOnlyForGET);
 
   // TODO: handle global messages
   if not Assigned(FSession) then
-    raise EMCPTransportException.Create(HTTP_CODE_NOTACCEPTABLE, 'Session not found');
+    raise EMCPTransportException.Create(HTTP_CODE_NOTACCEPTABLE, STransportSessionNotFound);
 
   FResponse.Code := HTTP_CODE_OK;
   FResponse.ContentType := TMediaType.TEXT_EVENT_STREAM;
@@ -611,10 +623,10 @@ begin
     if Assigned(LMCPConfig) then
     begin
       if not LMCPConfig.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
-        raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LRequest.Method]);
+        raise EJRPCMethodNotFoundError.CreateFmt(STransportMethodNotFoundFmt, [LRequest.Method]);
     end
     else if not TJRPCRegistry.Instance.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
-      raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LRequest.Method]);
+      raise EJRPCMethodNotFoundError.CreateFmt(STransportMethodNotFoundFmt, [LRequest.Method]);
 
     LInstance := LConstructorProxy.ConstructorFunc();
     FGarbage.Add(LInstance);
@@ -761,7 +773,7 @@ begin
     Result := LSessionManager.CreateSession;
   end
   else
-    raise EMCPTransportException.Create(HTTP_CODE_BADREQUEST, 'Mcp-Session-Id header is required');
+    raise EMCPTransportException.Create(HTTP_CODE_BADREQUEST, SSessionIdHeaderRequired);
 end;
 
 procedure TMCPTransportHandler.InjectCORS;
@@ -825,6 +837,7 @@ end;
 destructor TMCPTransportRequest.Destroy;
 begin
   FAcceptItems.Free;
+  ContentJSON.Free;
   inherited;
 end;
 

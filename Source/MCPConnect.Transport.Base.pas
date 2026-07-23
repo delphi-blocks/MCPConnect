@@ -37,6 +37,7 @@ const
   HTTP_CODE_OK = 200;
   HTTP_CODE_ACCEPTED = 202;
   HTTP_CODE_NOCONTENT = 204;
+  HTTP_CODE_BADREQUEST = 400;
   HTTP_CODE_UNAUTHORIZED = 401;
   HTTP_CODE_FORBIDDEN = 403;
   HTTP_CODE_NOTFOUND = 404;
@@ -146,6 +147,7 @@ type
     class function ConstantTimeEquals(const A, B: string): Boolean; static;
     function CheckAuthorization: Boolean;
     function ExtractSessionId: string;
+    function IsInitializeRequest: Boolean;
     function HandleSession: TMCPSessionBase;
     procedure HandleMessage(AMessage: TJRPCMessage; AResponseQueue: TMCPMessageQueue);
     procedure SendResponseHeaders(AResponse: TMCPTransportResponse);
@@ -363,6 +365,15 @@ begin
       FResponse.Content := E.ToJSON;
     end;
 
+    on E: EMCPSessionException do
+    begin
+      // Per MCP spec: an unknown or expired session ID gets HTTP 404, prompting
+      // the client to re-initialize, rather than a generic 500.
+      FResponse.Code := HTTP_CODE_NOTFOUND;
+      FResponse.ContentType := 'application/json';
+      FResponse.Content := E.ToJSON;
+    end;
+
     on E: EJRPCException do
     begin
       FResponse.Code := 500;
@@ -410,6 +421,49 @@ begin
   end;
 
   Result := Result.Trim;
+end;
+
+function TMCPTransportHandler.IsInitializeRequest: Boolean;
+
+  function MethodIsInitialize(AObj: TJSONObject): Boolean;
+  var
+    LMethod: TJSONValue;
+  begin
+    LMethod := AObj.GetValue('method');
+    Result := Assigned(LMethod) and (LMethod is TJSONString) and (LMethod.Value = 'initialize');
+  end;
+
+var
+  LJson: TJSONValue;
+  LItem: TJSONValue;
+begin
+  Result := False;
+
+  // Per MCP spec, "initialize" is only ever sent as a POST request
+  if (FRequest.Command <> 'POST') or FRequest.Content.Trim.IsEmpty then
+    Exit;
+
+  LJson := nil;
+  try
+    LJson := TJSONObject.ParseJSONValue(FRequest.Content);
+  except
+    // Malformed JSON: let the regular request parsing report the error
+    Exit;
+  end;
+
+  if not Assigned(LJson) then
+    Exit;
+
+  try
+    if LJson is TJSONObject then
+      Result := MethodIsInitialize(TJSONObject(LJson))
+    else if LJson is TJSONArray then
+      for LItem in TJSONArray(LJson) do
+        if (LItem is TJSONObject) and MethodIsInitialize(TJSONObject(LItem)) then
+          Exit(True);
+  finally
+    LJson.Free;
+  end;
 end;
 
 function TMCPTransportHandler.GetSendResponseHeadersProc: TProc<TMCPTransportResponse>;
@@ -701,11 +755,13 @@ begin
     // GetSession will raise exception if expired or not found
     Result := LSessionManager.GetSession(LSessionId);
   end
-  else
+  else if IsInitializeRequest then
   begin
-    // No session ID provided - auto-create new session
+    // No session ID provided - only "initialize" may auto-create a new session
     Result := LSessionManager.CreateSession;
-  end;
+  end
+  else
+    raise EMCPTransportException.Create(HTTP_CODE_BADREQUEST, 'Mcp-Session-Id header is required');
 end;
 
 procedure TMCPTransportHandler.InjectCORS;

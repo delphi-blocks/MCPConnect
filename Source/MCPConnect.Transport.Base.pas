@@ -446,36 +446,30 @@ function TMCPTransportHandler.IsInitializeRequest: Boolean;
     Result := Assigned(LMethod) and (LMethod is TJSONString) and (LMethod.Value = 'initialize');
   end;
 
-var
-  LJson: TJSONValue;
-  LItem: TJSONValue;
 begin
-  Result := False;
-
   // Per MCP spec, "initialize" is only ever sent as a POST request
   if (FRequest.Command <> 'POST') or FRequest.Content.Trim.IsEmpty then
-    Exit;
+    Exit(False);
 
   try
-    LJson := TJSONObject.ParseJSONValue(FRequest.Content);
+    FRequest.ContentJSON := TJSONObject.ParseJSONValue(FRequest.Content);
   except
     // Malformed JSON: let the regular request parsing report the error
-    Exit;
+    FRequest.ContentJSON := nil;
+    Exit(False);
   end;
 
-  if not Assigned(LJson) then
-    Exit;
+  if not Assigned(FRequest.ContentJSON) then
+    Exit(False);
 
-  try
-    if LJson is TJSONObject then
-      Result := MethodIsInitialize(TJSONObject(LJson))
-    else if LJson is TJSONArray then
-      for LItem in TJSONArray(LJson) do
-        if (LItem is TJSONObject) and MethodIsInitialize(TJSONObject(LItem)) then
-          Exit(True);
-  finally
-    LJson.Free;
-  end;
+  if FRequest.ContentJSON is TJSONObject then
+    Result := MethodIsInitialize(TJSONObject(FRequest.ContentJSON))
+  else if FRequest.ContentJSON is TJSONArray then
+    for var LItem in TJSONArray(FRequest.ContentJSON) do
+      if (LItem is TJSONObject) and MethodIsInitialize(TJSONObject(LItem)) then
+        Exit(True);
+
+  Result := False;
 end;
 
 function TMCPTransportHandler.GetSendResponseHeadersProc: TProc<TMCPTransportResponse>;
@@ -705,9 +699,14 @@ var
       QueueReadTimeout
     );
   end;
-
+var
+  LRequestList: TJRPCMessages;
 begin
-  var LRequestList := TJRPCMessages.CreateFromJson(FRequest.Content);
+  if Assigned(FRequest.ContentJSON) then
+    LRequestList := TJRPCMessages.CreateFromJson(FRequest.ContentJSON)
+  else
+    LRequestList := TJRPCMessages.CreateFromJson(FRequest.Content);
+
   FGarbage.Add(LRequestList);
 
   var LResponseQueue := TMCPMessageQueue.Create;

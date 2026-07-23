@@ -297,7 +297,8 @@ type
     property Count: NativeInt read GetCount;
     property IsEmpty: Boolean read GetIsEmpty;
   public
-    class function CreateFromJson(const AJSON: string): TJRPCMessages;
+    class function CreateFromJson(const AJSON: string): TJRPCMessages; overload;
+    class function CreateFromJson(AJSON: TJSONValue): TJRPCMessages; overload;
   end;
 
   /// <summary>
@@ -1366,6 +1367,17 @@ end;
 constructor TJRPCMessages.Create(AOwnsObjects: Boolean);
 begin
   FList := TObjectList<TJRPCMessage>.Create(AOwnsObjects);
+end;
+
+class function TJRPCMessages.CreateFromJson(AJSON: TJSONValue): TJRPCMessages;
+begin
+  Result := TJRPCMessages.Create(True);
+  try
+    Result.FromJson(AJSON);
+  except
+    Result.Free;
+    raise;
+  end;
 end;
 
 class function TJRPCMessages.CreateFromJson(const AJSON: string): TJRPCMessages;

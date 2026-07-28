@@ -121,6 +121,8 @@ type
 implementation
 
 uses
+  System.Diagnostics,
+  Logify,
   Neon.Core.Utils,
   MCPConnect.MCP.Invoker;
 
@@ -131,24 +133,30 @@ var
   LInvoker: TMCPToolInvoker;
   LTool: TMCPTool;
   LToolObj: TObject;
+  LStopwatch: TStopwatch;
 begin
-  if not MCPConfig.Tools.Registry.TryGetValue(AParams.Name, LTool) then
-    raise EMCPException.CreateFmt(SMCPToolNotFound, [AParams.Name]);
-
-  // Instance of the tool class
-  LToolObj := TRttiUtils.CreateInstance(LTool.ToolClass);
+  LStopwatch := TStopwatch.StartNew;
   try
-    RPCContext.Inject(LToolObj);
+    if not MCPConfig.Tools.Registry.TryGetValue(AParams.Name, LTool) then
+      raise EMCPException.CreateFmt(SMCPToolNotFound, [AParams.Name]);
 
-    LInvoker := TMCPToolInvoker.Create(LToolObj, LTool);
+    // Instance of the tool class
+    LToolObj := TRttiUtils.CreateInstance(LTool.ToolClass);
     try
-      RPCContext.Inject(LInvoker);
-      Result := LInvoker.Invoke(AParams);
+      RPCContext.Inject(LToolObj);
+
+      LInvoker := TMCPToolInvoker.Create(LToolObj, LTool);
+      try
+        RPCContext.Inject(LInvoker);
+        Result := LInvoker.Invoke(AParams);
+      finally
+        LInvoker.Free;
+      end;
     finally
-      LInvoker.Free;
+      LToolObj.Free;
     end;
   finally
-    LToolObj.Free;
+    Logger.LogDebug('[PERF] CallTool [%s] total: %d ms', [AParams.Name, LStopwatch.ElapsedMilliseconds]);
   end;
 end;
 

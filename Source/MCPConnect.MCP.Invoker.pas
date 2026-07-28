@@ -98,6 +98,8 @@ implementation
 uses
   System.StrUtils,
   System.NetEncoding,
+  System.Diagnostics,
+  Logify,
   MCPConnect.Content.Writers;
 
 function TMCPInvoker.ArgumentsToRttiParams(AArguments: TJSONObject; const AParams: TArray<TRttiParameter>): TArray<TValue>;
@@ -272,10 +274,16 @@ function TMCPToolInvoker.Invoke(AParams: TCallToolParams): TCallToolResult;
 var
   LArgs: TArray<TValue>;
   LMethodResult: TValue;
+  LStopwatch: TStopwatch;
 begin
+  LStopwatch := TStopwatch.StartNew;
   LArgs := ArgumentsToRttiParams(AParams.Arguments, FTool.Method.GetParameters);
   FGC.Add(LArgs);
+  Logger.LogDebug('[PERF] Tool [%s] ArgumentsToRttiParams: %d ms', [FTool.Name, LStopwatch.ElapsedMilliseconds]);
+
+  LStopwatch := TStopwatch.StartNew;
   LMethodResult := FTool.Method.Invoke(FInstance, LArgs);
+  Logger.LogDebug('[PERF] Tool [%s] Method.Invoke (business logic): %d ms', [FTool.Name, LStopwatch.ElapsedMilliseconds]);
 
   if LMethodResult.IsType<TCallToolResult> then
   begin
@@ -291,7 +299,10 @@ begin
 
   FGC.Add(LMethodResult);
   Result := TCallToolResult.Create;
+
+  LStopwatch := TStopwatch.StartNew;
   ResultToTool(LMethodResult, Result);
+  Logger.LogDebug('[PERF] Tool [%s] ResultToTool (result serialization): %d ms', [FTool.Name, LStopwatch.ElapsedMilliseconds]);
 end;
 
 

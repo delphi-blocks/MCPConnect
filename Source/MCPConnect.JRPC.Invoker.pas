@@ -86,6 +86,10 @@ type
 
 implementation
 
+uses
+  System.Diagnostics,
+  Logify;
+
 // Checks the compatibility of the JSONValue with the function parameters
 procedure CheckCompatibility(AParam: TRttiParameter; AValue: TJSONValue);
 begin
@@ -159,18 +163,24 @@ var
   LResponse: TJRPCResponse;
   LArgs: TArray<TValue>;
   LResult: TValue;
+  LStopwatch: TStopwatch;
 begin
+  LStopwatch := TStopwatch.StartNew;
   LMethod := FindMethod(FContext.Request);
   if not Assigned(LMethod) then
     raise EJRPCMethodNotFoundError.CreateFmt(SJRPCMethodNonFound, [FContext.Request.Method]);
+  Logger.LogDebug('[PERF] JRPC [%s] FindMethod: %d ms', [FContext.Request.Method, LStopwatch.ElapsedMilliseconds]);
 
+  LStopwatch := TStopwatch.StartNew;
   try
     LArgs := RequestToRttiParams(LMethod);
     FContext.Garbage.Add(LArgs);
   except
     raise EJRPCInvalidParamsError.Create(SJRPCInvalidMethodParameters);
   end;
+  Logger.LogDebug('[PERF] JRPC [%s] RequestToRttiParams: %d ms', [FContext.Request.Method, LStopwatch.ElapsedMilliseconds]);
 
+  LStopwatch := TStopwatch.StartNew;
   try
     LResult := LMethod.Invoke(FContext.ApiInstance, LArgs);
     FContext.Garbage.Add(LResult);
@@ -182,15 +192,18 @@ begin
       raise EJRPCException.CreateFmt(SJRPCErrorCallingApiMethod,
         [FContext.ApiInstance.ClassName, FContext.Request.Method]);
   end;
+  Logger.LogDebug('[PERF] JRPC [%s] Method.Invoke: %d ms', [FContext.Request.Method, LStopwatch.ElapsedMilliseconds]);
 
   if FContext.Request is TJRPCRequest then
     LResponse.Id := TJRPCRequest(FContext.Request).Id;
 
   { TODO -opaolo -c :  31/03/2026 10:46:08 }
+  LStopwatch := TStopwatch.StartNew;
   if TRttiUtils.HasAttribute<JRPCNotificationAttribute>(LMethod) then
     LResponse.Result := nil
   else
     LResponse.Result := TNeon.ValueToJSON(LResult, FNeonConfig);
+  Logger.LogDebug('[PERF] JRPC [%s] ValueToJSON: %d ms', [FContext.Request.Method, LStopwatch.ElapsedMilliseconds]);
 
   FContext.Responses.Enqueue(LResponse);
 end;

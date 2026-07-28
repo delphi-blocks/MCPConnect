@@ -63,6 +63,8 @@ resourcestring
   SPromptNotFoundFmt = 'Prompt [%s] not found';
   SNonConfiguredTemplateParamsNotPermitted = 'Non-configured template params are not permitted';
   STemplateParamNameNotInUriFmt = 'Param name [%s] does not match any placeholder in the template uri';
+  SPromptParamNotFoundFmt = 'Param [%s] for Prompt [%s] not found';
+  SNonConfiguredPromptParamsNotPermitted = 'Non-configured prompt params are not permitted';
 
 type
   /// <summary>
@@ -443,9 +445,24 @@ type
     function BackToMCP: IMCPConfig; override;
   end;
 
+  /// <summary>
+  ///   A single argument mapping for a manually-registered prompt (registered without
+  ///   [McpPrompt]/[McpArgument] attributes): maps a Delphi RTTI parameter to its
+  ///   MCP-facing argument name, description, and required flag.
+  /// </summary>
+  TMCPPromptArgConfig = record
+    ParamName: string;
+    Name: string;
+    Description: string;
+    Required: Boolean;
+
+    class function New(const AParamName, AName: string; const ADescription: string = '';
+      ARequired: Boolean = False): TMCPPromptArgConfig; static;
+  end;
+
   TMCPPromptsConfig = class(TMCPBaseConfig)
   private
-    procedure WritePrompt(APrompt: TMCPPrompt; APromptAttr: MCPPromptAttribute);
+    procedure WritePrompt(APrompt: TMCPPrompt);
   public
     Registry: TMCPPromptRegistry;
   public
@@ -453,6 +470,15 @@ type
     destructor Destroy; override;
 
     function RegisterClass(AClass: TClass): TMCPPromptsConfig;
+
+    /// <summary>
+    ///   Registers a single prompt-serving method directly, without needing [McpPrompt]/
+    ///   [McpArgument] attributes. AArguments maps each RTTI parameter (by Delphi name) to
+    ///   its MCP-facing argument name/description/required flag.
+    /// </summary>
+    function RegisterPrompt(AClass: TClass; const AMethodName, AName: string;
+      const AArguments: TArray<TMCPPromptArgConfig>; const ATitle: string = '';
+      const ADescription: string = ''; const ATags: string = ''): TMCPPromptsConfig;
 
     /// <summary>
     ///   Creates an instance of a class by namespace.
@@ -1571,7 +1597,10 @@ begin
       LPrompt.Classe := AClass;
       LPrompt.Method := LMethod;
 
-      WritePrompt(LPrompt, LPromptAttr);
+      for var tag in LPromptAttr.Tags.TagMap do
+        LPrompt.Tags.TagMap.Add(tag.Key, tag.Value);
+
+      WritePrompt(LPrompt);
 
       for var LParam in LMethod.GetParameters do
       begin
@@ -1584,6 +1613,12 @@ begin
           LArg.Required := LAttr.Tags.GetBoolValue('required');
 
         LPrompt.Arguments := LPrompt.Arguments + [LArg];
+
+        var LPromptPar := TMCPPromptParam.Create;
+        LPrompt.MethodParams.Add(LPromptPar);
+        LPromptPar.Param := LParam;
+        LPromptPar.ParamName := LParam.Name;
+        LPromptPar.Name := LAttr.Name;
       end;
 
       Registry.Add(LPrompt.Name, LPrompt);
@@ -1595,15 +1630,79 @@ begin
   Result := Self;
 end;
 
-procedure TMCPPromptsConfig.WritePrompt(APrompt: TMCPPrompt; APromptAttr: MCPPromptAttribute);
+function TMCPPromptsConfig.RegisterPrompt(AClass: TClass; const AMethodName, AName: string;
+  const AArguments: TArray<TMCPPromptArgConfig>; const ATitle: string; const ADescription: string;
+  const ATags: string): TMCPPromptsConfig;
+var
+  LClassType: TRttiType;
+  LMethod: TRttiMethod;
+  LPrompt: TMCPPrompt;
+begin
+  LClassType := TRttiUtils.Context.GetType(AClass);
+  LMethod := LClassType.GetMethod(AMethodName);
+  if not Assigned(LMethod) then
+    raise EMCPException.CreateFmt(SMethodNotFoundInClassFmt, [AMethodName, AClass.ClassName]);
+
+  if Length(AArguments) <> Length(LMethod.GetParameters) then
+    raise EMCPException.Create(SNonConfiguredPromptParamsNotPermitted);
+
+  LPrompt := TMCPPrompt.Create;
+  try
+    LPrompt.Classe := AClass;
+    LPrompt.Method := LMethod;
+    LPrompt.Name := AName;
+    LPrompt.Title := ATitle;
+    LPrompt.Description := ADescription;
+    LPrompt.Tags.Parse(ATags);
+
+    WritePrompt(LPrompt);
+
+    for var arg in AArguments do
+    begin
+      var par := LPrompt.FindRttiParam(arg.ParamName);
+      if not Assigned(par) then
+        raise EMCPException.CreateFmt(SPromptParamNotFoundFmt, [arg.ParamName, AName]);
+
+      var LPromptPar := TMCPPromptParam.Create;
+      LPrompt.MethodParams.Add(LPromptPar);
+      LPromptPar.Param := par;
+      LPromptPar.ParamName := arg.ParamName;
+      LPromptPar.Name := arg.Name;
+
+      var LArg := TPromptArgument.New(arg.Name, arg.Description);
+      LArg.Required := arg.Required;
+      LPrompt.Arguments := LPrompt.Arguments + [LArg];
+    end;
+
+    Registry.Add(LPrompt.Name, LPrompt);
+  except
+    LPrompt.Free;
+    raise;
+  end;
+
+  Result := Self;
+end;
+
+procedure TMCPPromptsConfig.WritePrompt(APrompt: TMCPPrompt);
 var
   LIcon: TMCPIcon;
 begin
-  if SetIcon(APromptAttr.Tags.GetValueAs<string>('icon'), LIcon) then
+  if SetIcon(APrompt.Tags.GetValueAs<string>('icon'), LIcon) then
     APrompt.Icons := APrompt.Icons + [LIcon];
 
-  APrompt.Category := APromptAttr.Tags.GetValueAs<string>('category');
-  APrompt.Disabled := APromptAttr.Tags.GetBoolValue('disabled');
+  APrompt.Category := APrompt.Tags.GetValueAs<string>('category');
+  APrompt.Disabled := APrompt.Tags.GetBoolValue('disabled');
+end;
+
+{ TMCPPromptArgConfig }
+
+class function TMCPPromptArgConfig.New(const AParamName, AName: string; const ADescription: string;
+  ARequired: Boolean): TMCPPromptArgConfig;
+begin
+  Result.ParamName := AParamName;
+  Result.Name := AName;
+  Result.Description := ADescription;
+  Result.Required := ARequired;
 end;
 
 

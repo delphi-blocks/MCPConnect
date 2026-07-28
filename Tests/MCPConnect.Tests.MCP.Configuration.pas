@@ -24,6 +24,7 @@ uses
   MCPConnect.Configuration.MCP,
   MCPConnect.MCP.Tools,
   MCPConnect.MCP.Resources,
+  MCPConnect.MCP.Prompts,
   MCPConnect.MCP.Types,
   MCPConnect.MCP.Attributes;
 
@@ -157,6 +158,47 @@ type
     procedure TestRegisterUI_UIConfigCallbackWritesMeta;
     [Test]
     procedure TestRegisterUI_NonUiSchemeRaises;
+  end;
+
+  // Plain class with no MCP attributes at all, registered purely through the
+  // one-shot RegisterPrompt API instead of [McpPrompt]/[McpArgument].
+  TManualPromptClass = class
+  public
+    function Greet(const AName: string): string;
+    function NoArgs: string;
+  end;
+
+  [TestFixture]
+  TMCPPromptsConfigRegisterPromptTest = class(TObject)
+  private
+    FServer: TJRPCServer;
+    FConfig: IMCPConfig;
+  public
+    [Setup]
+    procedure Setup;
+    [TearDown]
+    procedure TearDown;
+
+    [Test]
+    procedure TestRegisterPrompt_RegistersUnderConfiguredName;
+    [Test]
+    procedure TestRegisterPrompt_CapturesClassAndMethod;
+    [Test]
+    procedure TestRegisterPrompt_ArgumentsUseConfiguredNamesDescriptionsAndRequired;
+    [Test]
+    procedure TestRegisterPrompt_NoArgsMethodProducesEmptyArguments;
+    [Test]
+    procedure TestRegisterPrompt_TagsApplyCategoryAndDisabled;
+    [Test]
+    procedure TestRegisterPrompt_UnknownMethodRaises;
+    [Test]
+    procedure TestRegisterPrompt_MissingArgumentConfigurationRaises;
+    [Test]
+    procedure TestRegisterPrompt_WrongParamNameRaises;
+    [Test]
+    procedure TestRegisterPrompt_RegisteredMethodIsInvokable;
+    [Test]
+    procedure TestRegisterPrompt_ReturnsPromptsConfigForChaining;
   end;
 
 implementation
@@ -672,8 +714,166 @@ begin
   );
 end;
 
+{ TManualPromptClass }
+
+function TManualPromptClass.Greet(const AName: string): string;
+begin
+  Result := 'Hello, ' + AName + '!';
+end;
+
+function TManualPromptClass.NoArgs: string;
+begin
+  Result := 'hi';
+end;
+
+{ TMCPPromptsConfigRegisterPromptTest }
+
+procedure TMCPPromptsConfigRegisterPromptTest.Setup;
+begin
+  FServer := TJRPCServer.Create(nil);
+  FConfig := FServer.Plugin.Configure<IMCPConfig>;
+end;
+
+procedure TMCPPromptsConfigRegisterPromptTest.TearDown;
+begin
+  FConfig := nil;
+  FServer.Free;
+end;
+
+procedure TMCPPromptsConfigRegisterPromptTest.TestRegisterPrompt_RegistersUnderConfiguredName;
+var
+  LPrompt: TMCPPrompt;
+begin
+  FConfig.Prompts.RegisterPrompt(TManualPromptClass, 'Greet', 'greet',
+    [TMCPPromptArgConfig.New('AName', 'name', 'The name to greet')], 'Greeting', 'Greets someone by name');
+
+  Assert.IsTrue(FConfig.Prompts.Registry.ContainsKey('greet'), 'Prompt should be registered under its configured name');
+  LPrompt := FConfig.Prompts.Registry['greet'];
+  Assert.AreEqual('greet', LPrompt.Name);
+  Assert.AreEqual('Greeting', LPrompt.Title.Value);
+  Assert.AreEqual('Greets someone by name', LPrompt.Description.Value);
+end;
+
+procedure TMCPPromptsConfigRegisterPromptTest.TestRegisterPrompt_CapturesClassAndMethod;
+var
+  LPrompt: TMCPPrompt;
+begin
+  FConfig.Prompts.RegisterPrompt(TManualPromptClass, 'Greet', 'greet',
+    [TMCPPromptArgConfig.New('AName', 'name')]);
+
+  LPrompt := FConfig.Prompts.Registry['greet'];
+  Assert.AreEqual(TClass(TManualPromptClass), LPrompt.Classe, 'Classe should point back to the registered class');
+  Assert.AreEqual('Greet', LPrompt.Method.Name, 'Method should be the RTTI method for the configured method name');
+end;
+
+procedure TMCPPromptsConfigRegisterPromptTest.TestRegisterPrompt_ArgumentsUseConfiguredNamesDescriptionsAndRequired;
+var
+  LPrompt: TMCPPrompt;
+begin
+  FConfig.Prompts.RegisterPrompt(TManualPromptClass, 'Greet', 'greet',
+    [TMCPPromptArgConfig.New('AName', 'name', 'The name to greet', True)]);
+
+  LPrompt := FConfig.Prompts.Registry['greet'];
+  Assert.AreEqual(1, Length(LPrompt.Arguments));
+
+  // The MCP-facing argument name comes from TMCPPromptArgConfig.Name, not the
+  // Delphi parameter name (AName).
+  Assert.AreEqual('name', LPrompt.Arguments[0].Name);
+  Assert.AreEqual('The name to greet', LPrompt.Arguments[0].Description.Value);
+  Assert.IsTrue(LPrompt.Arguments[0].Required.HasValue and LPrompt.Arguments[0].Required.Value);
+end;
+
+procedure TMCPPromptsConfigRegisterPromptTest.TestRegisterPrompt_NoArgsMethodProducesEmptyArguments;
+var
+  LPrompt: TMCPPrompt;
+begin
+  FConfig.Prompts.RegisterPrompt(TManualPromptClass, 'NoArgs', 'no_args', []);
+
+  LPrompt := FConfig.Prompts.Registry['no_args'];
+  Assert.AreEqual(0, Length(LPrompt.Arguments));
+end;
+
+procedure TMCPPromptsConfigRegisterPromptTest.TestRegisterPrompt_TagsApplyCategoryAndDisabled;
+var
+  LPrompt: TMCPPrompt;
+begin
+  FConfig.Prompts.RegisterPrompt(TManualPromptClass, 'NoArgs', 'tagged_prompt', [], '', '',
+    'category=demo,disabled');
+
+  LPrompt := FConfig.Prompts.Registry['tagged_prompt'];
+  Assert.AreEqual('demo', LPrompt.Category);
+  Assert.IsTrue(LPrompt.Disabled);
+end;
+
+procedure TMCPPromptsConfigRegisterPromptTest.TestRegisterPrompt_UnknownMethodRaises;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      FConfig.Prompts.RegisterPrompt(TManualPromptClass, 'NoSuchMethod', 'x', []);
+    end,
+    EMCPException
+  );
+end;
+
+procedure TMCPPromptsConfigRegisterPromptTest.TestRegisterPrompt_MissingArgumentConfigurationRaises;
+begin
+  // Greet has one parameter (AName), no arguments are supplied
+  Assert.WillRaise(
+    procedure
+    begin
+      FConfig.Prompts.RegisterPrompt(TManualPromptClass, 'Greet', 'incomplete_prompt', []);
+    end,
+    EMCPException
+  );
+end;
+
+procedure TMCPPromptsConfigRegisterPromptTest.TestRegisterPrompt_WrongParamNameRaises;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      FConfig.Prompts.RegisterPrompt(TManualPromptClass, 'Greet', 'mismatched_prompt',
+        [TMCPPromptArgConfig.New('WrongName', 'name')]);
+    end,
+    EMCPException
+  );
+end;
+
+procedure TMCPPromptsConfigRegisterPromptTest.TestRegisterPrompt_RegisteredMethodIsInvokable;
+var
+  LPrompt: TMCPPrompt;
+  LInstance: TManualPromptClass;
+  LResult: TValue;
+begin
+  FConfig.Prompts.RegisterPrompt(TManualPromptClass, 'Greet', 'greet',
+    [TMCPPromptArgConfig.New('AName', 'name')]);
+
+  LPrompt := FConfig.Prompts.Registry['greet'];
+  LInstance := TManualPromptClass.Create;
+  try
+    LResult := LPrompt.Method.Invoke(LInstance, [TValue.From<string>('Ada')]);
+    Assert.AreEqual('Hello, Ada!', LResult.AsString);
+  finally
+    LInstance.Free;
+  end;
+end;
+
+procedure TMCPPromptsConfigRegisterPromptTest.TestRegisterPrompt_ReturnsPromptsConfigForChaining;
+begin
+  // A single call fully registers the prompt, so the result can be chained
+  // straight into further Prompts configuration calls.
+  FConfig.Prompts
+    .RegisterPrompt(TManualPromptClass, 'NoArgs', 'no_args', [])
+    .RegisterPrompt(TManualPromptClass, 'Greet', 'greet', [TMCPPromptArgConfig.New('AName', 'name')]);
+
+  Assert.IsTrue(FConfig.Prompts.Registry.ContainsKey('no_args'));
+  Assert.IsTrue(FConfig.Prompts.Registry.ContainsKey('greet'));
+end;
+
 initialization
   TDUnitX.RegisterTestFixture(TMCPToolsConfigRegisterToolTest);
   TDUnitX.RegisterTestFixture(TMCPResourcesConfigRegisterResourceTest);
+  TDUnitX.RegisterTestFixture(TMCPPromptsConfigRegisterPromptTest);
 
 end.

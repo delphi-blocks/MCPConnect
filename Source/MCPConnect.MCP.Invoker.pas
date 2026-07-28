@@ -83,6 +83,7 @@ type
   TMCPPromptInvoker = class(TMCPInvoker)
   protected
     FPrompt: TMCPPrompt;
+    function GetParamName(AParam: TRttiParameter): string; override;
     procedure ResultToPrompt(const APromptResult: TValue; AResult: TGetPromptResult);
   public
     constructor Create(AInstance: TObject; APrompt: TMCPPrompt);
@@ -610,6 +611,17 @@ constructor TMCPPromptInvoker.Create(AInstance: TObject; APrompt: TMCPPrompt);
 begin
   inherited Create(AInstance);
   FPrompt := APrompt;
+end;
+
+function TMCPPromptInvoker.GetParamName(AParam: TRttiParameter): string;
+var
+  LParam: TMCPPromptParam;
+begin
+  LParam := FPrompt.FindMCPParam(AParam.Name);
+  if Assigned(LParam) then
+    Result := LParam.Name
+  else
+    Result := AParam.Name;
 end;
 
 function TMCPPromptInvoker.Invoke(AParams: TGetPromptParams): TGetPromptResult;

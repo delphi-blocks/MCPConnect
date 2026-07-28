@@ -39,6 +39,7 @@ type
   /// Parameters for CallToolRequest
   /// </summary>
   TCallToolParams = class(TMetaClass)
+  public
 
     /// <summary>
     ///   Name for the params
@@ -100,19 +101,30 @@ type
     property ResourceUri: NullString read GetResourceUri write SetResourceUri;
   end;
 
+  TMCPToolParam = class(TMetaClass)
+  public
+    Param: TRttiParameter;
+    ParamName: string;
+    Name: string;
+    Description: string;
+  end;
+
   /// <summary>
   /// Tool represents the definition for a tool the client can call.
   /// </summary>
   TMCPTool = class(TMetaClass)
   private type
     /// <summary>
-    ///   Model: visible to and callable by the agent <br />
+    ///   Model: visible to and callable by the agent
     ///   App: callable by the app from this server only
     /// </summary>
     ToolVisibility = (Model, App);
   public
-    [NeonIgnore] Classe: TClass;
+    [NeonIgnore] ToolClass: TClass;
     [NeonIgnore] Method: TRttiMethod;
+    [NeonIgnore] MethodName: string;
+    [NeonIgnore] MethodParams: TObjectList<TMCPToolParam>;
+  public
     [NeonIgnore] Category: string;
     [NeonIgnore] Disabled: Boolean;
     [NeonIgnore] UI: TMCPUIApp;
@@ -151,6 +163,9 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+
+    function FindMCPParam(const AName: string): TMCPToolParam;
+    function FindRttiParam(const AName: string): TRttiParameter;
 
     procedure ExchangeInputSchema(ASchema: TJSONObject);
     procedure ExchangeOutputSchema(ASchema: TJSONObject);
@@ -230,7 +245,7 @@ constructor TMCPTool.Create;
 begin
   inherited;
   UI := TMCPUIApp.Create(Meta);
-
+  MethodParams := TObjectList<TMCPToolParam>.Create(True);
   InputSchema := TJSONObject.Create;
   Annotations := TToolAnnotation.Create;
   OutputSchema := TJSONObject.Create;
@@ -241,6 +256,7 @@ begin
   InputSchema.Free;
   Annotations.Free;
   OutputSchema.Free;
+  MethodParams.Free;
   UI.Free;
   inherited;
 end;
@@ -261,6 +277,22 @@ begin
 
   OutputSchema.Free;
   OutputSchema := ASchema;
+end;
+
+function TMCPTool.FindMCPParam(const AName: string): TMCPToolParam;
+begin
+  Result := nil;
+  for var par in MethodParams do
+    if SameText(AName, par.ParamName) then
+      Exit(par);
+end;
+
+function TMCPTool.FindRttiParam(const AName: string): TRttiParameter;
+begin
+  Result := nil;
+  for var par in Method.GetParameters do
+    if SameText(AName, par.Name) then
+      Exit(par);
 end;
 
 function TMCPTool.ToJSON(APrettyPrint: Boolean): string;

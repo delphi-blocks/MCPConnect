@@ -42,7 +42,7 @@ type
     [Context] FConfig: TMCPConfig;
     [Context] FGC: IGarbageCollector;
 
-    function GetParamName(LParam: TRttiParameter): string;
+    function GetParamName(AParam: TRttiParameter): string; virtual;
     function ArgumentsToRttiParams(AArguments: TJSONObject; const AParams: TArray<TRttiParameter>): TArray<TValue>;
 
     constructor Create(AInstance: TObject);
@@ -51,8 +51,8 @@ type
   TMCPToolInvoker = class(TMCPInvoker)
   protected
     FTool: TMCPTool;
-    procedure ResultToTool(const AToolResult: TValue; AResult: TCallToolResult);
-  public
+    function GetParamName(AParam: TRttiParameter): string; override;
+    procedure ResultToTool(const AToolResult: TValue; AResult: TCallToolResult);  public
     constructor Create(AInstance: TObject; ATool: TMCPTool);
 
     function Invoke(AParams: TCallToolParams): TCallToolResult;
@@ -141,21 +141,32 @@ begin
   FInstance := AInstance;
 end;
 
-function TMCPInvoker.GetParamName(LParam: TRttiParameter): string;
+function TMCPInvoker.GetParamName(AParam: TRttiParameter): string;
 var
   LParamAttrib: MCPParamAttribute;
 begin
-  LParamAttrib := TRttiUtils.FindAttribute<MCPParamAttribute>(LParam);
+  LParamAttrib := TRttiUtils.FindAttribute<MCPParamAttribute>(AParam);
   if Assigned(LParamAttrib) then
     Result := LParamAttrib.Name
   else
-    Result := LParam.Name;
+    Result := AParam.Name;
 end;
 
 constructor TMCPToolInvoker.Create(AInstance: TObject; ATool: TMCPTool);
 begin
   inherited Create(AInstance);
   FTool := ATool;
+end;
+
+function TMCPToolInvoker.GetParamName(AParam: TRttiParameter): string;
+var
+  LParam: TMCPToolParam;
+begin
+  LParam := FTool.FindMCPParam(AParam.Name);
+  if Assigned(LParam) then
+    Result := LParam.Name
+  else
+    Result := AParam.Name;
 end;
 
 procedure TMCPToolInvoker.ResultToTool(const AToolResult: TValue; AResult: TCallToolResult);
@@ -177,7 +188,6 @@ begin
     Exit;
   end;
 
-  var LMCPAttr := TRttiUtils.FindAttribute<MCPToolAttribute>(FTool.Method);
   case AToolResult.Kind of
 
     // As it is
@@ -202,10 +212,10 @@ begin
       var LJSON := TNeon.ValueToJSON(AToolResult, FConfig.Tools.NeonConfig);
       try
         // Check if the tool is configured to return a structured content
-        if Assigned(LMCPAttr) and LMCPAttr.Tags.Exists('structured') then
+        if FTool.Tags.Exists('structured') then
           AResult.StructuredContent := LJSON.Clone as TJSONObject;
 
-        if Assigned(LMCPAttr) and (LMCPAttr.Tags.Exists('embedded')) then
+        if FTool.Tags.Exists('embedded') then
         begin
           LResText := TEmbeddedResourceText.Create;
           LResText.Resource.MIMEType := 'application/json';
@@ -238,7 +248,7 @@ begin
           // See: https://github.com/modelcontextprotocol/php-sdk/issues/357
 
           // Check if the tool is configured to return a structured content
-          if Assigned(LMCPAttr) and (LMCPAttr.Tags.Exists('structured')) then
+          if FTool.Tags.Exists('structured') then
             raise EMCPException.Create(SMCPStructuredContentMustBeObject);
 
           LResBlob.Resource.MIMEType := 'application/json';

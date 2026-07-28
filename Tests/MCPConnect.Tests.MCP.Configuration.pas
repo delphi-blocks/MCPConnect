@@ -174,7 +174,7 @@ begin
     .EndTool;
 
   LTool := FConfig.Tools.Registry['double_or_zero'];
-  Assert.AreEqual(TClass(TManualToolClass), LTool.Classe, 'Classe should point back to the registered class');
+  Assert.AreEqual(TClass(TManualToolClass), LTool.ToolClass, 'ToolClass should point back to the registered class');
   Assert.AreEqual('DoubleOrZero', LTool.Method.Name, 'Method should be the RTTI method for the configured method name');
 end;
 

@@ -136,7 +136,7 @@ begin
     raise EMCPException.CreateFmt(SMCPToolNotFound, [AParams.Name]);
 
   // Instance of the tool class
-  LToolObj := TRttiUtils.CreateInstance(LTool.Classe);
+  LToolObj := TRttiUtils.CreateInstance(LTool.ToolClass);
   try
     RPCContext.Inject(LToolObj);
 

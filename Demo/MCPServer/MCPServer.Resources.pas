@@ -15,6 +15,11 @@ uses
   MCPConnect.Session.Core;
 
 type
+
+  TCppResource = class
+    function GetGlobalInfo: string;
+  end;
+
   TWeatherResource = class
   public
     [McpResource('weather-resource', 'text://weather', 'text/plain', 'Shows the weather for the DelphiDay event')]
@@ -40,6 +45,13 @@ end;
 function TWeatherResource.GetWeatherInfo: string;
 begin
   Result := 'Cloudy skies early, followed by partial clearing. Slight chance of a rain shower. High 31°. Winds light and variable.';
+end;
+
+{ TCppResource }
+
+function TCppResource.GetGlobalInfo: string;
+begin
+  Result := 'Global Information Given';
 end;
 
 end.

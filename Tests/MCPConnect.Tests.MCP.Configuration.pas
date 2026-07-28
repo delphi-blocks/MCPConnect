@@ -23,6 +23,7 @@ uses
   MCPConnect.JRPC.Core,
   MCPConnect.Configuration.MCP,
   MCPConnect.MCP.Tools,
+  MCPConnect.MCP.Resources,
   MCPConnect.MCP.Types,
   MCPConnect.MCP.Attributes;
 
@@ -96,6 +97,66 @@ type
 
     [Test]
     procedure TestRegisterClass_SameClassTwiceWithAppAttributeDoesNotRaise;
+  end;
+
+  // Plain classes with no MCP attributes at all, registered purely through the
+  // one-shot RegisterResource/RegisterTemplate/RegisterUI API instead of
+  // [McpResource]/[McpTemplate]/[McpParam]/[McpAppUI].
+  TManualResourceClass = class
+  public
+    function GetReadme: string;
+  end;
+
+  TManualTemplateClass = class
+  public
+    function GetItem(const AId: string): string;
+    function GetItemDetail(const AId, AField: string): string;
+  end;
+
+  TManualUIClass = class
+  public
+    function ShowWidget: string;
+  end;
+
+  [TestFixture]
+  TMCPResourcesConfigRegisterResourceTest = class(TObject)
+  private
+    FServer: TJRPCServer;
+    FConfig: IMCPConfig;
+  public
+    [Setup]
+    procedure Setup;
+    [TearDown]
+    procedure TearDown;
+
+    [Test]
+    procedure TestRegisterResource_RegistersUnderConfiguredUri;
+    [Test]
+    procedure TestRegisterResource_CapturesClassAndMethod;
+    [Test]
+    procedure TestRegisterResource_RegisteredMethodIsInvokable;
+    [Test]
+    procedure TestRegisterResource_TagsApplyCategoryAndDisabled;
+    [Test]
+    procedure TestRegisterResource_UnknownMethodRaises;
+    [Test]
+    procedure TestRegisterResource_ReturnsResourcesConfigForChaining;
+
+    [Test]
+    procedure TestRegisterTemplate_RegistersUnderConfiguredUriTemplate;
+    [Test]
+    procedure TestRegisterTemplate_ParamNamesMapRttiParamsToUriPlaceholders;
+    [Test]
+    procedure TestRegisterTemplate_TooFewParamNamesRaises;
+    [Test]
+    procedure TestRegisterTemplate_UriPlaceholderMismatchRaises;
+
+    [Test]
+    procedure TestRegisterUI_RegistersUnderConfiguredUri;
+    [Test]
+    procedure TestRegisterUI_UIConfigCallbackWritesMeta;
+    [Test]
+    procedure TestRegisterUI_NonUiSchemeRaises;
   end;
 
 implementation
@@ -404,7 +465,215 @@ begin
   end;
 end;
 
+{ TManualResourceClass }
+
+function TManualResourceClass.GetReadme: string;
+begin
+  Result := 'readme contents';
+end;
+
+{ TManualTemplateClass }
+
+function TManualTemplateClass.GetItem(const AId: string): string;
+begin
+  Result := 'item:' + AId;
+end;
+
+function TManualTemplateClass.GetItemDetail(const AId, AField: string): string;
+begin
+  Result := 'item:' + AId + ':' + AField;
+end;
+
+{ TManualUIClass }
+
+function TManualUIClass.ShowWidget: string;
+begin
+  Result := '<html/>';
+end;
+
+{ TMCPResourcesConfigRegisterResourceTest }
+
+procedure TMCPResourcesConfigRegisterResourceTest.Setup;
+begin
+  FServer := TJRPCServer.Create(nil);
+  FConfig := FServer.Plugin.Configure<IMCPConfig>;
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TearDown;
+begin
+  FConfig := nil;
+  FServer.Free;
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterResource_RegistersUnderConfiguredUri;
+var
+  LRes: TMCPResource;
+begin
+  FConfig.Resources.RegisterResource(TManualResourceClass, 'GetReadme', 'readme', 'res://readme',
+    'text/plain', 'The readme file');
+
+  Assert.IsTrue(FConfig.Resources.Registry.ContainsKey('res://readme'), 'Resource should be registered under its configured uri');
+  LRes := FConfig.Resources.Registry['res://readme'];
+  Assert.AreEqual('readme', LRes.Name);
+  Assert.AreEqual('The readme file', LRes.Description.Value);
+  Assert.AreEqual('text/plain', LRes.MimeType.Value);
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterResource_CapturesClassAndMethod;
+var
+  LRes: TMCPResource;
+begin
+  FConfig.Resources.RegisterResource(TManualResourceClass, 'GetReadme', 'readme', 'res://readme');
+
+  LRes := FConfig.Resources.Registry['res://readme'];
+  Assert.AreEqual(TClass(TManualResourceClass), LRes.Classe, 'Classe should point back to the registered class');
+  Assert.AreEqual('GetReadme', LRes.Method.Name, 'Method should be the RTTI method for the configured method name');
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterResource_RegisteredMethodIsInvokable;
+var
+  LRes: TMCPResource;
+  LInstance: TManualResourceClass;
+  LResult: TValue;
+begin
+  FConfig.Resources.RegisterResource(TManualResourceClass, 'GetReadme', 'readme', 'res://readme');
+
+  LRes := FConfig.Resources.Registry['res://readme'];
+  LInstance := TManualResourceClass.Create;
+  try
+    LResult := LRes.Method.Invoke(LInstance, []);
+    Assert.AreEqual('readme contents', LResult.AsString);
+  finally
+    LInstance.Free;
+  end;
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterResource_TagsApplyCategoryAndDisabled;
+var
+  LRes: TMCPResource;
+begin
+  FConfig.Resources.RegisterResource(TManualResourceClass, 'GetReadme', 'readme', 'res://readme',
+    '', '', 'category=docs,disabled');
+
+  LRes := FConfig.Resources.Registry['res://readme'];
+  Assert.AreEqual('docs', LRes.Category);
+  Assert.IsTrue(LRes.Disabled);
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterResource_UnknownMethodRaises;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      FConfig.Resources.RegisterResource(TManualResourceClass, 'NoSuchMethod', 'x', 'res://x');
+    end,
+    EMCPException
+  );
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterResource_ReturnsResourcesConfigForChaining;
+begin
+  // A single call fully registers the resource, so the result can be chained
+  // straight into further Resources configuration calls.
+  FConfig.Resources
+    .RegisterResource(TManualResourceClass, 'GetReadme', 'readme', 'res://readme')
+    .RegisterResource(TManualResourceClass, 'GetReadme', 'readme2', 'res://readme2');
+
+  Assert.IsTrue(FConfig.Resources.Registry.ContainsKey('res://readme'));
+  Assert.IsTrue(FConfig.Resources.Registry.ContainsKey('res://readme2'));
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterTemplate_RegistersUnderConfiguredUriTemplate;
+var
+  LTpl: TMCPResourceTemplate;
+begin
+  FConfig.Resources.RegisterTemplate(TManualTemplateClass, 'GetItem', 'item', 'res://items/{id}', ['id'], '', 'An item');
+
+  Assert.IsTrue(FConfig.Resources.TemplateRegistry.ContainsKey('res://items/{id}'), 'Template should be registered under its configured uri template');
+  LTpl := FConfig.Resources.TemplateRegistry['res://items/{id}'];
+  Assert.AreEqual('item', LTpl.Name);
+  Assert.AreEqual(TClass(TManualTemplateClass), LTpl.Classe);
+  Assert.AreEqual('GetItem', LTpl.Method.Name);
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterTemplate_ParamNamesMapRttiParamsToUriPlaceholders;
+var
+  LTpl: TMCPResourceTemplate;
+  LParam: TMCPResTemplateParam;
+begin
+  FConfig.Resources.RegisterTemplate(TManualTemplateClass, 'GetItem', 'item', 'res://items/{id}', ['id']);
+
+  LTpl := FConfig.Resources.TemplateRegistry['res://items/{id}'];
+  LParam := LTpl.FindMCPParam('AId');
+  Assert.IsNotNull(LParam, 'The Delphi parameter name (AId) should resolve to a configured template param');
+  Assert.AreEqual('id', LParam.Name, 'The uri placeholder name comes from AParamNames, positionally matched to the RTTI parameters');
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterTemplate_TooFewParamNamesRaises;
+begin
+  // GetItemDetail has two uri placeholders ({id}/{field}), only one name is supplied
+  Assert.WillRaise(
+    procedure
+    begin
+      FConfig.Resources.RegisterTemplate(TManualTemplateClass, 'GetItemDetail', 'item_detail', 'res://items/{id}/{field}', ['id']);
+    end,
+    EMCPException
+  );
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterTemplate_UriPlaceholderMismatchRaises;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      FConfig.Resources.RegisterTemplate(TManualTemplateClass, 'GetItem', 'item', 'res://items/{id}', ['not_a_placeholder']);
+    end,
+    EMCPException
+  );
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterUI_RegistersUnderConfiguredUri;
+var
+  LApp: TMCPResource;
+begin
+  FConfig.Resources.RegisterUI(TManualUIClass, 'ShowWidget', 'widget', 'ui://widget', 'A widget');
+
+  Assert.IsTrue(FConfig.Resources.Registry.ContainsKey('ui://widget'), 'UI resource should be registered under its configured uri');
+  LApp := FConfig.Resources.Registry['ui://widget'];
+  Assert.AreEqual('widget', LApp.Name);
+  Assert.AreEqual(TClass(TManualUIClass), LApp.Classe);
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterUI_UIConfigCallbackWritesMeta;
+var
+  LApp: TMCPResource;
+  LUIMeta: TJSONObject;
+begin
+  FConfig.Resources.RegisterUI(TManualUIClass, 'ShowWidget', 'widget', 'ui://widget', '', '',
+    procedure(AResource: TMCPResource; AUI: TUIResourceUI)
+    begin
+      AUI.Domain := 'example.com';
+    end);
+
+  LApp := FConfig.Resources.Registry['ui://widget'];
+  LUIMeta := LApp.Meta.GetValue('ui') as TJSONObject;
+  Assert.IsNotNull(LUIMeta, 'Meta should carry a "ui" object once the AUIConfig callback sets a value');
+  Assert.AreEqual('example.com', (LUIMeta.GetValue('domain') as TJSONString).Value);
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterUI_NonUiSchemeRaises;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      FConfig.Resources.RegisterUI(TManualUIClass, 'ShowWidget', 'widget', 'res://widget');
+    end,
+    EMCPException
+  );
+end;
+
 initialization
   TDUnitX.RegisterTestFixture(TMCPToolsConfigRegisterToolTest);
+  TDUnitX.RegisterTestFixture(TMCPResourcesConfigRegisterResourceTest);
 
 end.

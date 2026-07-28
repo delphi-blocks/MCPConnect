@@ -135,8 +135,19 @@ type
 
   TMCPResources = class(TObjectList<TMCPResource>);
   TMCPResourceRegistry = class(TObjectDictionary<string, TMCPResource>);
-  TMCPResourceConfigurator = reference to procedure(AResource: TMCPResource);
   TMCPResourceFilterFunc = reference to function (AResource: TMCPResource): Boolean;
+
+  /// <summary>
+  ///   A single URI-template placeholder configured for a manually-registered
+  ///   resource template (i.e. registered without relying on [McpParam] attributes).
+  /// </summary>
+  TMCPResTemplateParam = class(TMetaClass)
+  public
+    Param: TRttiParameter;
+    ParamName: string;
+    Name: string;
+    Description: string;
+  end;
 
   /// <summary>
   /// Represents a template description for resources available on the server.
@@ -147,16 +158,21 @@ type
     [NeonIgnore] Method: TRttiMethod;
     [NeonIgnore] Category: string;
     [NeonIgnore] Disabled: Boolean;
+    [NeonIgnore] MethodParams: TObjectList<TMCPResTemplateParam>;
   public
     /// <summary>
     /// A URI template (according to RFC 6570) that can be used to construct resource URIs.
     /// </summary>
     UriTemplate: NullString;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    function FindMCPParam(const AName: string): TMCPResTemplateParam;
   end;
 
   TMCPTemplates = class(TObjectList<TMCPResourceTemplate>);
   TMCPTemplateRegistry = class(TObjectDictionary<string, TMCPResourceTemplate>);
-  TMCPTemplateConfigurator = reference to procedure(ATemplate: TMCPResourceTemplate);
   TMCPTemplateFilterFunc = reference to function (ATemplate: TMCPResourceTemplate): Boolean;
 
 
@@ -433,6 +449,28 @@ destructor TListResourceTemplatesResult.Destroy;
 begin
   ResourceTemplates.Free;
   inherited;
+end;
+
+{ TMCPResourceTemplate }
+
+constructor TMCPResourceTemplate.Create;
+begin
+  inherited;
+  MethodParams := TObjectList<TMCPResTemplateParam>.Create(True);
+end;
+
+destructor TMCPResourceTemplate.Destroy;
+begin
+  MethodParams.Free;
+  inherited;
+end;
+
+function TMCPResourceTemplate.FindMCPParam(const AName: string): TMCPResTemplateParam;
+begin
+  Result := nil;
+  for var par in MethodParams do
+    if SameText(AName, par.ParamName) then
+      Exit(par);
 end;
 
 constructor TUIResourcePermissions.Create;

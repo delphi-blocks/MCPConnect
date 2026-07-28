@@ -58,13 +58,15 @@ begin
 //      .SetToken('my-secret-token')
 //    .ApplyConfig
 
+	{$IFDEF SESSION}
     .Plugin.Configure<ISessionConfig>
       .SetLocation(TSessionIdLocation.Header)
       .SetHeaderName('Mcp-Session-Id')
       .SetTimeout(30)  // 30 minutes timeout
       .SetSessionClass(TShoppingSession)  // Use custom typed session
     .ApplyConfig
-
+    {$ENDIF}
+	
     .Plugin.Configure<IMCPConfig>
       .Server
         .SetName('delphi-mcp-server')
@@ -134,6 +136,9 @@ begin
 
       .Resources
         .SetBasePath(LDataPath)
+
+        .RegisterResource(TCppResource, 'GetGlobalInfo', 
+		  'info-resource', 'text://info', 'text/plain', 'Shows the Info')
 
         .RegisterClass(TWeatherResource)
         .RegisterClass(TDelphiDayAppUI)

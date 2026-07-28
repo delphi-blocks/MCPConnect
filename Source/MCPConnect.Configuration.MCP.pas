@@ -61,6 +61,8 @@ resourcestring
   SNoFilenameForResourceFmt = 'No filename specified for static resource [%s]';
   SFileNotFoundForResourceFmt = 'File [%s] not found for resource [%s]';
   SPromptNotFoundFmt = 'Prompt [%s] not found';
+  SNonConfiguredTemplateParamsNotPermitted = 'Non-configured template params are not permitted';
+  STemplateParamNameNotInUriFmt = 'Param name [%s] does not match any placeholder in the template uri';
 
 type
   /// <summary>
@@ -504,9 +506,29 @@ type
 
     function RegisterClass(AClass: TClass): TMCPResourcesConfig;
     function RegisterFile(const AFileName, ADescription: string; const AMime: string = ''): TMCPResourcesConfig;
-    function RegisterResource(AClass: TClass; const AMethod, AUri: string; AConfig: TMCPResourceConfigurator): TMCPResourcesConfig;
-    function RegisterTemplate(AClass: TClass; const AMethod, AUriTemplate: string; AConfig: TMCPTemplateConfigurator): TMCPResourcesConfig;
-    function RegisterUI(AClass: TClass; const AMethod, AUri: string; AConfig: TMCPUIResourceConfigurator): TMCPResourcesConfig;
+
+    /// <summary>
+    ///   Registers a single resource-serving method directly, without needing an [McpResource] attribute.
+    /// </summary>
+    function RegisterResource(AClass: TClass; const AMethodName, AName, AUri: string;
+      const AMime: string = ''; const ADescription: string = ''; const ATags: string = ''): TMCPResourcesConfig;
+
+    /// <summary>
+    ///   Registers a single resource-template method directly, without needing [McpTemplate]/[McpParam]
+    ///   attributes. AParamNames maps the method's RTTI parameters, in declaration order, to the
+    ///   uri template's {placeholder} names.
+    /// </summary>
+    function RegisterTemplate(AClass: TClass; const AMethodName, AName, AUriTemplate: string;
+      const AParamNames: TArray<string>; const AMime: string = ''; const ADescription: string = '';
+      const ATags: string = ''): TMCPResourcesConfig;
+
+    /// <summary>
+    ///   Registers a single MCP App UI method directly, without needing an [McpAppUI] attribute.
+    ///   AUIConfig is an optional callback for CSP/permissions/domain configuration.
+    /// </summary>
+    function RegisterUI(AClass: TClass; const AMethodName, AName, AUri: string;
+      const ADescription: string = ''; const ATags: string = '';
+      AUIConfig: TMCPUIResourceConfigurator = nil): TMCPResourcesConfig;
 
     function GetResource(const AUri: string): TMCPResource;
     function GetTemplate(const AUri: string): TMCPResourceTemplate;
@@ -1179,26 +1201,37 @@ begin
   end;
 end;
 
-function TMCPResourcesConfig.RegisterResource(AClass: TClass; const AMethod, AUri: string;
-  AConfig: TMCPResourceConfigurator): TMCPResourcesConfig;
+function TMCPResourcesConfig.RegisterResource(AClass: TClass; const AMethodName, AName, AUri: string;
+  const AMime: string; const ADescription: string; const ATags: string): TMCPResourcesConfig;
 var
   LClassType: TRttiType;
-  LRes: TMCPResource;
   LMethod: TRttiMethod;
+  LRes: TMCPResource;
 begin
   LClassType := TRttiUtils.Context.GetType(AClass);
-  LMethod := LClassType.GetMethod(AMethod);
+  LMethod := LClassType.GetMethod(AMethodName);
   if not Assigned(LMethod) then
-    raise EMCPException.CreateFmt(SMethodNotFoundInClassFmt, [AMethod, AClass.ClassName]);
+    raise EMCPException.CreateFmt(SMethodNotFoundInClassFmt, [AMethodName, AClass.ClassName]);
 
   if Length(LMethod.GetParameters) > 0 then
     raise EMCPException.Create(SResourceMethodNoParams);
 
+  if not ValidUriResource(AUri) then
+    raise EMCPException.Create(SResourceUriNoTemplateParams);
+
   LRes := TMCPResource.Create;
   try
-    Registry.Add(AUri, LRes);
+    LRes.Classe := AClass;
+    LRes.Method := LMethod;
+    LRes.Name := AName;
+    LRes.Uri := AUri;
+    LRes.MimeType := AMime;
+    LRes.Description := ADescription;
+    LRes.Tags.Parse(ATags);
+    LRes.Category := LRes.Tags.GetValueAs<string>('category');
+    LRes.Disabled := LRes.Tags.GetBoolValue('disabled');
 
-    AConfig(LRes);
+    Registry.Add(AUri, LRes);
   except
     LRes.Free;
     raise;
@@ -1213,28 +1246,74 @@ begin
   Result := Self;
 end;
 
-function TMCPResourcesConfig.RegisterTemplate(AClass: TClass; const AMethod, AUriTemplate: string;
-  AConfig: TMCPTemplateConfigurator): TMCPResourcesConfig;
+function TMCPResourcesConfig.RegisterTemplate(AClass: TClass; const AMethodName, AName, AUriTemplate: string;
+  const AParamNames: TArray<string>; const AMime: string; const ADescription: string;
+  const ATags: string): TMCPResourcesConfig;
 var
   LClassType: TRttiType;
-  LRes: TMCPResourceTemplate;
   LMethod: TRttiMethod;
+  LUriParams: TArray<string>;
+  LParams: TArray<TRttiParameter>;
+  LTpl: TMCPResourceTemplate;
+  I: Integer;
 begin
   LClassType := TRttiUtils.Context.GetType(AClass);
-  LMethod := LClassType.GetMethod(AMethod);
+  LMethod := LClassType.GetMethod(AMethodName);
   if not Assigned(LMethod) then
-    raise EMCPException.CreateFmt(SMethodNotFoundInClassFmt, [AMethod, AClass.ClassName]);
+    raise EMCPException.CreateFmt(SMethodNotFoundInClassFmt, [AMethodName, AClass.ClassName]);
 
-  if Length(LMethod.GetParameters) > 0 then
-    raise EMCPException.Create(SResourceMethodNoParams);
+  LUriParams := GetUriParams(AUriTemplate);
+  if Length(LUriParams) = 0 then
+    raise EMCPException.Create(STemplateUriMustHaveParams);
 
-  LRes := TMCPResourceTemplate.Create;
+  LParams := LMethod.GetParameters;
+  if Length(LParams) <> Length(LUriParams) then
+    raise EMCPException.CreateFmt(STemplateMethodParamsMismatchFmt, [LMethod.Name]);
+
+  if Length(AParamNames) <> Length(LParams) then
+    raise EMCPException.Create(SNonConfiguredTemplateParamsNotPermitted);
+
+  for var par in LParams do
+    if not ParamIsType(par, [tkChar, tkWChar, tkString, tkLString, tkWString, tkUString]) then
+      raise EMCPException.Create(SParamTypeNotSupported);
+
+  for var uriName in AParamNames do
+  begin
+    var found := False;
+    for var uriParam in LUriParams do
+      if SameText(uriParam, uriName) then
+      begin
+        found := True;
+        Break;
+      end;
+    if not found then
+      raise EMCPException.CreateFmt(STemplateParamNameNotInUriFmt, [uriName]);
+  end;
+
+  LTpl := TMCPResourceTemplate.Create;
   try
-    TemplateRegistry.Add(AUriTemplate, LRes);
+    LTpl.Classe := AClass;
+    LTpl.Method := LMethod;
+    LTpl.Name := AName;
+    LTpl.UriTemplate := AUriTemplate;
+    LTpl.MimeType := AMime;
+    LTpl.Description := ADescription;
+    LTpl.Tags.Parse(ATags);
+    LTpl.Category := LTpl.Tags.GetValueAs<string>('category');
+    LTpl.Disabled := LTpl.Tags.GetBoolValue('disabled');
 
-    AConfig(LRes);
+    for I := 0 to High(LParams) do
+    begin
+      var tplPar := TMCPResTemplateParam.Create;
+      LTpl.MethodParams.Add(tplPar);
+      tplPar.Param := LParams[I];
+      tplPar.ParamName := LParams[I].Name;
+      tplPar.Name := AParamNames[I];
+    end;
+
+    TemplateRegistry.Add(AUriTemplate, LTpl);
   except
-    LRes.Free;
+    LTpl.Free;
     raise;
   end;
 
@@ -1270,6 +1349,19 @@ begin
     LTpl.Description := AAttr.Description;
     LTpl.Classe := AClass;
     LTpl.Method := AMethod;
+
+    for var par in AMethod.GetParameters do
+    begin
+      var attr := par.GetAttribute<MCPParamAttribute>;
+
+      var tplPar := TMCPResTemplateParam.Create;
+      LTpl.MethodParams.Add(tplPar);
+      tplPar.Param := par;
+      tplPar.ParamName := par.Name;
+      tplPar.Name := attr.Name;
+      tplPar.Description := attr.Description;
+    end;
+
     TemplateRegistry.Add(LTpl.UriTemplate, LTpl);
   except
     LTpl.Free;
@@ -1277,36 +1369,57 @@ begin
   end;
 end;
 
-function TMCPResourcesConfig.RegisterUI(AClass: TClass; const AMethod, AUri:
-    string; AConfig: TMCPUIResourceConfigurator): TMCPResourcesConfig;
+function TMCPResourcesConfig.RegisterUI(AClass: TClass; const AMethodName, AName, AUri: string;
+  const ADescription: string; const ATags: string; AUIConfig: TMCPUIResourceConfigurator): TMCPResourcesConfig;
 var
   LClassType: TRttiType;
   LMethod: TRttiMethod;
   LApp: TMCPResource;
-  LAppUI: TUIResourceUI;
+  LUI: TUIResourceUI;
   LJSON: TJSONObject;
 begin
   LClassType := TRttiUtils.Context.GetType(AClass);
-  LMethod := LClassType.GetMethod(AMethod);
+  LMethod := LClassType.GetMethod(AMethodName);
   if not Assigned(LMethod) then
-    raise EMCPException.CreateFmt(SMethodNotFoundInClassFmt, [AMethod, AClass.ClassName]);
+    raise EMCPException.CreateFmt(SMethodNotFoundInClassFmt, [AMethodName, AClass.ClassName]);
 
   if Length(LMethod.GetParameters) > 0 then
     raise EMCPException.Create(SAppMethodNoParams);
 
+  if not AUri.StartsWith('ui://') then
+    raise EMCPException.Create(SAppsUIUriScheme);
+
+  if not ValidUriResource(AUri) then
+    raise EMCPException.Create(SResourceUriNoTemplateParams);
+
   LApp := TMCPResource.Create;
   try
-    Registry.Add(AUri, LApp);
+    LApp.Classe := AClass;
+    LApp.Method := LMethod;
+    LApp.Name := AName;
+    LApp.Uri := AUri;
+    LApp.MimeType := 'text/html;profile=mcp-app';
+    LApp.Description := ADescription;
+    LApp.Tags.Parse(ATags);
+    LApp.Category := LApp.Tags.GetValueAs<string>('category');
+    LApp.Disabled := LApp.Tags.GetBoolValue('disabled');
 
-    LAppUI := TUIResourceUI.Create;
-    try
-      AConfig(LApp, LAppUI);
-      LJSON := LAppUI.ToJSON;
-      if LJSON.Count > 0 then
-        LApp.Meta.AddPair('ui', LJSON);
-    finally
-      LAppUI.Free;
+    if Assigned(AUIConfig) then
+    begin
+      LUI := TUIResourceUI.Create;
+      try
+        AUIConfig(LApp, LUI);
+        LJSON := LUI.ToJSON;
+        if LJSON.Count > 0 then
+          LApp.Meta.AddPair('ui', LJSON)
+        else
+          LJSON.Free;
+      finally
+        LUI.Free;
+      end;
     end;
+
+    Registry.Add(AUri, LApp);
   except
     LApp.Free;
     raise;

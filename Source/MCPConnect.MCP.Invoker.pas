@@ -71,6 +71,7 @@ type
   TMCPTemplateInvoker = class(TMCPInvoker)
   protected
     FTemplate: TMCPResourceTemplate;
+    function GetParamName(AParam: TRttiParameter): string; override;
     function BuildTemplateParams(const AUri: string; const AParams: TArray<TRttiParameter>): TArray<TValue>;
     procedure ResultToResource(const AMethodResult: TValue; AResult: TReadResourceResult);
   public
@@ -428,6 +429,17 @@ begin
 end;
 
 { TMCPTemplateInvoker }
+
+function TMCPTemplateInvoker.GetParamName(AParam: TRttiParameter): string;
+var
+  LParam: TMCPResTemplateParam;
+begin
+  LParam := FTemplate.FindMCPParam(AParam.Name);
+  if Assigned(LParam) then
+    Result := LParam.Name
+  else
+    Result := AParam.Name;
+end;
 
 function TMCPTemplateInvoker.BuildTemplateParams(const AUri: string;
   const AParams: TArray<TRttiParameter>): TArray<TValue>;

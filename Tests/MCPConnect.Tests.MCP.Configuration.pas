@@ -385,7 +385,10 @@ end;
 
 procedure TMCPToolsConfigRegisterToolTest.TestRegisterTool_WrongParamNameRaises;
 begin
-  // Same param count, but one configured name doesn't match the method's actual parameter name
+  // Same param count, but one configured name doesn't match the method's actual parameter
+  // name - WithParam raises EMCPException (an unknown-name configuration error), the same
+  // exception type as TestRegisterTool_UnknownMethodRaises, not EJRPCException (reserved for
+  // schema-completeness errors raised by WriteParams).
   Assert.WillRaise(
     procedure
     begin
@@ -394,7 +397,7 @@ begin
         .WithParam('ADouble', 'double', 'desc2')
         .EndTool;
     end,
-    EJRPCException
+    EMCPException
   );
 end;
 

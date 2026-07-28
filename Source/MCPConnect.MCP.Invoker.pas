@@ -317,8 +317,11 @@ end;
 function TMCPResourceInvoker.Invoke(AParams: TReadResourceParams): TReadResourceResult;
 var
   LMethodResult: TValue;
+  LStopwatch: TStopwatch;
 begin
+  LStopwatch := TStopwatch.StartNew;
   LMethodResult := FResource.Method.Invoke(FInstance, []);
+  Logger.LogDebug('[PERF] Resource [%s] Method.Invoke (business logic): %d ms', [FResource.Uri, LStopwatch.ElapsedMilliseconds]);
 
   // If the result is already a TReadResourceResult just assign it
   if LMethodResult.IsType<TReadResourceResult> then
@@ -330,7 +333,10 @@ begin
 
   FGC.Add(LMethodResult);
   Result := TReadResourceResult.Create;
+
+  LStopwatch := TStopwatch.StartNew;
   ResultToResource(LMethodResult, Result);
+  Logger.LogDebug('[PERF] Resource [%s] ResultToResource (result serialization): %d ms', [FResource.Uri, LStopwatch.ElapsedMilliseconds]);
 end;
 
 procedure TMCPResourceInvoker.ResultToResource(const AMethodResult: TValue; AResult: TReadResourceResult);
@@ -491,10 +497,16 @@ function TMCPTemplateInvoker.Invoke(AParams: TReadResourceParams): TReadResource
 var
   LArgs: TArray<TValue>;
   LResult: TValue;
+  LStopwatch: TStopwatch;
 begin
+  LStopwatch := TStopwatch.StartNew;
   LArgs := BuildTemplateParams(AParams.Uri, FTemplate.Method.GetParameters);
   FGC.Add(LArgs);
+  Logger.LogDebug('[PERF] Template [%s] BuildTemplateParams: %d ms', [FTemplate.UriTemplate.Value, LStopwatch.ElapsedMilliseconds]);
+
+  LStopwatch := TStopwatch.StartNew;
   LResult := FTemplate.Method.Invoke(FInstance, LArgs);
+  Logger.LogDebug('[PERF] Template [%s] Method.Invoke (business logic): %d ms', [FTemplate.UriTemplate.Value, LStopwatch.ElapsedMilliseconds]);
 
   // If the result is already a TReadResourceResult just assign it
   if LResult.IsType<TReadResourceResult> then
@@ -506,7 +518,10 @@ begin
 
   FGC.Add(LResult);
   Result := TReadResourceResult.Create;
+
+  LStopwatch := TStopwatch.StartNew;
   ResultToResource(LResult, Result);
+  Logger.LogDebug('[PERF] Template [%s] ResultToResource (result serialization): %d ms', [FTemplate.UriTemplate.Value, LStopwatch.ElapsedMilliseconds]);
 end;
 
 procedure TMCPTemplateInvoker.ResultToResource(const AMethodResult: TValue; AResult: TReadResourceResult);
@@ -639,10 +654,16 @@ function TMCPPromptInvoker.Invoke(AParams: TGetPromptParams): TGetPromptResult;
 var
   LArgs: TArray<TValue>;
   LMethodResult: TValue;
+  LStopwatch: TStopwatch;
 begin
+  LStopwatch := TStopwatch.StartNew;
   LArgs := ArgumentsToRttiParams(AParams.Arguments, FPrompt.Method.GetParameters);
   FGC.Add(LArgs);
+  Logger.LogDebug('[PERF] Prompt [%s] ArgumentsToRttiParams: %d ms', [FPrompt.Name, LStopwatch.ElapsedMilliseconds]);
+
+  LStopwatch := TStopwatch.StartNew;
   LMethodResult := FPrompt.Method.Invoke(FInstance, LArgs);
+  Logger.LogDebug('[PERF] Prompt [%s] Method.Invoke (business logic): %d ms', [FPrompt.Name, LStopwatch.ElapsedMilliseconds]);
 
   // If the result is already a TGetPromptResult just assign it
   if LMethodResult.IsType<TGetPromptResult> then
@@ -654,7 +675,10 @@ begin
 
   FGC.Add(LMethodResult);
   Result := TGetPromptResult.Create;
+
+  LStopwatch := TStopwatch.StartNew;
   ResultToPrompt(LMethodResult, Result);
+  Logger.LogDebug('[PERF] Prompt [%s] ResultToPrompt (result serialization): %d ms', [FPrompt.Name, LStopwatch.ElapsedMilliseconds]);
 end;
 
 procedure TMCPPromptInvoker.ResultToPrompt(const APromptResult: TValue; AResult: TGetPromptResult);

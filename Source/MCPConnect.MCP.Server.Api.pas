@@ -162,8 +162,15 @@ end;
 
 
 function TMCPToolsApi.ToolsList: TListToolsResult;
+var
+  LStopwatch: TStopwatch;
 begin
-  Result := MCPConfig.Tools.ListEnabled;
+  LStopwatch := TStopwatch.StartNew;
+  try
+    Result := MCPConfig.Tools.ListEnabled;
+  finally
+    Logger.LogDebug('[PERF] ToolsList total: %d ms', [LStopwatch.ElapsedMilliseconds]);
+  end;
 end;
 
 { TMCPNotificationsApi }
@@ -287,35 +294,48 @@ function TMCPResourcesApi.ReadResource([JRPCParams] AParams: TReadResourceParams
 var
   LRes: TMCPResource;
   LTpl: TMCPResourceTemplate;
+  LStopwatch: TStopwatch;
 begin
-  LTpl := nil;
+  LStopwatch := TStopwatch.StartNew;
+  try
+    LTpl := nil;
 
-  // Try to match the exact resource uri
-  LRes := MCPConfig.Resources.GetResource(AParams.Uri);
+    // Try to match the exact resource uri
+    LRes := MCPConfig.Resources.GetResource(AParams.Uri);
 
-  // If no resource is found the try to match with templates
-  if not Assigned(LRes) then
-  begin
-    LTpl := MCPConfig.Resources.GetTemplate(AParams.Uri);
+    // If no resource is found the try to match with templates
+    if not Assigned(LRes) then
+    begin
+      LTpl := MCPConfig.Resources.GetTemplate(AParams.Uri);
 
-    if not Assigned(LTpl) then
-      raise EMCPException.CreateFmt(SMCPResourceNotFound, [AParams.Uri]);
+      if not Assigned(LTpl) then
+        raise EMCPException.CreateFmt(SMCPResourceNotFound, [AParams.Uri]);
+    end;
+
+    if Assigned(LRes) then
+      Result := InternalReadResource(AParams, LRes)
+    else
+      Result := InternalReadTemplate(AParams, LTpl);
+  finally
+    Logger.LogDebug('[PERF] ReadResource [%s] total: %d ms', [AParams.Uri, LStopwatch.ElapsedMilliseconds]);
   end;
-
-  if Assigned(LRes) then
-    Result := InternalReadResource(AParams, LRes)
-  else
-    Result := InternalReadTemplate(AParams, LTpl);
 end;
 
 function TMCPResourcesApi.ResourcesList: TListResourcesResult;
+var
+  LStopwatch: TStopwatch;
 begin
-  Result := TListResourcesResult.Create;
+  LStopwatch := TStopwatch.StartNew;
   try
-    MCPConfig.Resources.ResourceList(Result);
-  except
-    Result.Free;
-    raise;
+    Result := TListResourcesResult.Create;
+    try
+      MCPConfig.Resources.ResourceList(Result);
+    except
+      Result.Free;
+      raise;
+    end;
+  finally
+    Logger.LogDebug('[PERF] ResourcesList total: %d ms', [LStopwatch.ElapsedMilliseconds]);
   end;
 end;
 
@@ -349,8 +369,15 @@ end;
 { TMCPPromptsApi }
 
 function TMCPPromptsApi.PromptList: TListPromptsResult;
+var
+  LStopwatch: TStopwatch;
 begin
-  Result := MCPConfig.Prompts.ListComplete;
+  LStopwatch := TStopwatch.StartNew;
+  try
+    Result := MCPConfig.Prompts.ListComplete;
+  finally
+    Logger.LogDebug('[PERF] PromptList total: %d ms', [LStopwatch.ElapsedMilliseconds]);
+  end;
 end;
 
 function TMCPPromptsApi.ReadPrompt(AParams: TGetPromptParams): TGetPromptResult;
@@ -358,24 +385,30 @@ var
   LInvoker: TMCPPromptInvoker;
   LPrompt: TMCPPrompt;
   LPromptObj: TObject;
+  LStopwatch: TStopwatch;
 begin
-  if not MCPConfig.Prompts.Registry.TryGetValue(AParams.Name, LPrompt) then
-    raise EMCPException.CreateFmt(SMCPPromptNotFound, [AParams.Name]);
-
-  // Create an instance of the tool class
-  LPromptObj := TRttiUtils.CreateInstance(LPrompt.Classe);
+  LStopwatch := TStopwatch.StartNew;
   try
-    RPCContext.Inject(LPromptObj);
+    if not MCPConfig.Prompts.Registry.TryGetValue(AParams.Name, LPrompt) then
+      raise EMCPException.CreateFmt(SMCPPromptNotFound, [AParams.Name]);
 
-    LInvoker := TMCPPromptInvoker.Create(LPromptObj, LPrompt);
+    // Create an instance of the tool class
+    LPromptObj := TRttiUtils.CreateInstance(LPrompt.Classe);
     try
-      RPCContext.Inject(LInvoker);
-      Result := LInvoker.Invoke(AParams);
+      RPCContext.Inject(LPromptObj);
+
+      LInvoker := TMCPPromptInvoker.Create(LPromptObj, LPrompt);
+      try
+        RPCContext.Inject(LInvoker);
+        Result := LInvoker.Invoke(AParams);
+      finally
+        LInvoker.Free;
+      end;
     finally
-      LInvoker.Free;
+      LPromptObj.Free;
     end;
   finally
-    LPromptObj.Free;
+    Logger.LogDebug('[PERF] ReadPrompt [%s] total: %d ms', [AParams.Name, LStopwatch.ElapsedMilliseconds]);
   end;
 end;
 

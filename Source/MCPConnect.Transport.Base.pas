@@ -183,7 +183,7 @@ type
 implementation
 
 uses
-  System.IOUtils, Logify,
+  System.IOUtils, System.Diagnostics, Logify,
   MCPConnect.Transport.MediaType,
   MCPConnect.Configuration.Neon,
   MCPConnect.JRPC.Invoker;
@@ -323,10 +323,16 @@ end;
 procedure TMCPTransportHandler.ProcessRequest(
   ARequestConverter: TMCPTransportRequestConverter;
   AResponseConverter: TMCPTransportResponseConverter);
+var
+  LStopwatch, LFragment: TStopwatch;
 begin
-  ARequestConverter(FRequest);
+  LStopwatch := TStopwatch.StartNew;
+  try
+    LFragment := TStopwatch.StartNew;
+    ARequestConverter(FRequest);
+    Logger.LogDebug('[PERF] RequestConverter: %d ms', [LFragment.ElapsedMilliseconds]);
 
-  try try
+    try try
     if not CheckOrigin then
       raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, SCrossOriginBlocked);
 
@@ -340,8 +346,10 @@ begin
     FContext.AddContent(FGarbage);
     FContext.AddContent(FServer);
 
+    LFragment := TStopwatch.StartNew;
     // Handle session (get existing or create new)
     FSession := HandleSession;
+    Logger.LogDebug('[PERF] HandleSession: %d ms', [LFragment.ElapsedMilliseconds]);
 
     if Assigned(FSession) then
     begin
@@ -361,6 +369,7 @@ begin
 
     InjectCORS;
 
+    LFragment := TStopwatch.StartNew;
     if FRequest.Command = 'GET' then
       HandleGET
     else if FRequest.Command = 'POST' then
@@ -369,6 +378,7 @@ begin
       HandleOPTIONS
     else
       raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, SHttpMethodNotAllowed);
+    Logger.LogDebug('[PERF] HandleCOMMAND: %d ms', [LFragment.ElapsedMilliseconds]);
 
   except
     on E: EMCPTransportException do
@@ -403,6 +413,9 @@ begin
   end;
   finally
     AResponseConverter(FResponse);
+  end;
+  finally
+    Logger.LogDebug('[PERF] %s %s total: %d ms', [FRequest.Command, FRequest.Url, LStopwatch.ElapsedMilliseconds]);
   end;
 end;
 
@@ -701,11 +714,14 @@ var
   end;
 var
   LRequestList: TJRPCMessages;
+  LFragment: TStopwatch;
 begin
+  LFragment := TStopwatch.StartNew;
   if Assigned(FRequest.ContentJSON) then
     LRequestList := TJRPCMessages.CreateFromJson(FRequest.ContentJSON)
   else
     LRequestList := TJRPCMessages.CreateFromJson(FRequest.Content);
+  Logger.LogDebug('[PERF] CreateFromJSON total: %d ms', [LFragment.ElapsedMilliseconds]);
 
   FGarbage.Add(LRequestList);
 
@@ -717,6 +733,7 @@ begin
   LResponseList := TJRPCMessages.Create(True);
   FGarbage.Add(LResponseList);
 
+  LFragment := TStopwatch.StartNew;
   var LAsyncExecute := CreateAsyncThread(LRequestList, LResponseQueue);
   try
     if FRequest.AcceptsEventStream and FResponseWriter.SupportsStreaming then
@@ -744,6 +761,7 @@ begin
   finally
     LAsyncExecute.Free;
   end;
+  Logger.LogDebug('[PERF] CreateAsyncQueue total: %d ms', [LFragment.ElapsedMilliseconds]);
 
 end;
 

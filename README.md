@@ -46,7 +46,8 @@ MCPConnect handles the serialization, routing, and context management required f
   * **API-Key** authentication for http transport (more to be implemented)
   * **JSON-RPC** MCPConnect contains a JSON-RPC library (`JRPC`) a comprehensive, high-performance **JSON-RPC 2.0** library built specifically for Delphi.
  *  **Automatic JSON Schema generation** - Using the powerful Neon TSchemaGenaerator, MCPConnect support any Delphi type as parameter or result. 
-  * **Attribute-Free Tool Registration:** Tools can also be registered programmatically via `RegisterTool`/`WithParam`/`EndTool` instead of `[McpTool]`/`[McpParam]` attributes — useful for classes that can't declare Delphi custom attributes (e.g. compiled from C++ Builder).
+  * **Attribute-Free Registration:** Tools, Resources, Templates, Prompts, and MCP Apps can all be registered programmatically (`RegisterTool`, `RegisterResource`, `RegisterTemplate`, `RegisterUI`, `RegisterPrompt`) instead of via attributes — useful for classes that can't declare Delphi custom attributes (e.g. compiled from C++ Builder).
+  * **Protocol Version Negotiation:** The `initialize` handshake validates the client's requested protocol version against what the server supports (`2025-06-18`, `2025-11-25`), falling back to the server's latest supported version instead of blindly echoing back an unsupported one.
   
 
 ## 📡What is JSON-RPC?
@@ -617,7 +618,60 @@ This path works alongside the attribute-driven one — a server can freely mix `
 
 -----------------------------
 
-### 8. Connecting LLM Clients to Your MCP Server
+### 8. Registering Resources, Templates, Prompts, and Apps Without Attributes
+
+The same attribute-free approach used for tools is also available for resources, resource templates, MCP App UIs, and prompts — each registered with a single method call instead of `[McpResource]`/`[McpTemplate]`/`[McpAppUI]`/`[McpPrompt]` attributes. All four are freely mixable with `.RegisterClass(...)` in the same `.Resources`/`.Prompts` section.
+
+#### Resources
+
+```delphi
+.Resources
+  .RegisterResource(TCppResource, 'GetGlobalInfo', 'info-resource', 'text://info',
+    'text/plain', 'Shows the info')
+.BackToMCP
+```
+
+`RegisterResource(AClass, AMethodName, AName, AUri, AMime, ADescription, ATags)` looks up `AMethodName` on `AClass` via RTTI (it must take no parameters) and registers it under `AUri`. `AMime`, `ADescription`, and `ATags` are optional and behave like the corresponding `[McpResource]` arguments.
+
+#### Resource Templates
+
+```delphi
+.Resources
+  .RegisterTemplate(TItemResource, 'GetItem', 'item', 'res://items/{id}', ['id'],
+    '', 'A single item by id')
+.BackToMCP
+```
+
+`RegisterTemplate(AClass, AMethodName, AName, AUriTemplate, AParamNames, AMime, ADescription, ATags)` maps the method's RTTI parameters — in declaration order — to the `{placeholder}` names in `AUriTemplate` via `AParamNames`. Every method parameter must be covered (all must be string-like), and every entry in `AParamNames` must match a placeholder in the template, or registration raises `EMCPException`.
+
+#### MCP App UIs
+
+```delphi
+.Resources
+  .RegisterUI(TMyApp, 'GetUI', 'my-app', 'ui://my-app/index.html', 'An interactive UI panel')
+.BackToMCP
+```
+
+`RegisterUI(AClass, AMethodName, AName, AUri, ADescription, ATags, AUIConfig)` requires `AUri` to use the `ui://` scheme. The optional `AUIConfig` callback (`procedure(AResource: TMCPResource; AUI: TUIResourceUI)`) configures CSP/permissions/domain metadata, the same as with the attribute-driven `[McpAppUI]` path.
+
+#### Prompts
+
+```delphi
+.Prompts
+  .RegisterPrompt(TSamplePrompts, 'ArgumentPrompt', 'argument-prompt',
+    [
+      TMCPPromptArgConfig.New('ACity', 'city', 'Name of the city', True),
+      TMCPPromptArgConfig.New('ACountry', 'country', 'Name of the country')
+    ],
+    'Argument Prompt', 'A prompt with 2 arguments')
+.BackToMCP
+```
+
+`RegisterPrompt(AClass, AMethodName, AName, AArguments, ATitle, ADescription, ATags)` requires one `TMCPPromptArgConfig` entry per method parameter — `TMCPPromptArgConfig.New(AParamName, AName, ADescription, ARequired)` maps a Delphi parameter name to its MCP-facing argument name, description, and whether it's required.
+
+-----------------------------
+
+### 9. Connecting LLM Clients to Your MCP Server
 
 Once your MCP server is running, you need to configure your LLM client to connect to it. Below are configuration examples for popular clients.
 

@@ -98,6 +98,30 @@ type
 
     [Test]
     procedure TestRegisterClass_SameClassTwiceWithAppAttributeDoesNotRaise;
+
+    [Test]
+    procedure TestUnregisterTool_RemovesToolFromRegistry;
+    [Test]
+    procedure TestUnregisterTool_UnknownNameRaises;
+    [Test]
+    procedure TestUnregisterTool_ReturnsToolsConfigForChaining;
+
+    [Test]
+    procedure TestUnregisterClass_RemovesAllToolsForThatClass;
+    [Test]
+    procedure TestUnregisterClass_NoMatchingToolsIsNoOp;
+    [Test]
+    procedure TestUnregisterClass_WorksForAttributeRegisteredTools;
+
+    [Test]
+    procedure TestClearAll_RemovesAllToolsFromRegistry;
+    [Test]
+    procedure TestClearAll_EmptyRegistryIsNoOp;
+    [Test]
+    procedure TestClearAll_ReturnsToolsConfigForChaining;
+
+    [Test]
+    procedure TestBackToMCP_ReturnsLiveConfigAfterUnregisterClassChain;
   end;
 
   // Plain classes with no MCP attributes at all, registered purely through the
@@ -106,6 +130,9 @@ type
   TManualResourceClass = class
   public
     function GetReadme: string;
+    // Extra parameterized method so a single test class can exercise
+    // resource + template + UI registration together (UnregisterClass tests).
+    function GetReadmeSection(const AId: string): string;
   end;
 
   TManualTemplateClass = class
@@ -117,6 +144,15 @@ type
   TManualUIClass = class
   public
     function ShowWidget: string;
+  end;
+
+  // Attribute-based class, used to verify UnregisterClass also works for
+  // resources/templates/UI registered via RegisterClass ([McpResource]/
+  // [McpTemplate]/[McpAppUI]), not just the one-shot programmatic API.
+  TAttrResourceClass = class
+  public
+    [McpResource('attr_res', 'res://attr', 'text/plain', 'An attribute resource')]
+    function GetAttrRes: string;
   end;
 
   [TestFixture]
@@ -158,6 +194,41 @@ type
     procedure TestRegisterUI_UIConfigCallbackWritesMeta;
     [Test]
     procedure TestRegisterUI_NonUiSchemeRaises;
+
+    [Test]
+    procedure TestUnregisterResource_RemovesResourceFromRegistry;
+    [Test]
+    procedure TestUnregisterResource_UnknownUriRaises;
+    [Test]
+    procedure TestUnregisterResource_ReturnsResourcesConfigForChaining;
+
+    [Test]
+    procedure TestUnregisterFile_RemovesResourceFromRegistry;
+    [Test]
+    procedure TestUnregisterFile_NormalizesBackslashesInUri;
+    [Test]
+    procedure TestUnregisterFile_UnknownFileRaises;
+    [Test]
+    procedure TestUnregisterFile_ReturnsResourcesConfigForChaining;
+
+    [Test]
+    procedure TestUnregisterTemplate_RemovesTemplateFromRegistry;
+    [Test]
+    procedure TestUnregisterTemplate_UnknownUriTemplateRaises;
+
+    [Test]
+    procedure TestUnregisterClass_RemovesResourcesTemplatesAndUIForThatClass;
+    [Test]
+    procedure TestUnregisterClass_NoMatchingResourcesIsNoOp;
+    [Test]
+    procedure TestUnregisterClass_WorksForAttributeRegisteredResources;
+
+    [Test]
+    procedure TestClearAll_RemovesAllResourcesAndTemplatesFromRegistries;
+    [Test]
+    procedure TestClearAll_EmptyRegistriesIsNoOp;
+    [Test]
+    procedure TestClearAll_ReturnsResourcesConfigForChaining;
   end;
 
   // Plain class with no MCP attributes at all, registered purely through the
@@ -166,6 +237,15 @@ type
   public
     function Greet(const AName: string): string;
     function NoArgs: string;
+  end;
+
+  // Attribute-based class, used to verify UnregisterClass also works for
+  // prompts registered via [McpPrompt] (RegisterClass), not just the
+  // one-shot programmatic RegisterPrompt API.
+  TAttrPromptClass = class
+  public
+    [McpPrompt('attr_prompt', 'Attr Prompt', 'An attribute prompt')]
+    function AttrGreet: string;
   end;
 
   [TestFixture]
@@ -199,6 +279,27 @@ type
     procedure TestRegisterPrompt_RegisteredMethodIsInvokable;
     [Test]
     procedure TestRegisterPrompt_ReturnsPromptsConfigForChaining;
+
+    [Test]
+    procedure TestUnregisterPrompt_RemovesPromptFromRegistry;
+    [Test]
+    procedure TestUnregisterPrompt_UnknownNameRaises;
+    [Test]
+    procedure TestUnregisterPrompt_ReturnsPromptsConfigForChaining;
+
+    [Test]
+    procedure TestUnregisterClass_RemovesAllPromptsForThatClass;
+    [Test]
+    procedure TestUnregisterClass_NoMatchingPromptsIsNoOp;
+    [Test]
+    procedure TestUnregisterClass_WorksForAttributeRegisteredPrompts;
+
+    [Test]
+    procedure TestClearAll_RemovesAllPromptsFromRegistry;
+    [Test]
+    procedure TestClearAll_EmptyRegistryIsNoOp;
+    [Test]
+    procedure TestClearAll_ReturnsPromptsConfigForChaining;
   end;
 
 implementation
@@ -510,11 +611,137 @@ begin
   end;
 end;
 
+procedure TMCPToolsConfigRegisterToolTest.TestUnregisterTool_RemovesToolFromRegistry;
+begin
+  FConfig.Tools.RegisterTool(TManualToolClass, 'NoParams', 'no_params', 'y').EndTool;
+  Assert.IsTrue(FConfig.Tools.Registry.ContainsKey('no_params'));
+
+  FConfig.Tools.UnregisterTool('no_params');
+
+  Assert.IsFalse(FConfig.Tools.Registry.ContainsKey('no_params'), 'Tool should be removed from the registry');
+end;
+
+procedure TMCPToolsConfigRegisterToolTest.TestUnregisterTool_UnknownNameRaises;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      FConfig.Tools.UnregisterTool('does_not_exist');
+    end,
+    EMCPException
+  );
+end;
+
+procedure TMCPToolsConfigRegisterToolTest.TestUnregisterTool_ReturnsToolsConfigForChaining;
+begin
+  FConfig.Tools.RegisterTool(TManualToolClass, 'NoParams', 'no_params', 'y').EndTool;
+
+  Assert.AreSame(FConfig.Tools, FConfig.Tools.UnregisterTool('no_params'));
+end;
+
+procedure TMCPToolsConfigRegisterToolTest.TestUnregisterClass_RemovesAllToolsForThatClass;
+begin
+  FConfig.Tools.RegisterTool(TManualToolClass, 'NoParams', 'tool_one', 'y').EndTool;
+  FConfig.Tools.RegisterTool(TManualToolClass, 'Concat', 'tool_two', 'y')
+    .WithParam('AFirst', 'first', 'd')
+    .WithParam('ASecond', 'second', 'd2')
+    .EndTool;
+  FConfig.Tools.RegisterClass(TAppToolClass);
+
+  Assert.IsTrue(FConfig.Tools.Registry.ContainsKey('tool_one'));
+  Assert.IsTrue(FConfig.Tools.Registry.ContainsKey('tool_two'));
+  Assert.IsTrue(FConfig.Tools.Registry.ContainsKey('app_tool'));
+
+  FConfig.Tools.UnregisterClass(TManualToolClass);
+
+  Assert.IsFalse(FConfig.Tools.Registry.ContainsKey('tool_one'), 'tool_one should be removed');
+  Assert.IsFalse(FConfig.Tools.Registry.ContainsKey('tool_two'), 'tool_two should be removed');
+  Assert.IsTrue(FConfig.Tools.Registry.ContainsKey('app_tool'), 'Tools from other classes should be unaffected');
+end;
+
+procedure TMCPToolsConfigRegisterToolTest.TestUnregisterClass_NoMatchingToolsIsNoOp;
+begin
+  FConfig.Tools.RegisterTool(TManualToolClass, 'NoParams', 'tool_one', 'y').EndTool;
+
+  Assert.WillNotRaise(
+    procedure
+    begin
+      FConfig.Tools.UnregisterClass(TAppToolClass);
+    end
+  );
+
+  Assert.IsTrue(FConfig.Tools.Registry.ContainsKey('tool_one'), 'Unrelated tools must be untouched');
+end;
+
+procedure TMCPToolsConfigRegisterToolTest.TestUnregisterClass_WorksForAttributeRegisteredTools;
+begin
+  FConfig.Tools.RegisterClass(TAppToolClass);
+  Assert.IsTrue(FConfig.Tools.Registry.ContainsKey('app_tool'));
+
+  FConfig.Tools.UnregisterClass(TAppToolClass);
+
+  Assert.IsFalse(FConfig.Tools.Registry.ContainsKey('app_tool'));
+end;
+
+procedure TMCPToolsConfigRegisterToolTest.TestClearAll_RemovesAllToolsFromRegistry;
+begin
+  FConfig.Tools.RegisterTool(TManualToolClass, 'NoParams', 'tool_one', 'y').EndTool;
+  FConfig.Tools.RegisterClass(TAppToolClass);
+
+  Assert.IsTrue(FConfig.Tools.Registry.ContainsKey('tool_one'));
+  Assert.IsTrue(FConfig.Tools.Registry.ContainsKey('app_tool'));
+
+  FConfig.Tools.ClearAll;
+
+  Assert.AreEqual(0, FConfig.Tools.Registry.Count, 'Registry should be empty after ClearAll');
+end;
+
+procedure TMCPToolsConfigRegisterToolTest.TestClearAll_EmptyRegistryIsNoOp;
+begin
+  Assert.WillNotRaise(
+    procedure
+    begin
+      FConfig.Tools.ClearAll;
+    end
+  );
+
+  Assert.AreEqual(0, FConfig.Tools.Registry.Count);
+end;
+
+procedure TMCPToolsConfigRegisterToolTest.TestClearAll_ReturnsToolsConfigForChaining;
+begin
+  Assert.AreSame(FConfig.Tools, FConfig.Tools.ClearAll);
+end;
+
+procedure TMCPToolsConfigRegisterToolTest.TestBackToMCP_ReturnsLiveConfigAfterUnregisterClassChain;
+var
+  LResult: IMCPConfig;
+begin
+  // Regression test: TMCPToolsConfig.BackToMCP overrides the base implementation to also
+  // free any abandoned in-progress TMCPToolConfig chains, then used to call bare "inherited;"
+  // instead of "Result := inherited;" - discarding the ancestor's return value and leaving
+  // Result nil. That's invisible as long as .BackToMCP is the last call in a chain (its
+  // return value goes unused), but chaining straight into another section afterwards - e.g.
+  // Tools.UnregisterClass(...).BackToMCP.Resources... - dereferenced that nil IMCPConfig and
+  // raised an Access Violation.
+  FConfig.Tools.RegisterTool(TManualToolClass, 'NoParams', 'tool_one', 'y').EndTool;
+
+  LResult := FConfig.Tools.UnregisterClass(TManualToolClass).BackToMCP;
+
+  Assert.IsNotNull(LResult, 'BackToMCP must return the live IMCPConfig, not a discarded/nil interface');
+  Assert.AreSame(FConfig.Tools, LResult.Tools, 'BackToMCP should return the IMCPConfig this Tools section belongs to');
+end;
+
 { TManualResourceClass }
 
 function TManualResourceClass.GetReadme: string;
 begin
   Result := 'readme contents';
+end;
+
+function TManualResourceClass.GetReadmeSection(const AId: string): string;
+begin
+  Result := 'readme section:' + AId;
 end;
 
 { TManualTemplateClass }
@@ -534,6 +761,13 @@ end;
 function TManualUIClass.ShowWidget: string;
 begin
   Result := '<html/>';
+end;
+
+{ TAttrResourceClass }
+
+function TAttrResourceClass.GetAttrRes: string;
+begin
+  Result := 'attr resource contents';
 end;
 
 { TMCPResourcesConfigRegisterResourceTest }
@@ -571,7 +805,7 @@ begin
   FConfig.Resources.RegisterResource(TManualResourceClass, 'GetReadme', 'readme', 'res://readme');
 
   LRes := FConfig.Resources.Registry['res://readme'];
-  Assert.AreEqual(TClass(TManualResourceClass), LRes.Classe, 'Classe should point back to the registered class');
+  Assert.AreEqual(TClass(TManualResourceClass), LRes.ResourceClass, 'Classe should point back to the registered class');
   Assert.AreEqual('GetReadme', LRes.Method.Name, 'Method should be the RTTI method for the configured method name');
 end;
 
@@ -637,7 +871,7 @@ begin
   Assert.IsTrue(FConfig.Resources.TemplateRegistry.ContainsKey('res://items/{id}'), 'Template should be registered under its configured uri template');
   LTpl := FConfig.Resources.TemplateRegistry['res://items/{id}'];
   Assert.AreEqual('item', LTpl.Name);
-  Assert.AreEqual(TClass(TManualTemplateClass), LTpl.Classe);
+  Assert.AreEqual(TClass(TManualTemplateClass), LTpl.ResourceClass);
   Assert.AreEqual('GetItem', LTpl.Method.Name);
 end;
 
@@ -686,7 +920,7 @@ begin
   Assert.IsTrue(FConfig.Resources.Registry.ContainsKey('ui://widget'), 'UI resource should be registered under its configured uri');
   LApp := FConfig.Resources.Registry['ui://widget'];
   Assert.AreEqual('widget', LApp.Name);
-  Assert.AreEqual(TClass(TManualUIClass), LApp.Classe);
+  Assert.AreEqual(TClass(TManualUIClass), LApp.ResourceClass);
 end;
 
 procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterUI_UIConfigCallbackWritesMeta;
@@ -717,6 +951,169 @@ begin
   );
 end;
 
+procedure TMCPResourcesConfigRegisterResourceTest.TestUnregisterResource_RemovesResourceFromRegistry;
+begin
+  FConfig.Resources.RegisterResource(TManualResourceClass, 'GetReadme', 'readme', 'res://readme');
+  Assert.IsTrue(FConfig.Resources.Registry.ContainsKey('res://readme'));
+
+  FConfig.Resources.UnregisterResource('res://readme');
+
+  Assert.IsFalse(FConfig.Resources.Registry.ContainsKey('res://readme'), 'Resource should be removed from the registry');
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestUnregisterResource_UnknownUriRaises;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      FConfig.Resources.UnregisterResource('res://does_not_exist');
+    end,
+    EMCPException
+  );
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestUnregisterResource_ReturnsResourcesConfigForChaining;
+begin
+  FConfig.Resources.RegisterResource(TManualResourceClass, 'GetReadme', 'readme', 'res://readme');
+
+  Assert.AreSame(FConfig.Resources, FConfig.Resources.UnregisterResource('res://readme'));
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestUnregisterFile_RemovesResourceFromRegistry;
+begin
+  FConfig.Resources.RegisterFile('readme.md', 'The readme file', 'text/plain');
+  Assert.IsTrue(FConfig.Resources.Registry.ContainsKey('res://readme.md'));
+
+  FConfig.Resources.UnregisterFile('readme.md');
+
+  Assert.IsFalse(FConfig.Resources.Registry.ContainsKey('res://readme.md'), 'File resource should be removed from the registry');
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestUnregisterFile_NormalizesBackslashesInUri;
+begin
+  // RegisterFile composes the uri as 'res://' + the filename with '\' turned into '/';
+  // UnregisterFile must derive the same uri from the same AFileName to find the entry.
+  FConfig.Resources.RegisterFile('docs\readme.md', 'The readme file', 'text/plain');
+  Assert.IsTrue(FConfig.Resources.Registry.ContainsKey('res://docs/readme.md'));
+
+  FConfig.Resources.UnregisterFile('docs\readme.md');
+
+  Assert.IsFalse(FConfig.Resources.Registry.ContainsKey('res://docs/readme.md'));
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestUnregisterFile_UnknownFileRaises;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      FConfig.Resources.UnregisterFile('does_not_exist.md');
+    end,
+    EMCPException
+  );
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestUnregisterFile_ReturnsResourcesConfigForChaining;
+begin
+  FConfig.Resources.RegisterFile('readme.md', 'The readme file', 'text/plain');
+
+  Assert.AreSame(FConfig.Resources, FConfig.Resources.UnregisterFile('readme.md'));
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestUnregisterTemplate_RemovesTemplateFromRegistry;
+begin
+  FConfig.Resources.RegisterTemplate(TManualTemplateClass, 'GetItem', 'item', 'res://items/{id}', ['id']);
+  Assert.IsTrue(FConfig.Resources.TemplateRegistry.ContainsKey('res://items/{id}'));
+
+  FConfig.Resources.UnregisterTemplate('res://items/{id}');
+
+  Assert.IsFalse(FConfig.Resources.TemplateRegistry.ContainsKey('res://items/{id}'), 'Template should be removed from the registry');
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestUnregisterTemplate_UnknownUriTemplateRaises;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      FConfig.Resources.UnregisterTemplate('res://does_not_exist/{id}');
+    end,
+    EMCPException
+  );
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestUnregisterClass_RemovesResourcesTemplatesAndUIForThatClass;
+begin
+  FConfig.Resources.RegisterResource(TManualResourceClass, 'GetReadme', 'readme', 'res://readme');
+  FConfig.Resources.RegisterTemplate(TManualResourceClass, 'GetReadmeSection', 'readme_section', 'res://readme/{id}', ['id']);
+  FConfig.Resources.RegisterUI(TManualUIClass, 'ShowWidget', 'widget', 'ui://widget');
+
+  Assert.IsTrue(FConfig.Resources.Registry.ContainsKey('res://readme'));
+  Assert.IsTrue(FConfig.Resources.TemplateRegistry.ContainsKey('res://readme/{id}'));
+  Assert.IsTrue(FConfig.Resources.Registry.ContainsKey('ui://widget'));
+
+  FConfig.Resources.UnregisterClass(TManualResourceClass);
+
+  Assert.IsFalse(FConfig.Resources.Registry.ContainsKey('res://readme'), 'Resource should be removed');
+  Assert.IsFalse(FConfig.Resources.TemplateRegistry.ContainsKey('res://readme/{id}'), 'Template should be removed');
+  Assert.IsTrue(FConfig.Resources.Registry.ContainsKey('ui://widget'), 'Resources from other classes should be unaffected');
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestUnregisterClass_NoMatchingResourcesIsNoOp;
+begin
+  FConfig.Resources.RegisterResource(TManualResourceClass, 'GetReadme', 'readme', 'res://readme');
+
+  Assert.WillNotRaise(
+    procedure
+    begin
+      FConfig.Resources.UnregisterClass(TManualUIClass);
+    end
+  );
+
+  Assert.IsTrue(FConfig.Resources.Registry.ContainsKey('res://readme'), 'Unrelated resources must be untouched');
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestUnregisterClass_WorksForAttributeRegisteredResources;
+begin
+  FConfig.Resources.RegisterClass(TAttrResourceClass);
+  Assert.IsTrue(FConfig.Resources.Registry.ContainsKey('res://attr'));
+
+  FConfig.Resources.UnregisterClass(TAttrResourceClass);
+
+  Assert.IsFalse(FConfig.Resources.Registry.ContainsKey('res://attr'));
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestClearAll_RemovesAllResourcesAndTemplatesFromRegistries;
+begin
+  FConfig.Resources.RegisterResource(TManualResourceClass, 'GetReadme', 'readme', 'res://readme');
+  FConfig.Resources.RegisterTemplate(TManualTemplateClass, 'GetItem', 'item', 'res://items/{id}', ['id']);
+  FConfig.Resources.RegisterUI(TManualUIClass, 'ShowWidget', 'widget', 'ui://widget');
+
+  Assert.IsTrue(FConfig.Resources.Registry.Count > 0);
+  Assert.IsTrue(FConfig.Resources.TemplateRegistry.Count > 0);
+
+  FConfig.Resources.ClearAll;
+
+  Assert.AreEqual(0, FConfig.Resources.Registry.Count, 'Registry should be empty after ClearAll');
+  Assert.AreEqual(0, FConfig.Resources.TemplateRegistry.Count, 'TemplateRegistry should be empty after ClearAll');
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestClearAll_EmptyRegistriesIsNoOp;
+begin
+  Assert.WillNotRaise(
+    procedure
+    begin
+      FConfig.Resources.ClearAll;
+    end
+  );
+
+  Assert.AreEqual(0, FConfig.Resources.Registry.Count);
+  Assert.AreEqual(0, FConfig.Resources.TemplateRegistry.Count);
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestClearAll_ReturnsResourcesConfigForChaining;
+begin
+  Assert.AreSame(FConfig.Resources, FConfig.Resources.ClearAll);
+end;
+
 { TManualPromptClass }
 
 function TManualPromptClass.Greet(const AName: string): string;
@@ -727,6 +1124,13 @@ end;
 function TManualPromptClass.NoArgs: string;
 begin
   Result := 'hi';
+end;
+
+{ TAttrPromptClass }
+
+function TAttrPromptClass.AttrGreet: string;
+begin
+  Result := 'attr greeting';
 end;
 
 { TMCPPromptsConfigRegisterPromptTest }
@@ -765,7 +1169,7 @@ begin
     [TMCPPromptArgConfig.New('AName', 'name')]);
 
   LPrompt := FConfig.Prompts.Registry['greet'];
-  Assert.AreEqual(TClass(TManualPromptClass), LPrompt.Classe, 'Classe should point back to the registered class');
+  Assert.AreEqual(TClass(TManualPromptClass), LPrompt.PromptClass, 'Classe should point back to the registered class');
   Assert.AreEqual('Greet', LPrompt.Method.Name, 'Method should be the RTTI method for the configured method name');
 end;
 
@@ -872,6 +1276,106 @@ begin
 
   Assert.IsTrue(FConfig.Prompts.Registry.ContainsKey('no_args'));
   Assert.IsTrue(FConfig.Prompts.Registry.ContainsKey('greet'));
+end;
+
+procedure TMCPPromptsConfigRegisterPromptTest.TestUnregisterPrompt_RemovesPromptFromRegistry;
+begin
+  FConfig.Prompts.RegisterPrompt(TManualPromptClass, 'NoArgs', 'no_args', []);
+  Assert.IsTrue(FConfig.Prompts.Registry.ContainsKey('no_args'));
+
+  FConfig.Prompts.UnregisterPrompt('no_args');
+
+  Assert.IsFalse(FConfig.Prompts.Registry.ContainsKey('no_args'), 'Prompt should be removed from the registry');
+end;
+
+procedure TMCPPromptsConfigRegisterPromptTest.TestUnregisterPrompt_UnknownNameRaises;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      FConfig.Prompts.UnregisterPrompt('does_not_exist');
+    end,
+    EMCPException
+  );
+end;
+
+procedure TMCPPromptsConfigRegisterPromptTest.TestUnregisterPrompt_ReturnsPromptsConfigForChaining;
+begin
+  FConfig.Prompts.RegisterPrompt(TManualPromptClass, 'NoArgs', 'no_args', []);
+
+  Assert.AreSame(FConfig.Prompts, FConfig.Prompts.UnregisterPrompt('no_args'));
+end;
+
+procedure TMCPPromptsConfigRegisterPromptTest.TestUnregisterClass_RemovesAllPromptsForThatClass;
+begin
+  FConfig.Prompts.RegisterPrompt(TManualPromptClass, 'NoArgs', 'prompt_one', []);
+  FConfig.Prompts.RegisterPrompt(TManualPromptClass, 'Greet', 'prompt_two',
+    [TMCPPromptArgConfig.New('AName', 'name')]);
+  FConfig.Prompts.RegisterClass(TAttrPromptClass);
+
+  Assert.IsTrue(FConfig.Prompts.Registry.ContainsKey('prompt_one'));
+  Assert.IsTrue(FConfig.Prompts.Registry.ContainsKey('prompt_two'));
+  Assert.IsTrue(FConfig.Prompts.Registry.ContainsKey('attr_prompt'));
+
+  FConfig.Prompts.UnregisterClass(TManualPromptClass);
+
+  Assert.IsFalse(FConfig.Prompts.Registry.ContainsKey('prompt_one'), 'prompt_one should be removed');
+  Assert.IsFalse(FConfig.Prompts.Registry.ContainsKey('prompt_two'), 'prompt_two should be removed');
+  Assert.IsTrue(FConfig.Prompts.Registry.ContainsKey('attr_prompt'), 'Prompts from other classes should be unaffected');
+end;
+
+procedure TMCPPromptsConfigRegisterPromptTest.TestUnregisterClass_NoMatchingPromptsIsNoOp;
+begin
+  FConfig.Prompts.RegisterPrompt(TManualPromptClass, 'NoArgs', 'prompt_one', []);
+
+  Assert.WillNotRaise(
+    procedure
+    begin
+      FConfig.Prompts.UnregisterClass(TAttrPromptClass);
+    end
+  );
+
+  Assert.IsTrue(FConfig.Prompts.Registry.ContainsKey('prompt_one'), 'Unrelated prompts must be untouched');
+end;
+
+procedure TMCPPromptsConfigRegisterPromptTest.TestUnregisterClass_WorksForAttributeRegisteredPrompts;
+begin
+  FConfig.Prompts.RegisterClass(TAttrPromptClass);
+  Assert.IsTrue(FConfig.Prompts.Registry.ContainsKey('attr_prompt'));
+
+  FConfig.Prompts.UnregisterClass(TAttrPromptClass);
+
+  Assert.IsFalse(FConfig.Prompts.Registry.ContainsKey('attr_prompt'));
+end;
+
+procedure TMCPPromptsConfigRegisterPromptTest.TestClearAll_RemovesAllPromptsFromRegistry;
+begin
+  FConfig.Prompts.RegisterPrompt(TManualPromptClass, 'NoArgs', 'prompt_one', []);
+  FConfig.Prompts.RegisterClass(TAttrPromptClass);
+
+  Assert.IsTrue(FConfig.Prompts.Registry.ContainsKey('prompt_one'));
+  Assert.IsTrue(FConfig.Prompts.Registry.ContainsKey('attr_prompt'));
+
+  FConfig.Prompts.ClearAll;
+
+  Assert.AreEqual(0, FConfig.Prompts.Registry.Count, 'Registry should be empty after ClearAll');
+end;
+
+procedure TMCPPromptsConfigRegisterPromptTest.TestClearAll_EmptyRegistryIsNoOp;
+begin
+  Assert.WillNotRaise(
+    procedure
+    begin
+      FConfig.Prompts.ClearAll;
+    end
+  );
+
+  Assert.AreEqual(0, FConfig.Prompts.Registry.Count);
+end;
+
+procedure TMCPPromptsConfigRegisterPromptTest.TestClearAll_ReturnsPromptsConfigForChaining;
+begin
+  Assert.AreSame(FConfig.Prompts, FConfig.Prompts.ClearAll);
 end;
 
 initialization

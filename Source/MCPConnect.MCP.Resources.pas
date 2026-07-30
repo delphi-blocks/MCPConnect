@@ -122,7 +122,7 @@ type
   TMCPResource = class(TMCPResourceBase)
   public
     [NeonIgnore] FileName: string;
-    [NeonIgnore] Classe: TClass;
+    [NeonIgnore] ResourceClass: TClass;
     [NeonIgnore] Method: TRttiMethod;
     [NeonIgnore] Category: string;
     [NeonIgnore] Disabled: Boolean;
@@ -154,7 +154,7 @@ type
   /// </summary>
   TMCPResourceTemplate = class(TMCPResourceBase)
   public
-    [NeonIgnore] Classe: TClass;
+    [NeonIgnore] ResourceClass: TClass;
     [NeonIgnore] Method: TRttiMethod;
     [NeonIgnore] Category: string;
     [NeonIgnore] Disabled: Boolean;

@@ -65,6 +65,7 @@ resourcestring
   STemplateParamNameNotInUriFmt = 'Param name [%s] does not match any placeholder in the template uri';
   SPromptParamNotFoundFmt = 'Param [%s] for Prompt [%s] not found';
   SNonConfiguredPromptParamsNotPermitted = 'Non-configured prompt params are not permitted';
+  STemplateNotFoundFmt = 'Template [%s] not found';
 
 type
   /// <summary>
@@ -426,6 +427,26 @@ type
 
     function RegisterClass(AClass: TClass): TMCPToolsConfig;
     function RegisterTool(AClass: TClass; const AMethodName, AName, ADescription: string; const ATags: string = ''): TMCPToolConfig;
+
+    /// <summary>
+    ///   Unregisters a single tool by its MCP-facing name. Raises EMCPException if no
+    ///   tool is registered under that name.
+    /// </summary>
+    function UnregisterTool(const AName: string): TMCPToolsConfig;
+
+    /// <summary>
+    ///   Unregisters every tool backed by AClass, regardless of whether they were
+    ///   registered via [McpTool] (RegisterClass) or programmatically (RegisterTool).
+    ///   A no-op if no tool is registered against AClass.
+    /// </summary>
+    function UnregisterClass(AClass: TClass): TMCPToolsConfig;
+
+    /// <summary>
+    ///   Unregisters every tool, clearing the registry entirely. A no-op if
+    ///   nothing is registered.
+    /// </summary>
+    function ClearAll: TMCPToolsConfig;
+
     function SetSchemaNeonConfig(ANeonConfig: INeonConfiguration): TMCPToolsConfig;
 
     /// <summary>
@@ -481,6 +502,25 @@ type
       const ADescription: string = ''; const ATags: string = ''): TMCPPromptsConfig;
 
     /// <summary>
+    ///   Unregisters a single prompt by its MCP-facing name. Raises EMCPException if no
+    ///   prompt is registered under that name.
+    /// </summary>
+    function UnregisterPrompt(const AName: string): TMCPPromptsConfig;
+
+    /// <summary>
+    ///   Unregisters every prompt backed by AClass, regardless of whether they were
+    ///   registered via [McpPrompt] (RegisterClass) or programmatically (RegisterPrompt).
+    ///   A no-op if no prompt is registered against AClass.
+    /// </summary>
+    function UnregisterClass(AClass: TClass): TMCPPromptsConfig;
+
+    /// <summary>
+    ///   Unregisters every prompt, clearing the registry entirely. A no-op if
+    ///   nothing is registered.
+    /// </summary>
+    function ClearAll: TMCPPromptsConfig;
+
+    /// <summary>
     ///   Creates an instance of a class by namespace.
     ///   Used internally by the framework to instantiate tools.
     /// </summary>
@@ -518,6 +558,7 @@ type
     function ParamIsType(AParam: TRttiParameter; ATypes: TypeKindSet): Boolean;
     function ValidUriResource(const AUri: string): Boolean;
     function GetUriParams(const AUri: string): TArray<string>;
+    function FileNameToUri(const AFileName: string): string;
 
     procedure RegisterUIMethod(AClass: TClass; AMethod: TRttiMethod; AAttr: MCPAppUIAttribute);
     procedure RegisterResMethod(AClass: TClass; AMethod: TRttiMethod; AAttr: MCPResourceAttribute);
@@ -555,6 +596,39 @@ type
     function RegisterUI(AClass: TClass; const AMethodName, AName, AUri: string;
       const ADescription: string = ''; const ATags: string = '';
       AUIConfig: TMCPUIResourceConfigurator = nil): TMCPResourcesConfig;
+
+    /// <summary>
+    ///   Unregisters a single resource or App UI resource by its uri. Raises EMCPException
+    ///   if no resource is registered under that uri.
+    /// </summary>
+    function UnregisterResource(const AUri: string): TMCPResourcesConfig;
+
+    /// <summary>
+    ///   Unregisters a single static file resource registered via RegisterFile, by the
+    ///   same AFileName that was passed to RegisterFile (the uri is derived from it
+    ///   internally). Raises EMCPException if no resource is registered for that file.
+    /// </summary>
+    function UnregisterFile(const AFileName: string): TMCPResourcesConfig;
+
+    /// <summary>
+    ///   Unregisters a single resource template by its uri template. Raises EMCPException
+    ///   if no template is registered under that uri template.
+    /// </summary>
+    function UnregisterTemplate(const AUriTemplate: string): TMCPResourcesConfig;
+
+    /// <summary>
+    ///   Unregisters every resource, App UI resource, and resource template backed by
+    ///   AClass, regardless of whether they were registered via attributes (RegisterClass)
+    ///   or programmatically (RegisterResource/RegisterTemplate/RegisterUI). A no-op if
+    ///   nothing is registered against AClass.
+    /// </summary>
+    function UnregisterClass(AClass: TClass): TMCPResourcesConfig;
+
+    /// <summary>
+    ///   Unregisters every resource, App UI resource, and resource template,
+    ///   clearing both registries entirely. A no-op if nothing is registered.
+    /// </summary>
+    function ClearAll: TMCPResourcesConfig;
 
     function GetResource(const AUri: string): TMCPResource;
     function GetTemplate(const AUri: string): TMCPResourceTemplate;
@@ -676,7 +750,7 @@ begin
   for var cfg in Configs do
     cfg.Free;
   Configs.Clear;
-  inherited;
+  Result := inherited;
 end;
 
 constructor TMCPToolsConfig.Create(AConfig: IMCPConfig);
@@ -817,6 +891,36 @@ begin
   Result.Description := ADescription;
   Result.Tags.TagMap.Clear;
   Result.Tags.Parse(ATags);
+end;
+
+function TMCPToolsConfig.UnregisterTool(const AName: string): TMCPToolsConfig;
+begin
+  if not Registry.ContainsKey(AName) then
+    raise EMCPException.CreateFmt(SToolNotFoundFmt, [AName]);
+
+  Registry.Remove(AName);
+  Result := Self;
+end;
+
+function TMCPToolsConfig.UnregisterClass(AClass: TClass): TMCPToolsConfig;
+var
+  LNames: TArray<string>;
+begin
+  LNames := [];
+  for var pair in Registry do
+    if pair.Value.ToolClass = AClass then
+      LNames := LNames + [pair.Key];
+
+  for var name in LNames do
+    Registry.Remove(name);
+
+  Result := Self;
+end;
+
+function TMCPToolsConfig.ClearAll: TMCPToolsConfig;
+begin
+  Registry.Clear;
+  Result := Self;
 end;
 
 function TMCPToolsConfig.ListComplete: TListToolsResult;
@@ -1091,6 +1195,12 @@ begin
   inherited;
 end;
 
+function TMCPResourcesConfig.FileNameToUri(const AFileName: string): string;
+begin
+  { TODO -opaolo -c : Customize the URI (URI Schemes?) 16/02/2026 13:01:25 }
+  Result := 'res://' + StringReplace(AFileName, '\', '/', [rfReplaceAll]);
+end;
+
 function TMCPResourcesConfig.CreateInstance(const AUri: string): TObject;
 var
   LResource: TMCPResource;
@@ -1098,7 +1208,7 @@ begin
   if not Registry.TryGetValue(AUri, LResource) then
     raise EMCPException.CreateFmt(SConfigResourceNotFoundFmt, [AUri]);
 
-  Result := TRttiUtils.CreateInstance(LResource.Classe);
+  Result := TRttiUtils.CreateInstance(LResource.ResourceClass);
 end;
 
 function TMCPResourcesConfig.GetResource(const AUri: string): TMCPResource;
@@ -1154,7 +1264,7 @@ begin
     LRes.Uri := AAttr.Uri;
     LRes.MimeType := 'text/html;profile=mcp-app';
     LRes.Description := AAttr.Description;
-    LRes.Classe := AClass;
+    LRes.ResourceClass := AClass;
     LRes.Method := AMethod;
 
     Registry.Add(LRes.Uri, LRes);
@@ -1180,7 +1290,7 @@ begin
     LRes.Uri := AAttr.Uri;
     LRes.MimeType := AAttr.MimeType;
     LRes.Description := AAttr.Description;
-    LRes.Classe := AClass;
+    LRes.ResourceClass := AClass;
     LRes.Method := AMethod;
     Registry.Add(LRes.Uri, LRes);
   except
@@ -1247,7 +1357,7 @@ begin
 
   LRes := TMCPResource.Create;
   try
-    LRes.Classe := AClass;
+    LRes.ResourceClass := AClass;
     LRes.Method := LMethod;
     LRes.Name := AName;
     LRes.Uri := AUri;
@@ -1318,7 +1428,7 @@ begin
 
   LTpl := TMCPResourceTemplate.Create;
   try
-    LTpl.Classe := AClass;
+    LTpl.ResourceClass := AClass;
     LTpl.Method := LMethod;
     LTpl.Name := AName;
     LTpl.UriTemplate := AUriTemplate;
@@ -1373,7 +1483,7 @@ begin
     LTpl.UriTemplate := AAttr.UriTemplate;
     LTpl.MimeType := AAttr.MimeType;
     LTpl.Description := AAttr.Description;
-    LTpl.Classe := AClass;
+    LTpl.ResourceClass := AClass;
     LTpl.Method := AMethod;
 
     for var par in AMethod.GetParameters do
@@ -1420,7 +1530,7 @@ begin
 
   LApp := TMCPResource.Create;
   try
-    LApp.Classe := AClass;
+    LApp.ResourceClass := AClass;
     LApp.Method := LMethod;
     LApp.Name := AName;
     LApp.Uri := AUri;
@@ -1454,8 +1564,61 @@ begin
   Result := Self;
 end;
 
-function TMCPResourcesConfig.RegisterFile(const AFileName, ADescription:
-    string; const AMime: string = ''): TMCPResourcesConfig;
+function TMCPResourcesConfig.UnregisterResource(const AUri: string): TMCPResourcesConfig;
+begin
+  if not Registry.ContainsKey(AUri) then
+    raise EMCPException.CreateFmt(SConfigResourceNotFoundFmt, [AUri]);
+
+  Registry.Remove(AUri);
+  Result := Self;
+end;
+
+function TMCPResourcesConfig.UnregisterFile(const AFileName: string): TMCPResourcesConfig;
+begin
+  Result := UnregisterResource(FileNameToUri(AFileName));
+end;
+
+function TMCPResourcesConfig.UnregisterTemplate(const AUriTemplate: string): TMCPResourcesConfig;
+begin
+  if not TemplateRegistry.ContainsKey(AUriTemplate) then
+    raise EMCPException.CreateFmt(STemplateNotFoundFmt, [AUriTemplate]);
+
+  TemplateRegistry.Remove(AUriTemplate);
+  Result := Self;
+end;
+
+function TMCPResourcesConfig.UnregisterClass(AClass: TClass): TMCPResourcesConfig;
+var
+  LUris: TArray<string>;
+begin
+  LUris := [];
+  for var pair in Registry do
+    if pair.Value.ResourceClass = AClass then
+      LUris := LUris + [pair.Key];
+
+  for var uri in LUris do
+    Registry.Remove(uri);
+
+  LUris := [];
+  for var pair in TemplateRegistry do
+    if pair.Value.ResourceClass = AClass then
+      LUris := LUris + [pair.Key];
+
+  for var uri in LUris do
+    TemplateRegistry.Remove(uri);
+
+  Result := Self;
+end;
+
+function TMCPResourcesConfig.ClearAll: TMCPResourcesConfig;
+begin
+  Registry.Clear;
+  TemplateRegistry.Clear;
+  Result := Self;
+end;
+
+function TMCPResourcesConfig.RegisterFile(const AFileName, ADescription: string;
+  const AMime: string = ''): TMCPResourcesConfig;
 const
   RES_CLASS: TClass = TMCPStaticResource;
   RES_METHOD = 'GetResource';
@@ -1484,10 +1647,10 @@ begin
     LRes.Name :=   ExtractFileName(AFileName);
 
     { TODO -opaolo -c : Customize the URI (URI Schemes?) 16/02/2026 13:01:25 }
-    LRes.Uri := 'res://' + StringReplace(LRes.FileName, '\', '/', [rfReplaceAll]);
+    LRes.Uri := FileNameToUri(AFileName);
     LRes.MimeType := LMime;
     LRes.Description := ADescription;
-    LRes.Classe := RES_CLASS;
+    LRes.ResourceClass := RES_CLASS;
     LRes.Method := LMethod;
 
     Registry.Add(LRes.Uri, LRes);
@@ -1552,7 +1715,7 @@ begin
   if not Registry.TryGetValue(APrompt, LPrompt) then
     raise EMCPException.CreateFmt(SPromptNotFoundFmt, [APrompt]);
 
-  Result := TRttiUtils.CreateInstance(LPrompt.Classe);
+  Result := TRttiUtils.CreateInstance(LPrompt.PromptClass);
 end;
 
 destructor TMCPPromptsConfig.Destroy;
@@ -1594,7 +1757,7 @@ begin
       LPrompt.Name := LScope + LPromptAttr.Name;
       LPrompt.Title := LPromptAttr.Title;
       LPrompt.Description := LPromptAttr.Description;
-      LPrompt.Classe := AClass;
+      LPrompt.PromptClass := AClass;
       LPrompt.Method := LMethod;
 
       for var tag in LPromptAttr.Tags.TagMap do
@@ -1648,7 +1811,7 @@ begin
 
   LPrompt := TMCPPrompt.Create;
   try
-    LPrompt.Classe := AClass;
+    LPrompt.PromptClass := AClass;
     LPrompt.Method := LMethod;
     LPrompt.Name := AName;
     LPrompt.Title := ATitle;
@@ -1680,6 +1843,36 @@ begin
     raise;
   end;
 
+  Result := Self;
+end;
+
+function TMCPPromptsConfig.UnregisterPrompt(const AName: string): TMCPPromptsConfig;
+begin
+  if not Registry.ContainsKey(AName) then
+    raise EMCPException.CreateFmt(SPromptNotFoundFmt, [AName]);
+
+  Registry.Remove(AName);
+  Result := Self;
+end;
+
+function TMCPPromptsConfig.UnregisterClass(AClass: TClass): TMCPPromptsConfig;
+var
+  LNames: TArray<string>;
+begin
+  LNames := [];
+  for var pair in Registry do
+    if pair.Value.PromptClass = AClass then
+      LNames := LNames + [pair.Key];
+
+  for var name in LNames do
+    Registry.Remove(name);
+
+  Result := Self;
+end;
+
+function TMCPPromptsConfig.ClearAll: TMCPPromptsConfig;
+begin
+  Registry.Clear;
   Result := Self;
 end;
 

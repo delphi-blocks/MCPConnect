@@ -47,6 +47,7 @@ MCPConnect handles the serialization, routing, and context management required f
   * **JSON-RPC** MCPConnect contains a JSON-RPC library (`JRPC`) a comprehensive, high-performance **JSON-RPC 2.0** library built specifically for Delphi.
  *  **Automatic JSON Schema generation** - Using the powerful Neon TSchemaGenaerator, MCPConnect support any Delphi type as parameter or result. 
   * **Attribute-Free Registration:** Tools, Resources, Templates, Prompts, and MCP Apps can all be registered programmatically (`RegisterTool`, `RegisterResource`, `RegisterTemplate`, `RegisterUI`, `RegisterPrompt`) instead of via attributes — useful for classes that can't declare Delphi custom attributes (e.g. compiled from C++ Builder).
+  * **Runtime Unregistration:** Tools, resources, resource templates, static files, and prompts registered either way (attributes or programmatically) can be removed again at runtime — by name/uri or by backing class — plus a `ClearAll` per section to wipe every tool/resource/prompt in one call, letting you swap feature sets in and out of an already-configured server.
   * **Protocol Version Negotiation:** The `initialize` handshake validates the client's requested protocol version against what the server supports (`2025-06-18`, `2025-11-25`), falling back to the server's latest supported version instead of blindly echoing back an unsupported one.
   
 
@@ -616,6 +617,24 @@ end;
 
 This path works alongside the attribute-driven one — a server can freely mix `.RegisterClass(...)` calls with `.RegisterTool(...) ... .EndTool` calls in the same `.Tools` section.
 
+#### Unregistering Tools
+
+Tools registered either way (`[McpTool]`/`RegisterClass` or `RegisterTool`/`EndTool`) can be removed again at runtime:
+
+```delphi
+.Tools
+  .UnregisterTool('double_or_zero')     // removes a single tool by its MCP-facing name
+  .UnregisterClass(TMathTool)           // removes every tool backed by TMathTool
+  .ClearAll                             // removes every registered tool
+.BackToMCP
+```
+
+- **`UnregisterTool(AName)`** removes the tool registered under `AName`; raises `EMCPException` if no tool has that name.
+- **`UnregisterClass(AClass)`** removes every tool whose backing class is `AClass`, regardless of whether it was registered via attributes or `RegisterTool`; it's a no-op if `AClass` has no registered tools.
+- **`ClearAll`** removes every tool in the section, regardless of how it was registered; it's a no-op if nothing is registered.
+
+All three return the `.Tools` builder, so they chain like any other registration call.
+
 -----------------------------
 
 ### 8. Registering Resources, Templates, Prompts, and Apps Without Attributes
@@ -668,6 +687,50 @@ The same attribute-free approach used for tools is also available for resources,
 ```
 
 `RegisterPrompt(AClass, AMethodName, AName, AArguments, ATitle, ADescription, ATags)` requires one `TMCPPromptArgConfig` entry per method parameter — `TMCPPromptArgConfig.New(AParamName, AName, ADescription, ARequired)` maps a Delphi parameter name to its MCP-facing argument name, description, and whether it's required.
+
+#### Unregistering Resources, Templates, Files, and Prompts
+
+Like tools, everything registered in the `.Resources` and `.Prompts` sections — whether via attributes or the programmatic API above — can be removed again at runtime:
+
+```delphi
+.Resources
+  .UnregisterResource('text://weather')     // removes a single resource/App UI by its uri
+  .UnregisterTemplate('res://items/{id}')   // removes a single resource template by its uri template
+  .UnregisterFile('docs\guide.pdf')         // removes a static file resource by the same AFileName passed to RegisterFile
+  .UnregisterClass(TWeatherResource)        // removes every resource/template/App UI backed by TWeatherResource
+  .ClearAll                                 // removes every registered resource, template, and App UI
+.BackToMCP
+
+.Prompts
+  .UnregisterPrompt('argument-prompt')      // removes a single prompt by its MCP-facing name
+  .UnregisterClass(TSamplePrompts)          // removes every prompt backed by TSamplePrompts
+  .ClearAll                                 // removes every registered prompt
+.BackToMCP
+```
+
+- **`UnregisterResource(AUri)`** removes the resource or App UI registered under `AUri`; raises `EMCPException` if nothing is registered under that uri.
+- **`UnregisterTemplate(AUriTemplate)`** removes the resource template registered under `AUriTemplate`; raises `EMCPException` if nothing is registered under that uri template.
+- **`UnregisterFile(AFileName)`** removes a static file resource registered via `RegisterFile`, identified by the same `AFileName` originally passed to `RegisterFile` (the uri is derived from it internally); raises `EMCPException` if that file was never registered.
+- **`UnregisterClass(AClass)`** (Resources) removes every resource, resource template, and App UI backed by `AClass`, regardless of how it was registered; a no-op if `AClass` has nothing registered.
+- **`UnregisterPrompt(AName)`** removes the prompt registered under `AName`; raises `EMCPException` if no prompt has that name.
+- **`UnregisterClass(AClass)`** (Prompts) removes every prompt backed by `AClass`, regardless of how it was registered; a no-op if `AClass` has no registered prompts.
+- **`ClearAll`** (both sections) removes everything registered in that section, regardless of how it was registered; a no-op if the section is empty.
+
+All of the above return the builder for their own section (`.Resources`/`.Prompts`), so they chain like any other registration call — including across sections via `.BackToMCP`:
+
+```delphi
+var LConfig := AServer.Plugin.Configure<IMCPConfig>;
+
+LConfig.Tools
+  .UnregisterClass(TSomeTool)
+.BackToMCP
+.Resources
+  .UnregisterClass(TSomeResource)
+.BackToMCP
+.Prompts
+  .ClearAll
+.BackToMCP;
+```
 
 -----------------------------
 

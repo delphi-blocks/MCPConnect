@@ -29,6 +29,7 @@ uses
 type
   TServerConfigurator = class
     class procedure ConfigureServer(AServer: TJRPCServer);
+    class procedure UnregisterFeatures(AServer: TJRPCServer);
   end;
 
 implementation
@@ -66,7 +67,7 @@ begin
       .SetSessionClass(TShoppingSession)  // Use custom typed session
     .ApplyConfig
     {$ENDIF}
-	
+
     .Plugin.Configure<IMCPConfig>
       .Server
         .SetName('delphi-mcp-server')
@@ -137,7 +138,7 @@ begin
       .Resources
         .SetBasePath(LDataPath)
 
-        .RegisterResource(TCppResource, 'GetGlobalInfo', 
+        .RegisterResource(TCppResource, 'GetGlobalInfo',
 		  'info-resource', 'text://info', 'text/plain', 'Shows the Info')
 
         .RegisterClass(TWeatherResource)
@@ -161,6 +162,33 @@ begin
         .RegisterClass(TShoppingCartTool)  // Session-based shopping cart
 
       .BackToMCP
+  ;
+end;
+
+class procedure TServerConfigurator.UnregisterFeatures(AServer: TJRPCServer);
+begin
+  AServer.Plugin.Configure<IMCPConfig>
+
+  .Tools
+    .UnregisterClass(TRegisterToolTest)
+    .UnregisterClass(TTestTool)
+    .UnregisterClass(TDelphiDayTool)
+    .UnregisterClass(TShoppingCartTool)
+  .BackToMCP
+
+  .Resources
+
+    .UnregisterClass(TCppResource)
+    .UnregisterClass(TWeatherResource)
+    .UnregisterClass(TDelphiDayAppUI)
+    .UnregisterFile('index.md')
+    .UnregisterFile('documentation\mcp\mcpconnect.pdf')
+  .BackToMCP
+
+  .Prompts
+    .ClearAll
+  .BackToMCP
+
   ;
 end;
 

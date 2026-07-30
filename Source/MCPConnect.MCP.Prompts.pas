@@ -1,4 +1,4 @@
-{******************************************************************************}
+﻿{******************************************************************************}
 {                                                                              }
 {  Delphi MCP Connect Library                                                  }
 {                                                                              }
@@ -87,7 +87,7 @@ type
   /// </summary>
   TMCPPrompt = class(TMetaClass)
   public
-    [NeonIgnore] Classe: TClass;
+    [NeonIgnore] PromptClass: TClass;
     [NeonIgnore] Method: TRttiMethod;
     [NeonIgnore] Category: string;
     [NeonIgnore] Disabled: Boolean;

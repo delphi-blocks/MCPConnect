@@ -251,7 +251,7 @@ begin
   end;
 
   // Create an instance of the resource class
-  LResObj := TRttiUtils.CreateInstance(AResource.Classe);
+  LResObj := TRttiUtils.CreateInstance(AResource.ResourceClass);
   try
     RPCContext.Inject(LResObj);
 
@@ -274,7 +274,7 @@ var
   LTplObj: TObject;
 begin
   // Create an instance of the resource class
-  LTplObj := TRttiUtils.CreateInstance(ATemplate.Classe);
+  LTplObj := TRttiUtils.CreateInstance(ATemplate.ResourceClass);
   try
     RPCContext.Inject(LTplObj);
 
@@ -393,7 +393,7 @@ begin
       raise EMCPException.CreateFmt(SMCPPromptNotFound, [AParams.Name]);
 
     // Create an instance of the tool class
-    LPromptObj := TRttiUtils.CreateInstance(LPrompt.Classe);
+    LPromptObj := TRttiUtils.CreateInstance(LPrompt.PromptClass);
     try
       RPCContext.Inject(LPromptObj);
 

@@ -106,29 +106,52 @@ type
     function SetResource(const AUrl: string): IOAuthConfig;
     function AddAuthorizationServer(const AAuthorizationServer: string): IOAuthConfig;
     function AddScopesSupported(const AScopesSupported: string): IOAuthConfig;
+
+    /// <summary>
+    ///   Enables a local proxy for the authorization server's metadata document
+    ///   (RFC 8414 / OIDC Discovery). The server will fetch
+    ///   "&lt;AUpstreamIssuer&gt;/.well-known/openid-configuration", inject
+    ///   "code_challenge_methods_supported": ["S256"] when the upstream document
+    ///   does not advertise it, and republish it on a local well-known path.
+    ///   That local path is registered as the authorization server instead of
+    ///   the upstream URL (replaces a manual AddAuthorizationServer call).
+    /// </summary>
+    /// <remarks>
+    ///   Useful for authorization servers (e.g. Microsoft Entra ID) that support
+    ///   PKCE but do not advertise it in their discovery document, which some
+    ///   strict MCP OAuth clients require. SetResource must be called first.
+    /// </remarks>
+    function EnableMetadataProxy(const AUpstreamIssuer: string): IOAuthConfig;
   end;
 
   [Implements(IOAuthConfig)]
   TOAuthConfig = class(TJRPCConfiguration, IOAuthConfig)
   public const
     ProtectedResourcePath = '/.well-known/oauth-protected-resource';
+    MetadataProxyPath = '/oauth-proxy';
   private
     FResource: string;
     FRealm: string;
     FAuthorizationServers: TArray<string>;
     FScopesSupported: TArray<string>;
+    FMetadataProxyUpstream: string;
     function GetResourceMetadata: string;
+    function GetMetadataProxyUrl: string;
+    function GetMetadataProxyEnabled: Boolean;
   public
     function SetRealm(const ARealm: string): IOAuthConfig;
     function SetResource(const AUrl: string): IOAuthConfig;
     function AddAuthorizationServer(const AAuthorizationServer: string): IOAuthConfig;
     function AddScopesSupported(const AScopesSupported: string): IOAuthConfig;
+    function EnableMetadataProxy(const AUpstreamIssuer: string): IOAuthConfig;
 
     property Realm: string read FRealm;
     property Resource: string read FResource;
     property AuthorizationServers: TArray<string> read FAuthorizationServers;
     property ScopesSupported: TArray<string> read FScopesSupported;
     property ResourceMetadata: string read GetResourceMetadata;
+    property MetadataProxyUpstream: string read FMetadataProxyUpstream;
+    property MetadataProxyEnabled: Boolean read GetMetadataProxyEnabled;
 
     constructor Create(AApp: IJRPCApplication); override;
   end;
@@ -209,6 +232,30 @@ begin
   LURI.Path := ProtectedResourcePath;
 
   Result := LURI.ToString;
+end;
+
+function TOAuthConfig.GetMetadataProxyUrl: string;
+begin
+  if FResource = '' then
+    raise Exception.Create('OAuth resource config not specified');
+
+  var LURI := TURI.Create(FResource);
+  LURI.Path := MetadataProxyPath;
+
+  Result := LURI.ToString;
+end;
+
+function TOAuthConfig.GetMetadataProxyEnabled: Boolean;
+begin
+  Result := FMetadataProxyUpstream <> '';
+end;
+
+function TOAuthConfig.EnableMetadataProxy(
+  const AUpstreamIssuer: string): IOAuthConfig;
+begin
+  FMetadataProxyUpstream := AUpstreamIssuer;
+  AddAuthorizationServer(GetMetadataProxyUrl);
+  Result := Self;
 end;
 
 function TOAuthConfig.SetRealm(const ARealm: string): IOAuthConfig;

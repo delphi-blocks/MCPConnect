@@ -16,7 +16,6 @@ uses
 
   MCPConnect.Configuration.MCP,
   MCPConnect.Configuration.Session,
-  MCPConnect.Configuration.Auth,
 
   MCPConnect.Content.Writers.RTL,
   MCPConnect.Content.Writers.VCL,
@@ -54,14 +53,6 @@ begin
 //    .Plugin.Configure<IAuthTokenConfig>
 //      .SetToken('my-secret-token')
 //    .ApplyConfig
-
-    .Plugin.Configure<IOAuthConfig>
-      .SetResource('http://localhost:8080/mcp')
-      .AddAuthorizationServer(GetEnvironmentVariable('OIDC_AUTH_SERVER'))
-      .AddScopesSupported('openid')
-      .AddScopesSupported('email')
-      .AddScopesSupported('profile')
-    .ApplyConfig
 
     .Plugin.Configure<ISessionConfig>
       .SetLocation(TSessionIdLocation.Header)

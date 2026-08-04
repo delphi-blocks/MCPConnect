@@ -42,6 +42,7 @@ const
   HTTP_CODE_NOTFOUND = 404;
   HTTP_CODE_NOTALLOWED = 405;
   HTTP_CODE_NOTACCEPTABLE = 406;
+  HTTP_CODE_BADGATEWAY = 502;
 
 type
   /// <summary>
@@ -146,6 +147,8 @@ type
     function CheckOrigin: Boolean;
     function CheckAuthorization: Boolean;
     function CheckOAuth: Boolean;
+    function IsMetadataProxyRequest: Boolean;
+    procedure HandleMetadataProxy;
     function ExtractSessionId: string;
     function HandleSession: TMCPSessionBase;
     procedure HandleMessage(AMessage: TJRPCMessage; AResponseQueue: TMCPMessageQueue);
@@ -169,7 +172,7 @@ type
 implementation
 
 uses
-  System.IOUtils, System.JSON, System.NetEncoding, Logify,
+  System.IOUtils, System.JSON, System.NetEncoding, System.Net.HttpClient, Logify,
   MCPConnect.Transport.MediaType,
   MCPConnect.Configuration.Neon,
   MCPConnect.JRPC.Invoker;
@@ -268,6 +271,10 @@ begin
       LMetadata.Free;
     end;
   end
+  else if FOAuthConfig.MetadataProxyEnabled and (FRequest.Command = 'GET') and IsMetadataProxyRequest then
+  begin
+    HandleMetadataProxy;
+  end
   else
   begin
     var LAuthHeader := FRequest.GetHeader('Authorization');
@@ -285,6 +292,64 @@ begin
     end;
     FResponse.Code := HTTP_CODE_UNAUTHORIZED;
     FResponse.Headers.AddOrSetValue('WWW-Authenticate', Format('Bearer realm="%s", resource_metadata=%s', [FOAuthConfig.Realm, FOAuthConfig.ResourceMetadata]));
+  end;
+end;
+
+function TMCPTransportHandler.IsMetadataProxyRequest: Boolean;
+begin
+  Result :=
+    SameText(FRequest.Url, '/.well-known/oauth-authorization-server' + TOAuthConfig.MetadataProxyPath) or
+    SameText(FRequest.Url, '/.well-known/openid-configuration' + TOAuthConfig.MetadataProxyPath) or
+    SameText(FRequest.Url, TOAuthConfig.MetadataProxyPath + '/.well-known/openid-configuration');
+end;
+
+procedure TMCPTransportHandler.HandleMetadataProxy;
+const
+  RequestTimeoutMs = 10000;
+begin
+  FResponse.ContentType := TMediaType.APPLICATION_JSON;
+
+  var LHttp := THTTPClient.Create;
+  try
+    LHttp.ConnectionTimeout := RequestTimeoutMs;
+    LHttp.ResponseTimeout := RequestTimeoutMs;
+    try
+      var LUpstreamUrl := FOAuthConfig.MetadataProxyUpstream + '/.well-known/openid-configuration';
+      var LResponse := LHttp.Get(LUpstreamUrl);
+
+      if LResponse.StatusCode <> HTTP_CODE_OK then
+      begin
+        FResponse.Code := HTTP_CODE_BADGATEWAY;
+        FResponse.Content := Format('{"error": "Failed to fetch upstream authorization server metadata (HTTP %d)"}', [LResponse.StatusCode]);
+        Exit;
+      end;
+
+      var LJSON := TJSONObject.ParseJSONValue(LResponse.ContentAsString, True, True) as TJSONObject;
+      try
+        var LMethods: TJSONArray;
+        if not (LJSON.TryGetValue<TJSONArray>('code_challenge_methods_supported', LMethods) and (LMethods.Count > 0)) then
+        begin
+          var LExisting := LJSON.RemovePair('code_challenge_methods_supported');
+          LExisting.Free;
+          var LNewMethods := TJSONArray.Create;
+          LNewMethods.Add('S256');
+          LJSON.AddPair('code_challenge_methods_supported', LNewMethods);
+        end;
+
+        FResponse.Code := HTTP_CODE_OK;
+        FResponse.Content := LJSON.ToJSON;
+      finally
+        LJSON.Free;
+      end;
+    except
+      on E: Exception do
+      begin
+        FResponse.Code := HTTP_CODE_BADGATEWAY;
+        FResponse.Content := Format('{"error": "%s"}', [E.Message]);
+      end;
+    end;
+  finally
+    LHttp.Free;
   end;
 end;
 

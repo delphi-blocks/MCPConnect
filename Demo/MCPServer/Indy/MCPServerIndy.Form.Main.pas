@@ -3,19 +3,10 @@ unit MCPServerIndy.Form.Main;
 interface
 
 uses
-  Winapi.Messages, System.SysUtils, System.Variants,
-  System.Classes, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs,
-  Vcl.AppEvnts, Vcl.StdCtrls, IdGlobal, Web.HTTPApp,
-  IdContext, IdBaseComponent, IdComponent, IdCustomTCPServer,
-  IdCustomHTTPServer, IdHTTPServer,
+  Winapi.Messages, System.SysUtils, System.Classes, Vcl.Graphics, Vcl.Controls,
+  Vcl.Forms, Vcl.Dialogs, Vcl.AppEvnts, Vcl.StdCtrls,
 
   MCPConnect.JRPC.Server,
-  MCPConnect.MCP.Server.Api,
-  MCPConnect.Configuration.MCP,
-  MCPConnect.Configuration.Session,
-  MCPConnect.Configuration.Auth,
-  MCPConnect.Content.Writers.RTL,
-  MCPConnect.Content.Writers.VCL,
   MCPConnect.Transport.Indy;
 
 type
@@ -32,8 +23,7 @@ type
     procedure ButtonStopClick(Sender: TObject);
     procedure ButtonOpenBrowserClick(Sender: TObject);
   private
-    FHTTPServer: TJRPCIndyServer;
-    FJRPCServer: TJRPCServer;
+    FServer: TJRPCIndyServer;
 
     procedure StartServer;
   public
@@ -54,9 +44,9 @@ uses
 
 procedure TfrmMain.ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
 begin
-  ButtonStart.Enabled := not FHTTPServer.Active;
-  ButtonStop.Enabled := FHTTPServer.Active;
-  EditPort.Enabled := not FHTTPServer.Active;
+  ButtonStart.Enabled := not FServer.Active;
+  ButtonStop.Enabled := FServer.Active;
+  EditPort.Enabled := not FServer.Active;
 end;
 
 procedure TfrmMain.ButtonOpenBrowserClick(Sender: TObject);
@@ -75,27 +65,25 @@ end;
 
 procedure TfrmMain.ButtonStopClick(Sender: TObject);
 begin
-  FHTTPServer.Active := False;
+  FServer.Active := False;
   Logger.Log('MCP Server Stopped', TLogLevel.Debug);
 end;
 
 procedure TfrmMain.FormCreate(Sender: TObject);
 begin
-  FHTTPServer := TJRPCIndyServer.Create(Self);
-  FJRPCServer := TJRPCServer.Create(Self);
-  TServerConfigurator.ConfigureServer(FJRPCServer);
-  FHTTPServer.Server := FJRPCServer;
+  FServer := TJRPCIndyServer.CreateMCPServer(Self);
+  TServerConfigurator.ConfigureServer(FServer.JRPCServer);
 
   StartServer;
 end;
 
 procedure TfrmMain.StartServer;
 begin
-  if not FHTTPServer.Active then
+  if not FServer.Active then
   begin
-    FHTTPServer.Bindings.Clear;
-    FHTTPServer.DefaultPort := StrToInt(EditPort.Text);
-    FHTTPServer.Active := True;
+    FServer.Bindings.Clear;
+    FServer.DefaultPort := StrToInt(EditPort.Text);
+    FServer.Active := True;
     Logger.Log('MCP Server Started', TLogLevel.Debug);
   end;
 end;

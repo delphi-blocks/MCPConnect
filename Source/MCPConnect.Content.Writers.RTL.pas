@@ -25,20 +25,26 @@ uses
 
 type
   TMCPStringListWriter = class(TMCPCustomWriter)
+  private
+    function ValueAsList(const AValue: TValue): TStringList;
   protected
     class function GetTargetInfo: PTypeInfo; override;
     class function CanHandle(AType: PTypeInfo): Boolean; override;
   public
     procedure WriteTool(const AValue: TValue; AContext: TMCPToolContext); override;
+    procedure WritePrompt(const AValue: TValue; AContext: TMCPPromptContext); override;
     procedure WriteResource(const AValue: TValue; AContext: TMCPresourceContext); override;
   end;
 
   TMCPStreamWriter = class(TMCPCustomWriter)
+  private
+    function StreamToBase64(AValue: TValue): string;
   protected
     class function GetTargetInfo: PTypeInfo; override;
     class function CanHandle(AType: PTypeInfo): Boolean; override;
   public
     procedure WriteTool(const AValue: TValue; AContext: TMCPToolContext); override;
+    procedure WritePrompt(const AValue: TValue; AContext: TMCPPromptContext); override;
     procedure WriteResource(const AValue: TValue; AContext: TMCPresourceContext); override;
   end;
 
@@ -59,37 +65,33 @@ begin
   Result := TStringList.ClassInfo;
 end;
 
+function TMCPStringListWriter.ValueAsList(const AValue: TValue): TStringList;
+begin
+  Result := AValue.AsObject as TStringList;
+end;
+
+procedure TMCPStringListWriter.WritePrompt(const AValue: TValue; AContext: TMCPPromptContext);
+begin
+  AContext.Result.AddText('user', ValueAsList(AValue).CommaText);
+end;
+
 procedure TMCPStringListWriter.WriteResource(const AValue: TValue; AContext: TMCPresourceContext);
 var
-  LList: TStringList;
-  LContent: TTextResourceContents;
+  LMime: string;
   LMCP: MCPResourceAttribute;
 begin
-  LList := AValue.AsObject as TStringList;
-
-  LContent := TTextResourceContents.Create;
-
-  // Read Attributes
   LMCP := TRttiUtils.FindAttribute<MCPResourceAttribute>(AContext.Attributes);
   if Assigned(LMCP) then
-    LContent.MimeType := LMCP.MimeType
+    LMime := LMCP.MimeType
   else
-    LContent.MimeType := 'text/plain';
+    LMime := 'text/plain';
 
-  LContent.Text := LList.CommaText;
-  AContext.Result.Add(LContent);
+  AContext.Result.AddText(LMCP.Uri, LMime, ValueAsList(AValue).CommaText);
 end;
 
 procedure TMCPStringListWriter.WriteTool(const AValue: TValue; AContext: TMCPToolContext);
-var
-  LList: TStringList;
-  LContent: TTextContent;
 begin
-  LList := AValue.AsObject as TStringList;
-
-  LContent := TTextContent.Create;
-  LContent.Text := LList.CommaText;
-  AContext.Result.Add(LContent);
+  AContext.Result.AddText(ValueAsList(AValue).CommaText);
 end;
 
 { TMCPStreamWriter }
@@ -102,6 +104,20 @@ end;
 class function TMCPStreamWriter.GetTargetInfo: PTypeInfo;
 begin
   Result := TStream.ClassInfo;
+end;
+
+function TMCPStreamWriter.StreamToBase64(AValue: TValue): string;
+var
+  LStream: TStream;
+begin
+  LStream := AValue.AsObject as TStream;
+  LStream.Position := soFromBeginning;
+  Result := TBase64.Encode(LStream);
+end;
+
+procedure TMCPStreamWriter.WritePrompt(const AValue: TValue; AContext: TMCPPromptContext);
+begin
+  AContext.Result.AddBlob('user', 'application/octect-stream', StreamToBase64(AValue));
 end;
 
 procedure TMCPStreamWriter.WriteResource(const AValue: TValue; AContext: TMCPresourceContext);
@@ -129,19 +145,8 @@ begin
 end;
 
 procedure TMCPStreamWriter.WriteTool(const AValue: TValue; AContext: TMCPToolContext);
-var
-  LStream: TStream;
-  LBase64: string;
-  LBlob: TEmbeddedResourceBlob;
 begin
-  LStream := AValue.AsObject as TStream;
-  LStream.Position := soFromBeginning;
-  LBase64 := TBase64.Encode(LStream);
-
-  LBlob := TEmbeddedResourceBlob.Create;
-  LBlob.Resource.MIMEType := 'application/octect-stream';
-  LBlob.Resource.Blob := LBase64;
-  AContext.Result.Add(LBlob);
+  AContext.Result.AddBlob('application/octect-stream', StreamToBase64(AValue));
 end;
 
 end.

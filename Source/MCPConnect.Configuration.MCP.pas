@@ -47,9 +47,10 @@ type
   TMCPBaseConfig = class;
   TMCPListConfig = class;
   TMCPToolsConfig = class;
+  TMCPPromptsConfig = class;
+  TMCPResourcesConfig = class;
   TMCPServerConfig = class;
   TMCPSecurityConfig = class;
-  TMCPResourcesConfig = class;
   TMCPMessageHandlingConfig = class;
 
   /// <summary>
@@ -128,14 +129,15 @@ type
     function Tools: TMCPToolsConfig;
 
     /// <summary>
+    ///   Prompts configuration
+    /// </summary>
+    function Prompts: TMCPPromptsConfig;
+
+    /// <summary>
     ///   Resources configuration
     /// </summary>
     function Resources: TMCPResourcesConfig;
 
-    /// <summary>
-    ///   Prompts configuration
-    /// </summary>
-    function Prompts: TMCPListConfig;
   end;
 
   /// <summary>
@@ -409,6 +411,29 @@ type
     procedure FilterList(AList: TListToolsResult; AFilter: TMCPToolFilterFunc);
   end;
 
+  TMCPPromptsConfig = class(TMCPBaseConfig)
+  private
+    procedure WritePrompt(APrompt: TMCPPrompt; APromptAttr: MCPPromptAttribute);
+  public
+    Registry: TMCPPromptRegistry;
+  public
+    constructor Create(AConfig: IMCPConfig);
+    destructor Destroy; override;
+
+    function RegisterClass(AClass: TClass): TMCPPromptsConfig;
+
+    /// <summary>
+    ///   Creates an instance of a class by namespace.
+    ///   Used internally by the framework to instantiate tools.
+    /// </summary>
+    /// <param name="ANamespace">Namespace of the tool class to instantiate</param>
+    /// <returns>New instance of the tool class</returns>
+    /// <exception cref="EJRPCException">Raised if namespace not found</exception>
+    function CreateInstance(const APrompt: string): TObject;
+
+    function ListComplete: TListPromptsResult;
+  end;
+
   /// <summary>
   ///   Helper class for serving static resources.
   /// </summary>
@@ -481,8 +506,8 @@ type
     FMessageHandling: TMCPMessageHandlingConfig;
 
     FTools: TMCPToolsConfig;
+    FPrompts: TMCPPromptsConfig;
     FResources: TMCPResourcesConfig;
-    FPrompts: TMCPListConfig;
   public
     constructor Create(AApp: IJRPCApplication); override;
     destructor Destroy; override;
@@ -491,11 +516,10 @@ type
     function Server: TMCPServerConfig;
     function Security: TMCPSecurityConfig;
     function Tools: TMCPToolsConfig;
+    function Prompts: TMCPPromptsConfig;
     function Resources: TMCPResourcesConfig;
     function MessageHandling: TMCPMessageHandlingConfig;
     function GetConstructorProxy(const AName: string; out AProxy: TJRPCConstructorProxy): Boolean;
-
-    function Prompts: TMCPListConfig;
   end;
 
 
@@ -516,8 +540,8 @@ begin
   FMessageHandling := TMCPMessageHandlingConfig.Create(Self);
 
   FTools := TMCPToolsConfig.Create(Self);
+  FPrompts := TMCPPromptsConfig.Create(Self);
   FResources := TMCPResourcesConfig.Create(Self);
-  FPrompts := TMCPListConfig.Create(Self);
 end;
 
 destructor TMCPConfig.Destroy;
@@ -544,7 +568,7 @@ begin
   Result := FMessageHandling;
 end;
 
-function TMCPConfig.Prompts: TMCPListConfig;
+function TMCPConfig.Prompts: TMCPPromptsConfig;
 begin
   Result := FPrompts;
 end;
@@ -1280,6 +1304,116 @@ begin
     AResult.AddBlobContent(AResource.Uri, AResource.MimeType, TFile.ReadAllText(LFileName));
 
 end;
+
+{ TMCPPromptsConfig }
+
+constructor TMCPPromptsConfig.Create(AConfig: IMCPConfig);
+begin
+  inherited;
+  Registry := TMCPPromptRegistry.Create([doOwnsValues]);
+end;
+
+function TMCPPromptsConfig.CreateInstance(const APrompt: string): TObject;
+var
+  LPrompt: TMCPPrompt;
+begin
+  if not Registry.TryGetValue(APrompt, LPrompt) then
+    raise EMCPException.CreateFmt('Prompt [%s] not found', [APrompt]);
+
+  Result := TRttiUtils.CreateInstance(LPrompt.Classe);
+end;
+
+destructor TMCPPromptsConfig.Destroy;
+begin
+  Registry.Free;
+  inherited;
+end;
+
+function TMCPPromptsConfig.ListComplete: TListPromptsResult;
+begin
+  Result := TListPromptsResult.Create;
+  for var pair in Registry do
+    Result.Prompts.Add(pair.Value);
+end;
+
+function TMCPPromptsConfig.RegisterClass(AClass: TClass): TMCPPromptsConfig;
+var
+  LScope: string;
+  LClassType: TRttiType;
+  LPromptAttr: MCPPromptAttribute;
+  LScopeAttr: MCPScopeAttribute;
+  LPrompt: TMCPPrompt;
+begin
+  LScope := '';
+  LClassType := TRttiUtils.Context.GetType(AClass);
+  LScopeAttr := TRttiUtils.FindAttribute<MCPScopeAttribute>(LClassType);
+  if Assigned(LScopeAttr) then
+    LScope := LScopeAttr.Name + FConfig.Server.ScopeSeparator;
+
+  // Registers all the prompts found in AClass
+  for var LMethod in LClassType.GetMethods do
+  begin
+    LPromptAttr := TRttiUtils.FindAttribute<MCPPromptAttribute>(LMethod);
+    if not Assigned(LPromptAttr) then
+      Continue;
+
+    LPrompt := TMCPPrompt.Create;
+    try
+      LPrompt.Name := LScope + LPromptAttr.Name;
+      LPrompt.Title := LPromptAttr.Title;
+      LPrompt.Description := LPromptAttr.Description;
+      LPrompt.Classe := AClass;
+      LPrompt.Method := LMethod;
+
+      WritePrompt(LPrompt, LPromptAttr);
+
+      for var LParam in LMethod.GetParameters do
+      begin
+        var LAttr := LParam.GetAttribute<MCPArgumentAttribute>;
+          if not Assigned(LAttr) then
+            raise EJRPCException.Create('Non-annotated params are not permitted');
+
+        var LArg := TPromptArgument.New(LAttr.Name, LAttr.Description);
+        if LAttr.Tags.Exists('required') then
+          LArg.Required := LAttr.Tags.GetBoolValue('required');
+
+        LPrompt.Arguments := LPrompt.Arguments + [LArg];
+      end;
+
+      Registry.Add(LPrompt.Name, LPrompt);
+    except
+      LPrompt.Free;
+      raise;
+    end;
+  end;
+  Result := Self;
+end;
+
+procedure TMCPPromptsConfig.WritePrompt(APrompt: TMCPPrompt; APromptAttr: MCPPromptAttribute);
+var
+  LIcon: TMCPIcon;
+begin
+  if SetIcon(APromptAttr.Tags.GetValueAs<string>('icon'), LIcon) then
+    APrompt.Icons := APrompt.Icons + [LIcon];
+
+  APrompt.Category := APromptAttr.Tags.GetValueAs<string>('category');
+  APrompt.Disabled := APromptAttr.Tags.GetBoolValue('disabled');
+
+  {
+  if APromptAttr.Tags.Exists('readonly') then
+    APrompt.Annotations.ReadOnlyHint := APromptAttr.Tags.GetBoolValue('readonly');
+  if APromptAttr.Tags.Exists('destructive') then
+    APrompt.Annotations.DestructiveHint := APromptAttr.Tags.GetBoolValue('destructive');
+  if APromptAttr.Tags.Exists('idempotent') then
+    APrompt.Annotations.IdempotentHint := APromptAttr.Tags.GetBoolValue('idempotent');
+  if APromptAttr.Tags.Exists('openworld') then
+    APrompt.Annotations.OpenWorldHint := APromptAttr.Tags.GetBoolValue('openworld');
+
+  WriteInputSchema(APrompt);
+  }
+
+end;
+
 
 { TMCPSecurityConfig }
 

@@ -16,6 +16,7 @@ uses
   MCPConnect.JRPC.Core,
   MCPConnect.JRPC.Classes,
   MCPConnect.MCP.Types,
+  MCPConnect.MCP.Tools,
   MCPConnect.MCP.Attributes,
   MCPConnect.Session.Core;
 
@@ -82,7 +83,6 @@ type
     [Context] FGC: IGarbageCollector;
     //[Context] FSession: TShoppingSession;
     [Context] Responses: TMCPMessageQueue;
-    [Context] AccessToken: TMCPAccessToken;
 
   public
     [McpTool('get_tickets', 'Get the list of available tickets for the DelphiDay', 'icon=badge.png')]
@@ -227,13 +227,11 @@ end;
 
 function TTestTool.GetSplitString(const AValue: string): TContentList;
 begin
-  var LResultBuilder := TToolResultBuilder.CreateInstance;
+  Result := TContentList.Create;
+
   var LStrings := AValue.Split([',']);
   for var LString in LStrings do
-  begin
-    LResultBuilder.AddText(LString);
-  end;
-  Result := LResultBuilder.Build;
+    Result.AddText(LString);
 end;
 
 function TTestTool.TestParam(AValue: Int64; ADouble: Boolean): Integer;
@@ -262,17 +260,16 @@ begin
 
   TFile.AppendAllText('purchase.log', Format('%s - Ticket ID %d, People: %d' + sLineBreak, [DateTimeToStr(Now), AId, AQuantity]));
 
-  var LResultBuilder := TToolResultBuilder.CreateInstance;
-  LResultBuilder.AddText('Purchase completed successfully. A confirmation email will be send to ' + AccessToken.EMail + '. Since you made the reservation through an LLM, you will be offered an aperitif at the end of the conference!');
+  Result := TContentList.Create;
+
+  Result.AddText('Purchase completed successfully. Since you made the reservation through an LLM, you will be offered an aperitif at the end of the conference!');
 
   var LStream := TFileStream.Create(TPath.Combine(GetCurrentDir, 'data\ticket.png'), fmOpenRead or fmShareDenyWrite);
   try
-    LResultBuilder.AddImage('image/png', LStream);
+    Result.AddImage('image/png', LStream);
   finally
     LStream.Free;
   end;
-
-  Result := LResultBuilder.Build;
 end;
 
 function TDelphiDayTool.GetTickets: TTickets;

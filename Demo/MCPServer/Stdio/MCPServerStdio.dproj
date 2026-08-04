@@ -85,6 +85,7 @@
         <VerInfo_Locale>1033</VerInfo_Locale>
         <Manifest_File>(None)</Manifest_File>
         <AppDPIAwarenessMode>none</AppDPIAwarenessMode>
+        <Icon_MainIcon>$(BDS)\bin\delphi_PROJECTICON.ico</Icon_MainIcon>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_2)'!=''">
         <DCC_LocalDebugSymbols>false</DCC_LocalDebugSymbols>
@@ -123,6 +124,7 @@
         <DCCReference Include="..\MCPServer.Resources.pas"/>
         <DCCReference Include="..\MCPServer.Apps.pas"/>
         <DCCReference Include="..\MCPServer.Notifications.pas"/>
+        <DCCReference Include="..\MCPServer.Prompts.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

@@ -317,6 +317,10 @@ begin
   ARequestConverter(FRequest);
 
   try try
+    // Inject CORS headers first so that error responses (401, 403, etc.) and the
+    // OAuth well-known metadata endpoint are also readable by browser-based clients.
+    InjectCORS;
+
     if not CheckOrigin then
       raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, 'Cross-Origin Request Blocked: Same Origin Policy');
 
@@ -352,8 +356,6 @@ begin
       end;
 
     end;
-
-    InjectCORS;
 
     if FRequest.Command = 'GET' then
       HandleGET
@@ -703,6 +705,14 @@ begin
   LHValue := FRequest.GetHeader('Access-Control-Request-Headers');
   if not LHValue.IsEmpty then
     FResponse.Headers.AddOrSetValue('Access-Control-Allow-Headers', LHValue);
+
+  // Expose the headers browser-based clients need to read from JS (e.g. to
+  // discover the OAuth resource metadata URL from a 401 response, or to pick
+  // up the session id when it is returned via header).
+  LHValue := 'WWW-Authenticate';
+  if Assigned(FSessionConfig) and FSessionConfig.IsApplied and (FSessionConfig.GetLocation = TSessionIdLocation.Header) then
+    LHValue := LHValue + ', ' + FSessionConfig.GetHeaderName;
+  FResponse.Headers.AddOrSetValue('Access-Control-Expose-Headers', LHValue);
 
 end;
 

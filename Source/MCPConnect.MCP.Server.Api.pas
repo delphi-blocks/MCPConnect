@@ -62,14 +62,24 @@ type
     function ReadResource([JRPCParams] AParams: TReadResourceParams): TReadResourceResult;
   end;
 
+  [JRPC('prompts')]
+  TMCPPromptsApi = class
+  public
+    [Context] RPCContext: TJRPCContext;
+    [Context] MCPConfig: TMCPConfig;
+
+    [JRPC('list')]
+    function PromptList: TListPromptsResult;
+
+    [JRPC('get')]
+    function ReadPrompt([JRPCParams] AParams: TGetPromptParams): TGetPromptResult;
+  end;
 
   [JRPC('notifications')]
   TMCPNotificationsApi = class
   private
-    [Context]
-    Context: TJRPCContext;
-    [Context]
-    FConfig: IMCPConfig;
+    [Context] Context: TJRPCContext;
+    [Context] FConfig: IMCPConfig;
   public
     [JRPC('initialized'), JRPCNotification]
     procedure Initialized;
@@ -336,9 +346,50 @@ begin
   Result := TJSONObject.Create;
 end;
 
+{ TMCPPromptsApi }
+
+function TMCPPromptsApi.PromptList: TListPromptsResult;
+begin
+  Result := MCPConfig.Prompts.ListComplete;
+end;
+
+function TMCPPromptsApi.ReadPrompt(AParams: TGetPromptParams): TGetPromptResult;
+var
+  LInvoker: TMCPPromptInvoker;
+  LPrompt: TMCPPrompt;
+  LPromptObj: TObject;
+begin
+  if not MCPConfig.Prompts.Registry.TryGetValue(AParams.Name, LPrompt) then
+    raise EMCPException.CreateFmt('Tool [%s] not found', [AParams.Name]);
+
+  // Create an instance of the tool class
+  LPromptObj := TRttiUtils.CreateInstance(LPrompt.Classe);
+  try
+    RPCContext.Inject(LPromptObj);
+
+    LInvoker := TMCPPromptInvoker.Create(LPromptObj, LPrompt);
+    try
+      RPCContext.Inject(LInvoker);
+
+      Result := TGetPromptResult.Create;
+      try
+        LInvoker.Invoke(AParams, Result);
+      except
+        Result.Free;
+        raise;
+      end;
+    finally
+      LInvoker.Free;
+    end;
+  finally
+    LPromptObj.Free;
+  end;
+end;
+
 initialization
   TJRPCRegistry.Instance.RegisterClass(TMCPInitializeApi, MCPNeonConfig);
   TJRPCRegistry.Instance.RegisterClass(TMCPToolsApi, MCPNeonConfig);
+  TJRPCRegistry.Instance.RegisterClass(TMCPPromptsApi, MCPNeonConfig);
   TJRPCRegistry.Instance.RegisterClass(TMCPResourcesApi, MCPNeonConfig);
   TJRPCRegistry.Instance.RegisterClass(TMCPNotificationsApi, MCPNeonConfig);
   TJRPCRegistry.Instance.RegisterClass(TMCPLoggingApi, MCPNeonConfig);

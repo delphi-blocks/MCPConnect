@@ -18,7 +18,9 @@ uses
   MCPConnect.Configuration.Session,
 
   MCPConnect.Content.Writers.RTL,
+  {$IFDEF FRAMEWORK_VCL}
   MCPConnect.Content.Writers.VCL,
+  {$ENDIF}
 
   MCPConnect.Session.Core,
   MCPServer.Notifications;
@@ -26,6 +28,7 @@ uses
 type
   TServerConfigurator = class
     class procedure ConfigureServer(AServer: TJRPCServer);
+    class procedure UnregisterFeatures(AServer: TJRPCServer);
   end;
 
 implementation
@@ -37,6 +40,7 @@ uses
   MCPServer.Resources,
   MCPServer.Apps,
   MCPServer.Tools,
+  MCPServer.Tools.Test,
   MCPServer.Prompts;
 
 
@@ -54,12 +58,14 @@ begin
 //      .SetToken('my-secret-token')
 //    .ApplyConfig
 
+	{$IFDEF SESSION}
     .Plugin.Configure<ISessionConfig>
       .SetLocation(TSessionIdLocation.Header)
       .SetHeaderName('Mcp-Session-Id')
       .SetTimeout(30)  // 30 minutes timeout
       .SetSessionClass(TShoppingSession)  // Use custom typed session
     .ApplyConfig
+    {$ENDIF}
 
     .Plugin.Configure<IMCPConfig>
       .Server
@@ -78,8 +84,10 @@ begin
 
         .SetIconFolder(TPath.Combine(LDataPath, 'icons'))
 
+        {$IFDEF FRAMEWORK_VCL}
         .RegisterWriter(TMCPImageWriter)
         .RegisterWriter(TMCPPictureWriter)
+        {$ENDIF}
         .RegisterWriter(TMCPStreamWriter)
         .RegisterWriter(TMCPStringListWriter)
 
@@ -120,12 +128,17 @@ begin
 
       .Security
         .SetCORS(True)
-        .SetAllowedMethods(['GET','POST', 'OPTIONS'])
-        .SetAllowedOrigins(['http://localhost', 'http://127.0.0.1'])
+        .SetAllowedMethods(['POST'])
+        {$IFNDEF DEBUG}
+        .SetAllowedOrigins(['http://localhost'])
+        {$ENDIF}
       .BackToMCP
 
       .Resources
         .SetBasePath(LDataPath)
+
+        .RegisterResource(TCppResource, 'GetGlobalInfo',
+		  'info-resource', 'text://info', 'text/plain', 'Shows the Info')
 
         .RegisterClass(TWeatherResource)
         .RegisterClass(TDelphiDayAppUI)
@@ -137,13 +150,44 @@ begin
         .RegisterClass(TSamplePrompts)
       .BackToMCP
 
-
-
       .Tools
+
+        .RegisterTool(TRegisterToolTest, 'RandomNumber', 'random', 'Generates random numbers within a specified range', 'icon=money.png')
+          .WithParam('AMax', 'range', 'Range parameter for Random')
+          .EndTool
+
         .RegisterClass(TTestTool)
         .RegisterClass(TDelphiDayTool)
         .RegisterClass(TShoppingCartTool)  // Session-based shopping cart
+
       .BackToMCP
+  ;
+end;
+
+class procedure TServerConfigurator.UnregisterFeatures(AServer: TJRPCServer);
+begin
+  AServer.Plugin.Configure<IMCPConfig>
+
+  .Tools
+    .UnregisterClass(TRegisterToolTest)
+    .UnregisterClass(TTestTool)
+    .UnregisterClass(TDelphiDayTool)
+    .UnregisterClass(TShoppingCartTool)
+  .BackToMCP
+
+  .Resources
+
+    .UnregisterClass(TCppResource)
+    .UnregisterClass(TWeatherResource)
+    .UnregisterClass(TDelphiDayAppUI)
+    .UnregisterFile('index.md')
+    .UnregisterFile('documentation\mcp\mcpconnect.pdf')
+  .BackToMCP
+
+  .Prompts
+    .ClearAll
+  .BackToMCP
+
   ;
 end;
 

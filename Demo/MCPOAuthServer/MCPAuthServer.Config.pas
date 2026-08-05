@@ -83,7 +83,7 @@ begin
       .Security
         .SetCORS(True)
         .SetAllowedMethods(['GET','POST', 'OPTIONS'])
-        .SetAllowedOrigins(['http://localhost', 'http://127.0.0.1'])
+        //.SetAllowedOrigins(['http://localhost', 'http://127.0.0.1'])
       .BackToMCP
 
       .Tools

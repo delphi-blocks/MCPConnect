@@ -163,6 +163,7 @@
         <DCCReference Include="..\MCPServer.Config.pas"/>
         <DCCReference Include="..\MCPServer.Notifications.pas"/>
         <DCCReference Include="..\MCPServer.Prompts.pas"/>
+        <DCCReference Include="..\MCPServer.Tools.Test.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

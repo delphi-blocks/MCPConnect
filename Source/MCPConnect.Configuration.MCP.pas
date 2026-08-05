@@ -22,7 +22,9 @@ uses
   System.Rtti,
   System.JSON,
 
+  Neon.Core.Tags,
   Neon.Core.Nullables,
+  Neon.Core.Persistence,
 
   MCPConnect.JRPC.Classes,
   MCPConnect.JRPC.Core,
@@ -35,6 +37,36 @@ uses
   MCPConnect.Content.Writers,
   MCPConnect.Configuration.Core;
 
+resourcestring
+  SToolNotFoundFmt = 'Tool [%s] not found';
+  SToolParamNotFoundFmt = 'Param [%s] for Tool [%s] not found';
+  SMethodInClassNotFoundFmt = 'Method [%s] in class [%s] not found';
+  SToolMustBeFunction = 'Tool must be a function';
+  SOutputSchemaMustBeObjectFmt = 'outputSchema can only be a JSON object. [%s]';
+  SNonConfiguredParamsNotPermitted = 'Non-configured params are not permitted';
+  SParamHasNoConfigurationFmt = 'The [%s] parameter has no configuration';
+  SNonAnnotatedParamsNotPermitted = 'Non-annotated params are not permitted';
+  SConfigResourceNotFoundFmt = 'Resource [%s] not found';
+  SStandardMethodNoParamsFmt = 'Standard method for resource [%s] cannot have parameters';
+  SAppsUIUriScheme = 'Apps UI uri must use the "ui://" scheme';
+  SResourceUriNoTemplateParams = 'Resource uri cannot have template parameters';
+  SMethodNotFoundInClassFmt = 'Method [%s] not found in class [%s]';
+  SResourceMethodNoParams = 'Resource''s method cannot have parameters';
+  STemplateUriMustHaveParams = 'Template uri must have parameters: {}';
+  STemplateMethodParamsMismatchFmt = 'Parameters for template method [%s] must match uri parameters';
+  STemplateMethodParamsNeedAttribute = 'Template method parameters must have the [MCPParam] attribute';
+  SParamTypeNotSupported = 'Parameter type is not supported';
+  SAppMethodNoParams = 'App''s method cannot have parameters';
+  SMimeTypeNotFoundFmt = 'No MIME type found for [%s] extension, please specify a MIME type';
+  SNoFilenameForResourceFmt = 'No filename specified for static resource [%s]';
+  SFileNotFoundForResourceFmt = 'File [%s] not found for resource [%s]';
+  SPromptNotFoundFmt = 'Prompt [%s] not found';
+  SNonConfiguredTemplateParamsNotPermitted = 'Non-configured template params are not permitted';
+  STemplateParamNameNotInUriFmt = 'Param name [%s] does not match any placeholder in the template uri';
+  SPromptParamNotFoundFmt = 'Param [%s] for Prompt [%s] not found';
+  SNonConfiguredPromptParamsNotPermitted = 'Non-configured prompt params are not permitted';
+  STemplateNotFoundFmt = 'Template [%s] not found';
+
 type
   /// <summary>
   ///   Represents a tools/resources/prompts class registration with its namespace.
@@ -45,7 +77,6 @@ type
   end;
 
   TMCPBaseConfig = class;
-  TMCPListConfig = class;
   TMCPToolsConfig = class;
   TMCPPromptsConfig = class;
   TMCPResourcesConfig = class;
@@ -137,7 +168,6 @@ type
     ///   Resources configuration
     /// </summary>
     function Resources: TMCPResourcesConfig;
-
   end;
 
   /// <summary>
@@ -150,7 +180,7 @@ type
     constructor Create(AConfig: IMCPConfig);
     function SetIcon(const ASrc: string; var AIcon: TMCPIcon): Boolean;
 
-    function BackToMCP: IMCPConfig;
+    function BackToMCP: IMCPConfig; virtual;
   end;
 
   TMCPCapability = (Tools, Resources, Prompts, Tasks, Logging, Completions);
@@ -348,53 +378,76 @@ type
     CORS: Boolean;
     AllowedMethods: TArray<string>;
     AllowedOrigins: TArray<string>;
+
+    /// <summary>
+    ///   Whether session/auth cookies are sent with the "Secure" attribute (HTTPS only).
+    ///   Default: True. Set to False only for plain-HTTP local/dev deployments,
+    ///   where browsers would otherwise silently drop the cookie.
+    /// </summary>
+    CookieSecure: Boolean;
   public
     constructor Create(AConfig: IMCPConfig);
 
     function SetCORS(AEnable: Boolean): TMCPSecurityConfig;
     function SetAllowedMethods(const AMethods: TArray<string>): TMCPSecurityConfig;
     function SetAllowedOrigins(const AOrigins: TArray<string>): TMCPSecurityConfig;
+    function SetCookieSecure(AEnable: Boolean): TMCPSecurityConfig;
   end;
 
-  /// <summary>
-  ///   Configuration for managing lists of registered classes (prompts, etc.).
-  /// </summary>
-  TMCPListConfig = class(TMCPBaseConfig)
+  TMCPToolConfig = class(TMCPTool)
+  private
+    Parent: TMCPToolsConfig;
   public
-    Registry: TObjectDictionary<string, TClass>;
-
-    constructor Create(AConfig: IMCPConfig);
+    constructor Create(AParent: TMCPToolsConfig);
     destructor Destroy; override;
 
-    function RegisterClass(AClass: TClass): TMCPListConfig; overload;
-    function GetClasses: TArray<TMCPClassInfo>;
-
-    /// <summary>
-    ///   Creates an instance of a class by namespace.
-    ///   Used internally by the framework to instantiate tools.
-    /// </summary>
-    /// <param name="ANamespace">Namespace of the tool class to instantiate</param>
-    /// <returns>New instance of the tool class</returns>
-    /// <exception cref="EJRPCException">Raised if namespace not found</exception>
-    function CreateInstance(const ANamespace: string): TObject;
+    function WithParam(const AParamName, AName, ADescription: string; const ATags: string = ''): TMCPToolConfig;
+    function EndTool: TMCPToolsConfig;
   end;
-
 
   /// <summary>
   ///   Configuration for MCP tools registration and discovery.
   /// </summary>
   TMCPToolsConfig = class(TMCPBaseConfig)
   private
+    Configs: TObjectList<TMCPToolConfig>;
     procedure WriteInputSchema(ATool: TMCPTool);
-    procedure WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
-    procedure WriteTool(ATool: TMCPTool; AToolAttr: MCPToolAttribute; AAppAttr: MCPAppAttribute);
+    procedure WriteOutputSchema(ATool: TMCPTool);
+    procedure WriteParams(AConfig: TMCPTool; AProps: TJSONObject; ARequired: TJSONArray); overload;
+
+    procedure WriteTool(ATool: TMCPTool);
+
+    procedure EndTool(AConfig: TMCPToolConfig);
   public
     Registry: TMCPToolRegistry;
+    NeonConfig: INeonConfiguration;
   public
     constructor Create(AConfig: IMCPConfig);
     destructor Destroy; override;
 
     function RegisterClass(AClass: TClass): TMCPToolsConfig;
+    function RegisterTool(AClass: TClass; const AMethodName, AName, ADescription: string; const ATags: string = ''): TMCPToolConfig;
+
+    /// <summary>
+    ///   Unregisters a single tool by its MCP-facing name. Raises EMCPException if no
+    ///   tool is registered under that name.
+    /// </summary>
+    function UnregisterTool(const AName: string): TMCPToolsConfig;
+
+    /// <summary>
+    ///   Unregisters every tool backed by AClass, regardless of whether they were
+    ///   registered via [McpTool] (RegisterClass) or programmatically (RegisterTool).
+    ///   A no-op if no tool is registered against AClass.
+    /// </summary>
+    function UnregisterClass(AClass: TClass): TMCPToolsConfig;
+
+    /// <summary>
+    ///   Unregisters every tool, clearing the registry entirely. A no-op if
+    ///   nothing is registered.
+    /// </summary>
+    function ClearAll: TMCPToolsConfig;
+
+    function SetSchemaNeonConfig(ANeonConfig: INeonConfiguration): TMCPToolsConfig;
 
     /// <summary>
     ///   Creates an instance of a class by namespace.
@@ -409,11 +462,28 @@ type
     function ListEnabled: TListToolsResult;
 
     procedure FilterList(AList: TListToolsResult; AFilter: TMCPToolFilterFunc);
+    
+    function BackToMCP: IMCPConfig; override;
+  end;
+
+  /// <summary>
+  ///   A single argument mapping for a manually-registered prompt (registered without
+  ///   [McpPrompt]/[McpArgument] attributes): maps a Delphi RTTI parameter to its
+  ///   MCP-facing argument name, description, and required flag.
+  /// </summary>
+  TMCPPromptArgConfig = record
+    ParamName: string;
+    Name: string;
+    Description: string;
+    Required: Boolean;
+
+    class function New(const AParamName, AName: string; const ADescription: string = '';
+      ARequired: Boolean = False): TMCPPromptArgConfig; static;
   end;
 
   TMCPPromptsConfig = class(TMCPBaseConfig)
   private
-    procedure WritePrompt(APrompt: TMCPPrompt; APromptAttr: MCPPromptAttribute);
+    procedure WritePrompt(APrompt: TMCPPrompt);
   public
     Registry: TMCPPromptRegistry;
   public
@@ -421,6 +491,34 @@ type
     destructor Destroy; override;
 
     function RegisterClass(AClass: TClass): TMCPPromptsConfig;
+
+    /// <summary>
+    ///   Registers a single prompt-serving method directly, without needing [McpPrompt]/
+    ///   [McpArgument] attributes. AArguments maps each RTTI parameter (by Delphi name) to
+    ///   its MCP-facing argument name/description/required flag.
+    /// </summary>
+    function RegisterPrompt(AClass: TClass; const AMethodName, AName: string;
+      const AArguments: TArray<TMCPPromptArgConfig>; const ATitle: string = '';
+      const ADescription: string = ''; const ATags: string = ''): TMCPPromptsConfig;
+
+    /// <summary>
+    ///   Unregisters a single prompt by its MCP-facing name. Raises EMCPException if no
+    ///   prompt is registered under that name.
+    /// </summary>
+    function UnregisterPrompt(const AName: string): TMCPPromptsConfig;
+
+    /// <summary>
+    ///   Unregisters every prompt backed by AClass, regardless of whether they were
+    ///   registered via [McpPrompt] (RegisterClass) or programmatically (RegisterPrompt).
+    ///   A no-op if no prompt is registered against AClass.
+    /// </summary>
+    function UnregisterClass(AClass: TClass): TMCPPromptsConfig;
+
+    /// <summary>
+    ///   Unregisters every prompt, clearing the registry entirely. A no-op if
+    ///   nothing is registered.
+    /// </summary>
+    function ClearAll: TMCPPromptsConfig;
 
     /// <summary>
     ///   Creates an instance of a class by namespace.
@@ -460,6 +558,7 @@ type
     function ParamIsType(AParam: TRttiParameter; ATypes: TypeKindSet): Boolean;
     function ValidUriResource(const AUri: string): Boolean;
     function GetUriParams(const AUri: string): TArray<string>;
+    function FileNameToUri(const AFileName: string): string;
 
     procedure RegisterUIMethod(AClass: TClass; AMethod: TRttiMethod; AAttr: MCPAppUIAttribute);
     procedure RegisterResMethod(AClass: TClass; AMethod: TRttiMethod; AAttr: MCPResourceAttribute);
@@ -474,9 +573,62 @@ type
 
     function RegisterClass(AClass: TClass): TMCPResourcesConfig;
     function RegisterFile(const AFileName, ADescription: string; const AMime: string = ''): TMCPResourcesConfig;
-    function RegisterResource(AClass: TClass; const AMethod, AUri: string; AConfig: TMCPResourceConfigurator): TMCPResourcesConfig;
-    function RegisterTemplate(AClass: TClass; const AMethod, AUriTemplate: string; AConfig: TMCPTemplateConfigurator): TMCPResourcesConfig;
-    function RegisterUI(AClass: TClass; const AMethod, AUri: string; AConfig: TMCPUIResourceConfigurator): TMCPResourcesConfig;
+
+    /// <summary>
+    ///   Registers a single resource-serving method directly, without needing an [McpResource] attribute.
+    /// </summary>
+    function RegisterResource(AClass: TClass; const AMethodName, AName, AUri: string;
+      const AMime: string = ''; const ADescription: string = ''; const ATags: string = ''): TMCPResourcesConfig;
+
+    /// <summary>
+    ///   Registers a single resource-template method directly, without needing [McpTemplate]/[McpParam]
+    ///   attributes. AParamNames maps the method's RTTI parameters, in declaration order, to the
+    ///   uri template's {placeholder} names.
+    /// </summary>
+    function RegisterTemplate(AClass: TClass; const AMethodName, AName, AUriTemplate: string;
+      const AParamNames: TArray<string>; const AMime: string = ''; const ADescription: string = '';
+      const ATags: string = ''): TMCPResourcesConfig;
+
+    /// <summary>
+    ///   Registers a single MCP App UI method directly, without needing an [McpAppUI] attribute.
+    ///   AUIConfig is an optional callback for CSP/permissions/domain configuration.
+    /// </summary>
+    function RegisterUI(AClass: TClass; const AMethodName, AName, AUri: string;
+      const ADescription: string = ''; const ATags: string = '';
+      AUIConfig: TMCPUIResourceConfigurator = nil): TMCPResourcesConfig;
+
+    /// <summary>
+    ///   Unregisters a single resource or App UI resource by its uri. Raises EMCPException
+    ///   if no resource is registered under that uri.
+    /// </summary>
+    function UnregisterResource(const AUri: string): TMCPResourcesConfig;
+
+    /// <summary>
+    ///   Unregisters a single static file resource registered via RegisterFile, by the
+    ///   same AFileName that was passed to RegisterFile (the uri is derived from it
+    ///   internally). Raises EMCPException if no resource is registered for that file.
+    /// </summary>
+    function UnregisterFile(const AFileName: string): TMCPResourcesConfig;
+
+    /// <summary>
+    ///   Unregisters a single resource template by its uri template. Raises EMCPException
+    ///   if no template is registered under that uri template.
+    /// </summary>
+    function UnregisterTemplate(const AUriTemplate: string): TMCPResourcesConfig;
+
+    /// <summary>
+    ///   Unregisters every resource, App UI resource, and resource template backed by
+    ///   AClass, regardless of whether they were registered via attributes (RegisterClass)
+    ///   or programmatically (RegisterResource/RegisterTemplate/RegisterUI). A no-op if
+    ///   nothing is registered against AClass.
+    /// </summary>
+    function UnregisterClass(AClass: TClass): TMCPResourcesConfig;
+
+    /// <summary>
+    ///   Unregisters every resource, App UI resource, and resource template,
+    ///   clearing both registries entirely. A no-op if nothing is registered.
+    /// </summary>
+    function ClearAll: TMCPResourcesConfig;
 
     function GetResource(const AUri: string): TMCPResource;
     function GetTemplate(const AUri: string): TMCPResourceTemplate;
@@ -593,55 +745,29 @@ begin
   Result := FServer;
 end;
 
-{ TMCPListConfig }
-
-constructor TMCPListConfig.Create(AConfig: IMCPConfig);
+function TMCPToolsConfig.BackToMCP: IMCPConfig;
 begin
-  inherited;
-  Registry := TObjectDictionary<string, TClass>.Create;
-end;
-
-destructor TMCPListConfig.Destroy;
-begin
-  Registry.Free;
-  inherited;
-end;
-
-function TMCPListConfig.GetClasses: TArray<TMCPClassInfo>;
-var
-  LPair: TPair<string, TClass>;
-  LIndex: Integer;
-begin
-  SetLength(Result, Registry.Count);
-  LIndex := 0;
-  for LPair in Registry do
-  begin
-    Result[LIndex].Scope := LPair.Key;
-    Result[LIndex].MCPClass := LPair.Value;
-    Inc(LIndex);
-  end;
-end;
-
-function TMCPListConfig.RegisterClass(AClass: TClass): TMCPListConfig;
-begin
-  Registry.AddOrSetValue(AClass.ClassName, AClass);
-  Result := Self;
-end;
-
-function TMCPListConfig.CreateInstance(const ANamespace: string): TObject;
-var
-  LClass: TClass;
-begin
-  if not Registry.TryGetValue('', LClass) then
-    raise EJRPCException.CreateFmt('Tool class not found for namespace "%s"', [ANamespace]);
-
-  Result := TRttiUtils.CreateInstance(LClass);
+  for var cfg in Configs do
+    cfg.Free;
+  Configs.Clear;
+  Result := inherited;
 end;
 
 constructor TMCPToolsConfig.Create(AConfig: IMCPConfig);
 begin
   inherited;
   Registry := TMCPToolRegistry.Create([doOwnsValues]);
+  Configs := TObjectList<TMCPToolConfig>.Create(False);
+  NeonConfig := TNeonConfiguration.Camel;
+end;
+
+destructor TMCPToolsConfig.Destroy;
+begin
+  Registry.Free;
+  for var cfg in Configs do
+    cfg.Free;
+  Configs.Free;
+  inherited;
 end;
 
 function TMCPToolsConfig.CreateInstance(const ATool: string): TObject;
@@ -649,16 +775,21 @@ var
   LTool: TMCPTool;
 begin
   if not Registry.TryGetValue(ATool, LTool) then
-    raise EMCPException.CreateFmt('Tool [%s] not found', [ATool]);
+    raise EMCPException.CreateFmt(SToolNotFoundFmt, [ATool]);
 
-  Result := TRttiUtils.CreateInstance(LTool.Classe);
+  Result := TRttiUtils.CreateInstance(LTool.ToolClass);
 end;
 
-destructor TMCPToolsConfig.Destroy;
+procedure TMCPToolsConfig.EndTool(AConfig: TMCPToolConfig);
 begin
-  Registry.Free;
+  WriteTool(AConfig);
+  WriteInputSchema(AConfig);
 
-  inherited;
+  if AConfig.Tags.Exists('structured') then
+    WriteOutputSchema(AConfig);
+
+  Registry.Add(AConfig.Name, AConfig);
+  Configs.Remove(AConfig);
 end;
 
 function TMCPToolsConfig.ListEnabled: TListToolsResult;
@@ -691,16 +822,42 @@ begin
     if not Assigned(LToolAttr) then
       Continue;
 
-    LAppAttr := TRttiUtils.FindAttribute<MCPAppAttribute>(LMethod);
-
     LTool := TMCPTool.Create;
     try
       LTool.Name := LScope + LToolAttr.Name;
       LTool.Description := LToolAttr.Description;
-      LTool.Classe := AClass;
+      LTool.ToolClass := AClass;
       LTool.Method := LMethod;
 
-      WriteTool(LTool, LToolAttr, LAppAttr);
+      LAppAttr := TRttiUtils.FindAttribute<MCPAppAttribute>(LMethod);
+      if Assigned(LAppAttr) then
+        LToolAttr.Tags.TagMap.AddOrSetValue('app', LAppAttr.UI);
+
+      for var tag in LToolAttr.Tags.TagMap do
+        LTool.Tags.TagMap.Add(tag.Key, tag.Value);
+
+      // Fill the tool's parameters
+      for var par in LMethod.GetParameters do
+      begin
+        var attr := par.GetAttribute<MCPParamAttribute>;
+          if not Assigned(attr) then
+            raise EJRPCException.Create(SNonAnnotatedParamsNotPermitted);
+
+        var toolPar := TMCPToolParam.Create;
+        LTool.MethodParams.Add(toolPar);
+        toolPar.Param := par;
+        toolPar.ParamName := par.Name;
+        toolPar.Name := attr.Name;
+        toolPar.Description := attr.Description;
+        for var tag in attr.Tags.TagMap do
+          toolPar.Tags.TagMap.Add(tag.Key, tag.Value);
+      end;
+
+      WriteTool(LTool);
+      WriteInputSchema(LTool);
+
+      if LTool.Tags.Exists('structured') then
+        WriteOutputSchema(LTool);
 
       Registry.Add(LTool.Name, LTool);
     except
@@ -708,6 +865,61 @@ begin
       raise;
     end;
   end;
+  Result := Self;
+end;
+
+function TMCPToolsConfig.RegisterTool(AClass: TClass;
+  const AMethodName, AName, ADescription, ATags: string): TMCPToolConfig;
+var
+  LClassType: TRttiType;
+  LMethod: TRttiMethod;
+begin
+  LClassType := TRttiUtils.Context.GetType(AClass);
+  LMethod := LClassType.GetMethod(AMethodName);
+  if not Assigned(LMethod) then
+    raise EMCPException.CreateFmt(SMethodInClassNotFoundFmt, [AMethodName, AClass.ClassName]);
+
+  Result := TMCPToolConfig.Create(Self);
+  // Add the tool in the Configs list: to be moved on the EndTool call or collected at the end
+  Configs.Add(Result);
+
+  Result.ToolClass := AClass;
+  Result.MethodName := AMethodName;
+  Result.Method := LMethod;
+
+  Result.Name := AName;
+  Result.Description := ADescription;
+  Result.Tags.TagMap.Clear;
+  Result.Tags.Parse(ATags);
+end;
+
+function TMCPToolsConfig.UnregisterTool(const AName: string): TMCPToolsConfig;
+begin
+  if not Registry.ContainsKey(AName) then
+    raise EMCPException.CreateFmt(SToolNotFoundFmt, [AName]);
+
+  Registry.Remove(AName);
+  Result := Self;
+end;
+
+function TMCPToolsConfig.UnregisterClass(AClass: TClass): TMCPToolsConfig;
+var
+  LNames: TArray<string>;
+begin
+  LNames := [];
+  for var pair in Registry do
+    if pair.Value.ToolClass = AClass then
+      LNames := LNames + [pair.Key];
+
+  for var name in LNames do
+    Registry.Remove(name);
+
+  Result := Self;
+end;
+
+function TMCPToolsConfig.ClearAll: TMCPToolsConfig;
+begin
+  Registry.Clear;
   Result := Self;
 end;
 
@@ -725,31 +937,33 @@ begin
       AList.Tools.Add(pair.Value);
 end;
 
-procedure TMCPToolsConfig.WriteTool(ATool: TMCPTool; AToolAttr: MCPToolAttribute; AAppAttr: MCPAppAttribute);
+function TMCPToolsConfig.SetSchemaNeonConfig(ANeonConfig: INeonConfiguration): TMCPToolsConfig;
+begin
+  NeonConfig := ANeonConfig;
+  Result := Self;
+end;
+
+procedure TMCPToolsConfig.WriteTool(ATool: TMCPTool);
 var
   LIcon: TMCPIcon;
 begin
-  if SetIcon(AToolAttr.Tags.GetValueAs<string>('icon'), LIcon) then
+  if SetIcon(ATool.Tags.GetValueAs<string>('icon'), LIcon) then
     ATool.Icons := ATool.Icons + [LIcon];
 
-  ATool.Category := AToolAttr.Tags.GetValueAs<string>('category');
-  ATool.Disabled := AToolAttr.Tags.GetBoolValue('disabled');
+  ATool.Category := ATool.Tags.GetValueAs<string>('category');
+  ATool.Disabled := ATool.Tags.GetBoolValue('disabled');
 
-  if Assigned(AAppAttr) then
-    ATool.UI.ResourceUri := AAppAttr.UI
-  else if AToolAttr.Tags.Exists('app') then
-    ATool.UI.ResourceUri := AToolAttr.Tags.GetValueAs<string>('app');
+  if ATool.Tags.Exists('app') then
+    ATool.UI.ResourceUri := ATool.Tags.GetValueAs<string>('app');
 
-  if AToolAttr.Tags.Exists('readonly') then
-    ATool.Annotations.ReadOnlyHint := AToolAttr.Tags.GetBoolValue('readonly');
-  if AToolAttr.Tags.Exists('destructive') then
-    ATool.Annotations.DestructiveHint := AToolAttr.Tags.GetBoolValue('destructive');
-  if AToolAttr.Tags.Exists('idempotent') then
-    ATool.Annotations.IdempotentHint := AToolAttr.Tags.GetBoolValue('idempotent');
-  if AToolAttr.Tags.Exists('openworld') then
-    ATool.Annotations.OpenWorldHint := AToolAttr.Tags.GetBoolValue('openworld');
-
-  WriteInputSchema(ATool);
+  if ATool.Tags.Exists('readonly') then
+    ATool.Annotations.ReadOnlyHint := ATool.Tags.GetBoolValue('readonly');
+  if ATool.Tags.Exists('destructive') then
+    ATool.Annotations.DestructiveHint := ATool.Tags.GetBoolValue('destructive');
+  if ATool.Tags.Exists('idempotent') then
+    ATool.Annotations.IdempotentHint := ATool.Tags.GetBoolValue('idempotent');
+  if ATool.Tags.Exists('openworld') then
+    ATool.Annotations.OpenWorldHint := ATool.Tags.GetBoolValue('openworld');
 end;
 
 procedure TMCPToolsConfig.WriteInputSchema(ATool: TMCPTool);
@@ -760,7 +974,7 @@ begin
   LProps := TJSONObject.Create;
   LRequired := TJSONArray.Create;
   try
-    WriteParams(ATool.Method, LProps, LRequired);
+    WriteParams(ATool, LProps, LRequired);
   except
     LProps.Free;
     LRequired.Free;
@@ -781,24 +995,52 @@ begin
   ATool.ExchangeInputSchema(LInputSchema);
 end;
 
-procedure TMCPToolsConfig.WriteParams(AMethod: TRttiMethod; AProps: TJSONObject; ARequired: TJSONArray);
+procedure TMCPToolsConfig.WriteOutputSchema(ATool: TMCPTool);
+var
+  LSchemaType: TJSONPair;
+  LJSONObj: TJSONObject;
+  LType: TRttiType;
+begin
+  LType := ATool.Method.ReturnType;
+  if not Assigned(LType) then
+    raise EMCPException.Create(SToolMustBeFunction);
+
+  LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LType, NeonConfig);
+
+  // outputSchema and structuredContent are (for now) limited to a JSON Object
+  // See: https://github.com/modelcontextprotocol/php-sdk/issues/357
+  LSchemaType := LJSONObj.Get('type');
+  if not (LSchemaType.JsonValue.Value = 'object') then
+  begin
+    LJSONObj.Free;
+    raise EMCPException.CreateFmt(SOutputSchemaMustBeObjectFmt, [ATool.Name]);
+  end;
+
+  ATool.ExchangeOutputSchema(LJSONObj);
+end;
+
+procedure TMCPToolsConfig.WriteParams(AConfig: TMCPTool;
+  AProps: TJSONObject; ARequired: TJSONArray);
 var
   LJSONObj: TJSONObject;
   LParam: TRttiParameter;
-  LAttr: MCPParamAttribute;
 begin
-  for LParam in AMethod.GetParameters do
+  if AConfig.MethodParams.Count <> Length(AConfig.Method.GetParameters) then
+    raise EJRPCException.Create(SNonConfiguredParamsNotPermitted);
+  
+  for LParam in AConfig.Method.GetParameters do
   begin
-    LAttr := LParam.GetAttribute<MCPParamAttribute>;
-      if not Assigned(LAttr) then
-        raise EJRPCException.Create('Non-annotated params are not permitted');
+    var par := AConfig.FindMCPParam(LParam.Name);
+    if not Assigned(par) then
+      raise EJRPCException.CreateFmt(SParamHasNoConfigurationFmt, [LParam.Name]);
+      
+    LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LParam.ParamType, NeonConfig);
 
-    LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LParam.ParamType, MCPNeonConfig);
-
-    LJSONObj.AddPair('description', TJSONString.Create(LAttr.Description));
-    AProps.AddPair(LAttr.Name, LJSONObj);
-    ARequired.Add(LAttr.Name);
+    LJSONObj.AddPair('description', TJSONString.Create(par.Description));
+    AProps.AddPair(par.Name, LJSONObj);
+    ARequired.Add(par.Name);
   end;
+
 end;
 
 constructor TMCPServerConfig.Create(AConfig: IMCPConfig);
@@ -806,7 +1048,7 @@ begin
   inherited;
   WriterRegistry := TMCPWriterRegistry.Create;
 
-  IconFolder := ExtractFilePath(ParamStr(0));
+  IconFolder := '';
   ScopeSeparator := '_';  // Default separator (MCP requires ^[a-zA-Z0-9_-]{1,64}$)
   Capabilities := nil;
 end;
@@ -895,6 +1137,9 @@ begin
     Exit(True);
   end;
 
+  if FConfig.Server.IconFolder.IsEmpty then
+    Exit(False);
+
   AIcon.FromFile(TPath.Combine(FConfig.Server.IconFolder, ASrc));
   Exit(True);
 end;
@@ -950,14 +1195,20 @@ begin
   inherited;
 end;
 
+function TMCPResourcesConfig.FileNameToUri(const AFileName: string): string;
+begin
+  { TODO -opaolo -c : Customize the URI (URI Schemes?) 16/02/2026 13:01:25 }
+  Result := 'res://' + StringReplace(AFileName, '\', '/', [rfReplaceAll]);
+end;
+
 function TMCPResourcesConfig.CreateInstance(const AUri: string): TObject;
 var
   LResource: TMCPResource;
 begin
   if not Registry.TryGetValue(AUri, LResource) then
-    raise EMCPException.CreateFmt('Resource [%s] not found', [AUri]);
+    raise EMCPException.CreateFmt(SConfigResourceNotFoundFmt, [AUri]);
 
-  Result := TRttiUtils.CreateInstance(LResource.Classe);
+  Result := TRttiUtils.CreateInstance(LResource.ResourceClass);
 end;
 
 function TMCPResourcesConfig.GetResource(const AUri: string): TMCPResource;
@@ -999,13 +1250,13 @@ var
   LRes: TMCPResource;
 begin
   if Length(AMethod.GetParameters) > 0 then
-    raise EMCPException.CreateFmt('Standard method for resource [%s] cannot have parameters', [AAttr.Name]);
+    raise EMCPException.CreateFmt(SStandardMethodNoParamsFmt, [AAttr.Name]);
 
   if not AAttr.Uri.StartsWith('ui://') then
-    raise EMCPException.Create('Apps UI uri must use the "ui://" scheme');
+    raise EMCPException.Create(SAppsUIUriScheme);
 
   if not ValidUriResource(AAttr.Uri) then
-    raise EMCPException.Create('Resource uri cannot have template parameters');
+    raise EMCPException.Create(SResourceUriNoTemplateParams);
 
   LRes := TMCPResource.Create;
   try
@@ -1013,7 +1264,7 @@ begin
     LRes.Uri := AAttr.Uri;
     LRes.MimeType := 'text/html;profile=mcp-app';
     LRes.Description := AAttr.Description;
-    LRes.Classe := AClass;
+    LRes.ResourceClass := AClass;
     LRes.Method := AMethod;
 
     Registry.Add(LRes.Uri, LRes);
@@ -1028,10 +1279,10 @@ var
   LRes: TMCPResource;
 begin
   if Length(AMethod.GetParameters) > 0 then
-    raise EMCPException.CreateFmt('Standard method for resource [%s] cannot have parameters', [AAttr.Name]);
+    raise EMCPException.CreateFmt(SStandardMethodNoParamsFmt, [AAttr.Name]);
 
   if not ValidUriResource(AAttr.Uri) then
-    raise EMCPException.Create('Resource uri cannot have template parameters');
+    raise EMCPException.Create(SResourceUriNoTemplateParams);
 
   LRes := TMCPResource.Create;
   try
@@ -1039,7 +1290,7 @@ begin
     LRes.Uri := AAttr.Uri;
     LRes.MimeType := AAttr.MimeType;
     LRes.Description := AAttr.Description;
-    LRes.Classe := AClass;
+    LRes.ResourceClass := AClass;
     LRes.Method := AMethod;
     Registry.Add(LRes.Uri, LRes);
   except
@@ -1086,26 +1337,37 @@ begin
   end;
 end;
 
-function TMCPResourcesConfig.RegisterResource(AClass: TClass; const AMethod, AUri: string;
-  AConfig: TMCPResourceConfigurator): TMCPResourcesConfig;
+function TMCPResourcesConfig.RegisterResource(AClass: TClass; const AMethodName, AName, AUri: string;
+  const AMime: string; const ADescription: string; const ATags: string): TMCPResourcesConfig;
 var
   LClassType: TRttiType;
-  LRes: TMCPResource;
   LMethod: TRttiMethod;
+  LRes: TMCPResource;
 begin
   LClassType := TRttiUtils.Context.GetType(AClass);
-  LMethod := LClassType.GetMethod(AMethod);
+  LMethod := LClassType.GetMethod(AMethodName);
   if not Assigned(LMethod) then
-    raise EMCPException.CreateFmt('Method [%s] not found in class [%s]', [AMethod, AClass.ClassName]);
+    raise EMCPException.CreateFmt(SMethodNotFoundInClassFmt, [AMethodName, AClass.ClassName]);
 
   if Length(LMethod.GetParameters) > 0 then
-    raise EMCPException.Create('Resource''s method cannot have parameters');
+    raise EMCPException.Create(SResourceMethodNoParams);
+
+  if not ValidUriResource(AUri) then
+    raise EMCPException.Create(SResourceUriNoTemplateParams);
 
   LRes := TMCPResource.Create;
   try
-    Registry.Add(AUri, LRes);
+    LRes.ResourceClass := AClass;
+    LRes.Method := LMethod;
+    LRes.Name := AName;
+    LRes.Uri := AUri;
+    LRes.MimeType := AMime;
+    LRes.Description := ADescription;
+    LRes.Tags.Parse(ATags);
+    LRes.Category := LRes.Tags.GetValueAs<string>('category');
+    LRes.Disabled := LRes.Tags.GetBoolValue('disabled');
 
-    AConfig(LRes);
+    Registry.Add(AUri, LRes);
   except
     LRes.Free;
     raise;
@@ -1120,28 +1382,74 @@ begin
   Result := Self;
 end;
 
-function TMCPResourcesConfig.RegisterTemplate(AClass: TClass; const AMethod, AUriTemplate: string;
-  AConfig: TMCPTemplateConfigurator): TMCPResourcesConfig;
+function TMCPResourcesConfig.RegisterTemplate(AClass: TClass; const AMethodName, AName, AUriTemplate: string;
+  const AParamNames: TArray<string>; const AMime: string; const ADescription: string;
+  const ATags: string): TMCPResourcesConfig;
 var
   LClassType: TRttiType;
-  LRes: TMCPResourceTemplate;
   LMethod: TRttiMethod;
+  LUriParams: TArray<string>;
+  LParams: TArray<TRttiParameter>;
+  LTpl: TMCPResourceTemplate;
+  I: Integer;
 begin
   LClassType := TRttiUtils.Context.GetType(AClass);
-  LMethod := LClassType.GetMethod(AMethod);
+  LMethod := LClassType.GetMethod(AMethodName);
   if not Assigned(LMethod) then
-    raise EMCPException.CreateFmt('Method [%s] not found in class [%s]', [AMethod, AClass.ClassName]);
+    raise EMCPException.CreateFmt(SMethodNotFoundInClassFmt, [AMethodName, AClass.ClassName]);
 
-  if Length(LMethod.GetParameters) > 0 then
-    raise EMCPException.Create('Resource''s method cannot have parameters');
+  LUriParams := GetUriParams(AUriTemplate);
+  if Length(LUriParams) = 0 then
+    raise EMCPException.Create(STemplateUriMustHaveParams);
 
-  LRes := TMCPResourceTemplate.Create;
+  LParams := LMethod.GetParameters;
+  if Length(LParams) <> Length(LUriParams) then
+    raise EMCPException.CreateFmt(STemplateMethodParamsMismatchFmt, [LMethod.Name]);
+
+  if Length(AParamNames) <> Length(LParams) then
+    raise EMCPException.Create(SNonConfiguredTemplateParamsNotPermitted);
+
+  for var par in LParams do
+    if not ParamIsType(par, [tkChar, tkWChar, tkString, tkLString, tkWString, tkUString]) then
+      raise EMCPException.Create(SParamTypeNotSupported);
+
+  for var uriName in AParamNames do
+  begin
+    var found := False;
+    for var uriParam in LUriParams do
+      if SameText(uriParam, uriName) then
+      begin
+        found := True;
+        Break;
+      end;
+    if not found then
+      raise EMCPException.CreateFmt(STemplateParamNameNotInUriFmt, [uriName]);
+  end;
+
+  LTpl := TMCPResourceTemplate.Create;
   try
-    TemplateRegistry.Add(AUriTemplate, LRes);
+    LTpl.ResourceClass := AClass;
+    LTpl.Method := LMethod;
+    LTpl.Name := AName;
+    LTpl.UriTemplate := AUriTemplate;
+    LTpl.MimeType := AMime;
+    LTpl.Description := ADescription;
+    LTpl.Tags.Parse(ATags);
+    LTpl.Category := LTpl.Tags.GetValueAs<string>('category');
+    LTpl.Disabled := LTpl.Tags.GetBoolValue('disabled');
 
-    AConfig(LRes);
+    for I := 0 to High(LParams) do
+    begin
+      var tplPar := TMCPResTemplateParam.Create;
+      LTpl.MethodParams.Add(tplPar);
+      tplPar.Param := LParams[I];
+      tplPar.ParamName := LParams[I].Name;
+      tplPar.Name := AParamNames[I];
+    end;
+
+    TemplateRegistry.Add(AUriTemplate, LTpl);
   except
-    LRes.Free;
+    LTpl.Free;
     raise;
   end;
 
@@ -1155,18 +1463,18 @@ begin
   var uriParams := GetUriParams(AAttr.UriTemplate);
 
   if Length(uriParams) = 0 then
-    raise EMCPException.Create('Template uri must have parameters: {}');
+    raise EMCPException.Create(STemplateUriMustHaveParams);
 
   if Length(AMethod.GetParameters) <> Length(uriParams) then
-    raise EMCPException.CreateFmt('Parameters for template method [%s] must match uri parameters', [AMethod.Name]);
+    raise EMCPException.CreateFmt(STemplateMethodParamsMismatchFmt, [AMethod.Name]);
 
   for var par in AMethod.GetParameters do
   begin
     if not par.HasAttribute<MCPParamAttribute> then
-      raise EMCPException.Create('Template method parameters must have the [MCPParam] attribute');
+      raise EMCPException.Create(STemplateMethodParamsNeedAttribute);
 
     if not ParamIsType(par, [tkChar, tkWChar, tkString, tkLString, tkWString, tkUString]) then
-      raise EMCPException.Create('Parameter type is not supported');
+      raise EMCPException.Create(SParamTypeNotSupported);
   end;
 
   LTpl := TMCPResourceTemplate.Create;
@@ -1175,8 +1483,21 @@ begin
     LTpl.UriTemplate := AAttr.UriTemplate;
     LTpl.MimeType := AAttr.MimeType;
     LTpl.Description := AAttr.Description;
-    LTpl.Classe := AClass;
+    LTpl.ResourceClass := AClass;
     LTpl.Method := AMethod;
+
+    for var par in AMethod.GetParameters do
+    begin
+      var attr := par.GetAttribute<MCPParamAttribute>;
+
+      var tplPar := TMCPResTemplateParam.Create;
+      LTpl.MethodParams.Add(tplPar);
+      tplPar.Param := par;
+      tplPar.ParamName := par.Name;
+      tplPar.Name := attr.Name;
+      tplPar.Description := attr.Description;
+    end;
+
     TemplateRegistry.Add(LTpl.UriTemplate, LTpl);
   except
     LTpl.Free;
@@ -1184,36 +1505,57 @@ begin
   end;
 end;
 
-function TMCPResourcesConfig.RegisterUI(AClass: TClass; const AMethod, AUri:
-    string; AConfig: TMCPUIResourceConfigurator): TMCPResourcesConfig;
+function TMCPResourcesConfig.RegisterUI(AClass: TClass; const AMethodName, AName, AUri: string;
+  const ADescription: string; const ATags: string; AUIConfig: TMCPUIResourceConfigurator): TMCPResourcesConfig;
 var
   LClassType: TRttiType;
   LMethod: TRttiMethod;
   LApp: TMCPResource;
-  LAppUI: TUIResourceUI;
+  LUI: TUIResourceUI;
   LJSON: TJSONObject;
 begin
   LClassType := TRttiUtils.Context.GetType(AClass);
-  LMethod := LClassType.GetMethod(AMethod);
+  LMethod := LClassType.GetMethod(AMethodName);
   if not Assigned(LMethod) then
-    raise EMCPException.CreateFmt('Method [%s] not found in class [%s]', [AMethod, AClass.ClassName]);
+    raise EMCPException.CreateFmt(SMethodNotFoundInClassFmt, [AMethodName, AClass.ClassName]);
 
   if Length(LMethod.GetParameters) > 0 then
-    raise EMCPException.Create('App''s method cannot have parameters');
+    raise EMCPException.Create(SAppMethodNoParams);
+
+  if not AUri.StartsWith('ui://') then
+    raise EMCPException.Create(SAppsUIUriScheme);
+
+  if not ValidUriResource(AUri) then
+    raise EMCPException.Create(SResourceUriNoTemplateParams);
 
   LApp := TMCPResource.Create;
   try
-    Registry.Add(AUri, LApp);
+    LApp.ResourceClass := AClass;
+    LApp.Method := LMethod;
+    LApp.Name := AName;
+    LApp.Uri := AUri;
+    LApp.MimeType := 'text/html;profile=mcp-app';
+    LApp.Description := ADescription;
+    LApp.Tags.Parse(ATags);
+    LApp.Category := LApp.Tags.GetValueAs<string>('category');
+    LApp.Disabled := LApp.Tags.GetBoolValue('disabled');
 
-    LAppUI := TUIResourceUI.Create;
-    try
-      AConfig(LApp, LAppUI);
-      LJSON := LAppUI.ToJSON;
-      if LJSON.Count > 0 then
-        LApp.Meta.AddPair('ui', LJSON);
-    finally
-      LAppUI.Free;
+    if Assigned(AUIConfig) then
+    begin
+      LUI := TUIResourceUI.Create;
+      try
+        AUIConfig(LApp, LUI);
+        LJSON := LUI.ToJSON;
+        if LJSON.Count > 0 then
+          LApp.Meta.AddPair('ui', LJSON)
+        else
+          LJSON.Free;
+      finally
+        LUI.Free;
+      end;
     end;
+
+    Registry.Add(AUri, LApp);
   except
     LApp.Free;
     raise;
@@ -1222,8 +1564,61 @@ begin
   Result := Self;
 end;
 
-function TMCPResourcesConfig.RegisterFile(const AFileName, ADescription:
-    string; const AMime: string = ''): TMCPResourcesConfig;
+function TMCPResourcesConfig.UnregisterResource(const AUri: string): TMCPResourcesConfig;
+begin
+  if not Registry.ContainsKey(AUri) then
+    raise EMCPException.CreateFmt(SConfigResourceNotFoundFmt, [AUri]);
+
+  Registry.Remove(AUri);
+  Result := Self;
+end;
+
+function TMCPResourcesConfig.UnregisterFile(const AFileName: string): TMCPResourcesConfig;
+begin
+  Result := UnregisterResource(FileNameToUri(AFileName));
+end;
+
+function TMCPResourcesConfig.UnregisterTemplate(const AUriTemplate: string): TMCPResourcesConfig;
+begin
+  if not TemplateRegistry.ContainsKey(AUriTemplate) then
+    raise EMCPException.CreateFmt(STemplateNotFoundFmt, [AUriTemplate]);
+
+  TemplateRegistry.Remove(AUriTemplate);
+  Result := Self;
+end;
+
+function TMCPResourcesConfig.UnregisterClass(AClass: TClass): TMCPResourcesConfig;
+var
+  LUris: TArray<string>;
+begin
+  LUris := [];
+  for var pair in Registry do
+    if pair.Value.ResourceClass = AClass then
+      LUris := LUris + [pair.Key];
+
+  for var uri in LUris do
+    Registry.Remove(uri);
+
+  LUris := [];
+  for var pair in TemplateRegistry do
+    if pair.Value.ResourceClass = AClass then
+      LUris := LUris + [pair.Key];
+
+  for var uri in LUris do
+    TemplateRegistry.Remove(uri);
+
+  Result := Self;
+end;
+
+function TMCPResourcesConfig.ClearAll: TMCPResourcesConfig;
+begin
+  Registry.Clear;
+  TemplateRegistry.Clear;
+  Result := Self;
+end;
+
+function TMCPResourcesConfig.RegisterFile(const AFileName, ADescription: string;
+  const AMime: string = ''): TMCPResourcesConfig;
 const
   RES_CLASS: TClass = TMCPStaticResource;
   RES_METHOD = 'GetResource';
@@ -1236,7 +1631,7 @@ begin
   LClassType := TRttiUtils.Context.GetType(RES_CLASS);
   LMethod := LClassType.GetMethod(RES_METHOD);
   if not Assigned(LMethod) then
-    raise EMCPException.CreateFmt('Method [%s] not found in class [%s]', [RES_METHOD, RES_CLASS.ClassName]);
+    raise EMCPException.CreateFmt(SMethodNotFoundInClassFmt, [RES_METHOD, RES_CLASS.ClassName]);
 
   LMime := AMime;
   LExt := ExtractFileExt(AFileName);
@@ -1244,7 +1639,7 @@ begin
   if LMime = '' then
     LMime := MimeTypes.MediaByExtension(LExt);
   if LMime = '' then
-    raise EMCPException.CreateFmt('No MIME type found for [%s] extension, please specify a MIME type', [LExt]);
+    raise EMCPException.CreateFmt(SMimeTypeNotFoundFmt, [LExt]);
 
   LRes := TMCPResource.Create;
   try
@@ -1252,10 +1647,10 @@ begin
     LRes.Name :=   ExtractFileName(AFileName);
 
     { TODO -opaolo -c : Customize the URI (URI Schemes?) 16/02/2026 13:01:25 }
-    LRes.Uri := 'res://' + StringReplace(LRes.FileName, '\', '/', [rfReplaceAll]);
+    LRes.Uri := FileNameToUri(AFileName);
     LRes.MimeType := LMime;
     LRes.Description := ADescription;
-    LRes.Classe := RES_CLASS;
+    LRes.ResourceClass := RES_CLASS;
     LRes.Method := LMethod;
 
     Registry.Add(LRes.Uri, LRes);
@@ -1288,12 +1683,12 @@ var
   LEncoding: TMimeEncoding;
 begin
   if AResource.FileName.IsEmpty then
-    raise EMCPException.CreateFmt('No filename specified for static resource [%s]', [AResource.Name]);
+    raise EMCPException.CreateFmt(SNoFilenameForResourceFmt, [AResource.Name]);
 
   LFileName := TPath.Combine(AConfig.Resources.BasePath, AResource.FileName);
 
   if not FileExists(LFileName) then
-    raise EMCPException.CreateFmt('File [%s] not found for resource [%s]', [LFileName, AResource.Name]);
+    raise EMCPException.CreateFmt(SFileNotFoundForResourceFmt, [LFileName, AResource.Name]);
 
   { TODO -opaolo -c : check the mime type and serve accordingly 16/02/2026 12:44:47 }
   LEncoding := AConfig.Resources.MimeTypes.EncodingByMedia(AResource.MimeType);
@@ -1318,9 +1713,9 @@ var
   LPrompt: TMCPPrompt;
 begin
   if not Registry.TryGetValue(APrompt, LPrompt) then
-    raise EMCPException.CreateFmt('Prompt [%s] not found', [APrompt]);
+    raise EMCPException.CreateFmt(SPromptNotFoundFmt, [APrompt]);
 
-  Result := TRttiUtils.CreateInstance(LPrompt.Classe);
+  Result := TRttiUtils.CreateInstance(LPrompt.PromptClass);
 end;
 
 destructor TMCPPromptsConfig.Destroy;
@@ -1362,22 +1757,31 @@ begin
       LPrompt.Name := LScope + LPromptAttr.Name;
       LPrompt.Title := LPromptAttr.Title;
       LPrompt.Description := LPromptAttr.Description;
-      LPrompt.Classe := AClass;
+      LPrompt.PromptClass := AClass;
       LPrompt.Method := LMethod;
 
-      WritePrompt(LPrompt, LPromptAttr);
+      for var tag in LPromptAttr.Tags.TagMap do
+        LPrompt.Tags.TagMap.Add(tag.Key, tag.Value);
+
+      WritePrompt(LPrompt);
 
       for var LParam in LMethod.GetParameters do
       begin
         var LAttr := LParam.GetAttribute<MCPArgumentAttribute>;
           if not Assigned(LAttr) then
-            raise EJRPCException.Create('Non-annotated params are not permitted');
+            raise EJRPCException.Create(SNonAnnotatedParamsNotPermitted);
 
         var LArg := TPromptArgument.New(LAttr.Name, LAttr.Description);
         if LAttr.Tags.Exists('required') then
           LArg.Required := LAttr.Tags.GetBoolValue('required');
 
         LPrompt.Arguments := LPrompt.Arguments + [LArg];
+
+        var LPromptPar := TMCPPromptParam.Create;
+        LPrompt.MethodParams.Add(LPromptPar);
+        LPromptPar.Param := LParam;
+        LPromptPar.ParamName := LParam.Name;
+        LPromptPar.Name := LAttr.Name;
       end;
 
       Registry.Add(LPrompt.Name, LPrompt);
@@ -1389,29 +1793,109 @@ begin
   Result := Self;
 end;
 
-procedure TMCPPromptsConfig.WritePrompt(APrompt: TMCPPrompt; APromptAttr: MCPPromptAttribute);
+function TMCPPromptsConfig.RegisterPrompt(AClass: TClass; const AMethodName, AName: string;
+  const AArguments: TArray<TMCPPromptArgConfig>; const ATitle: string; const ADescription: string;
+  const ATags: string): TMCPPromptsConfig;
+var
+  LClassType: TRttiType;
+  LMethod: TRttiMethod;
+  LPrompt: TMCPPrompt;
+begin
+  LClassType := TRttiUtils.Context.GetType(AClass);
+  LMethod := LClassType.GetMethod(AMethodName);
+  if not Assigned(LMethod) then
+    raise EMCPException.CreateFmt(SMethodNotFoundInClassFmt, [AMethodName, AClass.ClassName]);
+
+  if Length(AArguments) <> Length(LMethod.GetParameters) then
+    raise EMCPException.Create(SNonConfiguredPromptParamsNotPermitted);
+
+  LPrompt := TMCPPrompt.Create;
+  try
+    LPrompt.PromptClass := AClass;
+    LPrompt.Method := LMethod;
+    LPrompt.Name := AName;
+    LPrompt.Title := ATitle;
+    LPrompt.Description := ADescription;
+    LPrompt.Tags.Parse(ATags);
+
+    WritePrompt(LPrompt);
+
+    for var arg in AArguments do
+    begin
+      var par := LPrompt.FindRttiParam(arg.ParamName);
+      if not Assigned(par) then
+        raise EMCPException.CreateFmt(SPromptParamNotFoundFmt, [arg.ParamName, AName]);
+
+      var LPromptPar := TMCPPromptParam.Create;
+      LPrompt.MethodParams.Add(LPromptPar);
+      LPromptPar.Param := par;
+      LPromptPar.ParamName := arg.ParamName;
+      LPromptPar.Name := arg.Name;
+
+      var LArg := TPromptArgument.New(arg.Name, arg.Description);
+      LArg.Required := arg.Required;
+      LPrompt.Arguments := LPrompt.Arguments + [LArg];
+    end;
+
+    Registry.Add(LPrompt.Name, LPrompt);
+  except
+    LPrompt.Free;
+    raise;
+  end;
+
+  Result := Self;
+end;
+
+function TMCPPromptsConfig.UnregisterPrompt(const AName: string): TMCPPromptsConfig;
+begin
+  if not Registry.ContainsKey(AName) then
+    raise EMCPException.CreateFmt(SPromptNotFoundFmt, [AName]);
+
+  Registry.Remove(AName);
+  Result := Self;
+end;
+
+function TMCPPromptsConfig.UnregisterClass(AClass: TClass): TMCPPromptsConfig;
+var
+  LNames: TArray<string>;
+begin
+  LNames := [];
+  for var pair in Registry do
+    if pair.Value.PromptClass = AClass then
+      LNames := LNames + [pair.Key];
+
+  for var name in LNames do
+    Registry.Remove(name);
+
+  Result := Self;
+end;
+
+function TMCPPromptsConfig.ClearAll: TMCPPromptsConfig;
+begin
+  Registry.Clear;
+  Result := Self;
+end;
+
+procedure TMCPPromptsConfig.WritePrompt(APrompt: TMCPPrompt);
 var
   LIcon: TMCPIcon;
 begin
-  if SetIcon(APromptAttr.Tags.GetValueAs<string>('icon'), LIcon) then
+  if SetIcon(APrompt.Tags.GetValueAs<string>('icon'), LIcon) then
     APrompt.Icons := APrompt.Icons + [LIcon];
 
-  APrompt.Category := APromptAttr.Tags.GetValueAs<string>('category');
-  APrompt.Disabled := APromptAttr.Tags.GetBoolValue('disabled');
+  APrompt.Category := APrompt.Tags.GetValueAs<string>('category');
+  APrompt.Disabled := APrompt.Tags.GetBoolValue('disabled');
+end;
 
-  {
-  if APromptAttr.Tags.Exists('readonly') then
-    APrompt.Annotations.ReadOnlyHint := APromptAttr.Tags.GetBoolValue('readonly');
-  if APromptAttr.Tags.Exists('destructive') then
-    APrompt.Annotations.DestructiveHint := APromptAttr.Tags.GetBoolValue('destructive');
-  if APromptAttr.Tags.Exists('idempotent') then
-    APrompt.Annotations.IdempotentHint := APromptAttr.Tags.GetBoolValue('idempotent');
-  if APromptAttr.Tags.Exists('openworld') then
-    APrompt.Annotations.OpenWorldHint := APromptAttr.Tags.GetBoolValue('openworld');
+{ TMCPPromptArgConfig }
 
-  WriteInputSchema(APrompt);
-  }
-
+class function TMCPPromptArgConfig.New(const AParamName, AName: string; const ADescription: string;
+  ARequired: Boolean): TMCPPromptArgConfig;
+begin
+  Result.ParamName := AParamName;
+  Result.Name := AName;
+  Result.Description := ADescription;
+  Result.Required := ARequired;
 end;
 
 
@@ -1421,6 +1905,13 @@ constructor TMCPSecurityConfig.Create(AConfig: IMCPConfig);
 begin
   inherited Create(AConfig);
   AllowedMethods := ['POST'];
+  CookieSecure := True;
+end;
+
+function TMCPSecurityConfig.SetCookieSecure(AEnable: Boolean): TMCPSecurityConfig;
+begin
+  CookieSecure := AEnable;
+  Result := Self;
 end;
 
 function TMCPSecurityConfig.SetAllowedMethods(const AMethods: TArray<string>): TMCPSecurityConfig;
@@ -1487,6 +1978,44 @@ begin
   Capabilities := TServerCapabilities.Create;
 
   AProc(Capabilities);
+  Result := Self;
+end;
+
+{ TMCPToolConfig }
+
+constructor TMCPToolConfig.Create(AParent: TMCPToolsConfig);
+begin
+  inherited Create;
+  Parent := AParent;
+end;
+
+destructor TMCPToolConfig.Destroy;
+begin
+  inherited;
+end;
+
+function TMCPToolConfig.EndTool: TMCPToolsConfig;
+begin
+  Parent.EndTool(Self);
+  Result := Parent;
+end;
+
+function TMCPToolConfig.WithParam(const AParamName, AName, ADescription: string;
+  const ATags: string): TMCPToolConfig;
+begin
+  var par := FindRttiParam(AParamName);
+  if not Assigned(par) then
+    raise EMCPException.CreateFmt(SToolParamNotFoundFmt, [AParamName, Name]);
+
+  var toolPar := TMCPToolParam.Create();
+  toolPar.ParamName := AParamName;
+  toolPar.Param := par;
+
+  toolPar.Name := AName;
+  toolPar.Description := ADescription;
+  toolPar.Tags.Parse(ATags);
+  MethodParams.Add(toolPar);
+
   Result := Self;
 end;
 

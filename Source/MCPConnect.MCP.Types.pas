@@ -20,6 +20,7 @@ interface
 uses
   System.SysUtils, System.Classes, System.Generics.Collections, System.JSON, System.Rtti,
 
+  Neon.Core.Tags,
   Neon.Core.Types,
   Neon.Core.Attributes,
   Neon.Core.Nullables,
@@ -28,6 +29,43 @@ uses
   Neon.Core.Serializers.RTL,
   MCPConnect.JRPC.Core,
   MCPConnect.JRPC.Classes;
+
+const
+  MCP_PROTOCOL_VERSION_2025_06_18 = '2025-06-18';
+  MCP_PROTOCOL_VERSION_2025_11_25 = '2025-11-25';
+
+  /// <summary>
+  ///   The protocol version the server proposes when the client requests a version
+  ///   the server does not support.
+  /// </summary>
+  MCP_LATEST_PROTOCOL_VERSION = MCP_PROTOCOL_VERSION_2025_11_25;
+
+  /// <summary>
+  ///   Protocol versions this server is able to speak, checked during the
+  ///   initialize handshake against the client-requested version.
+  /// </summary>
+  MCP_SUPPORTED_PROTOCOL_VERSIONS: array[0..1] of string = (
+    MCP_PROTOCOL_VERSION_2025_06_18,
+    MCP_PROTOCOL_VERSION_2025_11_25
+  );
+
+resourcestring
+  // Localizable messages for the MCP layer (MCPConnect.MCP.Types/Invoker/Server.Api)
+
+  // MCPConnect.MCP.Types
+  SMCPMediaTypeNotFoundForExt = 'MediaType for extension [%s] not found';
+  SMCPDataUriFileNotFound = 'Building data uri: file [%s] not found';
+
+  // MCPConnect.MCP.Invoker
+  SMCPStructuredContentMustBeObject = 'Structured content can only be a JSON object';
+  SMCPTypeKindNotSupported = 'Type kind not supported';
+  SMCPUriNotCompatibleWithTemplate = 'URI not compatible with the template';
+  SMCPParamsCountMismatch = 'Parameters count from method and URI are different';
+
+  // MCPConnect.MCP.Server.Api
+  SMCPToolNotFound = 'Tool [%s] not found';
+  SMCPResourceNotFound = 'Resource [%s] not found';
+  SMCPPromptNotFound = 'Prompt [%s] not found';
 
 type
   EMCPException = class(Exception);
@@ -128,6 +166,8 @@ type
 
   TMetaClass = class
   public
+    [NeonIgnore] Tags: TAttributeTags;
+
     /// <summary>
     /// Meta is a metadata object that is reserved by MCP for storing additional information
     /// </summary>
@@ -411,7 +451,7 @@ type
   TInitializeParams = class
 
     /// <summary>
-    /// T  he latest version of the Model Context Protocol that the client supports.
+    /// The latest version of the Model Context Protocol that the client supports.
     /// </summary>
     ProtocolVersion: string;
 
@@ -1045,12 +1085,14 @@ end;
 
 constructor TMetaClass.Create;
 begin
+  Tags := TAttributeTags.Create();
   Meta := TJSONObject.Create;
 end;
 
 destructor TMetaClass.Destroy;
 begin
   Meta.Free;
+  Tags.Free;
   inherited;
 end;
 
@@ -1109,7 +1151,7 @@ begin
     var ext := TPath.GetExtension(AIcon);
     MimeType := mm.MediaByExtension(ext);
     if MimeType.Value.IsEmpty then
-      raise EMCPException.CreateFmt('MediaType for extension [%s] not found', [ext]);
+      raise EMCPException.CreateFmt(SMCPMediaTypeNotFoundForExt, [ext]);
 
     Src := mm.DataUri(AIcon, MimeType);
     if MimeType = 'image/png' then
@@ -1379,7 +1421,7 @@ begin
   var ext := TPath.GetExtension(AFileName);
   var mime := MediaByExtension(ext);
   if mime.IsEmpty then
-    raise EMCPException.CreateFmt('MediaType for extension [%s] not found', [ext]);
+    raise EMCPException.CreateFmt(SMCPMediaTypeNotFoundForExt, [ext]);
 
   Result := DataUri(AFileName, mime);
 end;
@@ -1387,7 +1429,7 @@ end;
 function TMCPMimeTypes.DataUri(const AFileName, AMimeType: string): string;
 begin
   if not TFile.Exists(AFileName) then
-    raise EMCPException.CreateFmt('Building data uri: file [%s] not found', [AFileName]);
+    raise EMCPException.CreateFmt(SMCPDataUriFileNotFound, [AFileName]);
 
   var input := TFileStream.Create(AFileName, fmOpenRead);
   var output := TStringStream.Create;

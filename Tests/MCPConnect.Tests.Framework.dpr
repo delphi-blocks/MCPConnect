@@ -51,7 +51,9 @@ uses
   MCPConnect.Tests.MCP.Tools in 'MCPConnect.Tests.MCP.Tools.pas',
   MCPConnect.Tests.JRPC.Invoker in 'MCPConnect.Tests.JRPC.Invoker.pas',
   MCPConnect.Tests.Session.Core in 'MCPConnect.Tests.Session.Core.pas',
-  MCPConnect.Tests.Core.Utils in 'MCPConnect.Tests.Core.Utils.pas';
+  MCPConnect.Tests.Core.Utils in 'MCPConnect.Tests.Core.Utils.pas',
+  MCPConnect.Tests.MCP.Configuration in 'MCPConnect.Tests.MCP.Configuration.pas',
+  MCPConnect.Tests.MCP.Server.Api in 'MCPConnect.Tests.MCP.Server.Api.pas';
 
 var
   runner : ITestRunner;

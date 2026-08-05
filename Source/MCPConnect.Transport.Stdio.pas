@@ -24,6 +24,9 @@ uses
   MCPConnect.Session.Core,
   MCPConnect.JRPC.Server;
 
+resourcestring
+  SServerNotFound = 'Server not found';
+
 type
   TWorkerThread = class;
 
@@ -107,7 +110,7 @@ type
     FStdOutWriter: TStdOutWriter;
   public
     { IMCPTransportWriter }
-    procedure Write(const AValue: string);
+    procedure Write(const AValue: string; const AEventId: string = '');
     function Connected: Boolean;
     function SupportsStreaming: Boolean;
 
@@ -442,7 +445,7 @@ var
   LRes: string;
 begin
   if not Assigned(FServer) then
-    raise EJRPCException.Create('Server not found');
+    raise EJRPCException.Create(SServerNotFound);
 
   // Auth??
 
@@ -494,7 +497,7 @@ begin
   Result := True;
 end;
 
-procedure TMCPTransportWriterStdio.Write(const AValue: string);
+procedure TMCPTransportWriterStdio.Write(const AValue: string; const AEventId: string);
 begin
   FStdOutWriter.WriteLine(RemoveLineBreaks(AValue));
 end;

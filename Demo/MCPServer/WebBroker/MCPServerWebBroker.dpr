@@ -32,7 +32,8 @@ uses
   MCPServerWebBroker.WebModule in 'MCPServerWebBroker.WebModule.pas' {WebModule1: TWebModule},
   MCPServer.Config in '..\MCPServer.Config.pas',
   MCPServer.Notifications in '..\MCPServer.Notifications.pas',
-  MCPServer.Prompts in '..\MCPServer.Prompts.pas';
+  MCPServer.Prompts in '..\MCPServer.Prompts.pas',
+  MCPServer.Tools.Test in '..\MCPServer.Tools.Test.pas';
 
 {$R *.res}
 

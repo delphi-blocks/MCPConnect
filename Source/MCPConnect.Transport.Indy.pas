@@ -24,6 +24,9 @@ uses
   MCPConnect.Transport.Base,
   MCPConnect.Transport.MediaType;
 
+resourcestring
+  SJRPCServerNotFound = 'JRPC JRPCServer not found';
+
 type
   TJRPCIndyBridge = class(TComponent)
   private
@@ -65,7 +68,7 @@ type
   protected
     { IMCPTransportWriter }
     function Connected: Boolean;
-    procedure Write(const AValue: string);
+    procedure Write(const AValue: string; const AEventId: string = '');
     procedure WriteComment(const AValue: string); overload;
     function SupportsStreaming: Boolean;
   public
@@ -82,7 +85,7 @@ var
   LMcpHandler: IMCPTransportHandler;
 begin
   if not Assigned(FJRPCServer) then
-    raise EJRPCException.Create('JRPC JRPCServer not found');
+    raise EJRPCException.Create(SJRPCServerNotFound);
 
   LMcpHandler := TMCPTransportHandler.Create(FJRPCServer, TMCPTransportWriterIndy.Create(AContext.Connection));
 
@@ -268,9 +271,9 @@ begin
   Result := True;
 end;
 
-procedure TMCPTransportWriterIndy.Write(const AValue: string);
+procedure TMCPTransportWriterIndy.Write(const AValue: string; const AEventId: string);
 begin
-  WriteSSEEvent('', '', AValue, -1);
+  WriteSSEEvent(AEventId, '', AValue, -1);
 end;
 
 procedure TMCPTransportWriterIndy.WriteComment(const AValue: string);

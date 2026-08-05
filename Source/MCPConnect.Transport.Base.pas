@@ -16,10 +16,9 @@ unit MCPConnect.Transport.Base;
 interface
 
 uses
-  System.Classes, System.SysUtils,
+  System.Classes, System.SysUtils, System.JSON,
+  System.Generics.Collections, System.Generics.Defaults,
   IdCustomHTTPServer, IdContext, IdGlobal,
-  System.Generics.Collections,
-  System.Generics.Defaults,
 
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
@@ -37,12 +36,26 @@ const
   HTTP_CODE_OK = 200;
   HTTP_CODE_ACCEPTED = 202;
   HTTP_CODE_NOCONTENT = 204;
+  HTTP_CODE_BADREQUEST = 400;
   HTTP_CODE_UNAUTHORIZED = 401;
   HTTP_CODE_FORBIDDEN = 403;
   HTTP_CODE_NOTFOUND = 404;
   HTTP_CODE_NOTALLOWED = 405;
   HTTP_CODE_NOTACCEPTABLE = 406;
   HTTP_CODE_BADGATEWAY = 502;
+
+resourcestring
+  SInvalidTokenLocation = 'Invalid token location';
+  SErrorRetrievingMCPConfig = 'Error retrieving MCP configuration';
+  SCrossOriginBlocked = 'Cross-Origin Request Blocked: Same Origin Policy';
+  SAuthorizationCheckFailed = 'Authorization check failed';
+  SSessionIdLocationNotFound = 'SessionId Location not found';
+  SHttpMethodNotAllowed = 'Http method not allowed';
+  STransportSSENotSupported = 'SSE not supported';
+  SEventStreamOnlyForGET = 'Only Event Stream response is supported for GET requests';
+  STransportSessionNotFound = 'Session not found';
+  STransportMethodNotFoundFmt = 'Method "%s" not found';
+  SSessionIdHeaderRequired = 'Mcp-Session-Id header is required';
 
 type
   /// <summary>
@@ -59,7 +72,7 @@ type
 
   IMCPTransportWriter = interface
     ['{68598454-50C5-4892-B8E0-81687CC2F4DE}']
-    procedure Write(const AValue: string);
+    procedure Write(const AValue: string; const AEventId: string = '');
     function Connected: Boolean;
     function SupportsStreaming: Boolean;
   end;
@@ -89,6 +102,7 @@ type
     Url: string;
     Command: string;
     Content: string;
+    ContentJSON: TJSONValue;
 
     function GetCookie(const AName: string): string;
     property Accept: string read GetAccept write SetAccept;
@@ -110,7 +124,7 @@ type
     Code: Integer;
     Outbund: TQueue<string>;
 
-    procedure SetCookie(const AName, AValue: string);
+    procedure SetCookie(const AName, AValue: string; ASecure: Boolean = True);
     property ContentType: string read GetContentType write SetContentType;
   end;
 
@@ -145,11 +159,14 @@ type
   private
     procedure InjectCORS;
     function CheckOrigin: Boolean;
+    class function MatchesOriginPattern(const AOrigin, APattern: string): Boolean; static;
+    class function ConstantTimeEquals(const A, B: string): Boolean; static;
     function CheckAuthorization: Boolean;
     function CheckOAuth: Boolean;
     function IsMetadataProxyRequest: Boolean;
     procedure HandleMetadataProxy;
     function ExtractSessionId: string;
+    function IsInitializeRequest: Boolean;
     function HandleSession: TMCPSessionBase;
     procedure HandleMessage(AMessage: TJRPCMessage; AResponseQueue: TMCPMessageQueue);
     procedure SendResponseHeaders(AResponse: TMCPTransportResponse);
@@ -172,7 +189,8 @@ type
 implementation
 
 uses
-  System.IOUtils, System.JSON, System.NetEncoding, System.Net.HttpClient, Logify,
+  System.IOUtils, System.NetEncoding, System.Net.HttpClient, System.Diagnostics,
+  Logify,
   MCPConnect.Transport.MediaType,
   MCPConnect.Configuration.Neon,
   MCPConnect.JRPC.Invoker;
@@ -217,6 +235,30 @@ begin
   inherited;
 end;
 
+class function TMCPTransportHandler.ConstantTimeEquals(const A, B: string): Boolean;
+var
+  I, LMaxLen: Integer;
+  LDiff: Integer;
+  LCharA, LCharB: Word;
+begin
+  // Compares the full length of both strings regardless of where they first differ,
+  // so the running time does not leak how many leading characters of a guessed
+  // token/secret matched (a classic side channel for '<>' / early-exit comparisons).
+  LMaxLen := Length(A);
+  if Length(B) > LMaxLen then
+    LMaxLen := Length(B);
+
+  LDiff := Length(A) xor Length(B);
+  for I := 1 to LMaxLen do
+  begin
+    if I <= Length(A) then LCharA := Word(A[I]) else LCharA := 0;
+    if I <= Length(B) then LCharB := Word(B[I]) else LCharB := 0;
+    LDiff := LDiff or (LCharA xor LCharB);
+  end;
+
+  Result := LDiff = 0;
+end;
+
 function TMCPTransportHandler.CheckAuthorization: Boolean;
 begin
   Result := True;
@@ -225,24 +267,24 @@ begin
     case FAuthTokenConfig.Location of
       TAuthTokenLocation.Bearer:
       begin
-        if FRequest.GetHeader('Authorization') <> 'Bearer ' + FAuthTokenConfig.Token then
+        if not ConstantTimeEquals(FRequest.GetHeader('Authorization'), 'Bearer ' + FAuthTokenConfig.Token) then
           Exit(False);
       end;
 
       TAuthTokenLocation.Cookie:
       begin
-        if FRequest.GetCookie(FAuthTokenConfig.CustomHeader) <> FAuthTokenConfig.Token then
+        if not ConstantTimeEquals(FRequest.GetCookie(FAuthTokenConfig.CustomHeader), FAuthTokenConfig.Token) then
           Exit(False);
       end;
 
       TAuthTokenLocation.Header:
       begin
-        if FRequest.GetHeader(FAuthTokenConfig.CustomHeader) <> FAuthTokenConfig.Token then
+        if not ConstantTimeEquals(FRequest.GetHeader(FAuthTokenConfig.CustomHeader), FAuthTokenConfig.Token) then
           Exit(False);
       end;
 
     else
-      raise EJRPCException.Create('Invalid token location');
+      raise EJRPCException.Create(SInvalidTokenLocation);
     end;
   end;
 end;
@@ -353,44 +395,80 @@ begin
   end;
 end;
 
+class function TMCPTransportHandler.MatchesOriginPattern(const AOrigin, APattern: string): Boolean;
+var
+  LStar: Integer;
+  LPrefix, LSuffix: string;
+begin
+  // Exact match (case-insensitive: scheme and host are case-insensitive per RFC 6454)
+  if SameText(AOrigin, APattern) then
+    Exit(True);
+
+  // Single-wildcard glob, e.g. 'https://*.example.com' matches 'https://sub.example.com'
+  // but never the bare 'https://example.com' or a different suffix/prefix.
+  LStar := APattern.IndexOf('*');
+  if (LStar >= 0) and (APattern.IndexOf('*', LStar + 1) < 0) then
+  begin
+    LPrefix := APattern.Substring(0, LStar);
+    LSuffix := APattern.Substring(LStar + 1);
+    Exit(
+      (AOrigin.Length > LPrefix.Length + LSuffix.Length) and
+      AOrigin.StartsWith(LPrefix, True) and
+      AOrigin.EndsWith(LSuffix, True)
+    );
+  end;
+
+  Result := False;
+end;
+
 function TMCPTransportHandler.CheckOrigin: Boolean;
 var
   LOrigin, LHeader: string;
 begin
   if not Assigned(FMCPConfig) then
-    raise EMCPException.Create('Error retrieving MCP configuration');
+    raise EMCPException.Create(SErrorRetrievingMCPConfig);
 
-  Result := True;
   if Length(FMCPConfig.Security.AllowedOrigins) = 0 then
-    Exit;
+    Exit(True);
 
-  LHeader := FRequest.GetHeader('Origin');
-  if LHeader.IsEmpty then
-    Exit;
+  LHeader := FRequest.GetHeader('Origin').Trim;
+
+  // Reject requests with no Origin header, or the opaque "null" origin sent by
+  // sandboxed iframes/file:// pages, once an allowlist has been configured.
+  if LHeader.IsEmpty or SameText(LHeader, 'null') then
+  begin
+    Logger.LogWarning('CheckOrigin: request blocked, missing or null Origin header');
+    Exit(False);
+  end;
 
   for LOrigin in FMCPConfig.Security.AllowedOrigins do
-    if LHeader.StartsWith(LOrigin) then
-      Exit;
+    if MatchesOriginPattern(LHeader, LOrigin) then
+      Exit(True);
 
+  Logger.LogWarning('CheckOrigin: request blocked, Origin "%s" not in allowlist', [LHeader]);
   Result := False;
 end;
 
 procedure TMCPTransportHandler.ProcessRequest(
   ARequestConverter: TMCPTransportRequestConverter;
   AResponseConverter: TMCPTransportResponseConverter);
+var
+  LStopwatch, LFragment: TStopwatch;
 begin
-  ARequestConverter(FRequest);
+  LStopwatch := TStopwatch.StartNew;
+  try
+    LFragment := TStopwatch.StartNew;
+    ARequestConverter(FRequest);
+    Logger.LogDebug('[PERF] RequestConverter: %d ms', [LFragment.ElapsedMilliseconds]);
 
-  try try
-    // Inject CORS headers first so that error responses (401, 403, etc.) and the
-    // OAuth well-known metadata endpoint are also readable by browser-based clients.
+    try try
     InjectCORS;
 
     if not CheckOrigin then
-      raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, 'Cross-Origin Request Blocked: Same Origin Policy');
+      raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, SCrossOriginBlocked);
 
     if not CheckAuthorization then
-      raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, 'Authorization check failed');
+      raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, SAuthorizationCheckFailed);
 
     if not CheckOAuth then
       Exit;
@@ -403,8 +481,10 @@ begin
     FContext.AddContent(FServer);
     FContext.AddContent(FAccessToken);
 
+    LFragment := TStopwatch.StartNew;
     // Handle session (get existing or create new)
     FSession := HandleSession;
+    Logger.LogDebug('[PERF] HandleSession: %d ms', [LFragment.ElapsedMilliseconds]);
 
     if Assigned(FSession) then
     begin
@@ -415,13 +495,14 @@ begin
         TSessionIdLocation.Header:
           FResponse.AddOrSetHeader(FSessionConfig.GetHeaderName, FSession.SessionId);
         TSessionIdLocation.Cookie:
-          FResponse.SetCookie(FSessionConfig.GetHeaderName, FSession.SessionId);
+          FResponse.SetCookie(FSessionConfig.GetHeaderName, FSession.SessionId, FMCPConfig.Security.CookieSecure);
         else
-          raise EMCPTransportException.Create(500, 'SessionId Location not found');
+          raise EMCPTransportException.Create(500, SSessionIdLocationNotFound);
       end;
 
     end;
 
+    LFragment := TStopwatch.StartNew;
     if FRequest.Command = 'GET' then
       HandleGET
     else if FRequest.Command = 'POST' then
@@ -429,12 +510,22 @@ begin
     else if FRequest.Command = 'OPTIONS' then
       HandleOPTIONS
     else
-      raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, 'Http method not allowed');
+      raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, SHttpMethodNotAllowed);
+    Logger.LogDebug('[PERF] HandleCOMMAND: %d ms', [LFragment.ElapsedMilliseconds]);
 
   except
     on E: EMCPTransportException do
     begin
       FResponse.Code := E.Code;
+      FResponse.ContentType := 'application/json';
+      FResponse.Content := E.ToJSON;
+    end;
+
+    on E: EMCPSessionException do
+    begin
+      // Per MCP spec: an unknown or expired session ID gets HTTP 404, prompting
+      // the client to re-initialize, rather than a generic 500.
+      FResponse.Code := HTTP_CODE_NOTFOUND;
       FResponse.ContentType := 'application/json';
       FResponse.Content := E.ToJSON;
     end;
@@ -455,6 +546,9 @@ begin
   end;
   finally
     AResponseConverter(FResponse);
+  end;
+  finally
+    Logger.LogDebug('[PERF] %s %s total: %d ms', [FRequest.Command, FRequest.Url, LStopwatch.ElapsedMilliseconds]);
   end;
 end;
 
@@ -488,6 +582,42 @@ begin
   Result := Result.Trim;
 end;
 
+function TMCPTransportHandler.IsInitializeRequest: Boolean;
+
+  function MethodIsInitialize(AObj: TJSONObject): Boolean;
+  var
+    LMethod: TJSONValue;
+  begin
+    LMethod := AObj.GetValue('method');
+    Result := Assigned(LMethod) and (LMethod is TJSONString) and (LMethod.Value = 'initialize');
+  end;
+
+begin
+  // Per MCP spec, "initialize" is only ever sent as a POST request
+  if (FRequest.Command <> 'POST') or FRequest.Content.Trim.IsEmpty then
+    Exit(False);
+
+  try
+    FRequest.ContentJSON := TJSONObject.ParseJSONValue(FRequest.Content);
+  except
+    // Malformed JSON: let the regular request parsing report the error
+    FRequest.ContentJSON := nil;
+    Exit(False);
+  end;
+
+  if not Assigned(FRequest.ContentJSON) then
+    Exit(False);
+
+  if FRequest.ContentJSON is TJSONObject then
+    Exit(MethodIsInitialize(TJSONObject(FRequest.ContentJSON)))
+  else if FRequest.ContentJSON is TJSONArray then
+    for var LItem in TJSONArray(FRequest.ContentJSON) do
+      if (LItem is TJSONObject) and MethodIsInitialize(TJSONObject(LItem)) then
+        Exit(True);
+
+  Result := False;
+end;
+
 function TMCPTransportHandler.GetSendResponseHeadersProc: TProc<TMCPTransportResponse>;
 begin
   Result := FSendResponseHeadersProc;
@@ -515,28 +645,57 @@ const
   begin
     AQueue.Process(
       procedure (AMessage: TJRPCMessage; var ADispose: Boolean)
+      var
+        LJson: string;
+        LEventId: Int64;
       begin
-        FResponseWriter.Write(AMessage.ToJson);
+        LJson := AMessage.ToJson;
+        LEventId := FSession.RecordEvent(LJson);
+        FResponseWriter.Write(LJson, LEventId.ToString);
       end,
       QueueReadTimeout
     );
   end;
 
+  // Replays events the client missed while disconnected, identified by the
+  // "Last-Event-ID" header it sends back on reconnect (SSE resumption).
+  procedure ReplayMissedEvents;
+  var
+    LHeader: string;
+    LLastEventId: Int64;
+    LEvent: TPair<Int64, string>;
+  begin
+    LHeader := FRequest.GetHeader('Last-Event-ID').Trim;
+    if LHeader.IsEmpty then
+      Exit;
+
+    if not TryStrToInt64(LHeader, LLastEventId) then
+    begin
+      Logger.LogWarning('HandleGET: ignoring malformed Last-Event-ID "%s"', [LHeader]);
+      Exit;
+    end;
+
+    for LEvent in FSession.GetEventsAfter(LLastEventId) do
+      FResponseWriter.Write(LEvent.Value, LEvent.Key.ToString);
+  end;
 
 begin
   if not FResponseWriter.SupportsStreaming then
-    raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, 'SSE not supported');
+    raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, STransportSSENotSupported);
 
   if not FRequest.AcceptsEventStream then
-    raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, 'Only Event Stream response is supported for GET requests');
+    raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, SEventStreamOnlyForGET);
 
   // TODO: handle global messages
   if not Assigned(FSession) then
-    raise EMCPTransportException.Create(HTTP_CODE_NOTACCEPTABLE, 'Session not found');
+    raise EMCPTransportException.Create(HTTP_CODE_NOTACCEPTABLE, STransportSessionNotFound);
 
   FResponse.Code := HTTP_CODE_OK;
   FResponse.ContentType := TMediaType.TEXT_EVENT_STREAM;
   SendResponseHeaders(FResponse);
+
+  ReplayMissedEvents;
+
   while FResponseWriter.Connected do
   begin
     ProcessQueue(FSession.Outbound);
@@ -604,10 +763,10 @@ begin
     if Assigned(LMCPConfig) then
     begin
       if not LMCPConfig.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
-        raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LRequest.Method]);
+        raise EJRPCMethodNotFoundError.CreateFmt(STransportMethodNotFoundFmt, [LRequest.Method]);
     end
     else if not TJRPCRegistry.Instance.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
-      raise EJRPCMethodNotFoundError.CreateFmt('Method "%s" not found', [LRequest.Method]);
+      raise EJRPCMethodNotFoundError.CreateFmt(STransportMethodNotFoundFmt, [LRequest.Method]);
 
     LInstance := LConstructorProxy.ConstructorFunc();
     FGarbage.Add(LInstance);
@@ -628,7 +787,7 @@ begin
       if FSessionConfig.GetLocation = TSessionIdLocation.Header then
         FResponse.Headers.AddOrSetValue(FSessionConfig.GetHeaderName, FSession.SessionId)
       else if FSessionConfig.GetLocation = TSessionIdLocation.Cookie then
-        FResponse.SetCookie(FSessionConfig.GetHeaderName, FSession.SessionId);
+        FResponse.SetCookie(FSessionConfig.GetHeaderName, FSession.SessionId, FMCPConfig.Security.CookieSecure);
     end;
 
   except
@@ -659,7 +818,13 @@ var
       procedure (AMessage: TJRPCMessage; var ADispose: Boolean)
       begin
         if FRequest.AcceptsEventStream and FResponseWriter.SupportsStreaming then
-          FResponseWriter.Write(AMessage.ToJson)
+        begin
+          var LJson := AMessage.ToJson;
+          if Assigned(FSession) then
+            FResponseWriter.Write(LJson, FSession.RecordEvent(LJson).ToString)
+          else
+            FResponseWriter.Write(LJson);
+        end
         else
         begin
           ADispose := False;
@@ -680,9 +845,17 @@ var
       QueueReadTimeout
     );
   end;
-
+var
+  LRequestList: TJRPCMessages;
+  LFragment: TStopwatch;
 begin
-  var LRequestList := TJRPCMessages.CreateFromJson(FRequest.Content);
+  LFragment := TStopwatch.StartNew;
+  if Assigned(FRequest.ContentJSON) then
+    LRequestList := TJRPCMessages.CreateFromJson(FRequest.ContentJSON)
+  else
+    LRequestList := TJRPCMessages.CreateFromJson(FRequest.Content);
+  Logger.LogDebug('[PERF] CreateFromJSON total: %d ms', [LFragment.ElapsedMilliseconds]);
+
   FGarbage.Add(LRequestList);
 
   var LResponseQueue := TMCPMessageQueue.Create;
@@ -693,6 +866,7 @@ begin
   LResponseList := TJRPCMessages.Create(True);
   FGarbage.Add(LResponseList);
 
+  LFragment := TStopwatch.StartNew;
   var LAsyncExecute := CreateAsyncThread(LRequestList, LResponseQueue);
   try
     if FRequest.AcceptsEventStream and FResponseWriter.SupportsStreaming then
@@ -720,6 +894,7 @@ begin
   finally
     LAsyncExecute.Free;
   end;
+  Logger.LogDebug('[PERF] CreateAsyncQueue total: %d ms', [LFragment.ElapsedMilliseconds]);
 
 end;
 
@@ -728,10 +903,8 @@ var
   LSessionId: string;
   LSessionManager: TMCPSessionManager;
 begin
-  Result := nil;
-
   if not Assigned(FSessionConfig) or (not FSessionConfig.IsApplied) then
-    Exit;
+    Exit(nil);
 
   LSessionId := ExtractSessionId;
   LSessionManager := (FServer.SessionManager as TMCPSessionManager);
@@ -742,11 +915,13 @@ begin
     // GetSession will raise exception if expired or not found
     Result := LSessionManager.GetSession(LSessionId);
   end
-  else
+  else if IsInitializeRequest then
   begin
-    // No session ID provided - auto-create new session
+    // No session ID provided - only "initialize" may auto-create a new session
     Result := LSessionManager.CreateSession;
-  end;
+  end
+  else
+    raise EMCPTransportException.Create(HTTP_CODE_BADREQUEST, SSessionIdHeaderRequired);
 end;
 
 procedure TMCPTransportHandler.InjectCORS;
@@ -793,9 +968,18 @@ begin
   Headers.AddOrSetValue('Content-Type', AValue);
 end;
 
-procedure TMCPTransportResponse.SetCookie(const AName, AValue: string);
+procedure TMCPTransportResponse.SetCookie(const AName, AValue: string; ASecure: Boolean);
+var
+  LCookie: string;
 begin
-  { TODO -opaolo -c : Finire 29/04/2026 23:34:50 }
+  // HttpOnly: not readable from JS (mitigates session-id theft via XSS)
+  // SameSite=Strict: never sent on cross-site requests (mitigates CSRF)
+  // Secure: HTTPS-only transmission; opt out via Security.SetCookieSecure(False) for plain-HTTP/dev setups
+  LCookie := Format('%s=%s; Path=/; HttpOnly; SameSite=Strict', [AName, AValue]);
+  if ASecure then
+    LCookie := LCookie + '; Secure';
+
+  Headers.AddOrSetValue('Set-Cookie', LCookie);
 end;
 
 { TMCPTransportRequest }
@@ -809,6 +993,7 @@ end;
 destructor TMCPTransportRequest.Destroy;
 begin
   FAcceptItems.Free;
+  ContentJSON.Free;
   inherited;
 end;
 

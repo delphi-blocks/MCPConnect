@@ -25,15 +25,14 @@ uses
   MCPConnect.JRPC.Classes in '..\..\..\Source\MCPConnect.JRPC.Classes.pas',
   MCPConnect.Session.Core in '..\..\..\Source\MCPConnect.Session.Core.pas',
   MCPConnect.Content.Writers in '..\..\..\Source\MCPConnect.Content.Writers.pas',
-  MCPConnect.Content.Writers.RTL in '..\..\..\Source\MCPConnect.Content.Writers.RTL.pas',
-  MCPConnect.Content.Writers.VCL in '..\..\..\Source\MCPConnect.Content.Writers.VCL.pas',
   MCPConnect.Transport.Stdio in '..\..\..\Source\MCPConnect.Transport.Stdio.pas',
   MCPServer.Tools in '..\MCPServer.Tools.pas',
   MCPServer.Config in '..\MCPServer.Config.pas',
   MCPServer.Resources in '..\MCPServer.Resources.pas',
   MCPServer.Apps in '..\MCPServer.Apps.pas',
   MCPServer.Notifications in '..\MCPServer.Notifications.pas',
-  MCPServer.Prompts in '..\MCPServer.Prompts.pas';
+  MCPServer.Prompts in '..\MCPServer.Prompts.pas',
+  MCPServer.Tools.Test in '..\MCPServer.Tools.Test.pas';
 
 procedure StartServer;
 var

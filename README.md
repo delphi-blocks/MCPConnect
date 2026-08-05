@@ -40,9 +40,15 @@ MCPConnect handles the serialization, routing, and context management required f
   * **Easy-to-use** classes for tools, prompts, and resources
   * **Session Management:** Thread-safe session support with configurable timeout, automatic cleanup, and support for both generic (TJSONObject) and custom typed session data. Sessions are automatically injected via `[Context]` attribute.
   * **Notifications:** Full bidirectional notification support. Server-to-client: tools can push notifications *while running* — e.g. progress updates or `list_changed` events (`tools/list_changed`, `resources/list_changed`, `prompts/list_changed`) — by enqueuing them on a `[Context]`-injected message queue, streamed over HTTP (Server-Sent Events) and STDIO. Client-to-server: inbound client notifications can be handled too.
+  * **Resumable Streaming:** HTTP SSE messages are tagged with a per-session event ID; if a connection drops, the client reconnects with `Last-Event-ID` and the server replays everything it missed from a configurable replay buffer.
+  * **Security:** Built-in CORS support with an allowed-methods/allowed-origins allowlist for HTTP transports, plus secure-by-default session cookies.
+  * **Prompts:** Expose reusable, parameterized prompt templates with `[MCPPrompt]`/`[MCPArgument]`.
   * **API-Key** authentication for http transport (more to be implemented)
   * **JSON-RPC** MCPConnect contains a JSON-RPC library (`JRPC`) a comprehensive, high-performance **JSON-RPC 2.0** library built specifically for Delphi.
  *  **Automatic JSON Schema generation** - Using the powerful Neon TSchemaGenaerator, MCPConnect support any Delphi type as parameter or result. 
+  * **Attribute-Free Registration:** Tools, Resources, Templates, Prompts, and MCP Apps can all be registered programmatically (`RegisterTool`, `RegisterResource`, `RegisterTemplate`, `RegisterUI`, `RegisterPrompt`) instead of via attributes — useful for classes that can't declare Delphi custom attributes (e.g. compiled from C++ Builder).
+  * **Runtime Unregistration:** Tools, resources, resource templates, static files, and prompts registered either way (attributes or programmatically) can be removed again at runtime — by name/uri or by backing class — plus a `ClearAll` per section to wipe every tool/resource/prompt in one call, letting you swap feature sets in and out of an already-configured server.
+  * **Protocol Version Negotiation:** The `initialize` handshake validates the client's requested protocol version against what the server supports (`2025-06-18`, `2025-11-25`), falling back to the server's latest supported version instead of blindly echoing back an unsupported one.
   
 
 ## 📡What is JSON-RPC?
@@ -133,8 +139,15 @@ FJRPCServer
       .SetName('delphi-mcp-server')
       .SetVersion('2.0.0')
       .SetCapabilities([Tools, Resources])  // Declare which capabilities to expose
+      .SetIconFolder(GetCurrentDir + '\data\icons')  // Base folder for icon= tags (Tools/Prompts)
       .RegisterWriter(TMCPImageWriter)       // Register content writers for complex types
       .RegisterWriter(TMCPStreamWriter)
+    .BackToMCP
+
+    .Security
+      .SetCORS(True)                            // Enable CORS (required by browser-based clients/inspectors)
+      .SetAllowedMethods(['POST'])
+      .SetAllowedOrigins(['http://localhost'])   // Leaving this empty allows ANY origin — lock it down for production
     .BackToMCP
 
     .Resources
@@ -154,13 +167,16 @@ FJRPCDispatcher.PathInfo := '/mcp';  // Set the endpoint path
 FJRPCDispatcher.Server := FJRPCServer;  // Connect to the server
 ```
 
-The configuration is split into three sections:
+The configuration is split into four sections:
 
-- **`.Server`** — server identity, declared capabilities, and content writers
+- **`.Server`** — server identity, declared capabilities, icon folder, and content writers
+- **`.Security`** — CORS and allowed-origin settings for HTTP transports
 - **`.Resources`** — resource classes and static files
 - **`.Tools`** — tool classes
 
 Each section ends with `.BackToMCP` to return to the root config builder.
+
+> **Note:** `AllowedOrigins` defaults to empty, which means *any* Origin is accepted — convenient for local development and tools like MCPJam Inspector, but you should set an explicit allowlist before exposing a server beyond localhost.
 
 #### Step 3: Understand the Automatic Integration
 
@@ -231,6 +247,7 @@ FJRPCServer
     .SetHeaderName('Mcp-Session-Id')         // Default for MCP
     .SetTimeout(30)                           // Minutes
     .SetSessionClass(TMCPSessionData)         // Or your custom class
+    .SetReplayBufferSize(100)                 // Recent SSE messages kept per session for Last-Event-ID resumption
   .ApplyConfig
 
   .Plugin.Configure<IMCPConfig>
@@ -247,6 +264,8 @@ FJRPCServer
 **Session Behavior by Transport:**
 - **HTTP (WebBroker/Indy)**: Session ID passed via header or cookie. Server returns `Mcp-Session-Id` header on first request.
 - **STDIO**: Implicit session per connection - no session ID needed.
+
+**Resumable Streaming (HTTP/SSE):** Every outgoing SSE message is tagged with a per-session event ID. If the connection drops, a client that reconnects with a `Last-Event-ID` header gets replayed everything sent after that ID, from a per-session buffer sized by `SetReplayBufferSize` (default 100).
 
 #### Using Sessions in Your Tools
 
@@ -444,7 +463,53 @@ Remember to declare `Resources` in `.SetCapabilities`:
 
 -----------------------------
 
-### 5. Organizing Tools with Scopes
+### 5. Prompts
+
+Prompts are reusable, parameterized templates a client can pull from your server to kick off an LLM interaction. Decorate a class's methods with `[MCPPrompt]` and its parameters with `[MCPArgument]`.
+
+```delphi
+type
+  TSamplePrompts = class
+  public
+    [MCPPrompt('simple-prompt', 'Simple Prompt', 'A prompt with no arguments')]
+    function SimplePrompt: string;
+
+    [MCPPrompt('argument-prompt', 'Argument Prompt', 'A prompt with 2 arguments')]
+    function ArgumentPrompt(
+      [MCPArgument('city', 'Name of the city', 'required')] const ACity: string;
+      [MCPArgument('country', 'Name of the country')] const ACountry: string
+    ): string;
+  end;
+
+function TSamplePrompts.SimplePrompt: string;
+begin
+  Result := 'This is a simple prompt without arguments';
+end;
+
+function TSamplePrompts.ArgumentPrompt(const ACity, ACountry: string): string;
+begin
+  Result := Format('What''s the weather in %s, %s?', [ACity, ACountry]);
+end;
+```
+
+`[MCPPrompt]` takes `(name, title, description)`. `[MCPArgument]` takes `(name, description, tags)` — the `required` tag marks an argument as mandatory. A prompt method can return a plain `string` (turned into a single user message) or a `TGetPromptResult`/`TPromptMessages` for full control over the returned message list.
+
+Register prompt classes in the `.Prompts` section and declare the `Prompts` capability:
+
+```delphi
+FJRPCServer
+  .Plugin.Configure<IMCPConfig>
+    .Server
+      .SetCapabilities([Tools, Resources, Prompts])
+    .BackToMCP
+    .Prompts
+      .RegisterClass(TSamplePrompts)
+    .BackToMCP;
+```
+
+-----------------------------
+
+### 6. Organizing Tools with Scopes
 
 When building larger MCP servers with multiple tool classes, you can assign a **scope** (namespace prefix) to a class using the `[McpScope]` attribute. This avoids name conflicts and produces a cleaner, more organized API.
 
@@ -505,10 +570,171 @@ Supported built-in annotations:
 |-----|---------|---------|
 | `app` | `app=ui://my-app/index.html` | Links tool to an MCP App UI |
 | `disabled` | `disabled` | Hides the tool from the tools list |
+| `icon` | `icon=money.png` | Tool icon — a filename resolved against `.Server.SetIconFolder(...)`, or a full `scheme://` URL |
+| `category` | `category=finance` | Free-form grouping label for the tool |
+| `readonly` | `readonly` | Sets the `readOnlyHint` annotation |
+| `destructive` | `destructive` | Sets the `destructiveHint` annotation |
+| `idempotent` | `idempotent` | Sets the `idempotentHint` annotation |
+| `openworld` | `openworld` | Sets the `openWorldHint` annotation |
+| `structured` | `structured` | Also generates `outputSchema`/`structuredContent` from the method's return type, which must be a JSON object (a record or class, not an array/scalar) |
+
+Combine multiple tags with commas, e.g. `'app=ui://my-app/index.html,category=demo,readonly'`.
 
 -----------------------------
 
-### 6. Connecting LLM Clients to Your MCP Server
+### 7. Registering Tools Without Attributes (C++ Builder Compatibility)
+
+`[McpTool]`/`[McpParam]` are Delphi custom attributes, which can't be declared on classes compiled from C++ Builder. For plain classes — Delphi or C++ Builder — `TMCPToolsConfig` also exposes a fluent, attribute-free way to register a single method as a tool: `RegisterTool` → one or more `WithParam` → `EndTool`.
+
+```delphi
+type
+  TMathTool = class
+  public
+    function DoubleOrZero(AValue: Integer; ADouble: Boolean): Integer;
+  end;
+
+function TMathTool.DoubleOrZero(AValue: Integer; ADouble: Boolean): Integer;
+begin
+  if ADouble then
+    Result := AValue * 2
+  else
+    Result := 0;
+end;
+```
+
+```delphi
+.Tools
+  .RegisterTool(TMathTool, 'DoubleOrZero', 'double_or_zero', 'Doubles or zeroes the value', 'icon=money.png')
+    .WithParam('AValue', 'value', 'The value to process')
+    .WithParam('ADouble', 'double', 'Whether to double it')
+    .EndTool
+.BackToMCP
+```
+
+- **`RegisterTool(AClass, AMethodName, AName, ADescription, ATags)`** looks up `AMethodName` on `AClass` via RTTI and returns a builder for it. `AName`/`ADescription`/`ATags` work exactly like the corresponding `[McpTool]` arguments, including the same tag vocabulary (`app`, `disabled`, `icon`, `category`, `readonly`, `destructive`, `idempotent`, `openworld`, `structured`) described above.
+- **`WithParam(AParamName, AName, ADescription, ATags)`** maps one Delphi parameter — matched by `AParamName`, the actual parameter name on the method — to its JSON-facing name and description, the equivalent of `[McpParam]`. Every parameter of the method must be covered by a `WithParam` call, or `EndTool` raises an exception.
+- **`EndTool`** finalizes the tool (generating its input/output schema) and returns to the `.Tools` builder, so calls can be chained like any other registration.
+
+This path works alongside the attribute-driven one — a server can freely mix `.RegisterClass(...)` calls with `.RegisterTool(...) ... .EndTool` calls in the same `.Tools` section.
+
+#### Unregistering Tools
+
+Tools registered either way (`[McpTool]`/`RegisterClass` or `RegisterTool`/`EndTool`) can be removed again at runtime:
+
+```delphi
+.Tools
+  .UnregisterTool('double_or_zero')     // removes a single tool by its MCP-facing name
+  .UnregisterClass(TMathTool)           // removes every tool backed by TMathTool
+  .ClearAll                             // removes every registered tool
+.BackToMCP
+```
+
+- **`UnregisterTool(AName)`** removes the tool registered under `AName`; raises `EMCPException` if no tool has that name.
+- **`UnregisterClass(AClass)`** removes every tool whose backing class is `AClass`, regardless of whether it was registered via attributes or `RegisterTool`; it's a no-op if `AClass` has no registered tools.
+- **`ClearAll`** removes every tool in the section, regardless of how it was registered; it's a no-op if nothing is registered.
+
+All three return the `.Tools` builder, so they chain like any other registration call.
+
+-----------------------------
+
+### 8. Registering Resources, Templates, Prompts, and Apps Without Attributes
+
+The same attribute-free approach used for tools is also available for resources, resource templates, MCP App UIs, and prompts — each registered with a single method call instead of `[McpResource]`/`[McpTemplate]`/`[McpAppUI]`/`[McpPrompt]` attributes. All four are freely mixable with `.RegisterClass(...)` in the same `.Resources`/`.Prompts` section.
+
+#### Resources
+
+```delphi
+.Resources
+  .RegisterResource(TCppResource, 'GetGlobalInfo', 'info-resource', 'text://info',
+    'text/plain', 'Shows the info')
+.BackToMCP
+```
+
+`RegisterResource(AClass, AMethodName, AName, AUri, AMime, ADescription, ATags)` looks up `AMethodName` on `AClass` via RTTI (it must take no parameters) and registers it under `AUri`. `AMime`, `ADescription`, and `ATags` are optional and behave like the corresponding `[McpResource]` arguments.
+
+#### Resource Templates
+
+```delphi
+.Resources
+  .RegisterTemplate(TItemResource, 'GetItem', 'item', 'res://items/{id}', ['id'],
+    '', 'A single item by id')
+.BackToMCP
+```
+
+`RegisterTemplate(AClass, AMethodName, AName, AUriTemplate, AParamNames, AMime, ADescription, ATags)` maps the method's RTTI parameters — in declaration order — to the `{placeholder}` names in `AUriTemplate` via `AParamNames`. Every method parameter must be covered (all must be string-like), and every entry in `AParamNames` must match a placeholder in the template, or registration raises `EMCPException`.
+
+#### MCP App UIs
+
+```delphi
+.Resources
+  .RegisterUI(TMyApp, 'GetUI', 'my-app', 'ui://my-app/index.html', 'An interactive UI panel')
+.BackToMCP
+```
+
+`RegisterUI(AClass, AMethodName, AName, AUri, ADescription, ATags, AUIConfig)` requires `AUri` to use the `ui://` scheme. The optional `AUIConfig` callback (`procedure(AResource: TMCPResource; AUI: TUIResourceUI)`) configures CSP/permissions/domain metadata, the same as with the attribute-driven `[McpAppUI]` path.
+
+#### Prompts
+
+```delphi
+.Prompts
+  .RegisterPrompt(TSamplePrompts, 'ArgumentPrompt', 'argument-prompt',
+    [
+      TMCPPromptArgConfig.New('ACity', 'city', 'Name of the city', True),
+      TMCPPromptArgConfig.New('ACountry', 'country', 'Name of the country')
+    ],
+    'Argument Prompt', 'A prompt with 2 arguments')
+.BackToMCP
+```
+
+`RegisterPrompt(AClass, AMethodName, AName, AArguments, ATitle, ADescription, ATags)` requires one `TMCPPromptArgConfig` entry per method parameter — `TMCPPromptArgConfig.New(AParamName, AName, ADescription, ARequired)` maps a Delphi parameter name to its MCP-facing argument name, description, and whether it's required.
+
+#### Unregistering Resources, Templates, Files, and Prompts
+
+Like tools, everything registered in the `.Resources` and `.Prompts` sections — whether via attributes or the programmatic API above — can be removed again at runtime:
+
+```delphi
+.Resources
+  .UnregisterResource('text://weather')     // removes a single resource/App UI by its uri
+  .UnregisterTemplate('res://items/{id}')   // removes a single resource template by its uri template
+  .UnregisterFile('docs\guide.pdf')         // removes a static file resource by the same AFileName passed to RegisterFile
+  .UnregisterClass(TWeatherResource)        // removes every resource/template/App UI backed by TWeatherResource
+  .ClearAll                                 // removes every registered resource, template, and App UI
+.BackToMCP
+
+.Prompts
+  .UnregisterPrompt('argument-prompt')      // removes a single prompt by its MCP-facing name
+  .UnregisterClass(TSamplePrompts)          // removes every prompt backed by TSamplePrompts
+  .ClearAll                                 // removes every registered prompt
+.BackToMCP
+```
+
+- **`UnregisterResource(AUri)`** removes the resource or App UI registered under `AUri`; raises `EMCPException` if nothing is registered under that uri.
+- **`UnregisterTemplate(AUriTemplate)`** removes the resource template registered under `AUriTemplate`; raises `EMCPException` if nothing is registered under that uri template.
+- **`UnregisterFile(AFileName)`** removes a static file resource registered via `RegisterFile`, identified by the same `AFileName` originally passed to `RegisterFile` (the uri is derived from it internally); raises `EMCPException` if that file was never registered.
+- **`UnregisterClass(AClass)`** (Resources) removes every resource, resource template, and App UI backed by `AClass`, regardless of how it was registered; a no-op if `AClass` has nothing registered.
+- **`UnregisterPrompt(AName)`** removes the prompt registered under `AName`; raises `EMCPException` if no prompt has that name.
+- **`UnregisterClass(AClass)`** (Prompts) removes every prompt backed by `AClass`, regardless of how it was registered; a no-op if `AClass` has no registered prompts.
+- **`ClearAll`** (both sections) removes everything registered in that section, regardless of how it was registered; a no-op if the section is empty.
+
+All of the above return the builder for their own section (`.Resources`/`.Prompts`), so they chain like any other registration call — including across sections via `.BackToMCP`:
+
+```delphi
+var LConfig := AServer.Plugin.Configure<IMCPConfig>;
+
+LConfig.Tools
+  .UnregisterClass(TSomeTool)
+.BackToMCP
+.Resources
+  .UnregisterClass(TSomeResource)
+.BackToMCP
+.Prompts
+  .ClearAll
+.BackToMCP;
+```
+
+-----------------------------
+
+### 9. Connecting LLM Clients to Your MCP Server
 
 Once your MCP server is running, you need to configure your LLM client to connect to it. Below are configuration examples for popular clients.
 

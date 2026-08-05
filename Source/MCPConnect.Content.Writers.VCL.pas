@@ -24,6 +24,9 @@ uses
   MCPConnect.MCP.Attributes,
   MCPConnect.Content.Writers;
 
+resourcestring
+  STypeNotSupportedFmt = 'Type %s not supported';
+
 type
   TMCPGraphicWriter = class(TMCPCustomWriter)
   protected
@@ -92,7 +95,7 @@ begin
   else if LGraphic is TPicture then
     LPicture := LGraphic as TPicture
   else
-    raise EMCPException.CreateFmt('Type %s not supported', [LGraphic.ClassName]);
+    raise EMCPException.CreateFmt(STypeNotSupportedFmt, [LGraphic.ClassName]);
 
   LStream := TMemoryStream.Create;
   try
@@ -110,7 +113,7 @@ end;
 
 procedure TMCPGraphicWriter.WritePrompt(const AValue: TValue; AContext: TMCPPromptContext);
 begin
-  AContext.Result.AddImage('user', 'image', ValueToBase64(AValue));
+  AContext.Result.Messages.AddImage('user', 'image', ValueToBase64(AValue));
 end;
 
 procedure TMCPGraphicWriter.WriteResource(const AValue: TValue; AContext: TMCPresourceContext);
@@ -129,12 +132,12 @@ begin
 
   LBlob.Blob := ValueToBase64(AValue);
 
-  AContext.Result.Add(LBlob);
+  AContext.Result.Contents.Add(LBlob);
 end;
 
 procedure TMCPGraphicWriter.WriteTool(const AValue: TValue; AContext: TMCPToolContext);
 begin
-  AContext.Result.AddImage('image', ValueToBase64(AValue));
+  AContext.Result.Content.AddImage('image', ValueToBase64(AValue));
 end;
 
 end.

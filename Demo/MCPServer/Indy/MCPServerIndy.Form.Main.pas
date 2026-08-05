@@ -17,6 +17,7 @@ type
     Label1: TLabel;
     ApplicationEvents1: TApplicationEvents;
     ButtonOpenBrowser: TButton;
+    procedure FormDestroy(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
     procedure ButtonStartClick(Sender: TObject);
@@ -41,6 +42,21 @@ uses
   WinApi.Windows, Winapi.ShellApi,
   Logify, Logify.Adapter.Debug,
   MCPServer.Config;
+
+{ TfrmMain }
+
+procedure TfrmMain.FormCreate(Sender: TObject);
+begin
+  FServer := TJRPCIndyServer.CreateMCPServer(Self);
+  TServerConfigurator.ConfigureServer(FServer.JRPCServer);
+
+  StartServer;
+end;
+
+procedure TfrmMain.FormDestroy(Sender: TObject);
+begin
+  TServerConfigurator.UnregisterFeatures(FServer.JRPCServer);
+end;
 
 procedure TfrmMain.ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
 begin
@@ -67,14 +83,6 @@ procedure TfrmMain.ButtonStopClick(Sender: TObject);
 begin
   FServer.Active := False;
   Logger.Log('MCP Server Stopped', TLogLevel.Debug);
-end;
-
-procedure TfrmMain.FormCreate(Sender: TObject);
-begin
-  FServer := TJRPCIndyServer.CreateMCPServer(Self);
-  TServerConfigurator.ConfigureServer(FServer.JRPCServer);
-
-  StartServer;
 end;
 
 procedure TfrmMain.StartServer;

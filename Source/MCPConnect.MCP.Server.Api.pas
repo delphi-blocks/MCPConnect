@@ -16,7 +16,7 @@ unit MCPConnect.MCP.Server.Api;
 interface
 
 uses
-  System.Classes, System.SysUtils, System.JSON,
+  System.Classes, System.SysUtils, System.StrUtils, System.JSON,
   MCPConnect.JRPC.Classes,
   MCPConnect.JRPC.Core,
   MCPConnect.Configuration.MCP,
@@ -44,10 +44,10 @@ type
   [JRPC('resources')]
   TMCPResourcesApi = class
   private
-    procedure InternalReadResource(AParams: TReadResourceParams;
-      AResource: TMCPResource; AResult: TReadResourceResult);
-    procedure InternalReadTemplate(AParams: TReadResourceParams;
-      ATemplate: TMCPResourceTemplate; AResult: TReadResourceResult);
+    function InternalReadResource(AParams: TReadResourceParams; AResource:
+        TMCPResource): TReadResourceResult;
+    function InternalReadTemplate(AParams: TReadResourceParams; ATemplate:
+        TMCPResourceTemplate): TReadResourceResult;
   public
     [Context] RPCContext: TJRPCContext;
     [Context] MCPConfig: TMCPConfig;
@@ -121,6 +121,8 @@ type
 implementation
 
 uses
+  System.Diagnostics,
+  Logify,
   Neon.Core.Utils,
   MCPConnect.MCP.Invoker;
 
@@ -131,38 +133,44 @@ var
   LInvoker: TMCPToolInvoker;
   LTool: TMCPTool;
   LToolObj: TObject;
+  LStopwatch: TStopwatch;
 begin
-  if not MCPConfig.Tools.Registry.TryGetValue(AParams.Name, LTool) then
-    raise EMCPException.CreateFmt('Tool [%s] not found', [AParams.Name]);
-
-  // Create an instance of the tool class
-  LToolObj := TRttiUtils.CreateInstance(LTool.Classe);
+  LStopwatch := TStopwatch.StartNew;
   try
-    RPCContext.Inject(LToolObj);
+    if not MCPConfig.Tools.Registry.TryGetValue(AParams.Name, LTool) then
+      raise EMCPException.CreateFmt(SMCPToolNotFound, [AParams.Name]);
 
-    LInvoker := TMCPToolInvoker.Create(LToolObj, LTool);
+    // Instance of the tool class
+    LToolObj := TRttiUtils.CreateInstance(LTool.ToolClass);
     try
-      RPCContext.Inject(LInvoker);
+      RPCContext.Inject(LToolObj);
 
-      Result := TCallToolResult.Create;
+      LInvoker := TMCPToolInvoker.Create(LToolObj, LTool);
       try
-        LInvoker.Invoke(AParams, Result);
-      except
-        Result.Free;
-        raise;
+        RPCContext.Inject(LInvoker);
+        Result := LInvoker.Invoke(AParams);
+      finally
+        LInvoker.Free;
       end;
     finally
-      LInvoker.Free;
+      LToolObj.Free;
     end;
   finally
-    LToolObj.Free;
+    Logger.LogDebug('[PERF] CallTool [%s] total: %d ms', [AParams.Name, LStopwatch.ElapsedMilliseconds]);
   end;
 end;
 
 
 function TMCPToolsApi.ToolsList: TListToolsResult;
+var
+  LStopwatch: TStopwatch;
 begin
-  Result := MCPConfig.Tools.ListEnabled;
+  LStopwatch := TStopwatch.StartNew;
+  try
+    Result := MCPConfig.Tools.ListEnabled;
+  finally
+    Logger.LogDebug('[PERF] ToolsList total: %d ms', [LStopwatch.ElapsedMilliseconds]);
+  end;
 end;
 
 { TMCPNotificationsApi }
@@ -186,7 +194,10 @@ function TMCPInitializeApi.Initialize(AInitializeParams: TInitializeParams): TIn
 begin
   Result := TInitializeResult.Create;
   try
-    Result.ProtocolVersion := AInitializeParams.ProtocolVersion;
+    if MatchStr(AInitializeParams.ProtocolVersion, MCP_SUPPORTED_PROTOCOL_VERSIONS) then
+      Result.ProtocolVersion := AInitializeParams.ProtocolVersion
+    else
+      Result.ProtocolVersion := MCP_LATEST_PROTOCOL_VERSION;
     Result.ServerInfo.Name := MCPConfig.Server.Name;
     Result.ServerInfo.Version := MCPConfig.Server.Version;
     Result.ServerInfo.Description := MCPConfig.Server.Description;
@@ -225,50 +236,52 @@ end;
 
 { TMCPResourcesApi }
 
-procedure TMCPResourcesApi.InternalReadResource(AParams: TReadResourceParams;
-  AResource: TMCPResource; AResult: TReadResourceResult);
+function TMCPResourcesApi.InternalReadResource(AParams: TReadResourceParams;
+    AResource: TMCPResource): TReadResourceResult;
 var
   LInvoker: TMCPResourceInvoker;
   LResObj: TObject;
 begin
   // If it's a static resource serve the file directly
   if AResource.FileName <> '' then
-    TMCPStaticResource.GetResource(MCPConfig, AResource, AResult)
-  else
   begin
-    // Create an instance of the resource class
-    LResObj := TRttiUtils.CreateInstance(AResource.Classe);
-    try
-      RPCContext.Inject(LResObj);
+    Result := TReadResourceResult.Create;
+    TMCPStaticResource.GetResource(MCPConfig, AResource, Result);
+    Exit;
+  end;
 
-      LInvoker := TMCPResourceInvoker.Create(LResObj, AResource);
-      try
-        RPCContext.Inject(LInvoker);
-        LInvoker.Invoke(AParams, AResult);
-      finally
-        LInvoker.Free;
-      end;
+  // Create an instance of the resource class
+  LResObj := TRttiUtils.CreateInstance(AResource.ResourceClass);
+  try
+    RPCContext.Inject(LResObj);
+
+    LInvoker := TMCPResourceInvoker.Create(LResObj, AResource);
+    try
+      RPCContext.Inject(LInvoker);
+      Result := LInvoker.Invoke(AParams);
     finally
-      LResObj.Free;
+      LInvoker.Free;
     end;
+  finally
+    LResObj.Free;
   end;
 end;
 
-procedure TMCPResourcesApi.InternalReadTemplate(AParams: TReadResourceParams;
-  ATemplate: TMCPResourceTemplate; AResult: TReadResourceResult);
+function TMCPResourcesApi.InternalReadTemplate(AParams: TReadResourceParams;
+    ATemplate: TMCPResourceTemplate): TReadResourceResult;
 var
   LInvoker: TMCPTemplateInvoker;
   LTplObj: TObject;
 begin
   // Create an instance of the resource class
-  LTplObj := TRttiUtils.CreateInstance(ATemplate.Classe);
+  LTplObj := TRttiUtils.CreateInstance(ATemplate.ResourceClass);
   try
     RPCContext.Inject(LTplObj);
 
     LInvoker := TMCPTemplateInvoker.Create(LTplObj, ATemplate);
     try
       RPCContext.Inject(LInvoker);
-      LInvoker.Invoke(AParams, AResult);
+      Result := LInvoker.Invoke(AParams);
     finally
       LInvoker.Free;
     end;
@@ -281,41 +294,48 @@ function TMCPResourcesApi.ReadResource([JRPCParams] AParams: TReadResourceParams
 var
   LRes: TMCPResource;
   LTpl: TMCPResourceTemplate;
+  LStopwatch: TStopwatch;
 begin
-  LTpl := nil;
-
-  // Try to match the exact resource uri
-  LRes := MCPConfig.Resources.GetResource(AParams.Uri);
-
-  // If no resource is found the try to match with templates
-  if not Assigned(LRes) then
-  begin
-    LTpl := MCPConfig.Resources.GetTemplate(AParams.Uri);
-
-    if not Assigned(LTpl) then
-      raise EMCPException.CreateFmt('Resource [%s] not found', [AParams.Uri]);
-  end;
-
-  Result := TReadResourceResult.Create;
+  LStopwatch := TStopwatch.StartNew;
   try
+    LTpl := nil;
+
+    // Try to match the exact resource uri
+    LRes := MCPConfig.Resources.GetResource(AParams.Uri);
+
+    // If no resource is found the try to match with templates
+    if not Assigned(LRes) then
+    begin
+      LTpl := MCPConfig.Resources.GetTemplate(AParams.Uri);
+
+      if not Assigned(LTpl) then
+        raise EMCPException.CreateFmt(SMCPResourceNotFound, [AParams.Uri]);
+    end;
+
     if Assigned(LRes) then
-      InternalReadResource(AParams, LRes, Result)
+      Result := InternalReadResource(AParams, LRes)
     else
-      InternalReadTemplate(AParams, LTpl, Result);
-  except
-    Result.Free;
-    raise;
+      Result := InternalReadTemplate(AParams, LTpl);
+  finally
+    Logger.LogDebug('[PERF] ReadResource [%s] total: %d ms', [AParams.Uri, LStopwatch.ElapsedMilliseconds]);
   end;
 end;
 
 function TMCPResourcesApi.ResourcesList: TListResourcesResult;
+var
+  LStopwatch: TStopwatch;
 begin
-  Result := TListResourcesResult.Create;
+  LStopwatch := TStopwatch.StartNew;
   try
-    MCPConfig.Resources.ResourceList(Result);
-  except
-    Result.Free;
-    raise;
+    Result := TListResourcesResult.Create;
+    try
+      MCPConfig.Resources.ResourceList(Result);
+    except
+      Result.Free;
+      raise;
+    end;
+  finally
+    Logger.LogDebug('[PERF] ResourcesList total: %d ms', [LStopwatch.ElapsedMilliseconds]);
   end;
 end;
 
@@ -349,8 +369,15 @@ end;
 { TMCPPromptsApi }
 
 function TMCPPromptsApi.PromptList: TListPromptsResult;
+var
+  LStopwatch: TStopwatch;
 begin
-  Result := MCPConfig.Prompts.ListComplete;
+  LStopwatch := TStopwatch.StartNew;
+  try
+    Result := MCPConfig.Prompts.ListComplete;
+  finally
+    Logger.LogDebug('[PERF] PromptList total: %d ms', [LStopwatch.ElapsedMilliseconds]);
+  end;
 end;
 
 function TMCPPromptsApi.ReadPrompt(AParams: TGetPromptParams): TGetPromptResult;
@@ -358,31 +385,30 @@ var
   LInvoker: TMCPPromptInvoker;
   LPrompt: TMCPPrompt;
   LPromptObj: TObject;
+  LStopwatch: TStopwatch;
 begin
-  if not MCPConfig.Prompts.Registry.TryGetValue(AParams.Name, LPrompt) then
-    raise EMCPException.CreateFmt('Tool [%s] not found', [AParams.Name]);
-
-  // Create an instance of the tool class
-  LPromptObj := TRttiUtils.CreateInstance(LPrompt.Classe);
+  LStopwatch := TStopwatch.StartNew;
   try
-    RPCContext.Inject(LPromptObj);
+    if not MCPConfig.Prompts.Registry.TryGetValue(AParams.Name, LPrompt) then
+      raise EMCPException.CreateFmt(SMCPPromptNotFound, [AParams.Name]);
 
-    LInvoker := TMCPPromptInvoker.Create(LPromptObj, LPrompt);
+    // Create an instance of the tool class
+    LPromptObj := TRttiUtils.CreateInstance(LPrompt.PromptClass);
     try
-      RPCContext.Inject(LInvoker);
+      RPCContext.Inject(LPromptObj);
 
-      Result := TGetPromptResult.Create;
+      LInvoker := TMCPPromptInvoker.Create(LPromptObj, LPrompt);
       try
-        LInvoker.Invoke(AParams, Result);
-      except
-        Result.Free;
-        raise;
+        RPCContext.Inject(LInvoker);
+        Result := LInvoker.Invoke(AParams);
+      finally
+        LInvoker.Free;
       end;
     finally
-      LInvoker.Free;
+      LPromptObj.Free;
     end;
   finally
-    LPromptObj.Free;
+    Logger.LogDebug('[PERF] ReadPrompt [%s] total: %d ms', [AParams.Name, LStopwatch.ElapsedMilliseconds]);
   end;
 end;
 

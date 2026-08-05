@@ -1,4 +1,4 @@
-{******************************************************************************}
+ï»¿{******************************************************************************}
 {                                                                              }
 {  Delphi MCP Connect Library                                                  }
 {                                                                              }
@@ -55,7 +55,7 @@ type
     Required: NullBoolean;
 
     /// <summary>
-    ///   Intended for UI and end-user contexts — optimized to be human-readable and easily
+    ///   Intended for UI and end-user contexts ï¿½ optimized to be human-readable and easily
     ///   understood, even by those unfamiliar with domain-specific terminology
     /// </summary>
     /// <remarks>
@@ -71,14 +71,27 @@ type
 
 
   /// <summary>
+  ///   A single argument configured for a manually-registered prompt (registered without
+  ///   [McpParam]/[McpArgument] attributes) - used to resolve the MCP-facing argument name
+  ///   at invoke time regardless of registration path.
+  /// </summary>
+  TMCPPromptParam = class(TMetaClass)
+  public
+    Param: TRttiParameter;
+    ParamName: string;
+    Name: string;
+  end;
+
+  /// <summary>
   /// Represents a known resource that the server is capable of reading.
   /// </summary>
   TMCPPrompt = class(TMetaClass)
   public
-    [NeonIgnore] Classe: TClass;
+    [NeonIgnore] PromptClass: TClass;
     [NeonIgnore] Method: TRttiMethod;
     [NeonIgnore] Category: string;
     [NeonIgnore] Disabled: Boolean;
+    [NeonIgnore] MethodParams: TObjectList<TMCPPromptParam>;
   public
 
     /// <summary>
@@ -105,7 +118,7 @@ type
     Arguments: TPromptArguments;
 
     /// <summary>
-    ///   Intended for UI and end-user contexts — optimized to be human-readable and easily
+    ///   Intended for UI and end-user contexts ï¿½ optimized to be human-readable and easily
     ///   understood, even by those unfamiliar with domain-specific terminology
     /// </summary>
     /// <remarks>
@@ -113,6 +126,12 @@ type
     ///   annotations.title should be given precedence over using name, if present)
     /// </remarks>
     Title: NullString;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    function FindMCPParam(const AName: string): TMCPPromptParam;
+    function FindRttiParam(const AName: string): TRttiParameter;
   end;
 
   TMCPPrompts = TObjectList<TMCPPrompt>;
@@ -209,7 +228,8 @@ type
     /// </summary>
     Messages: TPromptMessages;
   public
-    constructor Create;
+    constructor Create; overload;
+    constructor Create(AMessages: TPromptMessages); overload;
     destructor Destroy; override;
   end;
 
@@ -247,6 +267,14 @@ begin
   Messages := TPromptMessages.Create;
 end;
 
+constructor TGetPromptResult.Create(AMessages: TPromptMessages);
+begin
+  Assert(Assigned(AMessages), ClassName + ': AMessages cannot be nil');
+
+  inherited Create;
+  Messages := AMessages;
+end;
+
 destructor TGetPromptResult.Destroy;
 begin
   Messages.Free;
@@ -277,6 +305,36 @@ destructor TGetPromptRequest.Destroy;
 begin
   Params.Free;
   inherited;
+end;
+
+{ TMCPPrompt }
+
+constructor TMCPPrompt.Create;
+begin
+  inherited;
+  MethodParams := TObjectList<TMCPPromptParam>.Create(True);
+end;
+
+destructor TMCPPrompt.Destroy;
+begin
+  MethodParams.Free;
+  inherited;
+end;
+
+function TMCPPrompt.FindMCPParam(const AName: string): TMCPPromptParam;
+begin
+  Result := nil;
+  for var par in MethodParams do
+    if SameText(AName, par.ParamName) then
+      Exit(par);
+end;
+
+function TMCPPrompt.FindRttiParam(const AName: string): TRttiParameter;
+begin
+  Result := nil;
+  for var par in Method.GetParameters do
+    if SameText(AName, par.Name) then
+      Exit(par);
 end;
 
 { TListPromptsResult }

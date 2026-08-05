@@ -17,6 +17,7 @@ uses
   MCPConnect.Configuration.MCP,
   MCPConnect.Configuration.Session,
   MCPConnect.Configuration.Auth,
+  MCPConnect.Configuration.Neon,
 
   MCPConnect.Content.Writers.RTL,
   MCPConnect.Content.Writers.VCL,
@@ -33,6 +34,9 @@ implementation
 uses
   System.IOUtils,
   System.TypInfo,
+  Neon.Core.Persistence,
+  Neon.Core.Serializers.RTL,
+
   Logify,
   MCPAuthServer.Tools;
 
@@ -43,6 +47,10 @@ class procedure TServerConfigurator.ConfigureServer(AServer: TJRPCServer);
 var
   LDataPath: string;
 begin
+  var NeonConfig :=
+   TNeonConfiguration.Camel
+     .RegisterSerializer(TJSONValueSerializer);
+
   LDataPath := TPath.Combine(ExtractFilePath(ParamStr(0)), 'data');
 
   AServer
@@ -88,6 +96,7 @@ begin
 
       .Tools
         .RegisterClass(TTestTool)
+        .SetSchemaNeonConfig(NeonConfig)
       .BackToMCP
   ;
 end;

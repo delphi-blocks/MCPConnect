@@ -151,6 +151,7 @@ type
     property ScopesSupported: TArray<string> read FScopesSupported;
     property ResourceMetadata: string read GetResourceMetadata;
     property MetadataProxyUpstream: string read FMetadataProxyUpstream;
+    property MetadataProxyUrl: string read GetMetadataProxyUrl;
     property MetadataProxyEnabled: Boolean read GetMetadataProxyEnabled;
 
     constructor Create(AApp: IJRPCApplication); override;

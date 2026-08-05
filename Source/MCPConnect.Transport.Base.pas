@@ -378,6 +378,14 @@ begin
           LJSON.AddPair('code_challenge_methods_supported', LNewMethods);
         end;
 
+        // Per RFC 8414 §3.3, "issuer" must exactly match the URL the metadata
+        // document was retrieved from, i.e. this proxy's own URL - not the
+        // upstream authorization server's issuer - or strict MCP OAuth clients
+        // reject the document with an issuer mismatch.
+        var LExistingIssuer := LJSON.RemovePair('issuer');
+        LExistingIssuer.Free;
+        LJSON.AddPair('issuer', FOAuthConfig.MetadataProxyUrl);
+
         FResponse.Code := HTTP_CODE_OK;
         FResponse.Content := LJSON.ToJSON;
       finally

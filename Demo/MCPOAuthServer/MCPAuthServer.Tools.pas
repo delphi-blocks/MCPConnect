@@ -21,20 +21,41 @@ uses
   MCPConnect.Session.Core;
 
 type
-  TPerson = class
+  TUser = class
   private
     FName: string;
+    FEMail: string;
+    FScope: string;
+    FEmailVerified: Boolean;
+    FSubject: string;
+    FFamilyName: string;
+    FGivenName: string;
+    FPreferredUsername: string;
+    FRawToken: TJSONObject;
   public
-    property Name: string read FName write FName;
+    property RawToken: TJSONObject read FRawToken;
+    property Subject: string read FSubject;
+    property Name: string read FName;
+    property EMail: string read FEMail;
+    property Scope: string read FScope;
+    property EmailVerified: Boolean read FEmailVerified;
+    property PreferredUsername: string read FPreferredUsername;
+    property GivenName: string read FGivenName;
+    property FamilyName: string read FFamilyName;
+
     constructor Create(const AName: string);
+    constructor CreateFromToken(AToken: TMCPAccessToken);
+    destructor Destroy; override;
+
   end;
 
   TTestTool = class
+  private
+    [Context]
+    FToken: TMCPAccessToken;
   public
-    [McpTool('get-person', 'Get a person info given his name', 'icon=person.png')]
-    function GetPerson(
-      [McpParam('name', 'The name of the person to get')] const AName: string
-    ): TPerson;
+    [McpTool('get-user', 'Get the corrent user information', 'icon=person.png')]
+    function GetUser(): TUser;
 
   end;
 
@@ -42,17 +63,40 @@ implementation
 
 { TTestTool }
 
-function TTestTool.GetPerson(const AName: string): TPerson;
+function TTestTool.GetUser: TUser;
 begin
-  Result := TPerson.Create(AName);
+  Result := TUser.CreateFromToken(FToken);
 end;
 
-{ TPerson }
+{ TUser }
 
-constructor TPerson.Create(const AName: string);
+constructor TUser.Create(const AName: string);
 begin
   inherited Create;
   FName := AName;
+  FRawToken := nil;
+end;
+
+constructor TUser.CreateFromToken(AToken: TMCPAccessToken);
+begin
+  inherited Create;
+  FName := AToken.Name;
+  FEMail := AToken.EMail;
+  FScope := AToken.Scope;
+  FEmailVerified := AToken.EmailVerified;
+  FSubject := AToken.Subject;
+  FFamilyName := AToken.FamilyName;
+  FGivenName := AToken.GivenName;
+  FPreferredUsername := AToken.PreferredUsername;
+
+  FRawToken := AToken.Payload.Clone as TJSONObject;
+
+end;
+
+destructor TUser.Destroy;
+begin
+  FRawToken.Free;
+  inherited;
 end;
 
 end.

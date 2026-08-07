@@ -39,9 +39,10 @@ type
 
   /// <summary>
   ///   What can be verified without OpenSSL on the machine running the suite: the
-  ///   PEM assembly, and that a key which cannot yield a public key is rejected
-  ///   rather than waved through. The cryptographic verification itself is exercised
-  ///   against a live identity provider, not here.
+  ///   PEM assembly, which of the published members a key is read from, and that a key
+  ///   which cannot yield a public key is rejected rather than waved through. The
+  ///   cryptographic verification itself is exercised against a live identity provider,
+  ///   not here.
   /// </summary>
   [TestFixture]
   TJoseTokenValidatorTest = class(TObject)
@@ -71,7 +72,9 @@ type
     [Test]
     procedure TestCertificateToPEM_PreservesTheCertificate;
     [Test]
-    procedure TestValidate_KeyWithoutCertificateChainIsRejected;
+    procedure TestValidate_KeyWithoutKeyMaterialIsRejected;
+    [Test]
+    procedure TestValidate_KeyWithBareComponentsReachesTheSignatureCheck;
     [Test]
     procedure TestValidate_UnreadableCertificateIsRejected;
   end;
@@ -191,18 +194,36 @@ begin
   end;
 end;
 
-procedure TJoseTokenValidatorTest.TestValidate_KeyWithoutCertificateChainIsRejected;
+procedure TJoseTokenValidatorTest.TestValidate_KeyWithoutKeyMaterialIsRejected;
 var
   LResult: TTokenValidationResult;
 begin
-  // Bare RSA parameters, no "x5c": there is nothing to build a public key from, and
-  // "cannot verify" must never collapse into "verified".
-  PublishKey(Format('{"kid":"%s","kty":"RSA","use":"sig","n":"modulus","e":"AQAB"}', [KeyId]));
+  // Neither the components nor a chain: there is nothing to build a public key from,
+  // and "cannot verify" must never collapse into "verified".
+  PublishKey(Format('{"kid":"%s","kty":"RSA","use":"sig"}', [KeyId]));
 
   LResult := ValidateValidToken;
 
   Assert.IsFalse(LResult.Success);
   Assert.IsTrue(LResult.ErrorCode = TTokenValidationErrorCode.InvalidToken);
+  Assert.AreEqual(SJoseKeyWithoutMaterial, LResult.ErrorDescription);
+  Assert.AreEqual('', FAccessToken.Subject);
+end;
+
+procedure TJoseTokenValidatorTest.TestValidate_KeyWithBareComponentsReachesTheSignatureCheck;
+var
+  LResult: TTokenValidationResult;
+begin
+  // "n"/"e" without an "x5c" is what RFC 7518 requires and what most identity providers
+  // publish. The token is still rejected - its signature is made up - but it must be
+  // rejected by the signature check, not for lack of a certificate.
+  PublishKey(Format('{"kid":"%s","kty":"RSA","use":"sig","n":"AQIDBAUG","e":"AQAB"}', [KeyId]));
+
+  LResult := ValidateValidToken;
+
+  Assert.IsFalse(LResult.Success);
+  Assert.AreNotEqual(SJoseKeyWithoutMaterial, LResult.ErrorDescription,
+    'The key components must be read as key material');
   Assert.AreEqual('', FAccessToken.Subject);
 end;
 
@@ -210,14 +231,16 @@ procedure TJoseTokenValidatorTest.TestValidate_UnreadableCertificateIsRejected;
 var
   LResult: TTokenValidationResult;
 begin
-  // A well-formed key whose certificate is not one. Whether OpenSSL is installed
-  // decides where this fails, never whether the token is accepted.
+  // No components, so the chain is what the key is read from - and this one is a
+  // well-formed key whose certificate is not one. Whether OpenSSL is installed decides
+  // where this fails, never whether the token is accepted.
   PublishKey(Format('{"kid":"%s","kty":"RSA","use":"sig","x5c":["bm90LWEtY2VydGlmaWNhdGU="]}',
     [KeyId]));
 
   LResult := ValidateValidToken;
 
   Assert.IsFalse(LResult.Success);
+  Assert.AreEqual(SJoseKeyUnreadable, LResult.ErrorDescription);
   Assert.AreEqual('', FAccessToken.Subject);
 end;
 

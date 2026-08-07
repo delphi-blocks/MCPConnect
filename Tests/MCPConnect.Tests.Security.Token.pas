@@ -84,7 +84,7 @@ type
     class var FKeyId: string;
   protected
     function CheckSignature(const AHeader, APayload, ASignature: string;
-      const AKey: TJsonWebKey): TTokenValidationResult; override;
+      const AKey: TOAuthJsonWebKey): TTokenValidationResult; override;
   public
     class procedure Reset(AAccept: Boolean); static;
 
@@ -450,7 +450,7 @@ begin
 end;
 
 function TSignatureCheckingValidator.CheckSignature(const AHeader, APayload,
-  ASignature: string; const AKey: TJsonWebKey): TTokenValidationResult;
+  ASignature: string; const AKey: TOAuthJsonWebKey): TTokenValidationResult;
 begin
   Inc(FCalls);
   FSignedMaterial := AHeader + '.' + APayload;
@@ -1221,7 +1221,7 @@ end;
 
 procedure TOAuthMetadataProviderTest.TestGetKeys_ParsesTheKeySet;
 var
-  LKeys: TArray<TJsonWebKey>;
+  LKeys: TArray<TOAuthJsonWebKey>;
 begin
   LKeys := FProvider.GetKeys(Issuer);
 
@@ -1234,7 +1234,7 @@ end;
 
 procedure TOAuthMetadataProviderTest.TestGetKeys_ParsesEveryMappedMember;
 var
-  LKeys: TArray<TJsonWebKey>;
+  LKeys: TArray<TOAuthJsonWebKey>;
 begin
   FFake.SetDocument(JwksUrl,
     '{"keys":[{"kid":"ec-1","kty":"EC","alg":"ES256","use":"sig","crv":"P-256",' +
@@ -1258,7 +1258,7 @@ end;
 
 procedure TOAuthMetadataProviderTest.TestGetKeys_KeepsTheKeyEntryAsPublished;
 var
-  LKeys: TArray<TJsonWebKey>;
+  LKeys: TArray<TOAuthJsonWebKey>;
 begin
   LKeys := FProvider.GetKeys(Issuer);
 
@@ -1269,7 +1269,7 @@ end;
 
 procedure TOAuthMetadataProviderTest.TestTryGetKey_FindsThePublishedKey;
 var
-  LKey: TJsonWebKey;
+  LKey: TOAuthJsonWebKey;
 begin
   Assert.IsTrue(FProvider.TryGetKey(Issuer, 'key-1', LKey));
   Assert.AreEqual('key-1', LKey.Kid);
@@ -1277,7 +1277,7 @@ end;
 
 procedure TOAuthMetadataProviderTest.TestTryGetKey_UnknownKeyIdRefreshesOnceAndFindsARotatedKey;
 var
-  LKey: TJsonWebKey;
+  LKey: TOAuthJsonWebKey;
 begin
   FFake.KeysRefreshInterval := 0;
 
@@ -1293,7 +1293,7 @@ end;
 
 procedure TOAuthMetadataProviderTest.TestTryGetKey_UnknownKeyIdDoesNotRefreshWithinTheRateLimit;
 var
-  LKey: TJsonWebKey;
+  LKey: TOAuthJsonWebKey;
 begin
   FProvider.TryGetKey(Issuer, 'key-1', LKey);
   FFake.ResetFetchCount;
@@ -1309,7 +1309,7 @@ end;
 
 procedure TOAuthMetadataProviderTest.TestTryGetKey_EmptyKeyIdMatchesTheOnlyPublishedKey;
 var
-  LKey: TJsonWebKey;
+  LKey: TOAuthJsonWebKey;
 begin
   Assert.IsTrue(FProvider.TryGetKey(Issuer, '', LKey));
   Assert.AreEqual('key-1', LKey.Kid);
@@ -1317,7 +1317,7 @@ end;
 
 procedure TOAuthMetadataProviderTest.TestTryGetKey_EmptyKeyIdIsAmbiguousWithSeveralKeys;
 var
-  LKey: TJsonWebKey;
+  LKey: TOAuthJsonWebKey;
 begin
   PublishKeys(['key-1', 'key-2']);
 
@@ -1327,7 +1327,7 @@ end;
 
 procedure TOAuthMetadataProviderTest.TestTryGetKey_ReturnsFalseInsteadOfRaisingWhenUnreachable;
 var
-  LKey: TJsonWebKey;
+  LKey: TOAuthJsonWebKey;
 begin
   FFake.FailFrom := 1;
 
@@ -1337,7 +1337,7 @@ end;
 
 procedure TOAuthMetadataProviderTest.TestGetKeys_KeepsServingTheCachedSetWhenARefreshFails;
 var
-  LKeys: TArray<TJsonWebKey>;
+  LKeys: TArray<TOAuthJsonWebKey>;
 begin
   FProvider.GetKeys(Issuer);
 

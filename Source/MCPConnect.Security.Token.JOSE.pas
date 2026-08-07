@@ -26,8 +26,8 @@ uses
   MCPConnect.Security.Token;
 
 resourcestring
-  SJoseKeyWithoutCertificate = 'The signing key does not publish a certificate chain';
-  SJoseCertificateUnreadable = 'The signing certificate cannot be read';
+  SJoseKeyWithoutMaterial = 'The signing key publishes no usable public key';
+  SJoseKeyUnreadable = 'The public key of the signing key cannot be read';
   SJoseSignatureInvalid = 'The token signature does not verify';
 
 type
@@ -42,10 +42,10 @@ type
   ///   token that reaches a tool has been proven to come from a trusted issuer, for
   ///   this resource, within its validity window, signed by a key that issuer
   ///   publishes.
-  ///   The public key is taken from the "x5c" certificate chain of the JSON Web Key.
-  ///   Keys published as bare RSA parameters ("n"/"e") without a certificate are
-  ///   rejected rather than silently accepted - see the remark on
-  ///   <see cref="PublicKeyFrom" /> if your identity provider does that.
+  ///   Both the key types used to sign access tokens are supported, read from the key
+  ///   components RFC 7518 makes required - "n"/"e" for RSA, "crv"/"x"/"y" for EC -
+  ///   and, for the identity providers that publish nothing else, from an "x5c"
+  ///   certificate chain.
   ///   JOSE signing needs the OpenSSL libraries at run time; they are not required to
   ///   compile.
   /// </remarks>
@@ -59,18 +59,18 @@ type
     class function CertificateToPEM(const ACertificate: string): string; static;
 
     /// <summary>
-    ///   Extracts the public key to verify with, from the certificate chain of AKey.
-    ///   Returns an empty array when the key publishes no chain.
+    ///   Builds the public key to verify with, as the PEM document JOSE reads, from
+    ///   the key the identity provider published. Returns an empty array when that key
+    ///   carries neither its components nor a certificate chain.
     /// </summary>
     /// <remarks>
-    ///   Override to support an identity provider that publishes only the raw key
-    ///   parameters: building an RSA public key out of "n" and "e" is possible, but it
-    ///   means assembling DER by hand, which does not belong in this class.
+    ///   Override for an identity provider that publishes its keys in some other form:
+    ///   anything that yields a PEM public key is accepted here.
     /// </remarks>
-    function PublicKeyFrom(const AKey: TJsonWebKey): TBytes; virtual;
+    function PublicKeyFrom(const AKey: TOAuthJsonWebKey): TBytes; virtual;
 
     function CheckSignature(const AHeader, APayload, ASignature: string;
-      const AKey: TJsonWebKey): TTokenValidationResult; override;
+      const AKey: TOAuthJsonWebKey): TTokenValidationResult; override;
   end;
 
 {$ENDIF}
@@ -80,8 +80,7 @@ implementation
 {$IFDEF DELPHI_JOSE_JWT}
 
 uses
-  System.StrUtils,
-
+  JOSE.Types.Bytes,
   JOSE.Core.Builder,
   JOSE.Core.JWK,
   JOSE.Core.JWT,
@@ -118,20 +117,39 @@ begin
   end;
 end;
 
-function TJoseTokenValidator.PublicKeyFrom(const AKey: TJsonWebKey): TBytes;
+function TJoseTokenValidator.PublicKeyFrom(const AKey: TOAuthJsonWebKey): TBytes;
+var
+  LKey: TJSONWebKey;
 begin
   Result := [];
-  if Length(AKey.X5c) = 0 then
-    Exit;
 
-  // The chain is ordered leaf first: the token is signed with that certificate, the
-  // rest of the chain only proves who issued it, which is not our question here.
-  Result := TSigningBase.PublicKeyFromCertificate(
-    TEncoding.ANSI.GetBytes(CertificateToPEM(AKey.X5c[0])));
+  // The components are the normative key material of RFC 7518, so they come first:
+  // JOSE reads the published JWK as it stands and rebuilds the PEM from it, RSA and
+  // EC alike. The entry is passed on as received - Raw - rather than reassembled from
+  // the members mapped on TOAuthJsonWebKey, which are only the ones we look at.
+  if AKey.HasKeyComponents then
+  begin
+    LKey := TJSONWebKey.FromJSON(AKey.Raw);
+    try
+      // The public half alone: this validator verifies signatures, it never makes them.
+      Result := LKey.ToPEM(False).AsBytes;
+    finally
+      LKey.Free;
+    end;
+    Exit;
+  end;
+
+  // Publishing only a chain does not meet RFC 7518, but some identity providers do it
+  // and the leaf certificate carries the same public key. The chain is ordered leaf
+  // first: the rest of it only proves who issued that certificate, which is not our
+  // question here.
+  if Length(AKey.X5c) > 0 then
+    Result := TSigningBase.PublicKeyFromCertificate(
+      TEncoding.ANSI.GetBytes(CertificateToPEM(AKey.X5c[0])));
 end;
 
 function TJoseTokenValidator.CheckSignature(const AHeader, APayload, ASignature: string;
-  const AKey: TJsonWebKey): TTokenValidationResult;
+  const AKey: TOAuthJsonWebKey): TTokenValidationResult;
 var
   LPublicKey: TBytes;
   LJWK: TJWK;
@@ -142,15 +160,15 @@ begin
   except
     on E: Exception do
     begin
-      Logger.LogError('Cannot read the certificate of key "%s": %s', [AKey.Kid, E.Message]);
-      Exit(Reject(TTokenValidationErrorCode.InvalidToken, SJoseCertificateUnreadable,
-        'a readable X.509 certificate', AKey.Kid));
+      Logger.LogError('Cannot read the public key of key "%s": %s', [AKey.Kid, E.Message]);
+      Exit(Reject(TTokenValidationErrorCode.InvalidToken, SJoseKeyUnreadable,
+        'a readable public key', AKey.Kid));
     end;
   end;
 
   if Length(LPublicKey) = 0 then
-    Exit(Reject(TTokenValidationErrorCode.InvalidToken, SJoseKeyWithoutCertificate,
-      'a key publishing an "x5c" certificate chain', AKey.Kid));
+    Exit(Reject(TTokenValidationErrorCode.InvalidToken, SJoseKeyWithoutMaterial,
+      'a key publishing its components or an "x5c" certificate chain', AKey.Kid));
 
   LJWK := TJWK.Create(LPublicKey);
   try

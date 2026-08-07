@@ -1,4 +1,4 @@
-{******************************************************************************}
+﻿{******************************************************************************}
 {                                                                              }
 {  Delphi MCP Connect Library                                                  }
 {                                                                              }
@@ -209,7 +209,7 @@ type
     ///   verifying the signature does not have to repeat the lookup.
     /// </summary>
     function ResolveKey(AConfig: TOAuthConfig; const AIssuer, AKeyId: string;
-      out AKey: TJsonWebKey): Boolean;
+      out AKey: TOAuthJsonWebKey): Boolean;
 
     /// <summary>
     ///   Algorithms accepted in the token header. "none" is never accepted.
@@ -238,7 +238,7 @@ type
     ///   raising.
     /// </remarks>
     function CheckSignature(const AHeader, APayload, ASignature: string;
-      const AKey: TJsonWebKey): TTokenValidationResult; virtual;
+      const AKey: TOAuthJsonWebKey): TTokenValidationResult; virtual;
   public
     function Validate(AContext: TJRPCContext; const AToken: string;
       AAccessToken: TMCPAccessToken): TTokenValidationResult; override;
@@ -481,9 +481,9 @@ begin
 end;
 
 function TClaimsTokenValidator.ResolveKey(AConfig: TOAuthConfig;
-  const AIssuer, AKeyId: string; out AKey: TJsonWebKey): Boolean;
+  const AIssuer, AKeyId: string; out AKey: TOAuthJsonWebKey): Boolean;
 begin
-  AKey := Default(TJsonWebKey);
+  AKey := Default(TOAuthJsonWebKey);
   if not Assigned(AConfig) or not Assigned(AConfig.MetadataProvider) then
     Exit(False);
 
@@ -491,7 +491,7 @@ begin
 end;
 
 function TClaimsTokenValidator.CheckSignature(const AHeader, APayload, ASignature: string;
-  const AKey: TJsonWebKey): TTokenValidationResult;
+  const AKey: TOAuthJsonWebKey): TTokenValidationResult;
 begin
   // Deliberately empty: see the remarks on the declaration. Override to verify.
   Result := TTokenValidationResult.Ok;
@@ -520,7 +520,7 @@ function TClaimsTokenValidator.CheckClaims(AConfig: TOAuthConfig;
 var
   LAlgorithm, LKeyId, LKeySource, LTrustedIssuer, LMissingScope: string;
   LNowUTC: TDateTime;
-  LKey: TJsonWebKey;
+  LKey: TOAuthJsonWebKey;
 begin
   LAlgorithm := GetAlgorithm(AHeader);
   if not IsAlgorithmAllowed(LAlgorithm) then

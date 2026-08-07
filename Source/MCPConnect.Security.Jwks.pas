@@ -67,7 +67,7 @@ type
   ///   Member names are spelled out with [NeonProperty] rather than derived from a
   ///   naming convention: they are fixed by RFC 7517, not by our own style.
   /// </remarks>
-  TJsonWebKey = record
+  TOAuthJsonWebKey = record
     /// <summary>Key id ("kid"), matched against the "kid" of the token header.</summary>
     [NeonProperty('kid')]
     Kid: string;
@@ -108,7 +108,15 @@ type
     /// <summary>True when the key can be used to verify a signature ("use" is 'sig' or absent).</summary>
     function IsSignatureKey: Boolean;
 
-    class function FromJSON(AJSON: TJSONObject): TJsonWebKey; static;
+    /// <summary>
+    ///   True when the key publishes the components its type is defined by: "n"/"e"
+    ///   for RSA, "x"/"y" for EC. RFC 7518 makes those members required, and an
+    ///   optional "x5c" chain carries the same public key, so this is what a verifier
+    ///   should read first.
+    /// </summary>
+    function HasKeyComponents: Boolean;
+
+    class function FromJSON(AJSON: TJSONObject): TOAuthJsonWebKey; static;
   end;
 
   /// <summary>
@@ -160,7 +168,7 @@ type
     /// <exception cref="EOAuthMetadataException">
     ///   The key set cannot be retrieved and no previously cached copy is available.
     /// </exception>
-    function GetKeys(const AIssuer: string): TArray<TJsonWebKey>;
+    function GetKeys(const AIssuer: string): TArray<TOAuthJsonWebKey>;
 
     /// <summary>
     ///   Looks up a single key by its id. An unknown key id triggers one rate-limited
@@ -172,7 +180,7 @@ type
     ///   this method never raises, so that a caller cannot accidentally turn an
     ///   unreachable identity provider into an accepted token.
     /// </returns>
-    function TryGetKey(const AIssuer, AKeyId: string; out AKey: TJsonWebKey): Boolean;
+    function TryGetKey(const AIssuer, AKeyId: string; out AKey: TOAuthJsonWebKey): Boolean;
 
     /// <summary>
     ///   Drops the cached metadata and keys of the given issuer, or of every issuer
@@ -202,7 +210,7 @@ type
     end;
 
     TKeysEntry = class
-      Keys: TArray<TJsonWebKey>;
+      Keys: TArray<TOAuthJsonWebKey>;
       FetchedAt: TDateTime;
       LastAttemptAt: TDateTime;
     end;
@@ -219,10 +227,10 @@ type
     class function IsExpired(const AFetchedAt: TDateTime; ATTLSeconds: Integer): Boolean; static;
 
     function FetchMetadata(const AIssuer: string): TOAuthServerMetadata;
-    function FetchKeys(const AIssuer: string): TArray<TJsonWebKey>;
-    function EnsureKeys(const AIssuer: string; AForceRefresh: Boolean): TArray<TJsonWebKey>;
+    function FetchKeys(const AIssuer: string): TArray<TOAuthJsonWebKey>;
+    function EnsureKeys(const AIssuer: string; AForceRefresh: Boolean): TArray<TOAuthJsonWebKey>;
     procedure StoreMetadata(const AKey: string; const AMetadata: TOAuthServerMetadata);
-    procedure StoreKeys(const AKey: string; const AKeys: TArray<TJsonWebKey>);
+    procedure StoreKeys(const AKey: string; const AKeys: TArray<TOAuthJsonWebKey>);
     function TryGetCachedMetadata(const AKey: string; out AMetadata: TOAuthServerMetadata): Boolean;
   protected
     /// <summary>
@@ -236,8 +244,8 @@ type
 
     { IOAuthMetadataProvider }
     function GetServerMetadata(const AIssuer: string): TOAuthServerMetadata;
-    function GetKeys(const AIssuer: string): TArray<TJsonWebKey>;
-    function TryGetKey(const AIssuer, AKeyId: string; out AKey: TJsonWebKey): Boolean;
+    function GetKeys(const AIssuer: string): TArray<TOAuthJsonWebKey>;
+    function TryGetKey(const AIssuer, AKeyId: string; out AKey: TOAuthJsonWebKey): Boolean;
     procedure Invalidate(const AIssuer: string);
 
     /// <summary>Lifetime of a cached metadata document, in seconds.</summary>
@@ -271,25 +279,30 @@ begin
   Result := TNeonConfiguration.Default;
 end;
 
-{ TJsonWebKey }
+{ TOAuthJsonWebKey }
 
-function TJsonWebKey.IsEmpty: Boolean;
+function TOAuthJsonWebKey.IsEmpty: Boolean;
 begin
   Result := (Kty = '') and (N = '') and (X = '') and (Length(X5c) = 0);
 end;
 
-function TJsonWebKey.IsSignatureKey: Boolean;
+function TOAuthJsonWebKey.IsSignatureKey: Boolean;
 begin
   Result := (Use = '') or SameText(Use, 'sig');
 end;
 
-class function TJsonWebKey.FromJSON(AJSON: TJSONObject): TJsonWebKey;
+function TOAuthJsonWebKey.HasKeyComponents: Boolean;
 begin
-  Result := Default(TJsonWebKey);
+  Result := ((N <> '') and (E <> '')) or ((X <> '') and (Y <> ''));
+end;
+
+class function TOAuthJsonWebKey.FromJSON(AJSON: TJSONObject): TOAuthJsonWebKey;
+begin
+  Result := Default(TOAuthJsonWebKey);
   if not Assigned(AJSON) then
     Exit;
 
-  Result := TNeon.JSONToValue<TJsonWebKey>(AJSON, JwksNeonConfig);
+  Result := TNeon.JSONToValue<TOAuthJsonWebKey>(AJSON, JwksNeonConfig);
   // Kept out of the mapping ([NeonIgnore]) because it is the source document
   // itself, not one of its members.
   Result.Raw := AJSON.ToJSON;
@@ -389,7 +402,7 @@ begin
   Logger.LogDebug('OAuth metadata fetched from "%s"', [LUrl]);
 end;
 
-function TOAuthMetadataProvider.FetchKeys(const AIssuer: string): TArray<TJsonWebKey>;
+function TOAuthMetadataProvider.FetchKeys(const AIssuer: string): TArray<TOAuthJsonWebKey>;
 var
   LMetadata: TOAuthServerMetadata;
   LJSON: TJSONValue;
@@ -415,7 +428,7 @@ begin
 
     for LItem in LKeys do
       if LItem is TJSONObject then
-        Result := Result + [TJsonWebKey.FromJSON(LItem as TJSONObject)];
+        Result := Result + [TOAuthJsonWebKey.FromJSON(LItem as TJSONObject)];
   finally
     LJSON.Free;
   end;
@@ -442,7 +455,7 @@ begin
   end;
 end;
 
-procedure TOAuthMetadataProvider.StoreKeys(const AKey: string; const AKeys: TArray<TJsonWebKey>);
+procedure TOAuthMetadataProvider.StoreKeys(const AKey: string; const AKeys: TArray<TOAuthJsonWebKey>);
 var
   LEntry: TKeysEntry;
 begin
@@ -522,12 +535,12 @@ begin
 end;
 
 function TOAuthMetadataProvider.EnsureKeys(const AIssuer: string;
-  AForceRefresh: Boolean): TArray<TJsonWebKey>;
+  AForceRefresh: Boolean): TArray<TOAuthJsonWebKey>;
 var
   LKey: string;
   LEntry: TKeysEntry;
   LNeedFetch: Boolean;
-  LKeys: TArray<TJsonWebKey>;
+  LKeys: TArray<TOAuthJsonWebKey>;
 begin
   if AIssuer.Trim = '' then
     raise EOAuthMetadataException.Create(SOAuthIssuerRequired);
@@ -588,17 +601,17 @@ begin
   Result := LKeys;
 end;
 
-function TOAuthMetadataProvider.GetKeys(const AIssuer: string): TArray<TJsonWebKey>;
+function TOAuthMetadataProvider.GetKeys(const AIssuer: string): TArray<TOAuthJsonWebKey>;
 begin
   Result := EnsureKeys(AIssuer, False);
 end;
 
 function TOAuthMetadataProvider.TryGetKey(const AIssuer, AKeyId: string;
-  out AKey: TJsonWebKey): Boolean;
+  out AKey: TOAuthJsonWebKey): Boolean;
 
-  function FindKey(const AKeys: TArray<TJsonWebKey>; out AFound: TJsonWebKey): Boolean;
+  function FindKey(const AKeys: TArray<TOAuthJsonWebKey>; out AFound: TOAuthJsonWebKey): Boolean;
   var
-    LKey: TJsonWebKey;
+    LKey: TOAuthJsonWebKey;
     LCandidates: Integer;
   begin
     if AKeyId <> '' then
@@ -626,7 +639,7 @@ function TOAuthMetadataProvider.TryGetKey(const AIssuer, AKeyId: string;
   end;
 
 begin
-  AKey := Default(TJsonWebKey);
+  AKey := Default(TOAuthJsonWebKey);
   try
     if FindKey(EnsureKeys(AIssuer, False), AKey) then
       Exit(True);

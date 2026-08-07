@@ -2,6 +2,8 @@ unit MCPAuthServer.Config;
 
 interface
 
+{$I 'MCPConnect.inc' }
+
 uses
   System.SysUtils, System.Classes,
   IdGlobal, IdContext, IdBaseComponent, IdComponent,
@@ -22,6 +24,7 @@ uses
   MCPConnect.Content.Writers.RTL,
   MCPConnect.Content.Writers.VCL,
 
+  MCPConnect.Security.Token,
   MCPConnect.Session.Core;
 
 type
@@ -36,6 +39,10 @@ uses
   System.TypInfo,
   Neon.Core.Persistence,
   Neon.Core.Serializers.RTL,
+
+  {$IFDEF DELPHI_JOSE_JWT}
+  MCPConnect.Security.Token.JOSE,
+  {$ENDIF}
 
   Logify,
   MCPAuthServer.Tools;
@@ -58,6 +65,12 @@ begin
     .Plugin.Configure<IOAuthConfig>
       .SetResource(GetEnvironmentVariable('OIDC_MCP_SERVER'))
       .EnableMetadataProxy(GetEnvironmentVariable('OIDC_AUTH_SERVER'))
+      .AddTrustedIssuer(GetEnvironmentVariable('OIDC_TOKEN_ISSUER'))
+      {$IFDEF DELPHI_JOSE_JWT}
+      .SetTokenValidatorClass(TJoseTokenValidator)
+      {$ELSE}
+      .SetTokenValidatorClass(TClaimsTokenValidator)
+      {$ENDIF}
       .AddScopesSupported('openid')
       .AddScopesSupported('email')
       .AddScopesSupported('profile')
@@ -68,16 +81,6 @@ begin
       .Server
         .SetName('delphi-oauth-server')
         .SetVersion('2.0.1')
-
-        // If not set, the server checks the registered tools, resources, etc. and automatically fills the capabilities.
-        //.SetCapabilities([Tools, Resources])
-        //.SetCapabilities(LCapabilities)
-        //.SetCapabilities(
-        //  procedure (ACapabilities: TServerCapabilities)
-        //  begin
-        //    ACapabilities.Tools.ListChanged := True;
-        //  end
-        //)
 
         .SetIconFolder(TPath.Combine(LDataPath, 'icons'))
 

@@ -30,7 +30,9 @@ uses
   MCPConnect.JRPC.Classes in '..\..\..\Source\MCPConnect.JRPC.Classes.pas',
   MCPConnect.Transport.Base in '..\..\..\Source\MCPConnect.Transport.Base.pas',
   MCPConnect.Transport.AcceptParser in '..\..\..\Source\MCPConnect.Transport.AcceptParser.pas',
-  MCPConnect.Transport.MediaType in '..\..\..\Source\MCPConnect.Transport.MediaType.pas';
+  MCPConnect.Transport.MediaType in '..\..\..\Source\MCPConnect.Transport.MediaType.pas',
+  MCPConnect.Security.Jwks in '..\..\..\Source\MCPConnect.Security.Jwks.pas',
+  MCPConnect.Security.Token in '..\..\..\Source\MCPConnect.Security.Token.pas';
 
 {$R *.res}
 

@@ -12,6 +12,16 @@
 {                                                                              }
 {******************************************************************************}
 
+{ Optional dependencies. }
+
+{
+  Builds MCPConnect.Security.Token.JOSE, the token validator that verifies access
+  token signatures with the Delphi JOSE library (https://github.com/paolo-rossi/delphi-jose-jwt),
+  expected under Libs\JOSE. Comment this out to build without that dependency: the
+  unit then compiles to nothing and TJoseTokenValidator is not available.
+}
+{$DEFINE DELPHI_JOSE_JWT}
+
 {$IF CompilerVersion >= 27} // Delphi XE6
   {$DEFINE HAS_SYSTEM_JSON}
   // https://quality.embarcadero.com/browse/RSP-11620

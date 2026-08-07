@@ -24,9 +24,9 @@ When OAuth is enabled, MCPConnect's HTTP transport (`TMCPTransportHandler` in
   listing the resource URL, the configured authorization server(s), and supported scopes.
 - Rejects unauthenticated requests with `401 Unauthorized` and a `WWW-Authenticate: Bearer
   realm="...", resource_metadata=...` header, per the MCP Authorization spec.
-- Accepts requests carrying `Authorization: Bearer <token>`, decodes the JWT payload (without
-  signature/issuer/audience/expiration validation — see [Section 3.2](#32-token-validation)) and
-  injects it into the request context as `TMCPAccessToken`.
+- Accepts requests carrying `Authorization: Bearer <token>` **when a registered token validator
+  accepts them** (see [Section 3.2](#32-token-validation)), and injects the validated claims into the
+  request context as `TMCPAccessToken`.
 - Optionally proxies and patches the authorization server's discovery document (see
   [Section 4](#4-the-metadata-proxy)).
 
@@ -64,6 +64,11 @@ AServer
 | `AddAuthorizationServer(AUrl)` | Registers an external authorization server. Can be called multiple times; all are listed in the protected resource metadata. |
 | `AddScopesSupported(AScope)` | Advertises a supported OAuth scope. Can be called multiple times. |
 | `EnableMetadataProxy(AUpstreamIssuer)` | See [Section 4](#4-the-metadata-proxy). Registers a local proxy URL as the authorization server instead of `AUpstreamIssuer` directly. |
+| `SetTokenValidatorClass(AClass)` | Registers the class that validates bearer tokens. Without it the server rejects every bearer token — see [Section 3.2](#32-token-validation). |
+| `SetAudience(AAudience)` | Value the token's `aud` claim must contain. Defaults to `SetResource`. |
+| `AddRequiredScope(AScope)` | Scope the token must carry, else `insufficient_scope`. Can be called multiple times. |
+| `SetClockSkew(ASeconds)` | Tolerance on `exp`/`nbf`, in seconds. Defaults to 60. |
+| `SetKeyCacheTTL(ASeconds)` | Lifetime of the cached JWKS, in seconds. Defaults to 3600. |
 
 If `AuthorizationServers` is empty, OAuth enforcement is fully disabled — `CheckOAuth` short-circuits
 and every request is allowed through, regardless of `Authorization` headers. This lets you enable
@@ -71,8 +76,9 @@ OAuth only when at least one authorization server has been configured.
 
 ### 2.1 Reading the token
 
-Once a request carries a valid `Authorization: Bearer <token>`, the decoded JWT payload is available
-in any `[Context]`-injected parameter as `TMCPAccessToken` (`MCPConnect.MCP.Types`), e.g.:
+Once a request carries an `Authorization: Bearer <token>` that the registered validator accepted, the
+claims are available in any `[Context]`-injected parameter as `TMCPAccessToken`
+(`MCPConnect.MCP.Types`), e.g.:
 
 ```delphi
 [McpTool('whoami')]
@@ -100,11 +106,57 @@ local testing.
 
 ### 3.2 Token validation
 
-`CheckOAuth` currently only **decodes** the bearer token's JWT payload — it does **not** verify
-the signature, issuer, audience, or expiration. This is marked with a `// TODO` in
-`MCPConnect.Transport.Base.pas`. Before exposing a server to untrusted clients, add proper
-validation (signature verification against the authorization server's JWKS, `aud`/`iss`/`exp`
-checks) in your own code, e.g. inside a request hook or by extending `TMCPTransportHandler`.
+Token validation is delegated to a class you register in the configuration:
+
+```delphi
+uses
+  MCPConnect.Security.Token;
+
+AServer
+  .Plugin.Configure<IOAuthConfig>
+    .SetResource('https://mcp.example.com/mcp')
+    .AddAuthorizationServer('https://auth.example.com')
+    .SetTokenValidatorClass(TMyTokenValidator)
+  .ApplyConfig;
+```
+
+Any class implementing `ITokenValidator` qualifies — there is no base class to derive from. It needs
+a parameterless constructor and must be reference counted, so in practice:
+
+```delphi
+type
+  TMyTokenValidator = class(TInterfacedObject, ITokenValidator)
+  public
+    function Validate(AContext: TJRPCContext; const AToken: string;
+      AAccessToken: TMCPAccessToken): TTokenValidationResult;
+  end;
+```
+
+Everything the validator needs it reads from `AContext`: the `TJRPCServer`, and through it the
+`TOAuthConfig` carrying the trusted issuers, the audience, the required scopes, the clock skew and
+the metadata provider.
+
+Two things follow from this, and both matter before exposing a server:
+
+- **Without a registered validator the server is fail-closed**: every request carrying a bearer token
+  is answered with `401`. This is a change from earlier versions, which accepted any well-formed JWT.
+- **Three validators come in the box**, and only one of them proves a token is genuine:
+  - `TJoseTokenValidator` (`MCPConnect.Security.Token.JOSE`) — everything below **plus the
+    signature**, verified with the [Delphi JOSE library](https://github.com/paolo-rossi/delphi-jose-jwt)
+    against the key the identity provider publishes. This is the one to register in production. It
+    needs the JOSE library at compile time (under `Libs\JOSE`, switched by the `DELPHI_JOSE_JWT`
+    define in `Source/MCPConnect.inc`) and the OpenSSL libraries at run time.
+  - `TClaimsTokenValidator` — checks `iss`, `aud`, `exp`/`nbf`, the required scopes, rejects
+    `"alg": "none"`, and verifies that the `kid` names a key the issuer actually publishes. It stops
+    expired, foreign and unsigned tokens, but **not** a forged one: its `CheckSignature` hook is
+    empty.
+  - `TDecodeOnlyTokenValidator` — decodes the payload and verifies nothing. Local development only.
+
+The framework supplies the pieces around the signature check too: an `IOAuthMetadataProvider` that
+fetches and caches the authorization server's discovery document and JWKS (with TTLs, key-rotation
+refresh and stale-if-error), the issuer/audience/scope/clock-skew options, and the `401` challenge
+plumbing. See [`token-validation.md`](token-validation.md) for the full design and for how to write
+a validator.
 
 ### 3.3 CORS
 
@@ -276,6 +328,8 @@ AServer
   .Plugin.Configure<IOAuthConfig>
     .SetResource('https://mcp.example.com/mcp')
     .EnableMetadataProxy(GetEnvironmentVariable('OIDC_AUTH_SERVER'))  // e.g. https://login.microsoftonline.com/<tenant-id>/v2.0
+    .AddTrustedIssuer(GetEnvironmentVariable('OIDC_TOKEN_ISSUER'))    // e.g. https://sts.windows.net/<tenant-id>/
+    .SetTokenValidatorClass(TClaimsTokenValidator)
     .AddScopesSupported('openid')
     .AddScopesSupported('email')
     .AddScopesSupported('profile')
@@ -286,6 +340,14 @@ AServer
 Set the `OIDC_AUTH_SERVER` environment variable to your tenant's **v2.0** endpoint —
 `https://login.microsoftonline.com/<tenant-id>/v2.0` — not the legacy v1.0 endpoint, which has a
 different discovery document shape.
+
+`OIDC_TOKEN_ISSUER` covers a mismatch that catches everyone once. An exposed API left at the default
+`requestedAccessTokenVersion` receives **v1.0** access tokens, and their `iss` is
+`https://sts.windows.net/<tenant-id>/` — not the v2.0 URL you just discovered against, even though
+the whole flow ran there. Decode a token and look at `ver`: `1.0` means you need this line. See
+[token-validation.md §3.3.1](token-validation.md#331-when-iss-is-not-the-discovery-url) for the
+alternative (switching the API to v2.0 tokens) and for why that one also forces you to set the
+audience.
 
 Start (or restart) your MCPConnect server so it's listening on `localhost:8080`, forwarded by the
 tunnel to `https://mcp.example.com`.
@@ -310,6 +372,8 @@ tunnel to `https://mcp.example.com`.
 | `401` response (or the `.well-known/oauth-protected-resource` document) is unreadable by browser JavaScript / blocked by CORS | `Access-Control-Allow-Origin` (and, for reading `WWW-Authenticate`, `Access-Control-Expose-Headers`) missing on error/metadata responses | Already handled by MCPConnect (CORS is injected before any OAuth check) — make sure `SetCORS(True)` is called and your client's origin is allowed |
 | `PKCE is REQUIRED for 2025-11-25 protocol, but authorization server does not advertise code_challenge_methods_supported` | The authorization server's discovery document doesn't include `code_challenge_methods_supported`, even though it supports PKCE (common with Entra ID) | Use [`EnableMetadataProxy`](#4-the-metadata-proxy) |
 | Redirect goes to `http://<your-server>/authorize` (a path your MCP server doesn't implement) instead of the real authorization server | A "legacy" protocol version was selected (e.g. 2025-03-26) in the debugging client, which does not support delegating to an external authorization server — it assumes the MCP server itself is the authorization server | Select the current protocol version (e.g. 2025-11-25) in the client, not a legacy one |
+| Every authenticated request gets `401` with `error="invalid_token"`, and the server log says *"The token issuer is not trusted (expected: https://login.microsoftonline.com/&lt;tid&gt;/v2.0, found: https://sts.windows.net/&lt;tid&gt;/)"* | The exposed API issues **v1.0** access tokens (`"ver": "1.0"`), whose `iss` is the `sts.windows.net` form, while discovery runs against the v2.0 endpoint | Add the token's issuer with `AddTrustedIssuer`, or set `requestedAccessTokenVersion: 2` on the API and then also set `SetAudience` to its client ID — see [token-validation.md §3.3.1](token-validation.md#331-when-iss-is-not-the-discovery-url) |
+| A required scope is never satisfied although the token clearly carries it | The `scp` claim holds **bare** scope names (`access_as_user`); the full `https://.../access_as_user` form belongs in the authorization request, not in the claim | Pass the bare name to `AddRequiredScope` |
 | `AADSTS9010010: The resource parameter provided in the request doesn't match with the requested scopes` | The `resource` parameter (your MCP server's URL) doesn't correspond to any registered API in the authorization server, so it can't be reconciled with the requested scopes | Expose your resource as an API in the authorization server ([Section 5.3](#53-register-an-application-in-entra-id)) and request a scope that belongs to it, alongside any OIDC scopes |
 | `AADSTS500011: The resource principal named <url> was not found in the tenant` | The Application ID URI hasn't been set (or doesn't exactly match the `resource` value) on the authorization server side yet | Complete the "Expose an API" step, matching the URI **exactly** (scheme, host, path, trailing slash) |
 | Entra ID refuses to save the Application ID URI: *"You must use a verified domain of the organization"* | Application ID URIs must be on a domain your tenant has verified, or use `api://...` — `http://localhost`, raw IPs, and third-party tunnel domains you don't own never qualify | Use a domain you own, verify it in Entra ID, and expose your server over HTTPS on that domain (a Cloudflare Tunnel, as described above, is one way) |

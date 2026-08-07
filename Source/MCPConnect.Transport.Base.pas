@@ -26,6 +26,7 @@ uses
   MCPConnect.Configuration.MCP,
   MCPConnect.Configuration.Auth,
   MCPConnect.Configuration.Session,
+  MCPConnect.Security.Token,
   MCPConnect.Session.Core,
   MCPConnect.MCP.Types,
   MCPConnect.JRPC.Classes,
@@ -44,6 +45,9 @@ const
   HTTP_CODE_NOTACCEPTABLE = 406;
   HTTP_CODE_BADGATEWAY = 502;
 
+  /// <summary>Scheme prefix of the "Authorization" header carrying an OAuth access token.</summary>
+  BearerPrefix = 'Bearer ';
+
 resourcestring
   SInvalidTokenLocation = 'Invalid token location';
   SErrorRetrievingMCPConfig = 'Error retrieving MCP configuration';
@@ -56,6 +60,10 @@ resourcestring
   STransportSessionNotFound = 'Session not found';
   STransportMethodNotFoundFmt = 'Method "%s" not found';
   SSessionIdHeaderRequired = 'Mcp-Session-Id header is required';
+  SOAuthValidatorNotConfigured = 'A bearer token was received but no token validator is ' +
+    'registered: the request is rejected. See IOAuthConfig.SetTokenValidatorClass.';
+  SOAuthValidatorNotSupportedFmt = 'The registered token validator [%s] does not expose ' +
+    'ITokenValidator: the request is rejected';
 
 type
   /// <summary>
@@ -163,6 +171,8 @@ type
     class function ConstantTimeEquals(const A, B: string): Boolean; static;
     function CheckAuthorization: Boolean;
     function CheckOAuth: Boolean;
+    function ValidateAccessToken(const AToken: string): TTokenValidationResult;
+    procedure SendUnauthorized(const AResult: TTokenValidationResult);
     function IsMetadataProxyRequest: Boolean;
     procedure HandleMetadataProxy;
     function ExtractSessionId: string;
@@ -189,24 +199,12 @@ type
 implementation
 
 uses
-  System.IOUtils, System.NetEncoding, System.Net.HttpClient, System.Diagnostics,
+  System.IOUtils, System.Net.HttpClient, System.Diagnostics,
   Logify,
+  Neon.Core.Utils,
   MCPConnect.Transport.MediaType,
   MCPConnect.Configuration.Neon,
   MCPConnect.JRPC.Invoker;
-
-
-function Base64UrlDecode(const AInput: string): string;
-var
-  LValue: string;
-begin
-  LValue := AInput.Replace('-', '+').Replace('_', '/');
-  case Length(LValue) mod 4 of
-    2: LValue := LValue + '==';
-    3: LValue := LValue + '=';
-  end;
-  Result := TEncoding.UTF8.GetString(TNetEncoding.Base64.DecodeStringToBytes(LValue));
-end;
 
 
 { TMCPTransportHandler }
@@ -320,21 +318,88 @@ begin
   else
   begin
     var LAuthHeader := FRequest.GetHeader('Authorization');
-    if LAuthHeader.StartsWith('Bearer ') then
+    if LAuthHeader.StartsWith(BearerPrefix) then
     begin
-      // TODO: validate the token (signature, issuer, audience, expiration)
-      // For now just extract and decode the payload into the access token object
-      var LToken := LAuthHeader.Substring(Length('Bearer '));
-      var LParts := LToken.Split(['.']);
-      if Length(LParts) >= 2 then
-      begin
-        FAccessToken.FromString(Base64UrlDecode(LParts[1]));
-      end;
-      Exit(True);
+      var LResult := ValidateAccessToken(LAuthHeader.Substring(Length(BearerPrefix)).Trim);
+      if LResult.Success then
+        Exit(True);
+
+      SendUnauthorized(LResult);
+      Exit(False);
     end;
-    FResponse.Code := HTTP_CODE_UNAUTHORIZED;
-    FResponse.Headers.AddOrSetValue('WWW-Authenticate', Format('Bearer realm="%s", resource_metadata=%s', [FOAuthConfig.Realm, FOAuthConfig.ResourceMetadata]));
+
+    SendUnauthorized(TTokenValidationResult.Fail(TTokenValidationErrorCode.None, ''));
   end;
+end;
+
+function TMCPTransportHandler.ValidateAccessToken(const AToken: string): TTokenValidationResult;
+var
+  LInstance: TObject;
+  LValidator: ITokenValidator;
+begin
+  // Fail-closed: with no validator registered no token can be trusted, so none is
+  // accepted. TOAuthConfig.ApplyConfig logs a warning about this at startup.
+  if not Assigned(FOAuthConfig.TokenValidatorClass) then
+  begin
+    Logger.LogWarning(SOAuthValidatorNotConfigured);
+    Exit(TTokenValidationResult.Fail(TTokenValidationErrorCode.InvalidToken, ''));
+  end;
+
+  try
+    // Built through RTTI so that a validator is bound to nothing but ITokenValidator:
+    // no base class of ours, no constructor of ours. SetTokenValidatorClass already
+    // refused any class that does not implement the interface, so the Supports below
+    // is a belt-and-braces check rather than the real gate.
+    LInstance := TRttiUtils.CreateInstance(FOAuthConfig.TokenValidatorClass);
+    if not Supports(LInstance, ITokenValidator, LValidator) then
+    begin
+      LInstance.Free;
+      Logger.LogError(SOAuthValidatorNotSupportedFmt,
+        [FOAuthConfig.TokenValidatorClass.ClassName]);
+      Exit(TTokenValidationResult.Fail(TTokenValidationErrorCode.InvalidToken, ''));
+    end;
+
+    // LValidator is the only reference held: the instance is destroyed when this
+    // method returns, which is why an implementation has to be reference counted.
+    Result := LValidator.Validate(FContext, AToken, FAccessToken);
+  except
+    // A failing validator must look exactly like an invalid token: never a 500, and
+    // never a message that tells a client whether it hit a bug or a rejected token.
+    on E: Exception do
+    begin
+      Logger.LogError('Token validation failed with an exception: %s', [E.Message]);
+      Result := TTokenValidationResult.Fail(TTokenValidationErrorCode.InvalidToken, '');
+    end;
+  end;
+end;
+
+procedure TMCPTransportHandler.SendUnauthorized(const AResult: TTokenValidationResult);
+
+  // The description comes from a validator implementation: quotes and line breaks
+  // would either break the challenge or let it inject further headers.
+  function SanitizeDescription(const AValue: string): string;
+  begin
+    Result := AValue.Replace('"', '''').Replace(#13, ' ').Replace(#10, ' ').Trim;
+  end;
+
+var
+  LChallenge: string;
+begin
+  LChallenge := Format('Bearer realm="%s", resource_metadata=%s',
+    [FOAuthConfig.Realm, FOAuthConfig.ResourceMetadata]);
+
+  if AResult.ErrorCode <> TTokenValidationErrorCode.None then
+  begin
+    LChallenge := LChallenge + Format(', error="%s"',
+      [TokenValidationErrorCodeToString(AResult.ErrorCode)]);
+
+    if AResult.ErrorDescription <> '' then
+      LChallenge := LChallenge + Format(', error_description="%s"',
+        [SanitizeDescription(AResult.ErrorDescription)]);
+  end;
+
+  FResponse.Code := HTTP_CODE_UNAUTHORIZED;
+  FResponse.Headers.AddOrSetValue('WWW-Authenticate', LChallenge);
 end;
 
 function TMCPTransportHandler.IsMetadataProxyRequest: Boolean;
@@ -478,9 +543,10 @@ begin
     if not CheckAuthorization then
       raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, SAuthorizationCheckFailed);
 
-    if not CheckOAuth then
-      Exit;
-
+    // Built before the OAuth check, and not after it, because the token validator
+    // receives this context: it is where it finds the server and, through it, the
+    // OAuth configuration. Requests that end in a 401 pay for a context they will
+    // not use, which is a cheaper price than handing the validator a half-built one.
     FGarbage := TGarbageCollector.CreateInstance;
     FContext := TJRPCContext.Create;
 
@@ -488,6 +554,9 @@ begin
     FContext.AddContent(FGarbage);
     FContext.AddContent(FServer);
     FContext.AddContent(FAccessToken);
+
+    if not CheckOAuth then
+      Exit;
 
     LFragment := TStopwatch.StartNew;
     // Handle session (get existing or create new)

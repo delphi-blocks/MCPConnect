@@ -17,9 +17,21 @@ interface
 
 uses
   System.Classes, System.SysUtils, System.Net.URLClient,
-  MCPConnect.Configuration.Core;
+  MCPConnect.Configuration.Core,
+  MCPConnect.Security.Jwks;
 
 {$SCOPEDENUMS ON}
+
+resourcestring
+  SOAuthResourceNotSpecified = 'OAuth resource config not specified';
+  SOAuthNoValidatorWarning = 'OAuth is enabled but no token validator is registered: ' +
+    'every request carrying a bearer token will be rejected. ' +
+    'Use IOAuthConfig.SetTokenValidatorClass to register one.';
+  SOAuthDecodeOnlyValidatorWarning = 'A decode-only token validator is registered: ' +
+    'access tokens are decoded but their signature, issuer, audience and expiration ' +
+    'are not verified. Development use only.';
+  SOAuthValidatorClassInvalidFmt = 'Class [%s] cannot be used as a token validator: ' +
+    'it does not implement ITokenValidator';
 
 type
   /// <summary>
@@ -122,6 +134,79 @@ type
     ///   strict MCP OAuth clients require. SetResource must be called first.
     /// </remarks>
     function EnableMetadataProxy(const AUpstreamIssuer: string): IOAuthConfig;
+
+    /// <summary>
+    ///   Registers the class used to validate the bearer token of every incoming
+    ///   request. One instance is built per request and asked for ITokenValidator;
+    ///   everything it needs it reads from the request context.
+    /// </summary>
+    /// <param name="AClass">
+    ///   Any class implementing ITokenValidator (MCPConnect.Security.Token) with a
+    ///   parameterless constructor. It must be reference counted - descending from
+    ///   TInterfacedObject is the usual way - because the transport holds it only
+    ///   through the interface. Deriving from TTokenValidatorBase is convenient but
+    ///   never required.
+    /// </param>
+    /// <exception cref="EJRPCException">
+    ///   AClass does not implement ITokenValidator. Checked here, at configuration
+    ///   time, because the class reference is untyped and the compiler cannot.
+    /// </exception>
+    /// <remarks>
+    ///   Without a validator class the server is fail-closed: every request carrying a
+    ///   bearer token is answered with 401. Register TDecodeOnlyTokenValidator
+    ///   (MCPConnect.Security.Token) to reproduce the legacy "decode, do not verify"
+    ///   behaviour - development only, it accepts forged tokens.
+    /// </remarks>
+    function SetTokenValidatorClass(AClass: TClass): IOAuthConfig;
+
+    /// <summary>
+    ///   Replaces the source of the authorization server metadata and public keys.
+    ///   A default one is always in place, so this is only needed to plug in another
+    ///   HTTP stack, a cache shared between servers, or a test double.
+    /// </summary>
+    /// <remarks>A nil provider is ignored: validators must always find one.</remarks>
+    function SetMetadataProvider(const AProvider: IOAuthMetadataProvider): IOAuthConfig;
+
+    /// <summary>
+    ///   Declares an issuer whose tokens are accepted, on top of the ones derived from
+    ///   the configured authorization servers. Empty values are ignored, and it can be
+    ///   called multiple times.
+    /// </summary>
+    /// <remarks>
+    ///   Needed whenever an authorization server mints an "iss" that is not the URL its
+    ///   metadata was discovered from. Microsoft Entra ID is the common case: an API
+    ///   left at the default "requestedAccessTokenVersion" receives v1.0 access tokens,
+    ///   whose "iss" is "https://sts.windows.net/&lt;tenant&gt;/", while discovery happens
+    ///   against "https://login.microsoftonline.com/&lt;tenant&gt;/v2.0". Signing keys are
+    ///   still fetched from the configured authorization server - only the accepted
+    ///   "iss" values are widened.
+    /// </remarks>
+    function AddTrustedIssuer(const AIssuer: string): IOAuthConfig;
+
+    /// <summary>
+    ///   Value the "aud" claim of the token must contain. Defaults to the resource URL
+    ///   set with SetResource, which is what RFC 8707 resource indicators produce.
+    /// </summary>
+    function SetAudience(const AAudience: string): IOAuthConfig;
+
+    /// <summary>
+    ///   Adds a scope the token must carry. A token missing any of them is rejected
+    ///   with "insufficient_scope". Can be called multiple times.
+    /// </summary>
+    function AddRequiredScope(const AScope: string): IOAuthConfig;
+
+    /// <summary>
+    ///   Tolerance applied to the "exp" and "nbf" claims, in seconds (default 60),
+    ///   to absorb the clock drift between this server and the authorization server.
+    /// </summary>
+    function SetClockSkew(ASeconds: Integer): IOAuthConfig;
+
+    /// <summary>
+    ///   Lifetime of the cached JSON Web Key Set, in seconds (default 3600). A key
+    ///   rotation is picked up before this expires, through a rate-limited refresh
+    ///   triggered by an unknown key id.
+    /// </summary>
+    function SetKeyCacheTTL(ASeconds: Integer): IOAuthConfig;
   end;
 
   [Implements(IOAuthConfig)]
@@ -129,21 +214,69 @@ type
   public const
     ProtectedResourcePath = '/.well-known/oauth-protected-resource';
     MetadataProxyPath = '/oauth-proxy';
+    DefaultRealm = 'mcp';
+
+    /// <summary>
+    ///   Tolerance applied to the "exp" and "nbf" claims, in seconds, when none is
+    ///   configured.
+    /// </summary>
+    DefaultClockSkew = 60;
   private
     FResource: string;
     FRealm: string;
     FAuthorizationServers: TArray<string>;
     FScopesSupported: TArray<string>;
     FMetadataProxyUpstream: string;
+    FTokenValidatorClass: TClass;
+    FExtraTrustedIssuers: TArray<string>;
+    FAudience: string;
+    FRequiredScopes: TArray<string>;
+    FClockSkewSeconds: Integer;
+    FKeyCacheTTL: Integer;
+    FMetadataProvider: IOAuthMetadataProvider;
     function GetResourceMetadata: string;
     function GetMetadataProxyUrl: string;
     function GetMetadataProxyEnabled: Boolean;
+    function GetDiscoveryIssuers: TArray<string>;
+    function GetTrustedIssuers: TArray<string>;
+    function GetAudience: string;
+    function GetMetadataProvider: IOAuthMetadataProvider;
   public
     function SetRealm(const ARealm: string): IOAuthConfig;
     function SetResource(const AUrl: string): IOAuthConfig;
     function AddAuthorizationServer(const AAuthorizationServer: string): IOAuthConfig;
     function AddScopesSupported(const AScopesSupported: string): IOAuthConfig;
     function EnableMetadataProxy(const AUpstreamIssuer: string): IOAuthConfig;
+    function SetTokenValidatorClass(AClass: TClass): IOAuthConfig;
+    function SetMetadataProvider(const AProvider: IOAuthMetadataProvider): IOAuthConfig;
+    function AddTrustedIssuer(const AIssuer: string): IOAuthConfig;
+    function SetAudience(const AAudience: string): IOAuthConfig;
+    function AddRequiredScope(const AScope: string): IOAuthConfig;
+    function SetClockSkew(ASeconds: Integer): IOAuthConfig;
+    function SetKeyCacheTTL(ASeconds: Integer): IOAuthConfig;
+
+    function ApplyConfig: IJRPCApplication; override;
+
+    /// <summary>
+    ///   Compares two issuer identifiers. The trailing slash is not part of the
+    ///   identity: authorization servers are inconsistent about it between their
+    ///   discovery URL and the "iss" they mint.
+    /// </summary>
+    class function SameIssuer(const A, B: string): Boolean; static;
+
+    /// <summary>
+    ///   The authorization server whose published keys verify a token issued by
+    ///   AIssuer: AIssuer itself when it is one of the configured authorization
+    ///   servers, the first configured one otherwise.
+    /// </summary>
+    /// <remarks>
+    ///   Declaring a trusted issuer widens which "iss" is accepted; it must never
+    ///   redirect this server to fetch signing keys from a URL it was never configured
+    ///   with. So an issuer added through AddTrustedIssuer is verified with the keys of
+    ///   the authorization server that was configured, not with keys fetched from
+    ///   itself.
+    /// </remarks>
+    function KeySourceFor(const AIssuer: string): string;
 
     property Realm: string read FRealm;
     property Resource: string read FResource;
@@ -153,6 +286,41 @@ type
     property MetadataProxyUpstream: string read FMetadataProxyUpstream;
     property MetadataProxyUrl: string read GetMetadataProxyUrl;
     property MetadataProxyEnabled: Boolean read GetMetadataProxyEnabled;
+
+    /// <summary>
+    ///   Issuers whose tokens are accepted, matched against the "iss" claim.
+    /// </summary>
+    /// <remarks>
+    ///   This is deliberately not AuthorizationServers. With the metadata proxy enabled,
+    ///   AuthorizationServers advertises the local proxy URL - that is what clients must
+    ///   discover - while tokens keep being issued by, and carry the "iss" of, the
+    ///   upstream authorization server. Anything added with AddTrustedIssuer is appended
+    ///   to that, for the authorization servers whose "iss" is not the URL their metadata
+    ///   was discovered from.
+    /// </remarks>
+    property TrustedIssuers: TArray<string> read GetTrustedIssuers;
+
+    /// <summary>Class used to validate bearer tokens, nil when none was registered.</summary>
+    property TokenValidatorClass: TClass read FTokenValidatorClass;
+
+    /// <summary>
+    ///   Value the "aud" claim must contain: what SetAudience was given, or the
+    ///   resource URL. The fallback lives here, and not in every validator, so that
+    ///   the rule cannot be reimplemented differently by each of them.
+    /// </summary>
+    property Audience: string read GetAudience;
+
+    /// <summary>Scopes a token must all carry, else "insufficient_scope".</summary>
+    property RequiredScopes: TArray<string> read FRequiredScopes;
+
+    /// <summary>Tolerance applied to the "exp" and "nbf" claims, in seconds.</summary>
+    property ClockSkewSeconds: Integer read FClockSkewSeconds;
+
+    /// <summary>
+    ///   Shared, thread-safe source of the authorization server metadata and public
+    ///   keys, owned by this configuration.
+    /// </summary>
+    property MetadataProvider: IOAuthMetadataProvider read GetMetadataProvider;
 
     constructor Create(AApp: IJRPCApplication); override;
   end;
@@ -176,6 +344,14 @@ type
   end;
 
 implementation
+
+uses
+  Logify,
+  MCPConnect.JRPC.Core,
+  // Only for the ITokenValidator type check in SetTokenValidatorClass. It lives in
+  // the implementation on purpose: MCPConnect.Security.Token uses this unit in its
+  // interface, and the dependency between the two must stay one-way up there.
+  MCPConnect.Security.Token;
 
 { TAuthTokenConfig }
 
@@ -219,15 +395,31 @@ end;
 constructor TOAuthConfig.Create(AApp: IJRPCApplication);
 begin
   inherited;
-  FRealm := 'mcp';
+  FRealm := DefaultRealm;
   FAuthorizationServers := [];
   FScopesSupported := [];
+  FRequiredScopes := [];
+  FExtraTrustedIssuers := [];
+  FTokenValidatorClass := nil;
+  FClockSkewSeconds := DefaultClockSkew;
+  FKeyCacheTTL := OAUTH_KEYS_TTL_DEFAULT;
+
+  // Built here, and not on first use (simple and thread-safe)
+  FMetadataProvider := TOAuthMetadataProvider.Create;
+end;
+
+function TOAuthConfig.ApplyConfig: IJRPCApplication;
+begin
+  Result := inherited ApplyConfig;
+
+  if (Length(AuthorizationServers) > 0) and not Assigned(TokenValidatorClass) then
+    Logger.LogWarning(SOAuthNoValidatorWarning);
 end;
 
 function TOAuthConfig.GetResourceMetadata: string;
 begin
   if FResource = '' then
-    raise Exception.Create('OAuth resource config not specified');
+    raise Exception.Create(SOAuthResourceNotSpecified);
 
   var LURI := TURI.Create(FResource);
   LURI.Path := ProtectedResourcePath;
@@ -238,7 +430,7 @@ end;
 function TOAuthConfig.GetMetadataProxyUrl: string;
 begin
   if FResource = '' then
-    raise Exception.Create('OAuth resource config not specified');
+    raise Exception.Create(SOAuthResourceNotSpecified);
 
   var LURI := TURI.Create(FResource);
   LURI.Path := MetadataProxyPath;
@@ -269,6 +461,144 @@ function TOAuthConfig.SetResource(const AUrl: string): IOAuthConfig;
 begin
   FResource := AUrl;
   Result := Self;
+end;
+
+function TOAuthConfig.SetTokenValidatorClass(AClass: TClass): IOAuthConfig;
+begin
+  // The class reference is untyped, so what the compiler used to guarantee is
+  // checked here instead - at startup, rather than on the first request.
+  if Assigned(AClass) and (AClass.GetInterfaceEntry(ITokenValidator) = nil) then
+    raise EJRPCException.CreateFmt(SOAuthValidatorClassInvalidFmt, [AClass.ClassName]);
+
+  FTokenValidatorClass := AClass;
+
+  if Assigned(AClass) and AClass.InheritsFrom(TDecodeOnlyTokenValidator) then
+    Logger.LogWarning(SOAuthDecodeOnlyValidatorWarning);
+
+  Result := Self;
+end;
+
+function TOAuthConfig.SetMetadataProvider(const AProvider: IOAuthMetadataProvider): IOAuthConfig;
+begin
+  // Ignored when nil: a validator must always find a provider in the configuration.
+  if Assigned(AProvider) then
+    FMetadataProvider := AProvider;
+
+  Result := Self;
+end;
+
+function TOAuthConfig.SetAudience(const AAudience: string): IOAuthConfig;
+begin
+  FAudience := AAudience;
+  Result := Self;
+end;
+
+function TOAuthConfig.AddRequiredScope(const AScope: string): IOAuthConfig;
+begin
+  FRequiredScopes := FRequiredScopes + [AScope];
+  Result := Self;
+end;
+
+function TOAuthConfig.SetClockSkew(ASeconds: Integer): IOAuthConfig;
+begin
+  FClockSkewSeconds := ASeconds;
+  Result := Self;
+end;
+
+function TOAuthConfig.SetKeyCacheTTL(ASeconds: Integer): IOAuthConfig;
+begin
+  FKeyCacheTTL := ASeconds;
+
+  if Assigned(FMetadataProvider) then
+    (FMetadataProvider as TOAuthMetadataProvider).KeysTTL := ASeconds;
+
+  Result := Self;
+end;
+
+function TOAuthConfig.AddTrustedIssuer(const AIssuer: string): IOAuthConfig;
+begin
+  if AIssuer.Trim <> '' then
+    FExtraTrustedIssuers := FExtraTrustedIssuers + [AIssuer.Trim];
+
+  Result := Self;
+end;
+
+class function TOAuthConfig.SameIssuer(const A, B: string): Boolean;
+begin
+  Result := SameText(A.TrimRight(['/']), B.TrimRight(['/']));
+end;
+
+function TOAuthConfig.GetDiscoveryIssuers: TArray<string>;
+begin
+  // With the metadata proxy enabled, AuthorizationServers holds this server's own
+  // proxy URL, while tokens are issued by - and carry the "iss" of - the upstream
+  // authorization server.
+  if MetadataProxyEnabled then
+    Result := [MetadataProxyUpstream]
+  else
+    Result := AuthorizationServers;
+end;
+
+function TOAuthConfig.GetTrustedIssuers: TArray<string>;
+
+  function AlreadyListed(const AValues: TArray<string>; const AValue: string): Boolean;
+  var
+    LValue: string;
+  begin
+    for LValue in AValues do
+      if SameIssuer(LValue, AValue) then
+        Exit(True);
+
+    Result := False;
+  end;
+
+var
+  LIssuer: string;
+begin
+  Result := GetDiscoveryIssuers;
+
+  // Explicitly declared issuers widen that list rather than replacing it: an
+  // authorization server can mint an "iss" that is not the URL its metadata was
+  // discovered from, and both remain valid.
+  for LIssuer in FExtraTrustedIssuers do
+    if not AlreadyListed(Result, LIssuer) then
+      Result := Result + [LIssuer];
+end;
+
+function TOAuthConfig.KeySourceFor(const AIssuer: string): string;
+var
+  LDiscovery: TArray<string>;
+  LCandidate: string;
+begin
+  LDiscovery := GetDiscoveryIssuers;
+
+  for LCandidate in LDiscovery do
+    if SameIssuer(LCandidate, AIssuer) then
+      Exit(LCandidate);
+
+  // An issuer that is not one of the configured authorization servers - one declared
+  // through AddTrustedIssuer - is verified with the keys of the authorization server
+  // that was configured, never with keys fetched from the issuer itself.
+  if Length(LDiscovery) > 0 then
+    Result := LDiscovery[0]
+  else
+    Result := '';
+end;
+
+function TOAuthConfig.GetAudience: string;
+begin
+  // The resource URL is what RFC 8707 resource indicators put in "aud", so it is the
+  // right default and SetAudience is only needed when an authorization server mints
+  // something else.
+  if FAudience <> '' then
+    Result := FAudience
+  else
+    Result := Resource;
+end;
+
+function TOAuthConfig.GetMetadataProvider: IOAuthMetadataProvider;
+begin
+  Result := FMetadataProvider;
 end;
 
 initialization

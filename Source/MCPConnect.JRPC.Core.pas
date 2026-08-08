@@ -668,14 +668,22 @@ type
   private
     FOnEnqueue: TQueueEvent<T>;
     FOnDequeue: TQueueEvent<T>;
+    function GetClosed: Boolean;
   protected
     FEvent: TEvent;
     FMaxItems: Integer;
     FQueue: TQueue<T>;
+    FClosed: Boolean;
   public
     constructor Create(AMaxItems: Integer = 1000);
     destructor Destroy; override;
 
+    /// <summary>
+    ///   Marks the queue as closed: no more messages will be produced. Consumers
+    ///   blocked in DequeueWait are woken up at once instead of waiting for the
+    ///   read timeout to expire.
+    /// </summary>
+    procedure Close;
     procedure Lock;
     procedure Unlock;
 
@@ -689,6 +697,11 @@ type
     procedure Process(AProc: TQueueProcessProc<T>; ATimeOut: Integer = 1000);
     // At the end the queue will be empty
     function ToJson: string;
+
+    /// <summary>
+    ///   True once Close has been called: the producer is done with this queue.
+    /// </summary>
+    property Closed: Boolean read GetClosed;
 
     property OnEnqueue: TQueueEvent<T> read FOnEnqueue write FOnEnqueue;
     property OnDequeue: TQueueEvent<T> read FOnDequeue write FOnDequeue;
@@ -1744,6 +1757,7 @@ begin
   FEvent := TEvent.Create;
   FQueue := TQueue<T>.Create;
   FMaxItems := AMaxItems;
+  FClosed := False;
 end;
 
 destructor TMCPMessageQueueBase<T>.Destroy;
@@ -1767,7 +1781,8 @@ begin
       Result := FQueue.Dequeue;
       // FEvent is manual-reset: reset it when the queue drains so the next
       // DequeueWait actually blocks for ATimeOut instead of returning immediately.
-      if FQueue.Count = 0 then
+      // On a closed queue the event must stay signaled, so consumers never block.
+      if (FQueue.Count = 0) and (not FClosed) then
         FEvent.ResetEvent;
       if Assigned(FOnDequeue) then
         FOnDequeue(Self, Result);
@@ -1778,18 +1793,29 @@ begin
 end;
 
 function TMCPMessageQueueBase<T>.DequeueWait(ATimeOut: Integer = 1000): T;
-var
-  LEventResult: TWaitResult;
 begin
   Result := nil;
-  if FQueue.Count > 0 then
-    Exit(Dequeue);
 
-  LEventResult := FEvent.WaitFor(ATimeOut);
-  if LEventResult = wrSignaled then
-    Exit(Dequeue);
+  // The "queue not empty" and "queue closed" checks must be atomic with respect
+  // to each other: a producer enqueueing its last message and then closing in
+  // between would make this return nil, silently leaving that message behind.
+  Lock;
+  try
+    if FQueue.Count > 0 then
+      Exit(Dequeue);
 
-  { TODO -opaolo -c : Finire 27/04/2026 17:53:40 }
+    if FClosed then
+      Exit;
+  finally
+    Unlock;
+  end;
+
+  // The lock must not be held while waiting, or Enqueue could never signal
+  if FEvent.WaitFor(ATimeOut) <> wrSignaled then
+    Exit;
+
+  // Still nil when the wakeup came from Close on an empty queue
+  Result := Dequeue;
 end;
 
 procedure TMCPMessageQueueBase<T>.Enqueue(const Value: T);
@@ -1871,9 +1897,37 @@ begin
   TMonitor.Exit(FQueue);
 end;
 
+procedure TMCPMessageQueueBase<T>.Close;
+begin
+  Lock;
+  try
+    FClosed := True;
+    // Wakes any consumer already blocked inside DequeueWait; the event is
+    // manual-reset, so it stays signaled for the consumers coming after.
+    FEvent.SetEvent;
+  finally
+    Unlock;
+  end;
+end;
+
 function TMCPMessageQueueBase<T>.Count: NativeInt;
 begin
-  Result := FQueue.Count;
+  Lock;
+  try
+    Result := FQueue.Count;
+  finally
+    Unlock;
+  end;
+end;
+
+function TMCPMessageQueueBase<T>.GetClosed: Boolean;
+begin
+  Lock;
+  try
+    Result := FClosed;
+  finally
+    Unlock;
+  end;
 end;
 
 end.

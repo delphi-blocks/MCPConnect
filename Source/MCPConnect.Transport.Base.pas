@@ -495,8 +495,12 @@ begin
   var LAsyncExecute := TThread.CreateAnonymousThread(
     procedure
     begin
-      for var LMessage in ARequestList.List do
-        HandleMessage(LMessage, AResponseQueue);
+      try
+        for var LMessage in ARequestList.List do
+          HandleMessage(LMessage, AResponseQueue);
+      finally
+        AResponseQueue.Close;
+      end;
     end
   );
   LAsyncExecute.FreeOnTerminate := False;
@@ -742,7 +746,12 @@ begin
       SendResponseHeaders(FResponse);
     end;
 
-    while not LAsyncExecute.Finished do
+    // The worker thread closes the queue when done, which wakes ProcessQueue
+    // immediately: on the happy path no read timeout is ever paid. The loop is
+    // still needed because a slow tool can let the timeout expire before
+    // producing anything, and the final drain catches messages enqueued between
+    // the last timeout and the Closed check.
+    while not LResponseQueue.Closed do
     begin
       ProcessQueue(LResponseQueue);
     end;

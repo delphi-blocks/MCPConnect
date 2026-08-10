@@ -1,4 +1,4 @@
-{******************************************************************************}
+﻿{******************************************************************************}
 {                                                                              }
 {  Delphi MCP Connect Library                                                  }
 {                                                                              }
@@ -427,7 +427,7 @@ begin
     LHttp.ConnectionTimeout := RequestTimeoutMs;
     LHttp.ResponseTimeout := RequestTimeoutMs;
     try
-      var LUpstreamUrl := FOAuthConfig.MetadataProxyUpstream + '/.well-known/openid-configuration';
+      var LUpstreamUrl := FOAuthConfig.MetadataProxyUpstream.TrimRight(['/']) + '/.well-known/openid-configuration';
       var LResponse := LHttp.Get(LUpstreamUrl);
 
       if LResponse.StatusCode <> HTTP_CODE_OK then

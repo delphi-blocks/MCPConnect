@@ -32,6 +32,16 @@ type
     class procedure ConfigureServer(AServer: TJRPCServer);
   end;
 
+  TEnvironment = class
+  strict private
+    class var FEnv: TStrings;
+  public
+    class function Get(const AName: string): string;
+
+    class constructor Create;
+    class destructor Destroy;
+  end;
+
 implementation
 
 uses
@@ -61,11 +71,10 @@ begin
   LDataPath := TPath.Combine(ExtractFilePath(ParamStr(0)), 'data');
 
   AServer
-
     .Plugin.Configure<IOAuthConfig>
-      .SetResource(GetEnvironmentVariable('OIDC_MCP_SERVER'))
-      .EnableMetadataProxy(GetEnvironmentVariable('OIDC_AUTH_SERVER'))
-      .AddTrustedIssuer(GetEnvironmentVariable('OIDC_TOKEN_ISSUER'))
+      .SetResource(TEnvironment.Get('OIDC_MCP_SERVER'))
+      .AddAuthorizationServer(TEnvironment.Get('OIDC_AUTH_SERVER'))
+      .AddTrustedIssuer(TEnvironment.Get('OIDC_TOKEN_ISSUER'))
       {$IFDEF DELPHI_JOSE_JWT}
       .SetTokenValidatorClass(TJoseTokenValidator)
       {$ELSE}
@@ -74,7 +83,7 @@ begin
       .AddScopesSupported('openid')
       .AddScopesSupported('email')
       .AddScopesSupported('profile')
-      .AddScopesSupported(GetEnvironmentVariable('OIDC_MCP_SERVER') + '/access_as_user')
+      .AddScopesSupported(TEnvironment.Get('OIDC_MCP_SERVER') + '/access_as_user')
     .ApplyConfig
 
     .Plugin.Configure<IMCPConfig>
@@ -102,6 +111,30 @@ begin
         .SetSchemaNeonConfig(NeonConfig)
       .BackToMCP
   ;
+end;
+
+{ TEnvironment }
+
+class constructor TEnvironment.Create;
+const
+  EnvFileName = '.env';
+begin
+  FEnv := TStringList.Create;
+  if FileExists(EnvFileName) then
+    FEnv.LoadFromFile(EnvFileName);
+end;
+
+class destructor TEnvironment.Destroy;
+begin
+  FEnv.Free;
+end;
+
+class function TEnvironment.Get(const AName: string): string;
+begin
+  if FEnv.IndexOfName(AName) >= 0 then
+    Result := FEnv.Values[AName]
+  else
+    Result := GetEnvironmentVariable(AName);
 end;
 
 end.

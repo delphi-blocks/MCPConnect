@@ -15,6 +15,8 @@ unit MCPConnect.Transport.Base;
 
 interface
 
+{$SCOPEDENUMS ON}
+
 uses
   System.Classes, System.SysUtils, System.JSON,
   System.Generics.Collections, System.Generics.Defaults,
@@ -76,6 +78,8 @@ type
     function SupportsStreaming: Boolean;
   end;
 
+  TTransportProtocol = (Undefined, Stdio, StreamableHTTP);
+
   TMCPTransportHeaders = class
   private type
     THeaders = class(TDictionary<string, string>)
@@ -93,6 +97,7 @@ type
   TMCPTransportRequest = class(TMCPTransportHeaders)
   private
     FAcceptItems: TAcceptItemList<TAcceptItem>;
+    FProtocol: TTransportProtocol;
     function GetAccept: string;
     procedure SetAccept(const AValue: string);
     function GetAcceptItems: TAcceptItemList<TAcceptItem>;
@@ -107,6 +112,7 @@ type
     property Accept: string read GetAccept write SetAccept;
     property AcceptItems: TAcceptItemList<TAcceptItem> read GetAcceptItems;
     property AcceptsEventStream: Boolean read GetAcceptsEventStream;
+    property Protocol: TTransportProtocol read FProtocol write FProtocol;
 
     constructor Create;
     destructor Destroy; override;
@@ -296,6 +302,9 @@ function TMCPTransportHandler.CheckOrigin: Boolean;
 var
   LOrigin, LHeader: string;
 begin
+  if FRequest.Protocol = TTransportProtocol.Stdio then
+    Exit(True);
+
   if not Assigned(FMCPConfig) then
     raise EMCPException.Create(SErrorRetrievingMCPConfig);
 
@@ -665,7 +674,7 @@ begin
     on E: Exception do
     begin
       var err := TJRPCInvoker.HandleError(E, LRequest.Id);
-      FContext.Responses.AddMessage(err);
+      AResponseQueue.Enqueue(err);
     end;
   end;
 

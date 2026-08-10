@@ -460,6 +460,7 @@ begin
       ARequest.Command := 'POST';
       ARequest.Content := ARequestContent;
       ARequest.Accept := TMediaType.TEXT_EVENT_STREAM;
+      ARequest.Protocol := TTransportProtocol.Stdio;
     end,
 
     procedure (AResponse: TMCPTransportResponse)

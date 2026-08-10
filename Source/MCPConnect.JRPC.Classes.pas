@@ -269,8 +269,8 @@ type
   TContextRegistry = class(TDictionary<TClass, TObject>);
 
   /// <summary>
-  ///   Represents the context of a JSON-RPC CurrentRequest, including the CurrentRequest
-  ///   itself, the Responses, and any additional data associated with the context.
+  ///   Holds the data associated with a context: objects and interface
+  ///   implementations, retrieved by their type.
   /// </summary>
   TContextManager = class
   protected

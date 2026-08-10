@@ -49,8 +49,6 @@ resourcestring
   SJRPCNotValidTypeForPosition = 'Not a valid type for position allowed';
   SJRPCIdIsInteger = 'The Id is an integer';
   SJRPCIdIsString = 'The Id is a string';
-  SJRPCCurrentRequestNotFound = 'CurrentRequest not found';
-  SJRPCResponsesNotFound = 'Responses not found';
   SJRPCInvalidJSONReceived = 'An invalid JSON was received by the server';
   SJRPCInvalidRequest = 'Invalid JRPC Request';
 
@@ -634,30 +632,12 @@ type
   TJRPCContextRegistry = class(TDictionary<TClass, TObject>);
 
   /// <summary>
-  ///   Represents the context of a JSON-RPC CurrentRequest, including the CurrentRequest
-  ///   itself, the Responses, and any additional data associated with the context.
+  ///   Represents the context of a JSON-RPC request. Adding an IJRPCApplication
+  ///   also adds all of its configurations to the context data.
   /// </summary>
   TJRPCContext = class(TContextManager)
-  private
-    FCurrentRequest: TJRPCRequest;
-    FResponses: TJRPCMessages;
-  protected
-    function GetCurrentRequest: TJRPCRequest;
-    function GetResponses: TJRPCMessages;
   public
-    constructor Create;
-
     procedure AddContent(AObject: TObject); override;
-
-    /// <summary>
-    ///   The JSON-RPC CurrentRequest associated with this context.
-    /// </summary>
-    property CurrentRequest: TJRPCRequest read GetCurrentRequest;
-
-    /// <summary>
-    ///   The JSON-RPC Responses associated with this context.
-    /// </summary>
-    property Responses: TJRPCMessages read GetResponses;
   end;
 
   TQueueProcessProc<T: TJRPCMessage> = reference to procedure (AMessage: T; var ADispose: Boolean);
@@ -1273,54 +1253,6 @@ begin
       end;
 end;
 
-{ TJRPCContext }
-
-constructor TJRPCContext.Create;
-begin
-  inherited Create;
-end;
-
-
-procedure TJRPCContext.AddContent(AObject: TObject);
-var
-  LApplication: IJRPCApplication;
-  LConfig: TJRPCConfiguration;
-begin
-  inherited AddContent(AObject);
-
-  if AObject = nil then
-    Exit;
-
-  if AObject is TJRPCRequest then
-    FCurrentRequest := TJRPCRequest(AObject)
-  else if AObject is TJRPCMessages then
-    FResponses := TJRPCMessages(AObject);
-
-  if Supports(AObject, IJRPCApplication, LApplication) then
-  begin
-    for LConfig in LApplication.GetConfigurations do
-    begin
-      AddContent(LConfig);
-    end;
-  end;
-end;
-
-function TJRPCContext.GetCurrentRequest: TJRPCRequest;
-begin
-  if not Assigned(FCurrentRequest) then
-    raise EJRPCException.Create(SJRPCCurrentRequestNotFound);
-
-  Result := FCurrentRequest;
-end;
-
-function TJRPCContext.GetResponses: TJRPCMessages;
-begin
-  if not Assigned(FResponses) then
-    raise EJRPCException.Create(SJRPCResponsesNotFound);
-
-  Result := FResponses;
-end;
-
 { EJRPCException }
 
 procedure EJRPCException.AfterConstruction;
@@ -1927,6 +1859,27 @@ begin
     Result := FClosed;
   finally
     Unlock;
+  end;
+end;
+
+{ TJRPCContext }
+
+procedure TJRPCContext.AddContent(AObject: TObject);
+var
+  LApplication: IJRPCApplication;
+  LConfig: TJRPCConfiguration;
+begin
+  inherited AddContent(AObject);
+
+  if AObject = nil then
+    Exit;
+
+  if Supports(AObject, IJRPCApplication, LApplication) then
+  begin
+    for LConfig in LApplication.GetConfigurations do
+    begin
+      AddContent(LConfig);
+    end;
   end;
 end;
 

@@ -111,6 +111,7 @@ begin
       ARequest.Url := ARequestInfo.URI;
       ARequest.Command := ARequestInfo.Command;
       ARequest.Content := ReadContentStream(ARequestInfo);
+      ARequest.Protocol := TTransportProtocol.StreamableHTTP;
 
       Logger.LogInfo('SessionID ' + ARequest.Command + ' - ' + ARequest.GetHeader('Mcp-Session-Id'));
 

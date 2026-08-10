@@ -214,6 +214,7 @@ begin
       ConvertRequestHeaders(AWebRequest, ARequest);
       ARequest.Command := AWebRequest.Method;
       ARequest.Content := AWebRequest.Content;
+      ARequest.Protocol := TTransportProtocol.StreamableHTTP;
 
       //LogRequest(ARequest);
     end,

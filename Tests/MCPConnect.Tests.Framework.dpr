@@ -45,6 +45,9 @@ uses
   MCPConnect.MCP.Server.Api in '..\Source\MCPConnect.MCP.Server.Api.pas',
   MCPConnect.MCP.Tools in '..\Source\MCPConnect.MCP.Tools.pas',
   MCPConnect.MCP.Types in '..\Source\MCPConnect.MCP.Types.pas',
+  MCPConnect.Security.Jwks in '..\Source\MCPConnect.Security.Jwks.pas',
+  MCPConnect.Security.Token in '..\Source\MCPConnect.Security.Token.pas',
+  MCPConnect.Security.Token.JOSE in '..\Source\MCPConnect.Security.Token.JOSE.pas',
   MCPConnect.Session.Core in '..\Source\MCPConnect.Session.Core.pas',
   MCPConnect.Content.Writers in '..\Source\MCPConnect.Content.Writers.pas',
   MCPConnect.Tests.JRPC.Core in 'MCPConnect.Tests.JRPC.Core.pas',
@@ -53,7 +56,9 @@ uses
   MCPConnect.Tests.Session.Core in 'MCPConnect.Tests.Session.Core.pas',
   MCPConnect.Tests.Core.Utils in 'MCPConnect.Tests.Core.Utils.pas',
   MCPConnect.Tests.MCP.Configuration in 'MCPConnect.Tests.MCP.Configuration.pas',
-  MCPConnect.Tests.MCP.Server.Api in 'MCPConnect.Tests.MCP.Server.Api.pas';
+  MCPConnect.Tests.MCP.Server.Api in 'MCPConnect.Tests.MCP.Server.Api.pas',
+  MCPConnect.Tests.Security.Token in 'MCPConnect.Tests.Security.Token.pas',
+  MCPConnect.Tests.Security.Token.JOSE in 'MCPConnect.Tests.Security.Token.JOSE.pas';
 
 var
   runner : ITestRunner;

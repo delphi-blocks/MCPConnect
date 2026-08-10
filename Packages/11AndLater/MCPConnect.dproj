@@ -48,7 +48,7 @@
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base)'!=''">
         <RuntimeOnlyPackage>true</RuntimeOnlyPackage>
-        <DCC_UnitSearchPath>..\..\Source;..\..\Libs\Neon\Source;..\..\Libs\Logify\Source;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>..\..\Source;..\..\Libs\Neon\Source;..\..\Libs\Logify\Source;..\..\Libs\JOSE\Source\JOSE;..\..\Libs\JOSE\Source\Common;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <SanitizedProjectName>MCPConnect</SanitizedProjectName>
         <VerInfo_Locale>1040</VerInfo_Locale>
         <DCC_Description>MCP Library for Delphi</DCC_Description>
@@ -129,6 +129,9 @@
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Server.Api.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Tools.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Security.Jwks.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Security.Token.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Security.Token.JOSE.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Session.Core.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Transport.AcceptParser.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Transport.MediaType.pas"/>

@@ -16,7 +16,6 @@ uses
 
   MCPConnect.Configuration.MCP,
   MCPConnect.Configuration.Session,
-  MCPConnect.Configuration.Auth,
 
   MCPConnect.Content.Writers.RTL,
   {$IFDEF FRAMEWORK_VCL}

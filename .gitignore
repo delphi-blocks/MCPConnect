@@ -60,7 +60,9 @@ __recovery/
 *.stat
 
 libs/Neon
+libs/JOSE
 nul
 
 # VSCode
 *.vsdcache.*
+/Demo/*.log

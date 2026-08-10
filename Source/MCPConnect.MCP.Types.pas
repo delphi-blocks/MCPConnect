@@ -1,4 +1,4 @@
-{******************************************************************************}
+﻿{******************************************************************************}
 {                                                                              }
 {  Delphi MCP Connect Library                                                  }
 {                                                                              }
@@ -82,6 +82,114 @@ type
   TAnyMapOwned = class(TDictionary<string, TValue>)
   public
     destructor Destroy; override;
+  end;
+
+  TOAuthProtectedResourceMetadata = class
+  private
+    FResource: string;
+    FAuthorizationServers: TArray<string>;
+    FScopesSupported: TArray<string>;
+    FBearerMethodsSupported: TArray<string>;
+    FResourceName: string;
+    FResourceDocumentation: string;
+  public
+
+    /// <summary>
+    /// REQUIRED - The URI of the protected resource (es. http://localhost:8080/mcp)
+    /// </summary>
+    property Resource: string read FResource write FResource;
+
+    /// <summary>
+    /// REQUIRED - Lista degli authorization server che possono emettere token per questa risorsa
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)]
+    property AuthorizationServers: TArray<string> read FAuthorizationServers write FAuthorizationServers;
+
+    /// <summary>
+    /// OPTIONAL - Scopes supportati dalla risorsa
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)]
+    property ScopesSupported: TArray<string> read FScopesSupported write FScopesSupported;
+
+    /// <summary>
+    /// OPTIONAL - Metodi Bearer supportati (es. 'header', 'body', 'query')
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)]
+    property BearerMethodsSupported: TArray<string> read FBearerMethodsSupported write FBearerMethodsSupported;
+
+    /// <summary>
+    /// OPTIONAL - Nome leggibile della risorsa
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)]
+    property ResourceName: string read FResourceName write FResourceName;
+
+    /// <summary>
+    /// OPTIONAL - URL alla documentazione della risorsa
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)]
+    property ResourceDocumentation: string read FResourceDocumentation write FResourceDocumentation;
+  end;
+
+  /// <summary>
+  ///   Holds the decoded payload (claims) of the OAuth access token.
+  ///   Always instantiated and injected into the request context.
+  /// </summary>
+  TMCPAccessToken = class
+  private
+    FPayload: TJSONObject;
+    function GetName: string;
+    function GetEMail: string;
+    function GetSubject: string;
+    function GetScope: string;
+    function GetEmailVerified: Boolean;
+    function GetPreferredUsername: string;
+    function GetGivenName: string;
+    function GetFamilyName: string;
+    function GetIssuer: string;
+    function GetAudience: TArray<string>;
+    function GetClientId: string;
+    function GetExpiration: TDateTime;
+    function GetIssuedAt: TDateTime;
+    function GetNotBefore: TDateTime;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    procedure FromString(const AJsonString :string);
+    function ToString: string; override;
+
+    /// <summary>Raw decoded JWT payload (all claims), for direct access to non-wrapped claims.</summary>
+    property Payload: TJSONObject read FPayload;
+
+    /// <summary>Subject ("sub"): the unique identifier of the authenticated user/entity.</summary>
+    property Subject: string read GetSubject;
+    /// <summary>Display name of the user ("name").</summary>
+    property Name: string read GetName;
+    /// <summary>User's email address ("email").</summary>
+    property EMail: string read GetEMail;
+    /// <summary>Space-delimited authorized scopes ("scope").</summary>
+    property Scope: string read GetScope;
+    /// <summary>Whether the user's email address has been verified ("email_verified").</summary>
+    property EmailVerified: Boolean read GetEmailVerified;
+    /// <summary>Preferred username claim ("preferred_username").</summary>
+    property PreferredUsername: string read GetPreferredUsername;
+    /// <summary>User's given (first) name ("given_name").</summary>
+    property GivenName: string read GetGivenName;
+    /// <summary>User's family (last) name ("family_name").</summary>
+    property FamilyName: string read GetFamilyName;
+
+    /// <summary>Token issuer ("iss"): must match the authorization server's issuer.</summary>
+    property Issuer: string read GetIssuer;
+    /// <summary>Token audience ("aud"): must include this resource server's canonical URI (RFC 8707).</summary>
+    property Audience: TArray<string> read GetAudience;
+    /// <summary>Authorized client/party ("client_id", falling back to "azp").</summary>
+    property ClientId: string read GetClientId;
+    /// <summary>Expiration time ("exp"); 0 if the claim is absent.</summary>
+    property Expiration: TDateTime read GetExpiration;
+    /// <summary>Issued-at time ("iat"); 0 if the claim is absent.</summary>
+    property IssuedAt: TDateTime read GetIssuedAt;
+    /// <summary>Not-before time ("nbf"); 0 if the claim is absent.</summary>
+    property NotBefore: TDateTime read GetNotBefore;
   end;
 
   TMetaClass = class
@@ -785,7 +893,8 @@ implementation
 
 uses
   system.IOUtils,
-  System.NetEncoding;
+  System.NetEncoding,
+  System.DateUtils;
 
 
 function MCPNeonConfig: INeonConfiguration;
@@ -928,6 +1037,145 @@ destructor TEmbeddedResourceBlob.Destroy;
 begin
   Resource.Free;
   inherited;
+end;
+
+{ TMCPAccessToken }
+
+constructor TMCPAccessToken.Create;
+begin
+  inherited Create;
+  FPayload := TJSONObject.Create;
+end;
+
+destructor TMCPAccessToken.Destroy;
+begin
+  FPayload.Free;
+  inherited;
+end;
+
+procedure TMCPAccessToken.FromString(const AJsonString: string);
+begin
+  var LPayload := TJSONObject.ParseJSONValue(AJsonString, True, True);
+  try
+    var LTempPayload := FPayload;
+    FPayload := LPayload as TJSONObject;
+    LPayload := LTempPayload;
+  finally
+    LPayload.Free;
+  end;
+end;
+
+function TMCPAccessToken.GetEMail: string;
+begin
+  Result := FPayload.GetValue<string>('email', '');
+end;
+
+function TMCPAccessToken.GetName: string;
+begin
+  Result := FPayload.GetValue<string>('name', '');
+end;
+
+function TMCPAccessToken.GetSubject: string;
+begin
+  Result := FPayload.GetValue<string>('sub', '');
+end;
+
+function TMCPAccessToken.GetScope: string;
+begin
+  Result := FPayload.GetValue<string>('scope', '');
+end;
+
+function TMCPAccessToken.GetEmailVerified: Boolean;
+begin
+  Result := FPayload.GetValue<Boolean>('email_verified', False);
+end;
+
+function TMCPAccessToken.GetPreferredUsername: string;
+begin
+  Result := FPayload.GetValue<string>('preferred_username', '');
+end;
+
+function TMCPAccessToken.GetGivenName: string;
+begin
+  Result := FPayload.GetValue<string>('given_name', '');
+end;
+
+function TMCPAccessToken.GetFamilyName: string;
+begin
+  Result := FPayload.GetValue<string>('family_name', '');
+end;
+
+function TMCPAccessToken.GetIssuer: string;
+begin
+  Result := FPayload.GetValue<string>('iss', '');
+end;
+
+function TMCPAccessToken.GetAudience: TArray<string>;
+var
+  LArray: TJSONArray;
+  LValue: string;
+begin
+  // "aud" is either a single string or a JSON array of strings per the JWT spec
+  if FPayload.TryGetValue<TJSONArray>('aud', LArray) then
+  begin
+    SetLength(Result, LArray.Count);
+    for var I := 0 to LArray.Count - 1 do
+      Result[I] := LArray.Items[I].Value;
+  end
+  else
+  begin
+    LValue := FPayload.GetValue<string>('aud', '');
+    if LValue <> '' then
+      Result := [LValue]
+    else
+      Result := [];
+  end;
+end;
+
+function TMCPAccessToken.GetClientId: string;
+begin
+  Result := FPayload.GetValue<string>('client_id', '');
+  if Result = '' then
+    // Some IdPs (e.g. Keycloak, Auth0) put the client id in "azp" (authorized party) instead
+    Result := FPayload.GetValue<string>('azp', '');
+end;
+
+function TMCPAccessToken.GetExpiration: TDateTime;
+var
+  LSeconds: Int64;
+begin
+  LSeconds := FPayload.GetValue<Int64>('exp', 0);
+  if LSeconds = 0 then
+    Result := 0
+  else
+    Result := UnixToDateTime(LSeconds);
+end;
+
+function TMCPAccessToken.GetIssuedAt: TDateTime;
+var
+  LSeconds: Int64;
+begin
+  LSeconds := FPayload.GetValue<Int64>('iat', 0);
+  if LSeconds = 0 then
+    Result := 0
+  else
+    Result := UnixToDateTime(LSeconds);
+end;
+
+function TMCPAccessToken.GetNotBefore: TDateTime;
+var
+  LSeconds: Int64;
+begin
+  LSeconds := FPayload.GetValue<Int64>('nbf', 0);
+  if LSeconds = 0 then
+    Result := 0
+  else
+    Result := UnixToDateTime(LSeconds);
+end;
+
+function TMCPAccessToken.ToString: string;
+begin
+  Result := FPayload.ToJSON;
 end;
 
 { TMetaClass }

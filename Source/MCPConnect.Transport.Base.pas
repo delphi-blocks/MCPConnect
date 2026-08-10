@@ -28,6 +28,7 @@ uses
   MCPConnect.Configuration.MCP,
   MCPConnect.Configuration.Auth,
   MCPConnect.Configuration.Session,
+  MCPConnect.Security.Token,
   MCPConnect.Session.Core,
   MCPConnect.MCP.Types,
   MCPConnect.JRPC.Classes,
@@ -44,6 +45,10 @@ const
   HTTP_CODE_NOTFOUND = 404;
   HTTP_CODE_NOTALLOWED = 405;
   HTTP_CODE_NOTACCEPTABLE = 406;
+  HTTP_CODE_BADGATEWAY = 502;
+
+  /// <summary>Scheme prefix of the "Authorization" header carrying an OAuth access token.</summary>
+  BearerPrefix = 'Bearer ';
 
 resourcestring
   SInvalidTokenLocation = 'Invalid token location';
@@ -57,6 +62,10 @@ resourcestring
   STransportSessionNotFound = 'Session not found';
   STransportMethodNotFoundFmt = 'Method "%s" not found';
   SSessionIdHeaderRequired = 'Mcp-Session-Id header is required';
+  SOAuthValidatorNotConfigured = 'A bearer token was received but no token validator is ' +
+    'registered: the request is rejected. See IOAuthConfig.SetTokenValidatorClass.';
+  SOAuthValidatorNotSupportedFmt = 'The registered token validator [%s] does not expose ' +
+    'ITokenValidator: the request is rejected';
 
 type
   /// <summary>
@@ -152,10 +161,12 @@ type
     FContext: TJRPCContext;
     FGarbage: IGarbageCollector;
     FSession: TMCPSessionBase;
+    FAccessToken: TMCPAccessToken;
 
     FMCPConfig: TMCPConfig;
     FServer: TJRPCServer;
     FAuthTokenConfig: TAuthTokenConfig;
+    FOAuthConfig: TOAuthConfig;
     FSessionConfig: TSessionConfig;
     FResponseWriter: IMCPTransportWriter;
     FSendResponseHeadersProc: TProc<TMCPTransportResponse>;
@@ -165,6 +176,11 @@ type
     class function MatchesOriginPattern(const AOrigin, APattern: string): Boolean; static;
     class function ConstantTimeEquals(const A, B: string): Boolean; static;
     function CheckAuthorization: Boolean;
+    function CheckOAuth: Boolean;
+    function ValidateAccessToken(const AToken: string): TTokenValidationResult;
+    procedure SendUnauthorized(const AResult: TTokenValidationResult);
+    function IsMetadataProxyRequest: Boolean;
+    procedure HandleMetadataProxy;
     function ExtractSessionId: string;
     function IsInitializeRequest: Boolean;
     function HandleSession: TMCPSessionBase;
@@ -189,7 +205,9 @@ type
 implementation
 
 uses
-  System.IOUtils, System.Diagnostics, Logify,
+  System.IOUtils, System.Net.HttpClient, System.Diagnostics,
+  Logify,
+  Neon.Core.Utils,
   MCPConnect.Transport.MediaType,
   MCPConnect.Configuration.Neon,
   MCPConnect.JRPC.Invoker;
@@ -201,18 +219,21 @@ constructor TMCPTransportHandler.Create(AServer: TJRPCServer; AResponseWriter: I
 begin
   FRequest := TMCPTransportRequest.Create;
   FResponse := TMCPTransportResponse.Create;
+  FAccessToken := TMCPAccessToken.Create;
 
   FServer := AServer;
   FResponseWriter := AResponseWriter;
   FMCPConfig := FServer.GetConfiguration<TMCPConfig>;
   FAuthTokenConfig := FServer.GetConfiguration<TAuthTokenConfig>;
   FSessionConfig := FServer.GetConfiguration<TSessionConfig>;
+  FOAuthConfig := FServer.GetConfiguration<TOAuthConfig>;
 end;
 
 destructor TMCPTransportHandler.Destroy;
 begin
   FRequest.Free;
   FResponse.Free;
+  FAccessToken.Free;
 
   Logger.LogDebug('MCPTransportHandler destroyed');
   inherited;
@@ -269,6 +290,187 @@ begin
     else
       raise EJRPCException.Create(SInvalidTokenLocation);
     end;
+  end;
+end;
+
+function TMCPTransportHandler.CheckOAuth: Boolean;
+begin
+  if Length(FOAuthConfig.AuthorizationServers) < 1 then
+    Exit(True);
+
+  if SameText(FRequest.Command, 'OPTIONS') then
+    Exit(True);
+
+  Result := False;
+  if (SameText(FRequest.Url, TOAuthConfig.ProtectedResourcePath) or SameText(FRequest.Url, TOAuthConfig.ProtectedResourcePath + '/mcp')) and (FRequest.Command = 'GET') then
+  begin
+    FResponse.Code := HTTP_CODE_OK;
+    FResponse.ContentType := TMediaType.APPLICATION_JSON;
+
+    var LMetadata := TOAuthProtectedResourceMetadata.Create;
+    try
+      LMetadata.Resource := FOAuthConfig.Resource;
+      LMetadata.AuthorizationServers := FOAuthConfig.AuthorizationServers;
+      LMetadata.ScopesSupported := FOAuthConfig.ScopesSupported;
+      FResponse.Content := TNeon.ObjectToJSONString(LMetadata, TNeonConfiguration.Snake);
+    finally
+      LMetadata.Free;
+    end;
+  end
+  else if FOAuthConfig.MetadataProxyEnabled and (FRequest.Command = 'GET') and IsMetadataProxyRequest then
+  begin
+    HandleMetadataProxy;
+  end
+  else
+  begin
+    var LAuthHeader := FRequest.GetHeader('Authorization');
+    if LAuthHeader.StartsWith(BearerPrefix) then
+    begin
+      var LResult := ValidateAccessToken(LAuthHeader.Substring(Length(BearerPrefix)).Trim);
+      if LResult.Success then
+        Exit(True);
+
+      SendUnauthorized(LResult);
+      Exit(False);
+    end;
+
+    SendUnauthorized(TTokenValidationResult.Fail(TTokenValidationErrorCode.None, ''));
+  end;
+end;
+
+function TMCPTransportHandler.ValidateAccessToken(const AToken: string): TTokenValidationResult;
+var
+  LInstance: TObject;
+  LValidator: ITokenValidator;
+begin
+  // Fail-closed: with no validator registered no token can be trusted, so none is
+  // accepted. TOAuthConfig.ApplyConfig logs a warning about this at startup.
+  if not Assigned(FOAuthConfig.TokenValidatorClass) then
+  begin
+    Logger.LogWarning(SOAuthValidatorNotConfigured);
+    Exit(TTokenValidationResult.Fail(TTokenValidationErrorCode.InvalidToken, ''));
+  end;
+
+  try
+    // Built through RTTI so that a validator is bound to nothing but ITokenValidator:
+    // no base class of ours, no constructor of ours. SetTokenValidatorClass already
+    // refused any class that does not implement the interface, so the Supports below
+    // is a belt-and-braces check rather than the real gate.
+    LInstance := TRttiUtils.CreateInstance(FOAuthConfig.TokenValidatorClass);
+    if not Supports(LInstance, ITokenValidator, LValidator) then
+    begin
+      LInstance.Free;
+      Logger.LogError(SOAuthValidatorNotSupportedFmt,
+        [FOAuthConfig.TokenValidatorClass.ClassName]);
+      Exit(TTokenValidationResult.Fail(TTokenValidationErrorCode.InvalidToken, ''));
+    end;
+
+    // LValidator is the only reference held: the instance is destroyed when this
+    // method returns, which is why an implementation has to be reference counted.
+    Result := LValidator.Validate(FContext, AToken, FAccessToken);
+  except
+    // A failing validator must look exactly like an invalid token: never a 500, and
+    // never a message that tells a client whether it hit a bug or a rejected token.
+    on E: Exception do
+    begin
+      Logger.LogError('Token validation failed with an exception: %s', [E.Message]);
+      Result := TTokenValidationResult.Fail(TTokenValidationErrorCode.InvalidToken, '');
+    end;
+  end;
+end;
+
+procedure TMCPTransportHandler.SendUnauthorized(const AResult: TTokenValidationResult);
+
+  // The description comes from a validator implementation: quotes and line breaks
+  // would either break the challenge or let it inject further headers.
+  function SanitizeDescription(const AValue: string): string;
+  begin
+    Result := AValue.Replace('"', '''').Replace(#13, ' ').Replace(#10, ' ').Trim;
+  end;
+
+var
+  LChallenge: string;
+begin
+  LChallenge := Format('Bearer realm="%s", resource_metadata=%s',
+    [FOAuthConfig.Realm, FOAuthConfig.ResourceMetadata]);
+
+  if AResult.ErrorCode <> TTokenValidationErrorCode.None then
+  begin
+    LChallenge := LChallenge + Format(', error="%s"',
+      [TokenValidationErrorCodeToString(AResult.ErrorCode)]);
+
+    if AResult.ErrorDescription <> '' then
+      LChallenge := LChallenge + Format(', error_description="%s"',
+        [SanitizeDescription(AResult.ErrorDescription)]);
+  end;
+
+  FResponse.Code := HTTP_CODE_UNAUTHORIZED;
+  FResponse.Headers.AddOrSetValue('WWW-Authenticate', LChallenge);
+end;
+
+function TMCPTransportHandler.IsMetadataProxyRequest: Boolean;
+begin
+  Result :=
+    SameText(FRequest.Url, '/.well-known/oauth-authorization-server' + TOAuthConfig.MetadataProxyPath) or
+    SameText(FRequest.Url, '/.well-known/openid-configuration' + TOAuthConfig.MetadataProxyPath) or
+    SameText(FRequest.Url, TOAuthConfig.MetadataProxyPath + '/.well-known/openid-configuration');
+end;
+
+procedure TMCPTransportHandler.HandleMetadataProxy;
+const
+  RequestTimeoutMs = 10000;
+begin
+  FResponse.ContentType := TMediaType.APPLICATION_JSON;
+
+  var LHttp := THTTPClient.Create;
+  try
+    LHttp.ConnectionTimeout := RequestTimeoutMs;
+    LHttp.ResponseTimeout := RequestTimeoutMs;
+    try
+      var LUpstreamUrl := FOAuthConfig.MetadataProxyUpstream + '/.well-known/openid-configuration';
+      var LResponse := LHttp.Get(LUpstreamUrl);
+
+      if LResponse.StatusCode <> HTTP_CODE_OK then
+      begin
+        FResponse.Code := HTTP_CODE_BADGATEWAY;
+        FResponse.Content := Format('{"error": "Failed to fetch upstream authorization server metadata (HTTP %d)"}', [LResponse.StatusCode]);
+        Exit;
+      end;
+
+      var LJSON := TJSONObject.ParseJSONValue(LResponse.ContentAsString, True, True) as TJSONObject;
+      try
+        var LMethods: TJSONArray;
+        if not (LJSON.TryGetValue<TJSONArray>('code_challenge_methods_supported', LMethods) and (LMethods.Count > 0)) then
+        begin
+          var LExisting := LJSON.RemovePair('code_challenge_methods_supported');
+          LExisting.Free;
+          var LNewMethods := TJSONArray.Create;
+          LNewMethods.Add('S256');
+          LJSON.AddPair('code_challenge_methods_supported', LNewMethods);
+        end;
+
+        // Per RFC 8414 §3.3, "issuer" must exactly match the URL the metadata
+        // document was retrieved from, i.e. this proxy's own URL - not the
+        // upstream authorization server's issuer - or strict MCP OAuth clients
+        // reject the document with an issuer mismatch.
+        var LExistingIssuer := LJSON.RemovePair('issuer');
+        LExistingIssuer.Free;
+        LJSON.AddPair('issuer', FOAuthConfig.MetadataProxyUrl);
+
+        FResponse.Code := HTTP_CODE_OK;
+        FResponse.Content := LJSON.ToJSON;
+      finally
+        LJSON.Free;
+      end;
+    except
+      on E: Exception do
+      begin
+        FResponse.Code := HTTP_CODE_BADGATEWAY;
+        FResponse.Content := Format('{"error": "%s"}', [E.Message]);
+      end;
+    end;
+  finally
+    LHttp.Free;
   end;
 end;
 
@@ -342,18 +544,28 @@ begin
     Logger.LogDebug('[PERF] RequestConverter: %d ms', [LFragment.ElapsedMilliseconds]);
 
     try try
+    InjectCORS;
+
     if not CheckOrigin then
       raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, SCrossOriginBlocked);
 
     if not CheckAuthorization then
       raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, SAuthorizationCheckFailed);
 
+    // Built before the OAuth check, and not after it, because the token validator
+    // receives this context: it is where it finds the server and, through it, the
+    // OAuth configuration. Requests that end in a 401 pay for a context they will
+    // not use, which is a cheaper price than handing the validator a half-built one.
     FGarbage := TGarbageCollector.CreateInstance;
     FContext := TJRPCContext.Create;
 
     FGarbage.Add(FContext);
     FContext.AddContent(FGarbage);
     FContext.AddContent(FServer);
+    FContext.AddContent(FAccessToken);
+
+    if not CheckOAuth then
+      Exit;
 
     LFragment := TStopwatch.StartNew;
     // Handle session (get existing or create new)
@@ -375,8 +587,6 @@ begin
       end;
 
     end;
-
-    InjectCORS;
 
     LFragment := TStopwatch.StartNew;
     if FRequest.Command = 'GET' then
@@ -830,6 +1040,14 @@ begin
   LHValue := FRequest.GetHeader('Access-Control-Request-Headers');
   if not LHValue.IsEmpty then
     FResponse.Headers.AddOrSetValue('Access-Control-Allow-Headers', LHValue);
+
+  // Expose the headers browser-based clients need to read from JS (e.g. to
+  // discover the OAuth resource metadata URL from a 401 response, or to pick
+  // up the session id when it is returned via header).
+  LHValue := 'WWW-Authenticate';
+  if Assigned(FSessionConfig) and FSessionConfig.IsApplied and (FSessionConfig.GetLocation = TSessionIdLocation.Header) then
+    LHValue := LHValue + ', ' + FSessionConfig.GetHeaderName;
+  FResponse.Headers.AddOrSetValue('Access-Control-Expose-Headers', LHValue);
 
 end;
 

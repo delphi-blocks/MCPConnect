@@ -18,6 +18,9 @@
         <Projects Include="MCPServer\WebBroker\MCPServerWebBroker.dproj">
             <Dependencies/>
         </Projects>
+        <Projects Include="MCPOAuthServer\Indy\MCPAuthServerIndy.dproj">
+            <Dependencies/>
+        </Projects>
     </ItemGroup>
     <ProjectExtensions>
         <Borland.Personality>Default.Personality.12</Borland.Personality>
@@ -71,14 +74,23 @@
     <Target Name="MCPServerWebBroker:Make">
         <MSBuild Projects="MCPServer\WebBroker\MCPServerWebBroker.dproj" Targets="Make"/>
     </Target>
+    <Target Name="MCPAuthServerIndy">
+        <MSBuild Projects="MCPOAuthServer\Indy\MCPAuthServerIndy.dproj"/>
+    </Target>
+    <Target Name="MCPAuthServerIndy:Clean">
+        <MSBuild Projects="MCPOAuthServer\Indy\MCPAuthServerIndy.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="MCPAuthServerIndy:Make">
+        <MSBuild Projects="MCPOAuthServer\Indy\MCPAuthServerIndy.dproj" Targets="Make"/>
+    </Target>
     <Target Name="Build">
-        <CallTarget Targets="TestClasses;JRPCServer;MCPServerStdio;MCPServerIndy;MCPServerWebBroker"/>
+        <CallTarget Targets="TestClasses;JRPCServer;MCPServerStdio;MCPServerIndy;MCPServerWebBroker;MCPAuthServerIndy"/>
     </Target>
     <Target Name="Clean">
-        <CallTarget Targets="TestClasses:Clean;JRPCServer:Clean;MCPServerStdio:Clean;MCPServerIndy:Clean;MCPServerWebBroker:Clean"/>
+        <CallTarget Targets="TestClasses:Clean;JRPCServer:Clean;MCPServerStdio:Clean;MCPServerIndy:Clean;MCPServerWebBroker:Clean;MCPAuthServerIndy:Clean"/>
     </Target>
     <Target Name="Make">
-        <CallTarget Targets="TestClasses:Make;JRPCServer:Make;MCPServerStdio:Make;MCPServerIndy:Make;MCPServerWebBroker:Make"/>
+        <CallTarget Targets="TestClasses:Make;JRPCServer:Make;MCPServerStdio:Make;MCPServerIndy:Make;MCPServerWebBroker:Make;MCPAuthServerIndy:Make"/>
     </Target>
     <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
 </Project>

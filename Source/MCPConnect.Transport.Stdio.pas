@@ -18,6 +18,7 @@ interface
 uses
   System.SysUtils, System.Classes, System.IOUtils, System.JSON,
 
+  Logify,
   MCPConnect.Transport.Base,
   MCPConnect.Transport.MediaType,
   MCPConnect.Configuration.Session,
@@ -56,10 +57,38 @@ type
     class function CreateMCPServer(AOwner: TComponent): TJRPCStdioServer;
   end;
 
+  /// <summary>
+  ///   Reads the JSON-RPC messages from the standard input, one line each.
+  /// </summary>
+  /// <remarks>
+  ///   Stdin carries UTF-8, so the bytes are taken from the handle as they are
+  ///   and decoded only once a whole line has been read. Decoding them one at a
+  ///   time (what a TStreamReader does) breaks every multi-byte character.
+  /// </remarks>
   TStdInReader = class(TObject)
+  private const
+    /// <summary>Bytes taken from the handle in a single read.</summary>
+    CHUNK_SIZE = 4096;
+    /// <summary>Bytes added to the line buffer whenever it runs out of room.</summary>
+    LINE_GROWTH = 1024;
+    LF = 10;
+    CR = 13;
   private
-    FReader: TStreamReader;
+    FStream: TStream;
+    FChunk: TBytes;
+    FChunkCount: Integer;
+    FChunkPos: Integer;
+    FEndOfStream: Boolean;
     function GetEndOfStream: Boolean;
+    /// <summary>
+    ///   Makes sure at least one byte is available, reading from the handle when
+    ///   the chunk has been consumed. Blocks until stdin has something to give.
+    /// </summary>
+    /// <returns>False once the stream is exhausted.</returns>
+    function FillChunk: Boolean;
+    /// <summary>Takes the next byte out of the chunk.</summary>
+    /// <returns>False once the stream is exhausted.</returns>
+    function NextByte(out AByte: Byte): Boolean;
   public
     procedure Close;
     function ReadLine: string;
@@ -70,26 +99,42 @@ type
     destructor Destroy; override;
   end;
 
-  TStdOutWriter = class(TObject)
+  /// <summary>
+  ///   Writes one line at a time to a standard handle, always as UTF-8.
+  /// </summary>
+  /// <remarks>
+  ///   The bytes go to the handle without passing through a codepage: the
+  ///   protocol is UTF-8, while converting to the ANSI codepage of the machine
+  ///   raises an EEncodingError on every character it cannot represent (an
+  ///   arrow, a dash, an emoji) and mangles several of the ones it can.
+  /// </remarks>
+  TStdWriter = class(TObject)
+  private const
+    LF = 10;
   private
-    FWriter: TStreamWriter;
+    FStream: TStream;
+  protected
+    constructor Create(AHandle: THandle);
   public
-    procedure Close;
-    procedure Flush;
-    procedure WriteLine(const Value: string);
-    constructor Create;
     destructor Destroy; override;
+
+    procedure Close;
+    /// <summary>
+    ///   Kept for the callers: every line is handed to the handle as it is
+    ///   written, so there is nothing left to push out.
+    /// </summary>
+    procedure Flush;
+    procedure WriteLine(const AValue: string);
   end;
 
-  TStdErrWriter = class(TObject)
-  private
-    FWriter: TStreamWriter;
+  TStdOutWriter = class(TStdWriter)
   public
-    procedure Close;
-    procedure Flush;
-    procedure WriteLine(const Value: string);
     constructor Create;
-    destructor Destroy; override;
+  end;
+
+  TStdErrWriter = class(TStdWriter)
+  public
+    constructor Create;
   end;
 
   TWorkerThread = class(TThread)
@@ -186,119 +231,161 @@ end;
 
 procedure TStdInReader.Close;
 begin
-  FReader.Close;
+  FEndOfStream := True;
+  FChunkCount := 0;
+  FChunkPos := 0;
+  FreeAndNil(FStream);
 end;
 
 constructor TStdInReader.Create;
 begin
   inherited;
-  FReader := TStreamReader.Create(THandleStream.Create(StdInHandle), TEncoding.Default);
-  FReader.OwnStream;
+  FStream := THandleStream.Create(StdInHandle);
+  SetLength(FChunk, CHUNK_SIZE);
 end;
 
 destructor TStdInReader.Destroy;
 begin
-  FReader.Free;
+  FStream.Free;
   inherited;
+end;
+
+function TStdInReader.FillChunk: Boolean;
+var
+  LRead: Integer;
+begin
+  if FChunkPos < FChunkCount then
+    Exit(True);
+
+  if FEndOfStream or not Assigned(FStream) then
+    Exit(False);
+
+  FChunkPos := 0;
+  FChunkCount := 0;
+
+  LRead := FStream.Read(FChunk[0], Length(FChunk));
+  if LRead <= 0 then
+  begin
+    FEndOfStream := True;
+    Exit(False);
+  end;
+
+  FChunkCount := LRead;
+  Result := True;
 end;
 
 function TStdInReader.GetEndOfStream: Boolean;
 begin
-  Result := FReader.EndOfStream;
+  Result := not FillChunk();
 end;
 
-// Reads all characters until a line break is found (ASCII 10)
-// Uses a buffer to improve performance
+function TStdInReader.NextByte(out AByte: Byte): Boolean;
+begin
+  if not FillChunk() then
+    Exit(False);
+
+  AByte := FChunk[FChunkPos];
+  Inc(FChunkPos);
+  Result := True;
+end;
+
+// Reads all bytes until a line break is found (ASCII 10) and decodes them as
+// UTF-8. A CR right before the LF belongs to the line terminator, not to the
+// message, so it is dropped. A last line without its LF is returned as it is.
 function TStdInReader.ReadLine: string;
-const
-  BufferSize = 1024;
 var
   LBuffer: TBytes;
+  LByte: Byte;
   LIndex: Integer;
 begin
   LIndex := 0;
-  while True do
+  while NextByte(LByte) do
   begin
-    var LValue := FReader.Read;
-    if LValue < 0 then
-      Exit('');
-    if LValue = 10 then
+    if LByte = LF then
     begin
+      if (LIndex > 0) and (LBuffer[LIndex - 1] = CR) then
+        Dec(LIndex);
       Exit(TEncoding.UTF8.GetString(LBuffer, 0, LIndex));
     end;
+
     if Length(LBuffer) < LIndex + 1 then
-      SetLength(LBuffer, Length(LBuffer) + BufferSize);
-    LBuffer[LIndex] := LValue;
+      SetLength(LBuffer, Length(LBuffer) + LINE_GROWTH);
+    LBuffer[LIndex] := LByte;
     Inc(LIndex);
   end;
+
+  Result := TEncoding.UTF8.GetString(LBuffer, 0, LIndex);
 end;
 
 function TStdInReader.ReadToEnd: string;
+var
+  LBuffer: TBytes;
+  LByte: Byte;
+  LIndex: Integer;
 begin
-  Result := FReader.ReadToEnd;
+  LIndex := 0;
+  while NextByte(LByte) do
+  begin
+    if Length(LBuffer) < LIndex + 1 then
+      SetLength(LBuffer, Length(LBuffer) + LINE_GROWTH);
+    LBuffer[LIndex] := LByte;
+    Inc(LIndex);
+  end;
+
+  Result := TEncoding.UTF8.GetString(LBuffer, 0, LIndex);
+end;
+
+{ TStdWriter }
+
+procedure TStdWriter.Close;
+begin
+  FreeAndNil(FStream);
+end;
+
+constructor TStdWriter.Create(AHandle: THandle);
+begin
+  inherited Create;
+  FStream := THandleStream.Create(AHandle);
+end;
+
+destructor TStdWriter.Destroy;
+begin
+  FStream.Free;
+  inherited;
+end;
+
+procedure TStdWriter.Flush;
+begin
+end;
+
+procedure TStdWriter.WriteLine(const AValue: string);
+var
+  LBytes: TBytes;
+  LLength: Integer;
+begin
+  if not Assigned(FStream) then
+    Exit;
+
+  LBytes := TEncoding.UTF8.GetBytes(AValue);
+  LLength := Length(LBytes);
+  SetLength(LBytes, LLength + 1);
+  LBytes[LLength] := LF;
+
+  FStream.WriteBuffer(LBytes[0], LLength + 1);
 end;
 
 { TStdOutWriter }
 
-procedure TStdOutWriter.Close;
-begin
-  FWriter.Close;
-end;
-
 constructor TStdOutWriter.Create;
 begin
-  inherited;
-  FWriter := TStreamWriter.Create(THandleStream.Create(StdOutHandle), TEncoding.Default);
-  FWriter.OwnStream;
-  FWriter.NewLine := #10;
-end;
-
-destructor TStdOutWriter.Destroy;
-begin
-  FWriter.Free;
-  inherited;
-end;
-
-procedure TStdOutWriter.Flush;
-begin
-  FWriter.Flush;
-end;
-
-procedure TStdOutWriter.WriteLine(const Value: string);
-begin
-  FWriter.WriteLine(Value);
-  FWriter.Flush;
+  inherited Create(StdOutHandle);
 end;
 
 { TStdErrWriter }
 
-procedure TStdErrWriter.Close;
-begin
-  FWriter.Close;
-end;
-
 constructor TStdErrWriter.Create;
 begin
-  inherited;
-  FWriter := TStreamWriter.Create(THandleStream.Create(StdErrHandle), TEncoding.Default);
-  FWriter.OwnStream;
-  FWriter.NewLine := #10;
-end;
-
-destructor TStdErrWriter.Destroy;
-begin
-  FWriter.Free;
-  inherited;
-end;
-
-procedure TStdErrWriter.Flush;
-begin
-  FWriter.Flush;
-end;
-
-procedure TStdErrWriter.WriteLine(const Value: string);
-begin
-  FWriter.WriteLine(Value);
+  inherited Create(StdErrHandle);
 end;
 
 { TJRPCStdioServer }
@@ -388,55 +475,62 @@ var
   LSessionManager: TMCPSessionManager;
 begin
   inherited;
-
-  LSessionManager := FServer.SessionManager as TMCPSessionManager;
-
-  // Create session for this STDIO connection (implicit session per connection)
-  if Assigned(FSessionConfig) then
-  begin
-    FSession := LSessionManager.CreateSession;
-    LSessionId := FSession.SessionId;  // Save ID before thread ends
-  end;
-
   try
-    LReader := TStdInReader.Create;
+    LSessionManager := FServer.SessionManager as TMCPSessionManager;
+
+    // Create session for this STDIO connection (implicit session per connection)
+    if Assigned(FSessionConfig) then
+    begin
+      FSession := LSessionManager.CreateSession;
+      LSessionId := FSession.SessionId;  // Save ID before thread ends
+    end;
+
     try
-      LWriter := TStdOutWriter.Create;
+      LReader := TStdInReader.Create;
       try
-        LError := TStdErrWriter.Create;
+        LWriter := TStdOutWriter.Create;
         try
-          while not LReader.EndOfStream do
-          begin
-            LRequest := LReader.ReadLine;
-            try
-              HandleRequest(LRequest, LResponse, LWriter);
-              if LResponse <> '' then
-                LWriter.WriteLine(LResponse);
-            except
-              on E: Exception do
-                LError.WriteLine(E.Message);
+          LError := TStdErrWriter.Create;
+          try
+            while not LReader.EndOfStream do
+            begin
+              LRequest := LReader.ReadLine;
+              try
+                HandleRequest(LRequest, LResponse, LWriter);
+                if LResponse <> '' then
+                  LWriter.WriteLine(LResponse);
+              except
+                on E: Exception do
+                  LError.WriteLine(E.Message);
+              end;
             end;
+          finally
+            LError.Free;
           end;
         finally
-          LError.Free;
+          LWriter.Free;
         end;
+
       finally
-        LWriter.Free;
+        LReader.Free;
       end;
-
     finally
-      LReader.Free;
+      // Destroy session when STDIO connection ends
+      // Note: This is done for consistency and explicit resource cleanup.
+      // The session would be automatically destroyed by TSessionManager's destructor
+      // at application termination, but we clean it up here for good practice.
+      if not LSessionId.IsEmpty then
+        LSessionManager.DestroySession(LSessionId);
     end;
-  finally
-    // Destroy session when STDIO connection ends
-    // Note: This is done for consistency and explicit resource cleanup.
-    // The session would be automatically destroyed by TSessionManager's destructor
-    // at application termination, but we clean it up here for good practice.
-    if not LSessionId.IsEmpty then
-      LSessionManager.DestroySession(LSessionId);
-  end;
 
-  Terminate;
+    Terminate;
+  except
+    on E: Exception do
+    begin
+      logger.LogError('TWorkerThread - %s: %s', [E.ClassName, E.Message]);
+      raise;
+    end;
+  end;
 end;
 
 procedure TWorkerThread.HandleRequest(const ARequestContent: string; out AResponseContent: string; AStdOutWriter: TStdOutWriter);

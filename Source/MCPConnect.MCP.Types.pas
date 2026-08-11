@@ -66,6 +66,7 @@ resourcestring
   SMCPToolNotFound = 'Tool [%s] not found';
   SMCPResourceNotFound = 'Resource [%s] not found';
   SMCPPromptNotFound = 'Prompt [%s] not found';
+  SMCPToolCallError = 'Tool call Error class: "%s" - message: "%s"';
 
 type
   EMCPException = class(Exception);

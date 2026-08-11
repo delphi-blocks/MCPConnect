@@ -883,6 +883,7 @@ begin
   except
     on E: Exception do
     begin
+      Logger.LogError('TMCPTransportHandler.HandleMessage %s: %s', [E.ClassName, E.Message]);
       var err := TJRPCInvoker.HandleError(E, LRequest.Id);
       AResponseQueue.Enqueue(err);
     end;

@@ -148,7 +148,14 @@ begin
       LInvoker := TMCPToolInvoker.Create(LToolObj, LTool);
       try
         RPCContext.Inject(LInvoker);
-        Result := LInvoker.Invoke(AParams);
+        try
+          Result := LInvoker.Invoke(AParams);
+        except
+          on E: Exception do
+          begin
+            raise EJRPCException.CreateFmt(SMCPToolCallError, [E.ClassName, E.Message]);
+          end;
+        end;
       finally
         LInvoker.Free;
       end;

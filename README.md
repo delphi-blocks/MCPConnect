@@ -72,6 +72,7 @@ The main features of JRPC are:
 
   * Delphi **11 Alexandria or newer** — tested on 11, 12 and 13.
   * Neon as Serialization Engine (https://github.com/paolo-rossi/delphi-neon)
+  * JOSE as JWT Validator Engine (https://github.com/paolo-rossi/delphi-jose-jwt)  
   * Logify as (meta) logging library (https://github.com/delphi-blocks/Logify)
 
 ### Getting Started
@@ -82,20 +83,24 @@ The main features of JRPC are:
     ```
 1.  **Go to the `Libs` folder:**
     ```bash
-    cd Libs
+    cd MCPConnect\Libs
     ```
 1.  **Clone Neon Repository to the `Libs` folder:**
     ```bash
-    git clone https://github.com/paolo-rossi/delphi-neon
+    git clone https://github.com/paolo-rossi/delphi-neon Neon
+    ```
+1.  **Clone JOSE-JWT Repository to the `Libs` folder:**
+    ```bash
+    git clone https://github.com/paolo-rossi/delphi-jose-jwt JWT
     ```
 1.  **Clone Logify Repository to the `Libs` folder:**
     ```bash
-    git clone https://github.com/delphi-blocks/Logify
+    git clone https://github.com/delphi-blocks/Logify Logify
     ```
 1.  **Add to Project Path:** Add the `Source` directory of the cloned repositories to your Delphi Project's search path.
 1.  **Integrate:** Reference the core units, such as `MCPConnect.JRPC.Core` and `MCPConnect.MCP.Attributes`, in your server project.
 
-> **Note:** You can clone `Neon` and `Logify` to a different folder than `Libs` but, if you do so, remember to adjust the MCPConnect Demos paths (for Neon and Logify) to your chosen directory.
+> **Note:** You can clone `Neon`, `JWT` and `Logify` to a different folder than `Libs` but, if you do so, remember to adjust the MCPConnect Demos paths (for Neon, JWT and Logify) to your chosen directory.
 
 -----
 

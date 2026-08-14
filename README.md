@@ -865,6 +865,19 @@ From the web interface, you can add your Delphi MCP server by providing its endp
 
 -----
 
+## 🤖 Claude Code Plugin
+
+This repository doubles as a [Claude Code](https://claude.com/claude-code) plugin marketplace. Installing the plugin teaches Claude Code how MCPConnect actually works — transports, attributes, the fluent configuration, sessions, notifications and OAuth — so it can scaffold a new server or add tools, resources and prompts to an existing one without you pasting the API in every time.
+
+```
+/plugin marketplace add delphi-blocks/MCPConnect
+/plugin install mcpconnect@mcpconnect-plugins
+```
+
+The skill activates on its own whenever you are working with MCPConnect. Its reference files live in `plugins/mcpconnect/skills/mcpconnect-dev/` and are written against the source in `Source/`, so keep them in step when the public API changes.
+
+-----
+
 ## 🤝 Contributing
 
 We welcome contributions\! If you have suggestions, bug reports, or want to contribute code, please:

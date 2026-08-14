@@ -51,7 +51,8 @@ requires
   IndyProtocols,
   IndyCore,
   Neon,
-  Logify;
+  Logify,
+  JOSE;
 
 contains
   MCPConnect.Configuration.Auth in '..\..\Source\MCPConnect.Configuration.Auth.pas',

@@ -9,6 +9,9 @@
         <Projects Include="MCPConnectVCL.dproj">
             <Dependencies/>
         </Projects>
+        <Projects Include="MCPConnectDesign.dproj">
+            <Dependencies/>
+        </Projects>
     </ItemGroup>
     <ProjectExtensions>
         <Borland.Personality>Default.Personality.12</Borland.Personality>
@@ -35,14 +38,23 @@
     <Target Name="MCPConnectVCL:Make">
         <MSBuild Projects="MCPConnectVCL.dproj" Targets="Make"/>
     </Target>
+    <Target Name="MCPConnectDesign">
+        <MSBuild Projects="MCPConnectDesign.dproj"/>
+    </Target>
+    <Target Name="MCPConnectDesign:Clean">
+        <MSBuild Projects="MCPConnectDesign.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="MCPConnectDesign:Make">
+        <MSBuild Projects="MCPConnectDesign.dproj" Targets="Make"/>
+    </Target>
     <Target Name="Build">
-        <CallTarget Targets="MCPConnect;MCPConnectVCL"/>
+        <CallTarget Targets="MCPConnect;MCPConnectVCL;MCPConnectDesign"/>
     </Target>
     <Target Name="Clean">
-        <CallTarget Targets="MCPConnect:Clean;MCPConnectVCL:Clean"/>
+        <CallTarget Targets="MCPConnect:Clean;MCPConnectVCL:Clean;MCPConnectDesign:Clean"/>
     </Target>
     <Target Name="Make">
-        <CallTarget Targets="MCPConnect:Make;MCPConnectVCL:Make"/>
+        <CallTarget Targets="MCPConnect:Make;MCPConnectVCL:Make;MCPConnectDesign:Make"/>
     </Target>
     <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
 </Project>

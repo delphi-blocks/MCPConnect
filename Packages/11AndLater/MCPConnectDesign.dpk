@@ -1,0 +1,49 @@
+package MCPConnectDesign;
+
+{$R *.res}
+{$R *.dres}
+{$IFDEF IMPLICITBUILDING This IFDEF should not be used by users}
+{$ALIGN 8}
+{$ASSERTIONS ON}
+{$BOOLEVAL OFF}
+{$DEBUGINFO OFF}
+{$EXTENDEDSYNTAX ON}
+{$IMPORTEDDATA ON}
+{$IOCHECKS ON}
+{$LOCALSYMBOLS ON}
+{$LONGSTRINGS ON}
+{$OPENSTRINGS ON}
+{$OPTIMIZATION OFF}
+{$OVERFLOWCHECKS ON}
+{$RANGECHECKS ON}
+{$REFERENCEINFO ON}
+{$SAFEDIVIDE OFF}
+{$STACKFRAMES ON}
+{$TYPEDADDRESS OFF}
+{$VARSTRINGCHECKS ON}
+{$WRITEABLECONST OFF}
+{$MINENUMSIZE 1}
+{$IMAGEBASE $400000}
+{$DEFINE DEBUG}
+{$ENDIF IMPLICITBUILDING}
+{$DESCRIPTION 'MCP Library for Delphi'}
+{$LIBSUFFIX AUTO}
+{$DESIGNONLY}
+{$IMPLICITBUILD ON}
+
+requires
+  rtl,
+  vcl,
+  designide;
+
+contains
+  MCPConnect.Design.Wizards.Utils in '..\..\Source\Design\MCPConnect.Design.Wizards.Utils.pas',
+  MCPConnect.Design.Wizards.Types in '..\..\Source\Design\MCPConnect.Design.Wizards.Types.pas',
+  MCPConnect.Design.Wizards.CodeGen in '..\..\Source\Design\MCPConnect.Design.Wizards.CodeGen.pas',
+  MCPConnect.Design.Wizards.Dialog in '..\..\Source\Design\MCPConnect.Design.Wizards.Dialog.pas' {formMCPProjectWizard},
+  MCPConnect.Design.Wizards.Modules in '..\..\Source\Design\MCPConnect.Design.Wizards.Modules.pas',
+  MCPConnect.Design.Wizards.ProjectCreator in '..\..\Source\Design\MCPConnect.Design.Wizards.ProjectCreator.pas',
+  MCPConnect.Design.Wizards in '..\..\Source\Design\MCPConnect.Design.Wizards.pas',
+  MCPConnect.Design.Register in '..\..\Source\Design\MCPConnect.Design.Register.pas';
+
+end.

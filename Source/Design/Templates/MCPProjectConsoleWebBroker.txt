@@ -1,0 +1,45 @@
+program %PROJECT_NAME%;
+
+{$APPTYPE CONSOLE}
+
+{$R *.res}
+
+uses
+  System.SysUtils,
+  Web.WebReq,
+  Web.WebBroker,
+  IdHTTPWebBrokerBridge;
+
+const
+  ServerPort = %SERVER_PORT%;
+
+procedure RunServer;
+var
+  LServer: TIdHTTPWebBrokerBridge;
+begin
+  LServer := TIdHTTPWebBrokerBridge.Create(nil);
+  try
+    LServer.DefaultPort := ServerPort;
+    LServer.Active := True;
+
+    Writeln(Format('MCP endpoint listening on http://localhost:%d%s',
+      [ServerPort, '%MCP_PATH%']));
+    Writeln('Press ENTER to stop the server.');
+    Readln;
+
+    LServer.Active := False;
+  finally
+    LServer.Free;
+  end;
+end;
+
+begin
+  try
+    if WebRequestHandler <> nil then
+      WebRequestHandler.WebModuleClass := WebModuleClass;
+    RunServer;
+  except
+    on E: Exception do
+      Writeln(ErrOutput, E.ClassName, ': ', E.Message);
+  end;
+end.

@@ -1,0 +1,16 @@
+program %PROJECT_NAME%;
+
+uses
+  Vcl.SvcMgr;
+
+{$R *.res}
+
+begin
+  // Windows 2003 Server requires StartServiceCtrlDispatcher to be called
+  // before CoRegisterClassObject, which can be called indirectly by
+  // Application.Initialize. Set Application.DelayInitialize := True only if
+  // this service registers a class object with OLE.
+  if not Application.DelayInitialize or Application.Installing then
+    Application.Initialize;
+  Application.Run;
+end.

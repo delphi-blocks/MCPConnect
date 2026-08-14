@@ -1,0 +1,99 @@
+unit %UNIT_NAME%;
+
+interface
+
+uses
+  Winapi.Windows, System.SysUtils, System.Classes,
+  Vcl.SvcMgr, System.Win.Registry,
+
+  MCPConnect.JRPC.Server,
+  MCPConnect.Transport.Indy;
+
+type
+  TServiceModule = class(TService)
+    procedure ServiceCreate(Sender: TObject);
+    procedure ServiceAfterInstall(Sender: TService);
+    procedure ServiceExecute(Sender: TService);
+  private
+    FServer: TJRPCIndyServer;
+
+    procedure ConfigureServer;
+  public
+    function GetServiceController: TServiceController; override;
+  end;
+
+var
+  ServiceModule: TServiceModule;
+
+implementation
+
+{$R *.dfm}
+
+uses
+%EXTRA_UNITS%
+
+const
+  ServiceName = '%SERVICE_NAME%';
+  ServiceDescription = '%SERVER_NAME%';
+  ServerPort = %SERVER_PORT%;
+
+procedure ServiceController(CtrlCode: DWord); stdcall;
+begin
+  ServiceModule.Controller(CtrlCode);
+end;
+
+{ TServiceModule }
+
+function TServiceModule.GetServiceController: TServiceController;
+begin
+  Result := ServiceController;
+end;
+
+procedure TServiceModule.ServiceCreate(Sender: TObject);
+begin
+  Name := ServiceName;
+  DisplayName := ServiceName;
+end;
+
+procedure TServiceModule.ServiceAfterInstall(Sender: TService);
+var
+  LRegistry: TRegistry;
+begin
+  LRegistry := TRegistry.Create(KEY_READ or KEY_WRITE);
+  try
+    LRegistry.RootKey := HKEY_LOCAL_MACHINE;
+    if LRegistry.OpenKey('\SYSTEM\CurrentControlSet\Services\' + Name, False) then
+    begin
+      LRegistry.WriteString('Description', ServiceDescription);
+      LRegistry.CloseKey;
+    end;
+  finally
+    LRegistry.Free;
+  end;
+end;
+
+procedure TServiceModule.ConfigureServer;
+begin
+%CONFIG_CODE%
+end;
+
+procedure TServiceModule.ServiceExecute(Sender: TService);
+begin
+  FServer := TJRPCIndyServer.CreateMCPServer(nil);
+  try
+    ConfigureServer;
+
+    FServer.Bindings.Clear;
+    FServer.DefaultPort := ServerPort;
+    FServer.Active := True;
+
+    while not Terminated do
+      ServiceThread.ProcessRequests(True);
+
+    FServer.Active := False;
+  finally
+    FreeAndNil(FServer);
+  end;
+end;
+
+end.

@@ -1,0 +1,7 @@
+object ServiceModule: TServiceModule
+  OnCreate = ServiceCreate
+  AfterInstall = ServiceAfterInstall
+  OnExecute = ServiceExecute
+  Height = 150
+  Width = 215
+end

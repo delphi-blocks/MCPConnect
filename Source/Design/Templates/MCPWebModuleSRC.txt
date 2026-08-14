@@ -1,0 +1,63 @@
+unit %UNIT_NAME%;
+
+interface
+
+uses
+  System.SysUtils, System.Classes,
+  Web.HTTPApp,
+
+  MCPConnect.JRPC.Server,
+  MCPConnect.Transport.WebBroker;
+
+type
+  TWebModule1 = class(TWebModule)
+    procedure WebModuleCreate(Sender: TObject);
+    procedure WebModuleDefaultAction(Sender: TObject; Request: TWebRequest;
+      Response: TWebResponse; var Handled: Boolean);
+  private
+    FJRPCServer: TJRPCServer;
+    FJRPCDispatcher: TJRPCDispatcher;
+
+    procedure ConfigureServer;
+  end;
+
+var
+  WebModuleClass: TComponentClass = TWebModule1;
+
+implementation
+
+{%CLASSGROUP '%CLASS_GROUP%'}
+
+{$R *.dfm}
+
+uses
+%EXTRA_UNITS%
+
+{ TWebModule1 }
+
+procedure TWebModule1.WebModuleCreate(Sender: TObject);
+begin
+  FJRPCServer := TJRPCServer.Create(Self);
+  ConfigureServer;
+
+  FJRPCDispatcher := TJRPCDispatcher.Create(Self);
+  FJRPCDispatcher.PathInfo := '%MCP_PATH%';
+  FJRPCDispatcher.Server := FJRPCServer;
+end;
+
+procedure TWebModule1.ConfigureServer;
+begin
+%CONFIG_CODE%
+end;
+
+procedure TWebModule1.WebModuleDefaultAction(Sender: TObject;
+  Request: TWebRequest; Response: TWebResponse; var Handled: Boolean);
+begin
+  Response.Content :=
+    '<html>' +
+    '<head><title>%SERVER_NAME%</title></head>' +
+    '<body>MCP endpoint available at <code>%MCP_PATH%</code></body>' +
+    '</html>';
+end;
+
+end.

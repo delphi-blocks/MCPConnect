@@ -1,0 +1,44 @@
+program %PROJECT_NAME%;
+
+{$APPTYPE CONSOLE}
+
+{$R *.res}
+
+uses
+  System.SysUtils,
+  MCPConnect.JRPC.Server,
+  MCPConnect.Transport.Indy,
+%EXTRA_UNITS%
+
+const
+  ServerPort = %SERVER_PORT%;
+
+procedure RunServer;
+var
+  LServer: TJRPCIndyServer;
+begin
+  LServer := TJRPCIndyServer.CreateMCPServer(nil);
+  try
+%CONFIG_CODE%
+
+    LServer.DefaultPort := ServerPort;
+    LServer.Active := True;
+
+    Writeln(Format('MCP server listening on http://localhost:%d', [ServerPort]));
+    Writeln('Press ENTER to stop the server.');
+    Readln;
+
+    LServer.Active := False;
+  finally
+    LServer.Free;
+  end;
+end;
+
+begin
+  try
+    RunServer;
+  except
+    on E: Exception do
+      Writeln(ErrOutput, E.ClassName, ': ', E.Message);
+  end;
+end.

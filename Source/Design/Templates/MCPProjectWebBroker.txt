@@ -1,0 +1,17 @@
+program %PROJECT_NAME%;
+
+{$APPTYPE GUI}
+
+uses
+  Vcl.Forms,
+  Web.WebReq;
+
+{$R *.res}
+
+begin
+  if WebRequestHandler <> nil then
+    WebRequestHandler.WebModuleClass := WebModuleClass;
+  Application.Initialize;
+  Application.MainFormOnTaskbar := True;
+  Application.Run;
+end.

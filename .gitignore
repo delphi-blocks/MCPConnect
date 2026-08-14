@@ -66,3 +66,4 @@ nul
 # VSCode
 *.vsdcache.*
 /Demo/*.log
+/Demo/.env

@@ -21,6 +21,9 @@
         <Projects Include="MCPOAuthServer\Indy\MCPAuthServerIndy.dproj">
             <Dependencies/>
         </Projects>
+        <Projects Include="MCPServer\WindowsSerivce\MCPWindowsService.dproj">
+            <Dependencies/>
+        </Projects>
     </ItemGroup>
     <ProjectExtensions>
         <Borland.Personality>Default.Personality.12</Borland.Personality>
@@ -83,14 +86,23 @@
     <Target Name="MCPAuthServerIndy:Make">
         <MSBuild Projects="MCPOAuthServer\Indy\MCPAuthServerIndy.dproj" Targets="Make"/>
     </Target>
+    <Target Name="MCPWindowsService">
+        <MSBuild Projects="MCPServer\WindowsSerivce\MCPWindowsService.dproj"/>
+    </Target>
+    <Target Name="MCPWindowsService:Clean">
+        <MSBuild Projects="MCPServer\WindowsSerivce\MCPWindowsService.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="MCPWindowsService:Make">
+        <MSBuild Projects="MCPServer\WindowsSerivce\MCPWindowsService.dproj" Targets="Make"/>
+    </Target>
     <Target Name="Build">
-        <CallTarget Targets="TestClasses;JRPCServer;MCPServerStdio;MCPServerIndy;MCPServerWebBroker;MCPAuthServerIndy"/>
+        <CallTarget Targets="TestClasses;JRPCServer;MCPServerStdio;MCPServerIndy;MCPServerWebBroker;MCPAuthServerIndy;MCPWindowsService"/>
     </Target>
     <Target Name="Clean">
-        <CallTarget Targets="TestClasses:Clean;JRPCServer:Clean;MCPServerStdio:Clean;MCPServerIndy:Clean;MCPServerWebBroker:Clean;MCPAuthServerIndy:Clean"/>
+        <CallTarget Targets="TestClasses:Clean;JRPCServer:Clean;MCPServerStdio:Clean;MCPServerIndy:Clean;MCPServerWebBroker:Clean;MCPAuthServerIndy:Clean;MCPWindowsService:Clean"/>
     </Target>
     <Target Name="Make">
-        <CallTarget Targets="TestClasses:Make;JRPCServer:Make;MCPServerStdio:Make;MCPServerIndy:Make;MCPServerWebBroker:Make;MCPAuthServerIndy:Make"/>
+        <CallTarget Targets="TestClasses:Make;JRPCServer:Make;MCPServerStdio:Make;MCPServerIndy:Make;MCPServerWebBroker:Make;MCPAuthServerIndy:Make;MCPWindowsService:Make"/>
     </Target>
     <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
 </Project>

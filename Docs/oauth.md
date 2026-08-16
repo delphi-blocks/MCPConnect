@@ -247,19 +247,51 @@ both `oauth-authorization-server` and `openid-configuration`), MCPConnect:
 
 1. Fetches `<upstream-issuer>/.well-known/openid-configuration` server-side.
 2. If `code_challenge_methods_supported` is missing or empty, adds `["S256"]`.
-3. Returns the patched document as-is — `issuer`, `authorization_endpoint`, `token_endpoint`, and
-   every other field are passed through **unchanged**, so the actual authorization/token exchange
-   still happens directly against the real upstream authorization server. Only the discovery
-   document served to the client is patched.
+3. Rewrites `issuer` to the local proxy URL — see [the trade-off](#41-the-issuer-rewrite) below.
+4. Passes everything else through untouched — `authorization_endpoint`, `token_endpoint` and every
+   other field — so the authorization and token exchanges still happen directly against the real
+   upstream authorization server. Only the discovery document is patched.
 
-Notes and limitations:
+### 4.1 The `issuer` rewrite
 
-- This is deliberately a "just patch the one field" proxy, not a full reverse proxy of the OAuth
+RFC 8414 §3.3 (and OpenID Connect Discovery §4.3) require a client to check that the `issuer` in a
+metadata document matches the URL it fetched the document from. Serving the upstream document
+unchanged from a local URL fails that check, which is what the rewrite fixes — and without it,
+serving the document locally would be pointless for any client that performs the check.
+
+The cost is that the upstream authorization server keeps its own identity everywhere else. Under
+[RFC 9207](https://www.rfc-editor.org/rfc/rfc9207), which OAuth 2.1 requires, the authorization
+response carries an `iss` parameter — minted by the upstream server, so it will *not* match the
+`issuer` the client just discovered. The same goes for the `iss` of an OpenID Connect ID token.
+
+**A proxy that only patches the document cannot make both checks pass**, and which one your client
+performs decides whether this workaround helps or hurts:
+
+| Client validates | Without the rewrite | With the rewrite (current behaviour) |
+|---|---|---|
+| Document `issuer` vs fetch URL (RFC 8414 §3.3) | rejects | accepts |
+| Authorization response `iss` (RFC 9207) | accepts | rejects |
+
+If your client fails with an issuer mismatch *after* the redirect back from the authorization
+server, this is why — and the answer is not the proxy but fixing the upstream document, either by
+having the authorization server advertise `code_challenge_methods_supported` or by pointing
+`AddAuthorizationServer` straight at it and dropping `EnableMetadataProxy`.
+
+MCPConnect logs a warning at startup whenever the proxy is enabled, so this is visible before a
+flow is attempted rather than only from the client's error.
+
+Access tokens are unaffected either way: they carry the **upstream** `iss`, and MCPConnect already
+expects that — with the proxy enabled, `TrustedIssuers` resolves to the upstream issuer, not to the
+local proxy URL.
+
+### 4.2 Other notes and limitations
+
+- This is deliberately a "just patch the document" proxy, not a full reverse proxy of the OAuth
   flow. If the upstream server is unreachable or returns a non-200 response, MCPConnect returns
   `502 Bad Gateway`.
-- Because `issuer` is passed through unchanged, some strict OIDC clients that validate `issuer`
-  against the URL the document was fetched from (per OpenID Connect Discovery §4.3) may reject it.
-  MCPJam Inspector, used in this guide, does not perform that check.
+- The upstream document is fetched from `openid-configuration` only. An authorization server that
+  publishes solely the RFC 8414 `oauth-authorization-server` document cannot currently be proxied
+  (signing-key discovery, which is a separate path, does try both).
 - On WebBroker, the `.well-known` paths need a route of their own — see
   [Section 3.4](#34-webbroker-routing).
 

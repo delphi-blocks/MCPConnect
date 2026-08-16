@@ -447,6 +447,16 @@ begin
         // document was retrieved from, i.e. this proxy's own URL - not the
         // upstream authorization server's issuer - or strict MCP OAuth clients
         // reject the document with an issuer mismatch.
+        //
+        // This is a trade rather than a correction, so think before removing it.
+        // The upstream server keeps minting its own issuer everywhere else, so a
+        // client checking the "iss" of the authorization response (RFC 9207, which
+        // OAuth 2.1 requires) now sees a mismatch instead. A proxy that only patches
+        // the document cannot make both checks pass; taking this line out just moves
+        // the failure from before the redirect to after it. IOAuthConfig.
+        // EnableMetadataProxy documents the choice and the server warns about it at
+        // startup. Access tokens are unaffected: they carry the upstream "iss", which
+        // is what TOAuthConfig.TrustedIssuers resolves to when the proxy is enabled.
         var LExistingIssuer := LJSON.RemovePair('issuer');
         LExistingIssuer.Free;
         LJSON.AddPair('issuer', FOAuthConfig.MetadataProxyUrl);

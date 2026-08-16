@@ -32,6 +32,12 @@ resourcestring
     'are not verified. Development use only.';
   SOAuthValidatorClassInvalidFmt = 'Class [%s] cannot be used as a token validator: ' +
     'it does not implement ITokenValidator';
+  SOAuthMetadataProxyWarning = 'The authorization server metadata proxy is enabled. The ' +
+    'republished document declares the local proxy URL as its "issuer", so a client that checks ' +
+    'that against the URL it fetched the document from (RFC 8414 section 3.3) accepts it - while ' +
+    'a client that checks the "iss" of the authorization response (RFC 9207) sees the upstream ' +
+    'issuer instead and rejects it. A patch-only proxy cannot satisfy both; if your client fails ' +
+    'with an issuer mismatch after the redirect, this is why.';
 
 type
   /// <summary>
@@ -124,14 +130,26 @@ type
     ///   (RFC 8414 / OIDC Discovery). The server will fetch
     ///   "&lt;AUpstreamIssuer&gt;/.well-known/openid-configuration", inject
     ///   "code_challenge_methods_supported": ["S256"] when the upstream document
-    ///   does not advertise it, and republish it on a local well-known path.
-    ///   That local path is registered as the authorization server instead of
-    ///   the upstream URL (replaces a manual AddAuthorizationServer call).
+    ///   does not advertise it, rewrite "issuer" to the local proxy URL, and
+    ///   republish the result on a local well-known path. That local path is
+    ///   registered as the authorization server instead of the upstream URL
+    ///   (replaces a manual AddAuthorizationServer call).
     /// </summary>
     /// <remarks>
     ///   Useful for authorization servers (e.g. Microsoft Entra ID) that support
     ///   PKCE but do not advertise it in their discovery document, which some
     ///   strict MCP OAuth clients require. SetResource must be called first.
+    ///   Everything other than those two members is passed through untouched, so the
+    ///   authorization and token exchanges still happen directly against the upstream
+    ///   server; only the discovery document is patched.
+    ///   The "issuer" rewrite is a trade, not a free improvement. It exists so that a
+    ///   client checking the document's "issuer" against the URL it was fetched from
+    ///   (RFC 8414 3.3) accepts it - which is the whole point of serving it locally.
+    ///   The cost is that the upstream server keeps minting its own issuer, so a client
+    ///   checking the "iss" of the authorization response (RFC 9207) sees a mismatch.
+    ///   A proxy that only patches the document cannot make both true, and which one
+    ///   matters depends on the client. Access tokens are unaffected: they carry the
+    ///   upstream "iss", and TrustedIssuers already expects exactly that.
     /// </remarks>
     function EnableMetadataProxy(const AUpstreamIssuer: string): IOAuthConfig;
 
@@ -435,6 +453,12 @@ begin
 
   if (Length(AuthorizationServers) > 0) and not Assigned(TokenValidatorClass) then
     Logger.LogWarning(SOAuthNoValidatorWarning);
+
+  // Once, at startup, rather than left to be discovered halfway through an authorization
+  // flow: the failure it causes surfaces in the client, after a redirect, as an issuer
+  // mismatch with nothing in this server's log to connect it to.
+  if MetadataProxyEnabled then
+    Logger.LogWarning(SOAuthMetadataProxyWarning);
 end;
 
 function TOAuthConfig.GetResourceMetadata: string;

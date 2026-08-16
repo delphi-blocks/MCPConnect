@@ -45,6 +45,8 @@ resourcestring
   SOAuthIssuerRequired = 'An issuer URL is required to retrieve the authorization server metadata';
   SOAuthMetadataFetchFailedFmt = 'Cannot retrieve the authorization server metadata from "%s": %s';
   SOAuthMetadataInvalidFmt = 'The document retrieved from "%s" is not a valid metadata document';
+  SOAuthIssuerMismatchFmt = 'The document retrieved from "%s" declares the issuer "%s": ' +
+    'metadata is only usable when published by the issuer it was requested for';
   SOAuthJwksUriMissingFmt = 'The metadata document of "%s" does not declare a "jwks_uri"';
   SOAuthKeysFetchFailedFmt = 'Cannot retrieve the JSON Web Key Set from "%s": %s';
 
@@ -201,6 +203,10 @@ type
   ///   When a refresh fails but a previously fetched copy is held, that copy keeps being
   ///   served (stale-if-error) and a warning is logged: an unreachable identity provider
   ///   must not silently invalidate every session.
+  ///   A metadata document is only accepted when the "issuer" it declares is the one it
+  ///   was requested for (RFC 8414 §3.3), and redirects are refused rather than followed,
+  ///   so the URL a document is retrieved from is always the URL it was asked for. Those
+  ///   two together are what make the "jwks_uri" it names safe to fetch keys from.
   /// </remarks>
   TOAuthMetadataProvider = class(TInterfacedObject, IOAuthMetadataProvider)
   private type
@@ -237,6 +243,11 @@ type
     ///   Performs the actual HTTP GET. Overridable so that tests can serve documents
     ///   without a network, and so that a host can plug in its own HTTP stack.
     /// </summary>
+    /// <remarks>
+    ///   An override must return the document found at AUrl itself and must not follow
+    ///   redirects: the caller's guarantee is that a document was retrieved from the URL
+    ///   it was asked for, and a redirect quietly breaks it - see the remarks on the class.
+    /// </remarks>
     function FetchDocument(const AUrl: string): string; virtual;
   public
     constructor Create;
@@ -368,6 +379,15 @@ begin
     LClient.ConnectionTimeout := RequestTimeout;
     LClient.ResponseTimeout := RequestTimeout;
 
+    // Refused rather than followed, and this is load bearing. Following a redirect
+    // would collect the document from a URL this server was never configured with,
+    // and the issuer check in FetchMetadata would still pass: whoever answers there
+    // decides what the document says about itself, so it can echo the expected
+    // "issuer" back while pointing "jwks_uri" anywhere it likes. Refusing to move is
+    // what keeps "retrieved from" and "requested for" the same URL, which is the
+    // whole basis of RFC 8414 §3.3. A 3xx now falls into the status check below.
+    LClient.HandleRedirects := False;
+
     LResponse := LClient.Get(AUrl);
     if LResponse.StatusCode <> HTTP_STATUS_OK then
       raise EOAuthMetadataException.CreateFmt(SOAuthMetadataFetchFailedFmt,
@@ -398,6 +418,16 @@ begin
   finally
     LJSON.Free;
   end;
+
+  // RFC 8414 §3.3 and OIDC Discovery §4.3: the "issuer" the document declares must be
+  // the one it was requested for, or the document must not be used. This is what ties
+  // the "jwks_uri" about to be trusted back to the configured authorization server -
+  // without it, anything that can answer at the well-known URL chooses where this
+  // server fetches its signing keys from.
+  // A document that declares no issuer at all fails here too: normalising an empty
+  // string cannot match a non-empty issuer, and RFC 8414 makes the member required.
+  if NormalizeIssuer(Result.Issuer) <> NormalizeIssuer(AIssuer) then
+    raise EOAuthMetadataException.CreateFmt(SOAuthIssuerMismatchFmt, [LUrl, Result.Issuer]);
 
   Logger.LogDebug('OAuth metadata fetched from "%s"', [LUrl]);
 end;

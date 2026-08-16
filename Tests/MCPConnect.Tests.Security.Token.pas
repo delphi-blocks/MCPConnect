@@ -306,6 +306,14 @@ type
     [Test]
     procedure TestGetServerMetadata_IsFetchedAgainAfterTheTTL;
     [Test]
+    procedure TestGetServerMetadata_DocumentDeclaringAnotherIssuerIsRefused;
+    [Test]
+    procedure TestGetServerMetadata_DocumentWithoutAnIssuerIsRefused;
+    [Test]
+    procedure TestGetServerMetadata_IssuerTrailingSlashIsNotPartOfTheIdentity;
+    [Test]
+    procedure TestGetKeys_KeysAreNotFetchedFromAMisdeclaredDocument;
+    [Test]
     procedure TestGetKeys_ParsesTheKeySet;
     [Test]
     procedure TestGetKeys_ParsesEveryMappedMember;
@@ -1308,6 +1316,69 @@ begin
   FProvider.GetServerMetadata(Issuer);
 
   Assert.AreEqual(2, FFake.FetchCount);
+end;
+
+procedure TOAuthMetadataProviderTest.TestGetServerMetadata_DocumentDeclaringAnotherIssuerIsRefused;
+begin
+  // Whoever answers at the well-known URL decides what the document says. Accepting a
+  // document that names a different issuer would let it choose "jwks_uri" - i.e. where
+  // this server fetches the keys it verifies every token with.
+  FFake.SetDocument(DiscoveryUrl,
+    Format('{"issuer":"https://evil.example.com","jwks_uri":"%s"}', [JwksUrl]));
+
+  Assert.WillRaise(
+    procedure
+    begin
+      FProvider.GetServerMetadata(Issuer);
+    end,
+    EOAuthMetadataException);
+end;
+
+procedure TOAuthMetadataProviderTest.TestGetServerMetadata_DocumentWithoutAnIssuerIsRefused;
+begin
+  // RFC 8414 makes "issuer" required, and a document that declares none cannot be
+  // checked against the URL it came from.
+  FFake.SetDocument(DiscoveryUrl, Format('{"jwks_uri":"%s"}', [JwksUrl]));
+
+  Assert.WillRaise(
+    procedure
+    begin
+      FProvider.GetServerMetadata(Issuer);
+    end,
+    EOAuthMetadataException);
+end;
+
+procedure TOAuthMetadataProviderTest.TestGetServerMetadata_IssuerTrailingSlashIsNotPartOfTheIdentity;
+var
+  LMetadata: TOAuthServerMetadata;
+begin
+  // Same tolerance the "iss" claim check applies: authorization servers are
+  // inconsistent about the trailing slash, and it is not what distinguishes them.
+  FFake.SetDocument(DiscoveryUrl,
+    Format('{"issuer":"%s/","jwks_uri":"%s"}', [Issuer, JwksUrl]));
+
+  LMetadata := FProvider.GetServerMetadata(Issuer);
+
+  Assert.AreEqual(JwksUrl, LMetadata.JwksUri);
+end;
+
+procedure TOAuthMetadataProviderTest.TestGetKeys_KeysAreNotFetchedFromAMisdeclaredDocument;
+begin
+  // The point of the issuer check: a document that fails it must never get as far as
+  // having its "jwks_uri" fetched.
+  FFake.SetDocument(DiscoveryUrl,
+    Format('{"issuer":"https://evil.example.com","jwks_uri":"%s"}', [JwksUrl]));
+  FFake.ResetFetchCount;
+
+  Assert.WillRaise(
+    procedure
+    begin
+      FProvider.GetKeys(Issuer);
+    end,
+    EOAuthMetadataException);
+
+  Assert.AreEqual(1, FFake.FetchCount,
+    'Only the metadata document may be fetched: the key set must stay untouched');
 end;
 
 procedure TOAuthMetadataProviderTest.TestGetKeys_ParsesTheKeySet;

@@ -50,6 +50,9 @@ uses
   MCPConnect.Security.Token.JOSE in '..\Source\MCPConnect.Security.Token.JOSE.pas',
   MCPConnect.Session.Core in '..\Source\MCPConnect.Session.Core.pas',
   MCPConnect.Content.Writers in '..\Source\MCPConnect.Content.Writers.pas',
+  MCPConnect.Transport.AcceptParser in '..\Source\MCPConnect.Transport.AcceptParser.pas',
+  MCPConnect.Transport.MediaType in '..\Source\MCPConnect.Transport.MediaType.pas',
+  MCPConnect.Transport.Base in '..\Source\MCPConnect.Transport.Base.pas',
   MCPConnect.Tests.JRPC.Core in 'MCPConnect.Tests.JRPC.Core.pas',
   MCPConnect.Tests.MCP.Tools in 'MCPConnect.Tests.MCP.Tools.pas',
   MCPConnect.Tests.JRPC.Invoker in 'MCPConnect.Tests.JRPC.Invoker.pas',
@@ -58,7 +61,8 @@ uses
   MCPConnect.Tests.MCP.Configuration in 'MCPConnect.Tests.MCP.Configuration.pas',
   MCPConnect.Tests.MCP.Server.Api in 'MCPConnect.Tests.MCP.Server.Api.pas',
   MCPConnect.Tests.Security.Token in 'MCPConnect.Tests.Security.Token.pas',
-  MCPConnect.Tests.Security.Token.JOSE in 'MCPConnect.Tests.Security.Token.JOSE.pas';
+  MCPConnect.Tests.Security.Token.JOSE in 'MCPConnect.Tests.Security.Token.JOSE.pas',
+  MCPConnect.Tests.Transport.OAuth in 'MCPConnect.Tests.Transport.OAuth.pas';
 
 var
   runner : ITestRunner;

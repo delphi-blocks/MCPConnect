@@ -153,6 +153,9 @@
         <DCCReference Include="..\Source\MCPConnect.Security.Token.JOSE.pas"/>
         <DCCReference Include="..\Source\MCPConnect.Session.Core.pas"/>
         <DCCReference Include="..\Source\MCPConnect.Content.Writers.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Transport.AcceptParser.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Transport.MediaType.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Transport.Base.pas"/>
         <DCCReference Include="MCPConnect.Tests.JRPC.Core.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Tools.pas"/>
         <DCCReference Include="MCPConnect.Tests.JRPC.Invoker.pas"/>
@@ -162,6 +165,7 @@
         <DCCReference Include="MCPConnect.Tests.MCP.Server.Api.pas"/>
         <DCCReference Include="MCPConnect.Tests.Security.Token.pas"/>
         <DCCReference Include="MCPConnect.Tests.Security.Token.JOSE.pas"/>
+        <DCCReference Include="MCPConnect.Tests.Transport.OAuth.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

@@ -380,32 +380,10 @@ begin
 end;
 
 procedure TMCPTransportHandler.SendUnauthorized(const AResult: TTokenValidationResult);
-
-  // The description comes from a validator implementation: quotes and line breaks
-  // would either break the challenge or let it inject further headers.
-  function SanitizeDescription(const AValue: string): string;
-  begin
-    Result := AValue.Replace('"', '''').Replace(#13, ' ').Replace(#10, ' ').Trim;
-  end;
-
-var
-  LChallenge: string;
 begin
-  LChallenge := Format('Bearer realm="%s", resource_metadata=%s',
-    [FOAuthConfig.Realm, FOAuthConfig.ResourceMetadata]);
-
-  if AResult.ErrorCode <> TTokenValidationErrorCode.None then
-  begin
-    LChallenge := LChallenge + Format(', error="%s"',
-      [TokenValidationErrorCodeToString(AResult.ErrorCode)]);
-
-    if AResult.ErrorDescription <> '' then
-      LChallenge := LChallenge + Format(', error_description="%s"',
-        [SanitizeDescription(AResult.ErrorDescription)]);
-  end;
-
   FResponse.Code := HTTP_CODE_UNAUTHORIZED;
-  FResponse.Headers.AddOrSetValue('WWW-Authenticate', LChallenge);
+  FResponse.Headers.AddOrSetValue('WWW-Authenticate',
+    BuildBearerChallenge(FOAuthConfig.Realm, FOAuthConfig.ResourceMetadata, AResult));
 end;
 
 function TMCPTransportHandler.IsMetadataProxyRequest: Boolean;

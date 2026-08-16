@@ -288,6 +288,20 @@ function Base64UrlDecode(const AInput: string): string;
 /// </summary>
 function TokenValidationErrorCodeToString(AErrorCode: TTokenValidationErrorCode): string;
 
+/// <summary>
+///   Builds the "WWW-Authenticate" challenge sent with a 401: the Bearer scheme, the
+///   realm, the URL of this resource's metadata document, and - once validation has
+///   actually rejected something - the RFC 6750 error and its description.
+/// </summary>
+/// <remarks>
+///   Every parameter value is quoted and sanitized, so no configured or validator
+///   supplied string can produce a malformed header. Lives here, rather than in the
+///   transport that sends it, because a challenge is the RFC 6750 rendering of a
+///   <see cref="TTokenValidationResult" /> and belongs with the vocabulary it uses.
+/// </remarks>
+function BuildBearerChallenge(const ARealm, AResourceMetadata: string;
+  const AResult: TTokenValidationResult): string;
+
 implementation
 
 uses
@@ -319,6 +333,41 @@ begin
     Assert(False, 'Unhandled token validation error code');
     Result := '';
   end;
+end;
+
+function BuildBearerChallenge(const ARealm, AResourceMetadata: string;
+  const AResult: TTokenValidationResult): string;
+
+  // Values travel inside a quoted-string, so a quote or a line break in one would end
+  // it early: truncating the challenge, or letting the value inject parameters - or a
+  // whole further header - of its own. The realm and the metadata URL come from
+  // configuration and the description from a validator, and none of them is trusted
+  // enough to skip this.
+  function Sanitize(const AValue: string): string;
+  begin
+    Result := AValue.Replace('"', '''').Replace(#13, ' ').Replace(#10, ' ').Trim;
+  end;
+
+begin
+  // Every value is quoted, the metadata URL included. RFC 7235 admits an auth-param
+  // value as either a bare token or a quoted-string, and a URL is not a token - ":"
+  // and "/" are delimiters - so unquoted it is simply malformed, and a strict client
+  // parser drops the parameter and never finds the metadata document. RFC 9728 §5.1
+  // spells "resource_metadata" out with its quotes for that reason.
+  Result := Format('Bearer realm="%s", resource_metadata="%s"',
+    [Sanitize(ARealm), Sanitize(AResourceMetadata)]);
+
+  // Nothing to report: a request that simply arrived without a token gets the bare
+  // challenge, not an error naming something it never did.
+  if AResult.ErrorCode = TTokenValidationErrorCode.None then
+    Exit;
+
+  Result := Result + Format(', error="%s"',
+    [TokenValidationErrorCodeToString(AResult.ErrorCode)]);
+
+  if AResult.ErrorDescription <> '' then
+    Result := Result + Format(', error_description="%s"',
+      [Sanitize(AResult.ErrorDescription)]);
 end;
 
 { TTokenValidationResult }

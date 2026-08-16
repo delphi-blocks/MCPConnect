@@ -182,6 +182,39 @@ JavaScript to read the challenge on a 401 response) and the session header, are 
 response — including error responses and the OAuth well-known endpoints — so the browser-based
 OAuth discovery flow works correctly.
 
+### 3.4 WebBroker routing
+
+The Indy and STDIO transports hand every request to `TMCPTransportHandler`, so the OAuth
+endpoints are served without further setup. WebBroker is different: it routes by path, and a
+`TJRPCDispatcher` only receives requests matching its own `PathInfo` mask. A dispatcher mounted at
+`/mcp` therefore never sees `/.well-known/...`, and the metadata document — and the
+[metadata proxy](#4-the-metadata-proxy) — would 404.
+
+Give the well-known paths a route of their own, pointing at the same server:
+
+```delphi
+procedure TWebModule1.WebModuleCreate(Sender: TObject);
+begin
+  FJRPCServer := TJRPCServer.Create(Self);
+  TServerConfigurator.ConfigureServer(FJRPCServer);
+
+  // The MCP endpoint itself
+  FJRPCDispatcher := TJRPCDispatcher.Create(Self);
+  FJRPCDispatcher.PathInfo := '/mcp';
+  FJRPCDispatcher.Server := FJRPCServer;
+
+  // The OAuth discovery endpoints, served by the same server: it picks the right one
+  // from the request path
+  FWellKnownDispatcher := TJRPCDispatcher.Create(Self);
+  FWellKnownDispatcher.PathInfo := '/.well-known/*';
+  FWellKnownDispatcher.Server := FJRPCServer;
+end;
+```
+
+`PathInfo` is a `TMask`, so `*` covers every well-known path in one route. Only add this second
+dispatcher when OAuth is configured: without an authorization server, `CheckOAuth` lets requests
+straight through and a `.well-known` request would fall into normal MCP request handling and fail.
+
 ## 4. The Metadata Proxy
 
 Some authorization servers support PKCE in practice but do not advertise it (an empty or missing
@@ -227,10 +260,8 @@ Notes and limitations:
 - Because `issuer` is passed through unchanged, some strict OIDC clients that validate `issuer`
   against the URL the document was fetched from (per OpenID Connect Discovery §4.3) may reject it.
   MCPJam Inspector, used in this guide, does not perform that check.
-- Currently implemented for the Indy transport. The WebBroker transport does not route
-  `.well-known` paths to `TMCPTransportHandler` by default (see the demo's `WebModule`), so this
-  proxy — and the protected resource metadata endpoint — require additional routing configuration
-  to work there.
+- On WebBroker, the `.well-known` paths need a route of their own — see
+  [Section 3.4](#34-webbroker-routing).
 
 ## 5. Debugging with MCPJam, Entra ID, and a Cloudflare Tunnel
 

@@ -212,6 +212,12 @@ begin
     procedure (ARequest: TMCPTransportRequest)
     begin
       ConvertRequestHeaders(AWebRequest, ARequest);
+      // InternalPathInfo, not PathInfo: it is what WebBroker itself matches
+      // DispatchMask against, so the path the handler routes on is the one that got
+      // the request here - including under ISAPI/CGI, where the two differ. Left
+      // unset, every path-dependent check downstream sees an empty URL and the OAuth
+      // well-known endpoints can never match.
+      ARequest.Url := AWebRequest.InternalPathInfo;
       ARequest.Command := AWebRequest.Method;
       ARequest.Content := AWebRequest.Content;
       ARequest.Protocol := TTransportProtocol.StreamableHTTP;

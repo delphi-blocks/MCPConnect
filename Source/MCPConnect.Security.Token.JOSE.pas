@@ -46,6 +46,12 @@ type
   ///   components RFC 7518 makes required - "n"/"e" for RSA, "crv"/"x"/"y" for EC -
   ///   and, for the identity providers that publish nothing else, from an "x5c"
   ///   certificate chain.
+  ///   The algorithm is picked from the token header by the JOSE library, so it is
+  ///   <see cref="TClaimsTokenValidator.IsAlgorithmAllowed" /> and
+  ///   <see cref="TClaimsTokenValidator.KeyMatchesAlgorithm" /> - both of which have
+  ///   already run by the time CheckSignature is called - that keep a token from
+  ///   naming a symmetric algorithm and having this public key used as an HMAC secret.
+  ///   Widening either of them here re-opens that.
   ///   JOSE signing needs the OpenSSL libraries at run time; they are not required to
   ///   compile.
   /// </remarks>

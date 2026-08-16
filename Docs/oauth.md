@@ -144,7 +144,7 @@ Two things follow from this, and both matter before exposing a server:
   - `TJoseTokenValidator` (`MCPConnect.Security.Token.JOSE`) — everything below **plus the
     signature**, verified with the [Delphi JOSE library](https://github.com/paolo-rossi/delphi-jose-jwt)
     against the key the identity provider publishes. This is the one to register in production. It
-    needs the JOSE library at compile time (under `Libs\JOSE`, switched by the `DELPHI_JOSE_JWT`
+    needs the JOSE library at compile time (under `Libs\JWT`, switched by the `DELPHI_JOSE_JWT`
     define in `Source/MCPConnect.inc`) and the OpenSSL libraries at run time.
   - `TClaimsTokenValidator` — checks `iss`, `aud`, `exp`/`nbf`, the required scopes, rejects
     `"alg": "none"`, and verifies that the `kid` names a key the issuer actually publishes. It stops

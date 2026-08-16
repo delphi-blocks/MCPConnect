@@ -35,6 +35,7 @@ resourcestring
   STokenNotYetValid = 'The token is not valid yet';
   STokenExpirationMissing = 'The token does not declare an expiration';
   STokenKeyUnknown = 'The token signing key is not published by the issuer';
+  STokenKeyAlgorithmMismatch = 'The token signing algorithm cannot be used with the issuer key';
   STokenScopeMissing = 'The token does not carry the required scope';
 
   STokenDecodeOnlyWarning = 'Access token accepted without any verification: ' +
@@ -169,7 +170,8 @@ type
   ///   Checks everything about a token except the one thing that makes it
   ///   unforgeable: the issuer ("iss"), the audience ("aud"), the validity window
   ///   ("exp" / "nbf"), the required scopes, the signing algorithm, and that the key
-  ///   the token points to ("kid") is actually published by the issuer.
+  ///   the token points to ("kid") is actually published by the issuer and can be
+  ///   used with the algorithm the token names.
   ///   It does <b>not</b> verify the signature.
   /// </summary>
   /// <remarks>
@@ -212,9 +214,39 @@ type
       out AKey: TOAuthJsonWebKey): Boolean;
 
     /// <summary>
-    ///   Algorithms accepted in the token header. "none" is never accepted.
+    ///   Algorithms accepted in the token header: the asymmetric JWS algorithms of
+    ///   RFC 7518, and nothing else.
     /// </summary>
+    /// <remarks>
+    ///   This is an allow list rather than a "anything but none" rule, and the
+    ///   difference is the whole point. A verifier that accepts a symmetric algorithm
+    ///   while holding a public key ends up using that key as the HMAC secret - and
+    ///   the public key is, by definition, published. Anyone could then mint a token
+    ///   this server would accept. Keeping the two families apart at the door is what
+    ///   makes <see cref="CheckSignature" /> meaningful.
+    ///   Names are compared case sensitively: "alg" values are case-sensitive ASCII
+    ///   strings (RFC 7515 §4.1.1), so a spelling that is not exactly the registered
+    ///   one is not that algorithm.
+    /// </remarks>
     function IsAlgorithmAllowed(const AAlgorithm: string): Boolean; virtual;
+
+    /// <summary>
+    ///   Checks that the algorithm named in the token header can be used with the key
+    ///   the issuer published under that "kid": the key's own "alg", when it declares
+    ///   one, and the family its "kty" belongs to - "RSA" signs with RS*/PS*, "EC"
+    ///   with ES*.
+    /// </summary>
+    /// <remarks>
+    ///   Defence in depth behind <see cref="IsAlgorithmAllowed" />: it stops a token
+    ///   from choosing which of the issuer's algorithms to be verified with, instead
+    ///   of the issuer deciding.
+    ///   A key that declares neither "alg" nor "kty" is not rejected here - there is
+    ///   nothing to contradict, and the key set comes from the issuer over TLS rather
+    ///   than from the caller. Such a key still has to carry usable material for the
+    ///   signature check to get anywhere.
+    /// </remarks>
+    function KeyMatchesAlgorithm(const AKey: TOAuthJsonWebKey;
+      const AAlgorithm: string): Boolean; virtual;
 
     /// <summary>
     ///   Verifies that the token was signed with AKey. This is the hook that turns
@@ -259,7 +291,7 @@ function TokenValidationErrorCodeToString(AErrorCode: TTokenValidationErrorCode)
 implementation
 
 uses
-  System.NetEncoding, System.DateUtils,
+  System.NetEncoding, System.DateUtils, System.StrUtils,
 
   Logify,
   MCPConnect.JRPC.Server;
@@ -389,10 +421,36 @@ end;
 { TClaimsTokenValidator }
 
 function TClaimsTokenValidator.IsAlgorithmAllowed(const AAlgorithm: string): Boolean;
+const
+  // The asymmetric JWS algorithms of RFC 7518 §3.1. Everything else is refused,
+  // including "none", an empty "alg", and every symmetric (HS*) algorithm: see the
+  // remarks on the declaration for why the symmetric family cannot be let in.
+  LAllowed: array[0..8] of string = (
+    'RS256', 'RS384', 'RS512',
+    'PS256', 'PS384', 'PS512',
+    'ES256', 'ES384', 'ES512'
+  );
 begin
-  // An empty "alg" is as unusable as "none": both mean the token carries no
-  // verifiable signature, which is exactly what an attacker would ask for.
-  Result := (AAlgorithm <> '') and not SameText(AAlgorithm, 'none');
+  Result := IndexStr(AAlgorithm, LAllowed) >= 0;
+end;
+
+function TClaimsTokenValidator.KeyMatchesAlgorithm(const AKey: TOAuthJsonWebKey; const AAlgorithm: string): Boolean;
+begin
+  // A key that names its algorithm is to be used with that one only.
+  if (AKey.Alg <> '') and (AKey.Alg <> AAlgorithm) then
+    Exit(False);
+
+  // "kty" is what the key material actually is, so it decides which signature
+  // family can be computed with it at all.
+  if SameText(AKey.Kty, 'RSA') then
+    Exit(AAlgorithm.StartsWith('RS') or AAlgorithm.StartsWith('PS'));
+
+  if SameText(AKey.Kty, 'EC') then
+    Exit(AAlgorithm.StartsWith('ES'));
+
+  // An unknown or undeclared "kty" leaves nothing to compare against - see the
+  // remarks on the declaration.
+  Result := True;
 end;
 
 function TClaimsTokenValidator.GetAlgorithm(const AHeaderSegment: string): string;
@@ -560,6 +618,14 @@ begin
   if not ResolveKey(AConfig, LKeySource, LKeyId, LKey) then
     Exit(Reject(TTokenValidationErrorCode.InvalidToken, STokenKeyUnknown,
       Format('a key published by %s', [LKeySource]), OrNone(LKeyId)));
+
+  // Which algorithm verifies this token is the issuer's decision, not the token's:
+  // the header may only name one the resolved key can actually be used with.
+  if not KeyMatchesAlgorithm(LKey, LAlgorithm) then
+    Exit(Reject(TTokenValidationErrorCode.InvalidToken, STokenKeyAlgorithmMismatch,
+      Format('an algorithm usable with key "%s" (kty %s, alg %s)',
+        [OrNone(LKey.Kid), OrNone(LKey.Kty), OrNone(LKey.Alg)]),
+      LAlgorithm));
 
   // The hook a real validator overrides. Here rather than earlier because it needs
   // the resolved key, and before the scope check because a token that cannot be

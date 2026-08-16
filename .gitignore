@@ -60,7 +60,8 @@ __recovery/
 *.stat
 
 libs/Neon
-libs/JOSE
+libs/JWT
+libs/Logify
 nul
 
 # VSCode

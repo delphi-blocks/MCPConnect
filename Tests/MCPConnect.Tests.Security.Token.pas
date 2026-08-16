@@ -180,6 +180,16 @@ type
     [Test]
     procedure TestValidate_AlgorithmNoneIsRejected;
     [Test]
+    procedure TestValidate_SymmetricAlgorithmIsRejected;
+    [Test]
+    procedure TestValidate_UnregisteredAlgorithmIsRejected;
+    [Test]
+    procedure TestValidate_AlgorithmForAnotherKeyTypeIsRejected;
+    [Test]
+    procedure TestValidate_AlgorithmOtherThanTheOneTheKeyDeclaresIsRejected;
+    [Test]
+    procedure TestValidate_AlgorithmTheKeyDeclaresIsAccepted;
+    [Test]
     procedure TestValidate_UnpublishedKeyIdIsRejected;
     [Test]
     procedure TestValidate_MissingRequiredScopeIsInsufficientScope;
@@ -763,6 +773,87 @@ begin
     Format('{"iss":"%s","aud":"%s","exp":%d}', [Issuer, Audience, UnixNow + 3600])));
 
   Assert.IsFalse(LResult.Success, 'An unsigned token must never be accepted');
+end;
+
+procedure TClaimsTokenValidatorTest.TestValidate_SymmetricAlgorithmIsRejected;
+var
+  LResult: TTokenValidationResult;
+begin
+  // The algorithm confusion attack: the issuer signs with a key pair, so a verifier
+  // holds its public key - which is published. Were a symmetric algorithm accepted,
+  // that public key would be used as the HMAC secret and anyone able to read the
+  // JWKS could mint a token this server accepts. Everything else in this token is
+  // exactly what a genuine one carries.
+  LResult := Validate(BuildToken(
+    Format('{"alg":"HS256","kid":"%s"}', [KeyId]),
+    Format('{"iss":"%s","aud":"%s","sub":"user-42","exp":%d}',
+      [Issuer, Audience, UnixNow + 3600])));
+
+  Assert.IsFalse(LResult.Success, 'A symmetric algorithm must never be accepted');
+  Assert.IsTrue(LResult.ErrorCode = TTokenValidationErrorCode.InvalidToken);
+  Assert.AreEqual('', FAccessToken.Subject, 'A rejected token must not populate the access token');
+end;
+
+procedure TClaimsTokenValidatorTest.TestValidate_UnregisteredAlgorithmIsRejected;
+var
+  LResult: TTokenValidationResult;
+begin
+  // "alg" values are case-sensitive (RFC 7515 §4.1.1): a different spelling is not
+  // the registered algorithm, and must not slip past the allow list.
+  LResult := Validate(BuildToken(
+    Format('{"alg":"rs256","kid":"%s"}', [KeyId]),
+    Format('{"iss":"%s","aud":"%s","exp":%d}', [Issuer, Audience, UnixNow + 3600])));
+
+  Assert.IsFalse(LResult.Success, 'Only the registered spelling of an algorithm is accepted');
+end;
+
+procedure TClaimsTokenValidatorTest.TestValidate_AlgorithmForAnotherKeyTypeIsRejected;
+var
+  LResult: TTokenValidationResult;
+begin
+  // The issuer publishes an RSA key, so an EC algorithm cannot be what signed this:
+  // which algorithm verifies a token is the issuer's decision, not the token's.
+  LResult := Validate(BuildToken(
+    Format('{"alg":"ES256","kid":"%s"}', [KeyId]),
+    Format('{"iss":"%s","aud":"%s","exp":%d}', [Issuer, Audience, UnixNow + 3600])));
+
+  Assert.IsFalse(LResult.Success);
+  Assert.IsTrue(LResult.ErrorCode = TTokenValidationErrorCode.InvalidToken);
+end;
+
+procedure TClaimsTokenValidatorTest.TestValidate_AlgorithmOtherThanTheOneTheKeyDeclaresIsRejected;
+var
+  LResult: TTokenValidationResult;
+begin
+  // A key that names its "alg" is to be used with that one only, even though the
+  // token's choice is in the same family and would otherwise be allowed.
+  FFake.SetDocument(Issuer + '/keys',
+    Format('{"keys":[{"kid":"%s","kty":"RSA","alg":"RS512","use":"sig",' +
+      '"n":"modulus","e":"AQAB"}]}', [KeyId]));
+
+  LResult := Validate(BuildToken(
+    Format('{"alg":"RS256","kid":"%s"}', [KeyId]),
+    Format('{"iss":"%s","aud":"%s","exp":%d}', [Issuer, Audience, UnixNow + 3600])));
+
+  Assert.IsFalse(LResult.Success);
+  Assert.IsTrue(LResult.ErrorCode = TTokenValidationErrorCode.InvalidToken);
+end;
+
+procedure TClaimsTokenValidatorTest.TestValidate_AlgorithmTheKeyDeclaresIsAccepted;
+var
+  LResult: TTokenValidationResult;
+begin
+  FFake.SetDocument(Issuer + '/keys',
+    Format('{"keys":[{"kid":"%s","kty":"RSA","alg":"PS384","use":"sig",' +
+      '"n":"modulus","e":"AQAB"}]}', [KeyId]));
+
+  LResult := Validate(BuildToken(
+    Format('{"alg":"PS384","kid":"%s"}', [KeyId]),
+    Format('{"iss":"%s","aud":"%s","sub":"user-42","exp":%d}',
+      [Issuer, Audience, UnixNow + 3600])));
+
+  Assert.IsTrue(LResult.Success, LResult.ErrorDescription);
+  Assert.AreEqual('user-42', FAccessToken.Subject);
 end;
 
 procedure TClaimsTokenValidatorTest.TestValidate_UnpublishedKeyIdIsRejected;

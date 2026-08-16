@@ -179,6 +179,7 @@ type
     function CheckOAuth: Boolean;
     function ValidateAccessToken(const AToken: string): TTokenValidationResult;
     procedure SendUnauthorized(const AResult: TTokenValidationResult);
+    function IsProtectedResourceMetadataRequest: Boolean;
     function IsMetadataProxyRequest: Boolean;
     procedure HandleMetadataProxy;
     function ExtractSessionId: string;
@@ -302,7 +303,7 @@ begin
     Exit(True);
 
   Result := False;
-  if (SameText(FRequest.Url, TOAuthConfig.ProtectedResourcePath) or SameText(FRequest.Url, TOAuthConfig.ProtectedResourcePath + '/mcp')) and (FRequest.Command = 'GET') then
+  if IsProtectedResourceMetadataRequest then
   begin
     FResponse.Code := HTTP_CODE_OK;
     FResponse.ContentType := TMediaType.APPLICATION_JSON;
@@ -384,6 +385,21 @@ begin
   FResponse.Code := HTTP_CODE_UNAUTHORIZED;
   FResponse.Headers.AddOrSetValue('WWW-Authenticate',
     BuildBearerChallenge(FOAuthConfig.Realm, FOAuthConfig.ResourceMetadata, AResult));
+end;
+
+function TMCPTransportHandler.IsProtectedResourceMetadataRequest: Boolean;
+begin
+  if not SameText(FRequest.Command, 'GET') then
+    Exit(False);
+
+  // The path-insertion form of RFC 9728 §3.1 is what this server advertises in its
+  // challenge, and what a client that builds the URL itself arrives at. The bare
+  // well-known path is served too: clients fall back to it, and it is the only form a
+  // resource that is just an origin has. Both are derived from the configured
+  // resource rather than assuming the endpoint is mounted at "/mcp".
+  Result :=
+    SameText(FRequest.Url, TOAuthConfig.ProtectedResourcePath + FOAuthConfig.ResourcePath) or
+    SameText(FRequest.Url, TOAuthConfig.ProtectedResourcePath);
 end;
 
 function TMCPTransportHandler.IsMetadataProxyRequest: Boolean;

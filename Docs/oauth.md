@@ -19,11 +19,14 @@ Keycloak, Okta, or any OpenID Connect provider).
 When OAuth is enabled, MCPConnect's HTTP transport (`TMCPTransportHandler` in
 `MCPConnect.Transport.Base`) does the following on every incoming request:
 
-- Serves `GET /.well-known/oauth-protected-resource` with an
-  [RFC 9728](https://www.rfc-editor.org/rfc/rfc9728) Protected Resource Metadata document,
-  listing the resource URL, the configured authorization server(s), and supported scopes.
+- Serves the [RFC 9728](https://www.rfc-editor.org/rfc/rfc9728) Protected Resource Metadata
+  document — the resource URL, the configured authorization server(s), and supported scopes — at
+  the URL RFC 9728 §3.1 prescribes: the well-known segment goes *between* the host and the
+  resource's path, so `SetResource('https://mcp.example.com/mcp')` publishes at
+  `GET /.well-known/oauth-protected-resource/mcp`. A resource that is just an origin publishes at
+  the bare `/.well-known/oauth-protected-resource`, which is also still served as a fallback.
 - Rejects unauthenticated requests with `401 Unauthorized` and a `WWW-Authenticate: Bearer
-  realm="...", resource_metadata=...` header, per the MCP Authorization spec.
+  realm="...", resource_metadata="..."` header, per the MCP Authorization spec.
 - Accepts requests carrying `Authorization: Bearer <token>` **when a registered token validator
   accepts them** (see [Section 3.2](#32-token-validation)), and injects the validated claims into the
   request context as `TMCPAccessToken`.

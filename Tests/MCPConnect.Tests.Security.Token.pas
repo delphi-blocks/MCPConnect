@@ -286,6 +286,16 @@ type
     [Test]
     procedure TestAddTrustedIssuer_IgnoresEmptyValues;
     [Test]
+    procedure TestResourceMetadata_InsertsTheWellKnownSegmentBeforeThePath;
+    [Test]
+    procedure TestResourceMetadata_HasNoSuffixForAnOriginOnlyResource;
+    [Test]
+    procedure TestResourceMetadata_TrailingSlashOnTheResourceIsNotASeparatePath;
+    [Test]
+    procedure TestResourceMetadata_KeepsAPortAndANestedPath;
+    [Test]
+    procedure TestResourceMetadata_RequiresAResource;
+    [Test]
     procedure TestAudience_DefaultsToResource;
     [Test]
     procedure TestAudience_CanBeOverridden;
@@ -1283,6 +1293,55 @@ begin
 
   // The demo passes an environment variable straight in: unset must mean "nothing".
   Assert.AreEqual(1, Length(GetOAuthConfig.TrustedIssuers));
+end;
+
+procedure TOAuthConfigValidationTest.TestResourceMetadata_InsertsTheWellKnownSegmentBeforeThePath;
+begin
+  FConfig.SetResource('https://mcp.example.com/mcp');
+
+  // RFC 9728 §3.1: the well-known segment goes between the authority and the path.
+  // Replacing the path instead would publish every server on this origin at one URL.
+  Assert.AreEqual('https://mcp.example.com/.well-known/oauth-protected-resource/mcp',
+    GetOAuthConfig.ResourceMetadata);
+end;
+
+procedure TOAuthConfigValidationTest.TestResourceMetadata_HasNoSuffixForAnOriginOnlyResource;
+begin
+  FConfig.SetResource('https://mcp.example.com');
+
+  Assert.AreEqual('https://mcp.example.com/.well-known/oauth-protected-resource',
+    GetOAuthConfig.ResourceMetadata);
+  Assert.AreEqual('', GetOAuthConfig.ResourcePath);
+end;
+
+procedure TOAuthConfigValidationTest.TestResourceMetadata_TrailingSlashOnTheResourceIsNotASeparatePath;
+begin
+  // The same resource written two ways must publish at one URL, not two.
+  FConfig.SetResource('https://mcp.example.com/mcp/');
+
+  Assert.AreEqual('https://mcp.example.com/.well-known/oauth-protected-resource/mcp',
+    GetOAuthConfig.ResourceMetadata);
+end;
+
+procedure TOAuthConfigValidationTest.TestResourceMetadata_KeepsAPortAndANestedPath;
+begin
+  FConfig.SetResource('http://localhost:8080/api/mcp');
+
+  Assert.AreEqual('http://localhost:8080/.well-known/oauth-protected-resource/api/mcp',
+    GetOAuthConfig.ResourceMetadata);
+  Assert.AreEqual('/api/mcp', GetOAuthConfig.ResourcePath);
+end;
+
+procedure TOAuthConfigValidationTest.TestResourceMetadata_RequiresAResource;
+begin
+  // There is no metadata URL to advertise without one, and guessing would put the
+  // wrong host in every challenge.
+  Assert.WillRaise(
+    procedure
+    begin
+      GetOAuthConfig.ResourceMetadata;
+    end,
+    Exception);
 end;
 
 procedure TOAuthConfigValidationTest.TestAudience_DefaultsToResource;

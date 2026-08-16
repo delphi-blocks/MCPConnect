@@ -235,6 +235,7 @@ type
     FKeyCacheTTL: Integer;
     FMetadataProvider: IOAuthMetadataProvider;
     function GetResourceMetadata: string;
+    function GetResourcePath: string;
     function GetMetadataProxyUrl: string;
     function GetMetadataProxyEnabled: Boolean;
     function GetDiscoveryIssuers: TArray<string>;
@@ -282,7 +283,27 @@ type
     property Resource: string read FResource;
     property AuthorizationServers: TArray<string> read FAuthorizationServers;
     property ScopesSupported: TArray<string> read FScopesSupported;
+    /// <summary>
+    ///   URL of this resource's metadata document, in the path-insertion form of
+    ///   RFC 9728 §3.1: the well-known segment goes between the authority and the
+    ///   resource's own path rather than replacing it, so a resource of
+    ///   "https://host/mcp" publishes at
+    ///   "https://host/.well-known/oauth-protected-resource/mcp".
+    /// </summary>
+    /// <remarks>
+    ///   The path matters: it is what lets two MCP servers on one origin, mounted at
+    ///   different paths, each have their own document instead of overwriting a shared
+    ///   one. A client that builds this URL itself, rather than reading it from the
+    ///   challenge, arrives at the same place.
+    /// </remarks>
     property ResourceMetadata: string read GetResourceMetadata;
+
+    /// <summary>
+    ///   Path component of the resource URL, without a trailing slash, and empty when
+    ///   the resource is just an origin. This is the suffix RFC 9728 §3.1 appends to
+    ///   the well-known segment.
+    /// </summary>
+    property ResourcePath: string read GetResourcePath;
     property MetadataProxyUpstream: string read FMetadataProxyUpstream;
     property MetadataProxyUrl: string read GetMetadataProxyUrl;
     property MetadataProxyEnabled: Boolean read GetMetadataProxyEnabled;
@@ -422,9 +443,25 @@ begin
     raise Exception.Create(SOAuthResourceNotSpecified);
 
   var LURI := TURI.Create(FResource);
-  LURI.Path := ProtectedResourcePath;
+
+  // RFC 9728 §3.1 inserts the well-known segment between the authority and the
+  // resource's path; it does not replace the path. Dropping it would publish every
+  // server on an origin at the same URL, so the last one deployed would answer for
+  // all of them - with its own "resource" value, which a client is required to check.
+  LURI.Path := ProtectedResourcePath + ResourcePath;
 
   Result := LURI.ToString;
+end;
+
+function TOAuthConfig.GetResourcePath: string;
+begin
+  if FResource = '' then
+    Exit('');
+
+  // TURI reports a resource with no path as '' or '/', and both mean "no suffix".
+  // Trimming the trailing slash covers them and the "https://host/mcp/" spelling
+  // alike, so the same resource written either way publishes at one URL.
+  Result := TURI.Create(FResource).Path.TrimRight(['/']);
 end;
 
 function TOAuthConfig.GetMetadataProxyUrl: string;

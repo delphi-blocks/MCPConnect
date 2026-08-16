@@ -34,6 +34,7 @@ type
   TFakeMetadataProvider = class(TOAuthMetadataProvider)
   private
     FDocuments: TDictionary<string, string>;
+    FFetchedUrls: TStringList;
     FFetchCount: Integer;
     FFailFrom: Integer;
   protected
@@ -44,6 +45,12 @@ type
 
     procedure SetDocument(const AUrl, AContent: string);
     procedure ResetFetchCount;
+
+    /// <summary>
+    ///   Whether a URL was requested at all, however the request ended. Says what a
+    ///   fetch count cannot once a lookup may try several candidates.
+    /// </summary>
+    function WasFetched(const AUrl: string): Boolean;
 
     property FetchCount: Integer read FFetchCount;
     /// <summary>Ordinal of the first fetch that must fail; 0 means "never fail".</summary>
@@ -315,7 +322,9 @@ type
   TOAuthMetadataProviderTest = class(TObject)
   private const
     Issuer = 'https://idp.example.com';
-    DiscoveryUrl = Issuer + '/.well-known/openid-configuration';
+    /// <summary>The first candidate tried: RFC 8414 is preferred over OIDC discovery.</summary>
+    DiscoveryUrl = Issuer + '/.well-known/oauth-authorization-server';
+    OidcDiscoveryUrl = Issuer + '/.well-known/openid-configuration';
     JwksUrl = Issuer + '/keys';
   private
     FFake: TFakeMetadataProvider;
@@ -333,6 +342,16 @@ type
     procedure TestGetServerMetadata_IsCachedWithinTheTTL;
     [Test]
     procedure TestGetServerMetadata_IsFetchedAgainAfterTheTTL;
+    [Test]
+    procedure TestDiscoveryUrls_FollowTheSpecifiedOrderForAnIssuerWithAPath;
+    [Test]
+    procedure TestDiscoveryUrls_CollapseToTwoForAnOriginOnlyIssuer;
+    [Test]
+    procedure TestGetServerMetadata_FallsBackToOpenIDConnectDiscovery;
+    [Test]
+    procedure TestGetServerMetadata_PrefersTheRFC8414Document;
+    [Test]
+    procedure TestGetServerMetadata_RemembersWhichCandidateWorked;
     [Test]
     procedure TestGetServerMetadata_DocumentDeclaringAnotherIssuerIsRefused;
     [Test]
@@ -428,12 +447,14 @@ constructor TFakeMetadataProvider.Create;
 begin
   inherited Create;
   FDocuments := TDictionary<string, string>.Create;
+  FFetchedUrls := TStringList.Create;
   FFetchCount := 0;
   FFailFrom := 0;
 end;
 
 destructor TFakeMetadataProvider.Destroy;
 begin
+  FFetchedUrls.Free;
   FDocuments.Free;
   inherited;
 end;
@@ -446,11 +467,18 @@ end;
 procedure TFakeMetadataProvider.ResetFetchCount;
 begin
   FFetchCount := 0;
+  FFetchedUrls.Clear;
+end;
+
+function TFakeMetadataProvider.WasFetched(const AUrl: string): Boolean;
+begin
+  Result := FFetchedUrls.IndexOf(AUrl) >= 0;
 end;
 
 function TFakeMetadataProvider.FetchDocument(const AUrl: string): string;
 begin
   Inc(FFetchCount);
+  FFetchedUrls.Add(AUrl);
 
   if (FailFrom > 0) and (FFetchCount >= FailFrom) then
     raise EOAuthMetadataException.CreateFmt('Fake transport failure for "%s"', [AUrl]);
@@ -1475,6 +1503,84 @@ begin
   Assert.AreEqual(2, FFake.FetchCount);
 end;
 
+procedure TOAuthMetadataProviderTest.TestDiscoveryUrls_FollowTheSpecifiedOrderForAnIssuerWithAPath;
+var
+  LUrls: TArray<string>;
+begin
+  LUrls := TOAuthMetadataProvider.DiscoveryUrlsFor('https://login.example.com/tenant-id/v2.0');
+
+  Assert.AreEqual(3, Length(LUrls));
+  Assert.AreEqual('https://login.example.com/.well-known/oauth-authorization-server/tenant-id/v2.0',
+    LUrls[0], 'RFC 8414 path insertion comes first');
+  Assert.AreEqual('https://login.example.com/.well-known/openid-configuration/tenant-id/v2.0',
+    LUrls[1], 'then OIDC discovery, inserted the same way');
+  Assert.AreEqual('https://login.example.com/tenant-id/v2.0/.well-known/openid-configuration',
+    LUrls[2], 'then OIDC discovery appended after the path');
+end;
+
+procedure TOAuthMetadataProviderTest.TestDiscoveryUrls_CollapseToTwoForAnOriginOnlyIssuer;
+var
+  LUrls: TArray<string>;
+begin
+  // With no path there is nothing to insert around: the two OIDC forms are one URL.
+  LUrls := TOAuthMetadataProvider.DiscoveryUrlsFor('https://idp.example.com/');
+
+  Assert.AreEqual(2, Length(LUrls));
+  Assert.AreEqual('https://idp.example.com/.well-known/oauth-authorization-server', LUrls[0]);
+  Assert.AreEqual('https://idp.example.com/.well-known/openid-configuration', LUrls[1]);
+end;
+
+procedure TOAuthMetadataProviderTest.TestGetServerMetadata_FallsBackToOpenIDConnectDiscovery;
+var
+  LMetadata: TOAuthServerMetadata;
+begin
+  // An OpenID Connect provider publishes nothing at the RFC 8414 URL. Before the
+  // fallback chain existed the reverse was fatal: an authorization server that is
+  // OAuth 2.1 but not OIDC could not be discovered at all, so every token was rejected.
+  FFake := TFakeMetadataProvider.Create;
+  FProvider := FFake;
+  FFake.SetDocument(OidcDiscoveryUrl,
+    Format('{"issuer":"%s","jwks_uri":"%s"}', [Issuer, JwksUrl]));
+
+  LMetadata := FProvider.GetServerMetadata(Issuer);
+
+  Assert.AreEqual(JwksUrl, LMetadata.JwksUri);
+end;
+
+procedure TOAuthMetadataProviderTest.TestGetServerMetadata_PrefersTheRFC8414Document;
+var
+  LMetadata: TOAuthServerMetadata;
+begin
+  // Both published: the order is not arbitrary, it is what the MCP authorization
+  // specification prescribes.
+  FFake.SetDocument(OidcDiscoveryUrl,
+    Format('{"issuer":"%s","jwks_uri":"%s/oidc-keys"}', [Issuer, Issuer]));
+
+  LMetadata := FProvider.GetServerMetadata(Issuer);
+
+  Assert.AreEqual(JwksUrl, LMetadata.JwksUri, 'The RFC 8414 document wins');
+  Assert.AreEqual(1, FFake.FetchCount, 'The preferred candidate answered, so nothing else is tried');
+end;
+
+procedure TOAuthMetadataProviderTest.TestGetServerMetadata_RemembersWhichCandidateWorked;
+begin
+  // Only the OIDC URL answers, so the first candidate costs a wasted request. Once the
+  // working one is known a refresh must go straight to it rather than walking the
+  // chain again.
+  FFake := TFakeMetadataProvider.Create;
+  FProvider := FFake;
+  FFake.SetDocument(OidcDiscoveryUrl,
+    Format('{"issuer":"%s","jwks_uri":"%s"}', [Issuer, JwksUrl]));
+  FFake.MetadataTTL := 0;
+
+  FProvider.GetServerMetadata(Issuer);
+  Assert.AreEqual(2, FFake.FetchCount, 'The first attempt walks the chain');
+
+  FFake.ResetFetchCount;
+  FProvider.GetServerMetadata(Issuer);
+  Assert.AreEqual(1, FFake.FetchCount, 'A refresh goes straight to the URL that worked');
+end;
+
 procedure TOAuthMetadataProviderTest.TestGetServerMetadata_DocumentDeclaringAnotherIssuerIsRefused;
 begin
   // Whoever answers at the well-known URL decides what the document says. Accepting a
@@ -1534,8 +1640,8 @@ begin
     end,
     EOAuthMetadataException);
 
-  Assert.AreEqual(1, FFake.FetchCount,
-    'Only the metadata document may be fetched: the key set must stay untouched');
+  Assert.IsFalse(FFake.WasFetched(JwksUrl),
+    'A document that failed the issuer check must never have its "jwks_uri" fetched');
 end;
 
 procedure TOAuthMetadataProviderTest.TestGetKeys_ParsesTheKeySet;

@@ -39,6 +39,10 @@ const
   /// <summary>Connection and response timeout for metadata/JWKS requests, in milliseconds.</summary>
   OAUTH_METADATA_TIMEOUT_DEFAULT = 10000;
 
+  /// <summary>Well-known segment of the RFC 8414 authorization server metadata document.</summary>
+  OAUTH_AS_METADATA_PATH = '/.well-known/oauth-authorization-server';
+
+  /// <summary>Well-known segment of the OpenID Connect Discovery document.</summary>
   OAUTH_DISCOVERY_PATH = '/.well-known/openid-configuration';
 
 resourcestring
@@ -49,6 +53,7 @@ resourcestring
     'metadata is only usable when published by the issuer it was requested for';
   SOAuthJwksUriMissingFmt = 'The metadata document of "%s" does not declare a "jwks_uri"';
   SOAuthKeysFetchFailedFmt = 'Cannot retrieve the JSON Web Key Set from "%s": %s';
+  SOAuthMetadataNotFoundFmt = 'No usable authorization server metadata for "%s". Tried: %s';
 
 type
   /// <summary>
@@ -212,6 +217,8 @@ type
   private type
     TMetadataEntry = class
       Metadata: TOAuthServerMetadata;
+      /// <summary>The candidate URL this document actually came from.</summary>
+      DiscoveryUrl: string;
       FetchedAt: TDateTime;
     end;
 
@@ -232,10 +239,12 @@ type
     class function NormalizeIssuer(const AIssuer: string): string; static;
     class function IsExpired(const AFetchedAt: TDateTime; ATTLSeconds: Integer): Boolean; static;
 
-    function FetchMetadata(const AIssuer: string): TOAuthServerMetadata;
+    function FetchMetadata(const AIssuer: string; out ADiscoveryUrl: string): TOAuthServerMetadata;
+    function TryFetchMetadataFrom(const AIssuer, AUrl: string; out AMetadata: TOAuthServerMetadata; out AError: string): Boolean;
+    function KnownDiscoveryUrl(const AKey: string): string;
     function FetchKeys(const AIssuer: string): TArray<TOAuthJsonWebKey>;
     function EnsureKeys(const AIssuer: string; AForceRefresh: Boolean): TArray<TOAuthJsonWebKey>;
-    procedure StoreMetadata(const AKey: string; const AMetadata: TOAuthServerMetadata);
+    procedure StoreMetadata(const AKey: string; const AMetadata: TOAuthServerMetadata; const ADiscoveryUrl: string);
     procedure StoreKeys(const AKey: string; const AKeys: TArray<TOAuthJsonWebKey>);
     function TryGetCachedMetadata(const AKey: string; out AMetadata: TOAuthServerMetadata): Boolean;
   protected
@@ -267,6 +276,21 @@ type
     property KeysRefreshInterval: Integer read FKeysRefreshInterval write FKeysRefreshInterval;
     /// <summary>Connection and response timeout of the HTTP requests, in milliseconds.</summary>
     property RequestTimeout: Integer read FRequestTimeout write FRequestTimeout;
+
+    /// <summary>
+    ///   The URLs an issuer's metadata document may be published at, in the order the
+    ///   MCP authorization specification requires them to be tried: RFC 8414 with the
+    ///   well-known segment inserted before the issuer's path, then OpenID Connect
+    ///   Discovery inserted the same way, then OpenID Connect Discovery appended after
+    ///   the path. An issuer with no path collapses the last two into one, so it yields
+    ///   two candidates rather than three.
+    /// </summary>
+    /// <remarks>
+    ///   Trying only the OpenID Connect form would leave an authorization server that is
+    ///   OAuth 2.1 but not OpenID Connect undiscoverable - no metadata, so no "jwks_uri",
+    ///   so every token rejected.
+    /// </remarks>
+    class function DiscoveryUrlsFor(const AIssuer: string): TArray<string>; static;
   end;
 
 implementation
@@ -399,22 +423,78 @@ begin
   end;
 end;
 
-function TOAuthMetadataProvider.FetchMetadata(const AIssuer: string): TOAuthServerMetadata;
+class function TOAuthMetadataProvider.DiscoveryUrlsFor(const AIssuer: string): TArray<string>;
 var
-  LUrl: string;
+  LIssuer, LOrigin, LPath: string;
+  LSchemeEnd, LPathStart: Integer;
+begin
+  // Split by hand rather than through TURI: an issuer identifier is an absolute URL
+  // that RFC 8414 §2 forbids from carrying a query or a fragment, so this is only ever
+  // "origin" plus "path" - and reassembling it through TURI risks it normalising a
+  // default port back in, which would change the URL being requested.
+  LIssuer := AIssuer.Trim.TrimRight(['/']);
+
+  LSchemeEnd := LIssuer.IndexOf('://');
+  if LSchemeEnd >= 0 then
+    LPathStart := LIssuer.IndexOf('/', LSchemeEnd + 3)
+  else
+    LPathStart := LIssuer.IndexOf('/');
+
+  if LPathStart >= 0 then
+  begin
+    LOrigin := LIssuer.Substring(0, LPathStart);
+    LPath := LIssuer.Substring(LPathStart);
+  end
+  else
+  begin
+    LOrigin := LIssuer;
+    LPath := '';
+  end;
+
+  // With no path there is nothing to insert or append around, so the two OpenID
+  // Connect forms are the same URL and only two candidates remain.
+  if LPath = '' then
+  begin
+    Result := [
+      LOrigin + OAUTH_AS_METADATA_PATH,
+      LOrigin + OAUTH_DISCOVERY_PATH
+    ];
+    Exit;
+  end;
+
+  Result := [
+    LOrigin + OAUTH_AS_METADATA_PATH + LPath,  // RFC 8414 §3.1, path insertion
+    LOrigin + OAUTH_DISCOVERY_PATH + LPath,    // OIDC Discovery, path insertion
+    LOrigin + LPath + OAUTH_DISCOVERY_PATH     // OIDC Discovery, path appending
+  ];
+end;
+
+function TOAuthMetadataProvider.TryFetchMetadataFrom(const AIssuer, AUrl: string;
+  out AMetadata: TOAuthServerMetadata; out AError: string): Boolean;
+var
   LJSON: TJSONValue;
 begin
-  LUrl := AIssuer.TrimRight(['/']) + OAUTH_DISCOVERY_PATH;
+  AMetadata := Default(TOAuthServerMetadata);
+  AError := '';
 
-  LJSON := TJSONObject.ParseJSONValue(FetchDocument(LUrl));
-  if not (LJSON is TJSONObject) then
-  begin
-    LJSON.Free;
-    raise EOAuthMetadataException.CreateFmt(SOAuthMetadataInvalidFmt, [LUrl]);
+  try
+    LJSON := TJSONObject.ParseJSONValue(FetchDocument(AUrl));
+  except
+    on E: Exception do
+    begin
+      AError := E.Message;
+      Exit(False);
+    end;
   end;
 
   try
-    Result := TOAuthServerMetadata.FromJSON(LJSON as TJSONObject);
+    if not (LJSON is TJSONObject) then
+    begin
+      AError := Format(SOAuthMetadataInvalidFmt, [AUrl]);
+      Exit(False);
+    end;
+
+    AMetadata := TOAuthServerMetadata.FromJSON(LJSON as TJSONObject);
   finally
     LJSON.Free;
   end;
@@ -422,14 +502,82 @@ begin
   // RFC 8414 §3.3 and OIDC Discovery §4.3: the "issuer" the document declares must be
   // the one it was requested for, or the document must not be used. This is what ties
   // the "jwks_uri" about to be trusted back to the configured authorization server -
-  // without it, anything that can answer at the well-known URL chooses where this
-  // server fetches its signing keys from.
+  // without it, anything that can answer at a well-known URL chooses where this server
+  // fetches its signing keys from. It is applied to every candidate, so widening the
+  // search cannot widen what is accepted.
   // A document that declares no issuer at all fails here too: normalising an empty
   // string cannot match a non-empty issuer, and RFC 8414 makes the member required.
-  if NormalizeIssuer(Result.Issuer) <> NormalizeIssuer(AIssuer) then
-    raise EOAuthMetadataException.CreateFmt(SOAuthIssuerMismatchFmt, [LUrl, Result.Issuer]);
+  if NormalizeIssuer(AMetadata.Issuer) <> NormalizeIssuer(AIssuer) then
+  begin
+    AError := Format(SOAuthIssuerMismatchFmt, [AUrl, AMetadata.Issuer]);
+    AMetadata := Default(TOAuthServerMetadata);
+    Exit(False);
+  end;
 
-  Logger.LogDebug('OAuth metadata fetched from "%s"', [LUrl]);
+  Result := True;
+end;
+
+function TOAuthMetadataProvider.FetchMetadata(const AIssuer: string;
+  out ADiscoveryUrl: string): TOAuthServerMetadata;
+var
+  LCandidates: TArray<string>;
+  LOrdered: TArray<string>;
+  LKnown, LUrl, LError: string;
+  LReport: TArray<string>;
+begin
+  Result := Default(TOAuthServerMetadata);
+  ADiscoveryUrl := '';
+
+  LCandidates := DiscoveryUrlsFor(AIssuer);
+
+  // A URL that already produced a document for this issuer is tried first: a server's
+  // well-known layout does not normally change, and rediscovering it on every refresh
+  // would turn one request into up to three. It is reordered rather than used alone,
+  // so a server that does move is picked up on the next refresh instead of being
+  // permanently unreachable.
+  LKnown := KnownDiscoveryUrl(NormalizeIssuer(AIssuer));
+  if LKnown <> '' then
+  begin
+    LOrdered := [LKnown];
+    for LUrl in LCandidates do
+      if LUrl <> LKnown then
+        LOrdered := LOrdered + [LUrl];
+    LCandidates := LOrdered;
+  end;
+
+  LReport := [];
+  for LUrl in LCandidates do
+  begin
+    if TryFetchMetadataFrom(AIssuer, LUrl, Result, LError) then
+    begin
+      ADiscoveryUrl := LUrl;
+      Logger.LogDebug('OAuth metadata fetched from "%s"', [LUrl]);
+      Exit;
+    end;
+
+    // Every candidate that failed is reported together at the end: with three shapes
+    // in play, "not found" on its own leaves an operator guessing which of them this
+    // server actually asked for.
+    LReport := LReport + [Format('%s (%s)', [LUrl, LError])];
+  end;
+
+  raise EOAuthMetadataException.CreateFmt(SOAuthMetadataNotFoundFmt,
+    [AIssuer, string.Join('; ', LReport)]);
+end;
+
+function TOAuthMetadataProvider.KnownDiscoveryUrl(const AKey: string): string;
+var
+  LEntry: TMetadataEntry;
+begin
+  Result := '';
+
+  FLock.Enter;
+  try
+    if FMetadataCache.TryGetValue(AKey, LEntry) then
+      Result := LEntry.DiscoveryUrl;
+  finally
+    FLock.Leave;
+  end;
 end;
 
 function TOAuthMetadataProvider.FetchKeys(const AIssuer: string): TArray<TOAuthJsonWebKey>;
@@ -467,7 +615,7 @@ begin
 end;
 
 procedure TOAuthMetadataProvider.StoreMetadata(const AKey: string;
-  const AMetadata: TOAuthServerMetadata);
+  const AMetadata: TOAuthServerMetadata; const ADiscoveryUrl: string);
 var
   LEntry: TMetadataEntry;
 begin
@@ -479,6 +627,7 @@ begin
       FMetadataCache.Add(AKey, LEntry);
     end;
     LEntry.Metadata := AMetadata;
+    LEntry.DiscoveryUrl := ADiscoveryUrl;
     LEntry.FetchedAt := Now;
   finally
     FLock.Leave;
@@ -524,6 +673,7 @@ var
   LKey: string;
   LEntry: TMetadataEntry;
   LMetadata: TOAuthServerMetadata;
+  LDiscoveryUrl: string;
 begin
   if AIssuer.Trim = '' then
     raise EOAuthMetadataException.Create(SOAuthIssuerRequired);
@@ -541,7 +691,7 @@ begin
   // Fetched outside the lock: a slow identity provider must not block the requests
   // that are served from the cache.
   try
-    LMetadata := FetchMetadata(AIssuer);
+    LMetadata := FetchMetadata(AIssuer, LDiscoveryUrl);
   except
     on E: Exception do
     begin
@@ -560,7 +710,7 @@ begin
     end;
   end;
 
-  StoreMetadata(LKey, LMetadata);
+  StoreMetadata(LKey, LMetadata, LDiscoveryUrl);
   Result := LMetadata;
 end;
 

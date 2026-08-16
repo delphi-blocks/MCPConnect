@@ -20,7 +20,8 @@ uses
   Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.StdCtrls, Vcl.ExtCtrls, Vcl.ComCtrls,
   Vcl.Imaging.pngimage,
   
-  MCPConnect.Design.Wizards.Types;
+  MCPConnect.Design.Wizards.Types,
+  MCPConnect.Design.Theme;
 
 type
   /// <summary>
@@ -106,7 +107,6 @@ type
   private
     FConfig: TMCPProjectConfig;
 
-    procedure LoadImages;
     procedure LoadConfig;
     procedure SaveConfig;
 
@@ -200,23 +200,12 @@ procedure TFormMCPProjectWizard.FormCreate(Sender: TObject);
 var
   LIndex: Integer;
 begin
-  //LoadImages;
+  TMCPIDETheme.ApplyTheme(Self);
 
   for LIndex := 0 to PageControl.PageCount - 1 do
     PageControl.Pages[LIndex].TabVisible := False;
 
   PageControl.ActivePage := TabAppKind;
-end;
-
-procedure TFormMCPProjectWizard.LoadImages;
-begin
-  // A missing resource is not an error: the TImage simply stays an empty
-  // placeholder, so the artwork can be swapped without touching the code
-  try
-    ImageBanner.Picture.Bitmap.LoadFromResourceName(HInstance, SBannerResource);
-  except
-    ImageBanner.Picture.Assign(nil);
-  end;
 end;
 
 {$REGION 'Configuration transfer'}

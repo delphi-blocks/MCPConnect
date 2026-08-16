@@ -925,7 +925,6 @@ object FormMCPProjectWizard: TFormMCPProjectWizard
     Color = clWindow
     ParentBackground = False
     TabOrder = 1
-    ExplicitTop = -6
     object LabelPageTitle: TLabel
       Left = 16
       Top = 10

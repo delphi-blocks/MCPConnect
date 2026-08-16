@@ -299,6 +299,15 @@ begin
   if Length(FOAuthConfig.AuthorizationServers) < 1 then
     Exit(True);
 
+  // OAuth is an HTTP mechanism and STDIO carries none of it: no headers to put a token
+  // in, no URL for the client to discover metadata at, and no 401 to answer with. A
+  // server launched by its client over a pipe is already running with that client's
+  // authority, so there is nothing here for a bearer token to establish. Enforcing it
+  // would not secure anything - it would reject every request on the transport,
+  // silently, since a stdio client never sees the challenge.
+  if FRequest.Protocol = TTransportProtocol.Stdio then
+    Exit(True);
+
   if SameText(FRequest.Command, 'OPTIONS') then
     Exit(True);
 
@@ -413,6 +422,24 @@ end;
 procedure TMCPTransportHandler.HandleMetadataProxy;
 const
   RequestTimeoutMs = 10000;
+
+  // Built through TJSONObject rather than interpolated: an upstream status line or an
+  // exception message carrying a quote or a line break would otherwise produce a body
+  // that is not JSON at all, and the client would report a parse error instead of what
+  // actually went wrong.
+  function ErrorBody(const AMessage: string): string;
+  var
+    LJSON: TJSONObject;
+  begin
+    LJSON := TJSONObject.Create;
+    try
+      LJSON.AddPair('error', AMessage);
+      Result := LJSON.ToJSON;
+    finally
+      LJSON.Free;
+    end;
+  end;
+
 begin
   FResponse.ContentType := TMediaType.APPLICATION_JSON;
 
@@ -427,7 +454,9 @@ begin
       if LResponse.StatusCode <> HTTP_CODE_OK then
       begin
         FResponse.Code := HTTP_CODE_BADGATEWAY;
-        FResponse.Content := Format('{"error": "Failed to fetch upstream authorization server metadata (HTTP %d)"}', [LResponse.StatusCode]);
+        FResponse.Content := ErrorBody(Format(
+          'Failed to fetch upstream authorization server metadata (HTTP %d)',
+          [LResponse.StatusCode]));
         Exit;
       end;
 
@@ -470,7 +499,7 @@ begin
       on E: Exception do
       begin
         FResponse.Code := HTTP_CODE_BADGATEWAY;
-        FResponse.Content := Format('{"error": "%s"}', [E.Message]);
+        FResponse.Content := ErrorBody(E.Message);
       end;
     end;
   finally

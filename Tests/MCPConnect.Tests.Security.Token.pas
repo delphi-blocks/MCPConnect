@@ -195,6 +195,8 @@ type
     [Test]
     procedure TestValidate_AudienceArrayContainingTheResourceIsAccepted;
     [Test]
+    procedure TestValidate_AudienceDifferingOnlyInPathCaseIsRejected;
+    [Test]
     procedure TestValidate_ExpiredTokenIsRejected;
     [Test]
     procedure TestValidate_TokenExpiredWithinTheClockSkewIsAccepted;
@@ -302,6 +304,12 @@ type
     procedure TestResourceMetadata_KeepsAPortAndANestedPath;
     [Test]
     procedure TestResourceMetadata_RequiresAResource;
+    [Test]
+    procedure TestApplyConfig_WithoutAResourceRaises;
+    [Test]
+    procedure TestApplyConfig_WithoutAuthorizationServersAcceptsAnythingElse;
+    [Test]
+    procedure TestSameUri_FoldsTheAuthorityButNotThePath;
     [Test]
     procedure TestAudience_DefaultsToResource;
     [Test]
@@ -860,6 +868,22 @@ begin
   Assert.IsTrue(LResult.Success, LResult.ErrorDescription);
 end;
 
+procedure TClaimsTokenValidatorTest.TestValidate_AudienceDifferingOnlyInPathCaseIsRejected;
+var
+  LResult: TTokenValidationResult;
+begin
+  // Audience is an identity check, and the path of a URI is case-sensitive: two MCP
+  // servers on one origin are distinguished by exactly that. Folding the case would let
+  // a token minted for one be spent at the other.
+  LResult := Validate(BuildToken(
+    Format('{"alg":"RS256","kid":"%s"}', [KeyId]),
+    Format('{"iss":"%s","aud":"https://mcp.example.com/MCP","exp":%d}',
+      [Issuer, UnixNow + 3600])));
+
+  Assert.IsFalse(LResult.Success);
+  Assert.IsTrue(LResult.ErrorCode = TTokenValidationErrorCode.InvalidToken);
+end;
+
 procedure TClaimsTokenValidatorTest.TestValidate_ExpiredTokenIsRejected;
 var
   LResult: TTokenValidationResult;
@@ -1370,6 +1394,45 @@ begin
       GetOAuthConfig.ResourceMetadata;
     end,
     Exception);
+end;
+
+procedure TOAuthConfigValidationTest.TestApplyConfig_WithoutAResourceRaises;
+begin
+  // Starting would be pointless: no resource means no metadata URL for the challenge,
+  // which raises inside the 401 path, and no default audience, so every token is
+  // rejected. Both are certain, so say so at startup rather than per request.
+  FConfig.AddAuthorizationServer('https://idp.example.com');
+
+  Assert.WillRaise(
+    procedure
+    begin
+      FConfig.ApplyConfig;
+    end,
+    EJRPCException);
+end;
+
+procedure TOAuthConfigValidationTest.TestApplyConfig_WithoutAuthorizationServersAcceptsAnythingElse;
+begin
+  // No authorization server means OAuth enforcement is off, so none of it is required.
+  Assert.WillNotRaise(
+    procedure
+    begin
+      FConfig.ApplyConfig;
+    end);
+end;
+
+procedure TOAuthConfigValidationTest.TestSameUri_FoldsTheAuthorityButNotThePath;
+begin
+  // Scheme and host are case-insensitive per RFC 3986; the path is not, and it is what
+  // distinguishes two MCP servers sharing an origin.
+  Assert.IsTrue(TOAuthConfig.SameUri('https://MCP.Example.com/mcp', 'https://mcp.example.com/mcp'),
+    'The authority is case-insensitive');
+  Assert.IsTrue(TOAuthConfig.SameUri('https://mcp.example.com/mcp/', 'https://mcp.example.com/mcp'),
+    'A trailing slash is not part of the identity');
+  Assert.IsFalse(TOAuthConfig.SameUri('https://mcp.example.com/MCP', 'https://mcp.example.com/mcp'),
+    'The path is case-sensitive: those are two different resources');
+  Assert.IsFalse(TOAuthConfig.SameUri('https://mcp.example.com/mcp', 'https://mcp.example.com/other'),
+    'Different paths are different resources');
 end;
 
 procedure TOAuthConfigValidationTest.TestAudience_DefaultsToResource;

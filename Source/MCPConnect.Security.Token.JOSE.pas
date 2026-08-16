@@ -149,6 +149,12 @@ begin
   // and the leaf certificate carries the same public key. The chain is ordered leaf
   // first: the rest of it only proves who issued that certificate, which is not our
   // question here.
+  // Nothing about the certificate is validated - not its expiry, not its chain. That
+  // is deliberate: what is being trusted is the JWKS, fetched over TLS from an issuer
+  // whose identity the metadata check already established, and the certificate is only
+  // the envelope its public key arrived in. A key the issuer stops publishing is gone
+  // at the next refresh, which is the revocation that matters here; an expired
+  // certificate around a key the issuer still publishes says nothing about the tokens.
   if Length(AKey.X5c) > 0 then
     Result := TSigningBase.PublicKeyFromCertificate(
       TEncoding.ANSI.GetBytes(CertificateToPEM(AKey.X5c[0])));

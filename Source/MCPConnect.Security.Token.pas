@@ -541,8 +541,10 @@ function TClaimsTokenValidator.AudienceMatches(AConfig: TOAuthConfig;
 var
   LValue: string;
 begin
+  // Compared as a URI, so that the case of the path counts: "aud" names the resource a
+  // token may be spent at, and two paths differing only in case are two resources.
   for LValue in AAudience do
-    if SameText(LValue.TrimRight(['/']), AConfig.Audience.TrimRight(['/'])) then
+    if TOAuthConfig.SameUri(LValue, AConfig.Audience) then
       Exit(True);
 
   Result := False;

@@ -32,6 +32,12 @@ resourcestring
     'are not verified. Development use only.';
   SOAuthValidatorClassInvalidFmt = 'Class [%s] cannot be used as a token validator: ' +
     'it does not implement ITokenValidator';
+  SOAuthResourceRequired = 'OAuth is enabled but no resource URL is configured: call ' +
+    'IOAuthConfig.SetResource with the public URL clients connect to. Without it there is no ' +
+    'metadata URL to advertise in a challenge and no default audience to validate tokens against.';
+  SOAuthInsecureUrlWarningFmt = 'OAuth URL "%s" is not https. Access tokens and authorization ' +
+    'codes are bearer credentials: over plain HTTP they are readable in transit. Acceptable on ' +
+    'localhost while developing, never off it.';
   SOAuthMetadataProxyWarning = 'The authorization server metadata proxy is enabled. The ' +
     'republished document declares the local proxy URL as its "issuer", so a client that checks ' +
     'that against the URL it fetched the document from (RFC 8414 section 3.3) accepts it - while ' +
@@ -284,6 +290,24 @@ type
     class function SameIssuer(const A, B: string): Boolean; static;
 
     /// <summary>
+    ///   Compares two URLs the way the URI they are decides: the scheme and the
+    ///   authority case-insensitively (RFC 3986 §3.1 and §3.2.2 define them that way),
+    ///   everything after them exactly. A trailing slash is ignored.
+    /// </summary>
+    /// <remarks>
+    ///   Used for both issuer and audience comparison, which are identity checks: two
+    ///   paths differing only in case are two different resources, and folding them
+    ///   together would let a token minted for one be spent at the other.
+    /// </remarks>
+    class function SameUri(const A, B: string): Boolean; static;
+
+    /// <summary>
+    ///   Whether a URL points at this machine, where plain HTTP is a normal thing to be
+    ///   doing while developing.
+    /// </summary>
+    class function IsLoopbackUrl(const AUrl: string): Boolean; static;
+
+    /// <summary>
     ///   The authorization server whose published keys verify a token issued by
     ///   AIssuer: AIssuer itself when it is one of the configured authorization
     ///   servers, the first configured one otherwise.
@@ -448,11 +472,41 @@ begin
 end;
 
 function TOAuthConfig.ApplyConfig: IJRPCApplication;
+
+  // Plain HTTP is what a developer runs on localhost, so only say something when the
+  // host is not one - a warning that fires on every dev machine is a warning nobody
+  // reads by the time it matters.
+  procedure WarnIfInsecure(const AUrl: string);
+  begin
+    if AUrl = '' then
+      Exit;
+
+    if AUrl.StartsWith('http://', True) and not IsLoopbackUrl(AUrl) then
+      Logger.LogWarning(SOAuthInsecureUrlWarningFmt, [AUrl]);
+  end;
+
+var
+  LUrl: string;
 begin
   Result := inherited ApplyConfig;
 
-  if (Length(AuthorizationServers) > 0) and not Assigned(TokenValidatorClass) then
+  if Length(AuthorizationServers) = 0 then
+    Exit;
+
+  // Fail here rather than on the first request. Without a resource there is no
+  // ResourceMetadata to put in a challenge - it raises, and the generic handler turns
+  // that into a 500 - and no Audience either, so every token would be rejected. Both
+  // are certain, so there is nothing to be gained by starting.
+  if Resource = '' then
+    raise EJRPCException.Create(SOAuthResourceRequired);
+
+  if not Assigned(TokenValidatorClass) then
     Logger.LogWarning(SOAuthNoValidatorWarning);
+
+  WarnIfInsecure(Resource);
+  WarnIfInsecure(MetadataProxyUpstream);
+  for LUrl in AuthorizationServers do
+    WarnIfInsecure(LUrl);
 
   // Once, at startup, rather than left to be discovered halfway through an authorization
   // flow: the failure it causes surfaces in the client, after a redirect, as an issuer
@@ -586,7 +640,58 @@ end;
 
 class function TOAuthConfig.SameIssuer(const A, B: string): Boolean;
 begin
-  Result := SameText(A.TrimRight(['/']), B.TrimRight(['/']));
+  Result := SameUri(A, B);
+end;
+
+class function TOAuthConfig.SameUri(const A, B: string): Boolean;
+
+  // An absolute URL is "scheme://authority" followed by the rest. Split by hand: TURI
+  // would reassemble a default port into the authority, which changes what is being
+  // compared.
+  procedure Split(const AValue: string; out AAuthority, ARest: string);
+  var
+    LSchemeEnd, LRestStart: Integer;
+  begin
+    LSchemeEnd := AValue.IndexOf('://');
+    if LSchemeEnd >= 0 then
+      LRestStart := AValue.IndexOf('/', LSchemeEnd + 3)
+    else
+      LRestStart := AValue.IndexOf('/');
+
+    if LRestStart >= 0 then
+    begin
+      AAuthority := AValue.Substring(0, LRestStart);
+      ARest := AValue.Substring(LRestStart);
+    end
+    else
+    begin
+      AAuthority := AValue;
+      ARest := '';
+    end;
+  end;
+
+var
+  LAuthorityA, LRestA, LAuthorityB, LRestB: string;
+begin
+  Split(A.Trim.TrimRight(['/']), LAuthorityA, LRestA);
+  Split(B.Trim.TrimRight(['/']), LAuthorityB, LRestB);
+
+  Result := SameText(LAuthorityA, LAuthorityB) and (LRestA = LRestB);
+end;
+
+class function TOAuthConfig.IsLoopbackUrl(const AUrl: string): Boolean;
+var
+  LHost: string;
+begin
+  try
+    LHost := TURI.Create(AUrl).Host;
+  except
+    // A URL this server cannot even parse is not one to stay quiet about.
+    on Exception do
+      Exit(False);
+  end;
+
+  Result := SameText(LHost, 'localhost') or (LHost = '127.0.0.1') or (LHost = '::1');
 end;
 
 function TOAuthConfig.GetDiscoveryIssuers: TArray<string>;

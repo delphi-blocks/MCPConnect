@@ -40,7 +40,7 @@ contains
   MCPConnect.Design.Wizards.Utils in '..\..\Source\Design\MCPConnect.Design.Wizards.Utils.pas',
   MCPConnect.Design.Wizards.Types in '..\..\Source\Design\MCPConnect.Design.Wizards.Types.pas',
   MCPConnect.Design.Wizards.CodeGen in '..\..\Source\Design\MCPConnect.Design.Wizards.CodeGen.pas',
-  MCPConnect.Design.Wizards.Dialog in '..\..\Source\Design\MCPConnect.Design.Wizards.Dialog.pas' {formMCPProjectWizard},
+  MCPConnect.Design.Wizards.Dialog in '..\..\Source\Design\MCPConnect.Design.Wizards.Dialog.pas' {FormMCPProjectWizard},
   MCPConnect.Design.Wizards.Modules in '..\..\Source\Design\MCPConnect.Design.Wizards.Modules.pas',
   MCPConnect.Design.Wizards.ProjectCreator in '..\..\Source\Design\MCPConnect.Design.Wizards.ProjectCreator.pas',
   MCPConnect.Design.Wizards in '..\..\Source\Design\MCPConnect.Design.Wizards.pas',

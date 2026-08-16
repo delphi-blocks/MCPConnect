@@ -18,7 +18,8 @@ interface
 uses
   System.SysUtils, System.Classes,
   Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.StdCtrls, Vcl.ExtCtrls, Vcl.ComCtrls,
-
+  Vcl.Imaging.pngimage,
+  
   MCPConnect.Design.Wizards.Types;
 
 type
@@ -27,7 +28,7 @@ type
   ///   The pages live in a TPageControl whose tabs are hidden at run time: the
   ///   navigation is driven by the Back / Next buttons only.
   /// </summary>
-  TformMCPProjectWizard = class(TForm)
+  TFormMCPProjectWizard = class(TForm)
     PanelBanner: TPanel;
     ImageBanner: TImage;
     PanelButtons: TPanel;
@@ -179,7 +180,7 @@ const
 
 { TformMCPProjectWizard }
 
-class function TformMCPProjectWizard.FindConfig(var AConfig: TMCPProjectConfig): Boolean;
+class function TFormMCPProjectWizard.FindConfig(var AConfig: TMCPProjectConfig): Boolean;
 var
   LWizard: TformMCPProjectWizard;
 begin
@@ -195,11 +196,11 @@ begin
   end;
 end;
 
-procedure TformMCPProjectWizard.FormCreate(Sender: TObject);
+procedure TFormMCPProjectWizard.FormCreate(Sender: TObject);
 var
   LIndex: Integer;
 begin
-  LoadImages;
+  //LoadImages;
 
   for LIndex := 0 to PageControl.PageCount - 1 do
     PageControl.Pages[LIndex].TabVisible := False;
@@ -207,7 +208,7 @@ begin
   PageControl.ActivePage := TabAppKind;
 end;
 
-procedure TformMCPProjectWizard.LoadImages;
+procedure TFormMCPProjectWizard.LoadImages;
 begin
   // A missing resource is not an error: the TImage simply stays an empty
   // placeholder, so the artwork can be swapped without touching the code
@@ -220,7 +221,7 @@ end;
 
 {$REGION 'Configuration transfer'}
 
-procedure TformMCPProjectWizard.LoadConfig;
+procedure TFormMCPProjectWizard.LoadConfig;
 begin
   RadioGroupAppKind.ItemIndex := Ord(FConfig.AppKind);
   RadioGroupTransport.ItemIndex := Ord(FConfig.Transport);
@@ -262,7 +263,7 @@ begin
   UpdateNavigation;
 end;
 
-procedure TformMCPProjectWizard.SaveConfig;
+procedure TFormMCPProjectWizard.SaveConfig;
 begin
   FConfig.AppKind := SelectedAppKind;
   FConfig.Transport := SelectedTransport;
@@ -303,7 +304,7 @@ begin
   FConfig.CreateSampleUnit := CheckSamples.Checked;
 end;
 
-function TformMCPProjectWizard.SelectedAppKind: TMCPAppKind;
+function TFormMCPProjectWizard.SelectedAppKind: TMCPAppKind;
 begin
   case RadioGroupAppKind.ItemIndex of
     Ord(TMCPAppKind.Console): Result := TMCPAppKind.Console;
@@ -313,7 +314,7 @@ begin
   end;
 end;
 
-function TformMCPProjectWizard.SelectedTransport: TMCPTransportKind;
+function TFormMCPProjectWizard.SelectedTransport: TMCPTransportKind;
 begin
   case RadioGroupTransport.ItemIndex of
     TransportIndexStdio: Result := TMCPTransportKind.Stdio;
@@ -323,7 +324,7 @@ begin
   end;
 end;
 
-function TformMCPProjectWizard.SelectedAuthKind: TMCPAuthKind;
+function TFormMCPProjectWizard.SelectedAuthKind: TMCPAuthKind;
 begin
   case RadioGroupAuth.ItemIndex of
     AuthIndexToken: Result := TMCPAuthKind.StaticToken;
@@ -333,7 +334,7 @@ begin
   end;
 end;
 
-function TformMCPProjectWizard.SelectedTokenLocation: TMCPTokenLocation;
+function TFormMCPProjectWizard.SelectedTokenLocation: TMCPTokenLocation;
 begin
   case ComboTokenLocation.ItemIndex of
     Ord(TMCPTokenLocation.Cookie): Result := TMCPTokenLocation.Cookie;
@@ -346,7 +347,7 @@ end;
 {$ENDREGION}
 {$REGION 'Navigation'}
 
-function TformMCPProjectWizard.VisiblePages: TArray<TTabSheet>;
+function TFormMCPProjectWizard.VisiblePages: TArray<TTabSheet>;
 begin
   Result := [TabAppKind, TabTransport, TabServer];
 
@@ -357,7 +358,7 @@ begin
   Result := Result + [TabOptions, TabSummary];
 end;
 
-function TformMCPProjectWizard.CurrentPageIndex: Integer;
+function TFormMCPProjectWizard.CurrentPageIndex: Integer;
 var
   LPages: TArray<TTabSheet>;
   LIndex: Integer;
@@ -371,7 +372,7 @@ begin
   end;
 end;
 
-procedure TformMCPProjectWizard.GoToPage(ADelta: Integer);
+procedure TFormMCPProjectWizard.GoToPage(ADelta: Integer);
 var
   LPages: TArray<TTabSheet>;
   LIndex: Integer;
@@ -388,7 +389,7 @@ begin
   UpdateNavigation;
 end;
 
-procedure TformMCPProjectWizard.UpdateNavigation;
+procedure TFormMCPProjectWizard.UpdateNavigation;
 var
   LPages: TArray<TTabSheet>;
   LIsLast: Boolean;
@@ -435,12 +436,12 @@ begin
   end;
 end;
 
-procedure TformMCPProjectWizard.ButtonBackClick(Sender: TObject);
+procedure TFormMCPProjectWizard.ButtonBackClick(Sender: TObject);
 begin
   GoToPage(-1);
 end;
 
-procedure TformMCPProjectWizard.ButtonNextClick(Sender: TObject);
+procedure TFormMCPProjectWizard.ButtonNextClick(Sender: TObject);
 var
   LPages: TArray<TTabSheet>;
 begin
@@ -464,13 +465,13 @@ end;
 {$ENDREGION}
 {$REGION 'Controls state'}
 
-procedure TformMCPProjectWizard.OptionChanged(Sender: TObject);
+procedure TFormMCPProjectWizard.OptionChanged(Sender: TObject);
 begin
   UpdateControlsState;
   UpdateNavigation;
 end;
 
-procedure TformMCPProjectWizard.UpdateControlsState;
+procedure TFormMCPProjectWizard.UpdateControlsState;
 var
   LIsConsole: Boolean;
   LIsHttp: Boolean;
@@ -515,7 +516,7 @@ begin
   LabelSessionTimeout.Enabled := EditSessionTimeout.Enabled;
 end;
 
-procedure TformMCPProjectWizard.UpdateSummary;
+procedure TFormMCPProjectWizard.UpdateSummary;
 
   function OnOff(AValue: Boolean): string;
   begin
@@ -615,7 +616,7 @@ end;
 {$ENDREGION}
 {$REGION 'Validation'}
 
-function TformMCPProjectWizard.FailPage(const AMessage: string;
+function TFormMCPProjectWizard.FailPage(const AMessage: string;
   AControl: TWinControl): Boolean;
 begin
   Result := False;
@@ -624,7 +625,7 @@ begin
     AControl.SetFocus;
 end;
 
-function TformMCPProjectWizard.ValidateCurrentPage: Boolean;
+function TFormMCPProjectWizard.ValidateCurrentPage: Boolean;
 var
   LPort: Integer;
   LTimeout: Integer;

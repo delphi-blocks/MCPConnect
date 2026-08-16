@@ -127,7 +127,7 @@
         <DCCReference Include="..\..\Source\Design\MCPConnect.Design.Wizards.Types.pas"/>
         <DCCReference Include="..\..\Source\Design\MCPConnect.Design.Wizards.CodeGen.pas"/>
         <DCCReference Include="..\..\Source\Design\MCPConnect.Design.Wizards.Dialog.pas">
-            <Form>formMCPProjectWizard</Form>
+            <Form>FormMCPProjectWizard</Form>
         </DCCReference>
         <DCCReference Include="..\..\Source\Design\MCPConnect.Design.Wizards.Modules.pas"/>
         <DCCReference Include="..\..\Source\Design\MCPConnect.Design.Wizards.ProjectCreator.pas"/>

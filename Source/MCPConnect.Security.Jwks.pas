@@ -455,9 +455,25 @@ begin
   FRequestTimeout := AValue;
 end;
 
+// Trims, strips trailing slash, lowercases scheme+authority but keeps the path
+// case-exact (RFC 8414 §3.3 requires an identical match, and RFC 3986 §3.1/§3.2.2
+// only make scheme and host case-insensitive).
 class function TOAuthMetadataProvider.NormalizeIssuer(const AIssuer: string): string;
+var
+  LTrimmed: string;
+  LSchemeEnd, LPathStart: Integer;
 begin
-  Result := AIssuer.Trim.TrimRight(['/']).ToLower;
+  LTrimmed := AIssuer.Trim.TrimRight(['/']);
+  LSchemeEnd := LTrimmed.IndexOf('://');
+  if LSchemeEnd >= 0 then
+    LPathStart := LTrimmed.IndexOf('/', LSchemeEnd + 3)
+  else
+    LPathStart := LTrimmed.IndexOf('/');
+
+  if LPathStart >= 0 then
+    Result := LTrimmed.Substring(0, LPathStart).ToLower + LTrimmed.Substring(LPathStart)
+  else
+    Result := LTrimmed.ToLower;
 end;
 
 class function TOAuthMetadataProvider.IsExpired(const AFetchedAt: TDateTime;

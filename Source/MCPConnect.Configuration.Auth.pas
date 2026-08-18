@@ -38,6 +38,9 @@ resourcestring
   SOAuthInsecureUrlWarningFmt = 'OAuth URL "%s" is not https. Access tokens and authorization ' +
     'codes are bearer credentials: over plain HTTP they are readable in transit. Acceptable on ' +
     'localhost while developing, never off it.';
+  SOAuthNoAuthServerRequired = 'A resource URL or token validator is configured but no ' +
+    'authorization server has been added: OAuth enforcement will not be active. ' +
+    'Call IOAuthConfig.AddAuthorizationServer to enable it.';
   SOAuthMetadataProxyWarning = 'The authorization server metadata proxy is enabled. The ' +
     'republished document declares the local proxy URL as its "issuer", so a client that checks ' +
     'that against the URL it fetched the document from (RFC 8414 section 3.3) accepts it - while ' +
@@ -491,7 +494,11 @@ begin
   Result := inherited ApplyConfig;
 
   if Length(AuthorizationServers) = 0 then
+  begin
+    if (Resource <> '') or Assigned(TokenValidatorClass) then
+      raise EJRPCException.Create(SOAuthNoAuthServerRequired);
     Exit;
+  end;
 
   // Fail here rather than on the first request. Without a resource there is no
   // ResourceMetadata to put in a challenge - it raises, and the generic handler turns

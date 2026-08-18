@@ -272,7 +272,10 @@ begin
     case FAuthTokenConfig.Location of
       TAuthTokenLocation.Bearer:
       begin
-        if not ConstantTimeEquals(FRequest.GetHeader('Authorization'), 'Bearer ' + FAuthTokenConfig.Token) then
+        var LAuthHeader := FRequest.GetHeader('Authorization');
+        if not LAuthHeader.StartsWith('Bearer ', True) then
+          Exit(False);
+        if not ConstantTimeEquals(LAuthHeader.Substring(7), FAuthTokenConfig.Token) then
           Exit(False);
       end;
 
@@ -334,7 +337,7 @@ begin
   else
   begin
     var LAuthHeader := FRequest.GetHeader('Authorization');
-    if LAuthHeader.StartsWith(BearerPrefix) then
+    if LAuthHeader.StartsWith(BearerPrefix, True) then
     begin
       var LResult := ValidateAccessToken(LAuthHeader.Substring(Length(BearerPrefix)).Trim);
       if LResult.Success then

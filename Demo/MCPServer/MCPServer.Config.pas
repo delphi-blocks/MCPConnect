@@ -16,6 +16,7 @@ uses
 
   MCPConnect.Configuration.MCP,
   MCPConnect.Configuration.Session,
+  MCPConnect.Configuration.Auth,
 
   MCPConnect.Content.Writers.RTL,
   {$IFDEF FRAMEWORK_VCL}
@@ -54,9 +55,9 @@ begin
 
   AServer
 
-//    .Plugin.Configure<IAuthTokenConfig>
-//      .SetToken('my-secret-token')
-//    .ApplyConfig
+    .Plugin.Configure<IAuthTokenConfig>
+      .SetToken('my-secret-token')
+    .ApplyConfig
 
 	{$IFDEF SESSION}
     .Plugin.Configure<ISessionConfig>

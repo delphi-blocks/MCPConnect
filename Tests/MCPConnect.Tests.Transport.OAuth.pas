@@ -91,7 +91,10 @@ type
     function Execute(const AMethod, AUrl: string): TTransportOutcome; overload;
     function Execute(const AMethod, AUrl, AAuthorization: string;
       AProtocol: TTransportProtocol = TTransportProtocol.StreamableHTTP): TTransportOutcome; overload;
+    function Execute(const AMethod, AUrl, AHeaderName, AHeaderValue: string;
+      AProtocol: TTransportProtocol): TTransportOutcome; overload;
     procedure EnableOAuth;
+    procedure EnableStaticToken(const AToken: string);
   public
     [Setup]
     procedure Setup;
@@ -124,6 +127,20 @@ type
     procedure TestStdio_IsExemptFromTheTokenCheck;
     [Test]
     procedure TestWithoutAnAuthorizationServer_NothingIsEnforced;
+
+    [Test]
+    procedure TestOAuth_LowercaseBearerScheme_IsAccepted;
+    [Test]
+    procedure TestOAuth_MixedCaseBearerScheme_IsAccepted;
+    [Test]
+    procedure TestOAuth_LowercaseHeaderName_IsAccepted;
+    [Test]
+    procedure TestOAuth_LowercaseHeaderAndScheme_IsAccepted;
+
+    [Test]
+    procedure TestStaticToken_LowercaseBearerScheme_IsAccepted;
+    [Test]
+    procedure TestStaticToken_LowercaseHeaderName_IsAccepted;
   end;
 
 implementation
@@ -218,6 +235,12 @@ end;
 
 function TTransportOAuthTest.Execute(const AMethod, AUrl, AAuthorization: string;
   AProtocol: TTransportProtocol): TTransportOutcome;
+begin
+  Result := Execute(AMethod, AUrl, 'Authorization', AAuthorization, AProtocol);
+end;
+
+function TTransportOAuthTest.Execute(const AMethod, AUrl, AHeaderName, AHeaderValue: string;
+  AProtocol: TTransportProtocol): TTransportOutcome;
 var
   LHandler: IMCPTransportHandler;
   LOutcome: TTransportOutcome;
@@ -232,8 +255,8 @@ begin
       ARequest.Url := AUrl;
       ARequest.Command := AMethod;
       ARequest.Protocol := AProtocol;
-      if AAuthorization <> '' then
-        ARequest.AddOrSetHeader('Authorization', AAuthorization);
+      if AHeaderValue <> '' then
+        ARequest.AddOrSetHeader(AHeaderName, AHeaderValue);
     end,
     procedure (AResponse: TMCPTransportResponse)
     begin
@@ -419,6 +442,91 @@ begin
 
   Assert.AreNotEqual(401, LOutcome.Code, LOutcome.Content);
   Assert.IsFalse(LOutcome.HasChallenge);
+end;
+
+{ Case-insensitive header/scheme tests — OAuth }
+
+procedure TTransportOAuthTest.TestOAuth_LowercaseBearerScheme_IsAccepted;
+var
+  LOutcome: TTransportOutcome;
+begin
+  EnableOAuth;
+
+  LOutcome := Execute('POST', ResourcePath, 'bearer ' + TStubTokenValidator.GoodToken);
+
+  Assert.AreNotEqual(401, LOutcome.Code, 'Lowercase "bearer" scheme must be accepted (RFC 7235 §2.1)');
+  Assert.IsFalse(LOutcome.HasChallenge);
+end;
+
+procedure TTransportOAuthTest.TestOAuth_MixedCaseBearerScheme_IsAccepted;
+var
+  LOutcome: TTransportOutcome;
+begin
+  EnableOAuth;
+
+  LOutcome := Execute('POST', ResourcePath, 'BEARER ' + TStubTokenValidator.GoodToken);
+
+  Assert.AreNotEqual(401, LOutcome.Code, 'Mixed-case "BEARER" scheme must be accepted (RFC 7235 §2.1)');
+  Assert.IsFalse(LOutcome.HasChallenge);
+end;
+
+procedure TTransportOAuthTest.TestOAuth_LowercaseHeaderName_IsAccepted;
+var
+  LOutcome: TTransportOutcome;
+begin
+  EnableOAuth;
+
+  LOutcome := Execute('POST', ResourcePath, 'authorization',
+    'Bearer ' + TStubTokenValidator.GoodToken, TTransportProtocol.StreamableHTTP);
+
+  Assert.AreNotEqual(401, LOutcome.Code, 'Lowercase "authorization" header must be accepted (RFC 7230 §3.2)');
+  Assert.IsFalse(LOutcome.HasChallenge);
+end;
+
+procedure TTransportOAuthTest.TestOAuth_LowercaseHeaderAndScheme_IsAccepted;
+var
+  LOutcome: TTransportOutcome;
+begin
+  EnableOAuth;
+
+  LOutcome := Execute('POST', ResourcePath, 'authorization',
+    'bearer ' + TStubTokenValidator.GoodToken, TTransportProtocol.StreamableHTTP);
+
+  Assert.AreNotEqual(401, LOutcome.Code, 'Lowercase header + scheme must be accepted');
+  Assert.IsFalse(LOutcome.HasChallenge);
+end;
+
+{ Case-insensitive header/scheme tests — static token }
+
+procedure TTransportOAuthTest.EnableStaticToken(const AToken: string);
+begin
+  FServer.Plugin.Configure<IAuthTokenConfig>
+    .SetToken(AToken)
+    .SetTokenLocation(TAuthTokenLocation.Bearer)
+  .ApplyConfig;
+end;
+
+procedure TTransportOAuthTest.TestStaticToken_LowercaseBearerScheme_IsAccepted;
+var
+  LOutcome: TTransportOutcome;
+begin
+  EnableStaticToken('my-static-secret');
+
+  LOutcome := Execute('POST', ResourcePath, 'bearer my-static-secret');
+
+  Assert.AreNotEqual(403, LOutcome.Code, 'Lowercase "bearer" must be accepted for static tokens');
+end;
+
+procedure TTransportOAuthTest.TestStaticToken_LowercaseHeaderName_IsAccepted;
+var
+  LOutcome: TTransportOutcome;
+begin
+  EnableStaticToken('my-static-secret');
+
+  LOutcome := Execute('POST', ResourcePath, 'authorization',
+    'Bearer my-static-secret', TTransportProtocol.StreamableHTTP);
+
+  Assert.AreNotEqual(403, LOutcome.Code, 'Lowercase "authorization" header must be accepted for static tokens');
 end;
 
 end.

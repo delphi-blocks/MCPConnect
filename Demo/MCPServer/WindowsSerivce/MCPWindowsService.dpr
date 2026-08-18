@@ -4,7 +4,12 @@ uses
   Vcl.SvcMgr,
   MCPServer.Service in 'MCPServer.Service.pas' {ServiceModule: TService},
   MCPServer.Config in '..\MCPServer.Config.pas',
-  MCPServer.Tools in '..\MCPServer.Tools.pas';
+  MCPServer.Tools in '..\MCPServer.Tools.pas',
+  MCPServer.Notifications in '..\MCPServer.Notifications.pas',
+  MCPServer.Apps in '..\MCPServer.Apps.pas',
+  MCPServer.Prompts in '..\MCPServer.Prompts.pas',
+  MCPServer.Resources in '..\MCPServer.Resources.pas',
+  MCPServer.Tools.Test in '..\MCPServer.Tools.Test.pas';
 
 {$R *.RES}
 

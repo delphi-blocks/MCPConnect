@@ -44,6 +44,7 @@ contains
   MCPConnect.Design.Wizards.Modules in '..\..\Source\Design\MCPConnect.Design.Wizards.Modules.pas',
   MCPConnect.Design.Wizards.ProjectCreator in '..\..\Source\Design\MCPConnect.Design.Wizards.ProjectCreator.pas',
   MCPConnect.Design.Wizards in '..\..\Source\Design\MCPConnect.Design.Wizards.pas',
-  MCPConnect.Design.Register in '..\..\Source\Design\MCPConnect.Design.Register.pas';
+  MCPConnect.Design.Register in '..\..\Source\Design\MCPConnect.Design.Register.pas',
+  MCPConnect.Design.Theme in '..\..\Source\Design\MCPConnect.Design.Theme.pas';
 
 end.

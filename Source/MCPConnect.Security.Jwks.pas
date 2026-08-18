@@ -197,6 +197,29 @@ type
   end;
 
   /// <summary>
+  ///   Optional extension of <see cref="IOAuthMetadataProvider" /> that exposes cache
+  ///   and timeout settings. The default provider implements it; a custom provider may
+  ///   implement it too so that <c>SetKeyCacheTTL</c> and similar configuration calls
+  ///   reach it without a class cast.
+  /// </summary>
+  IOAuthCacheableMetadataProvider = interface(IOAuthMetadataProvider)
+  ['{A1E9B4C2-7F3D-4A6E-8C15-3D9F2B7E5A41}']
+    function GetMetadataTTL: Integer;
+    procedure SetMetadataTTL(AValue: Integer);
+    function GetKeysTTL: Integer;
+    procedure SetKeysTTL(AValue: Integer);
+    function GetKeysRefreshInterval: Integer;
+    procedure SetKeysRefreshInterval(AValue: Integer);
+    function GetRequestTimeout: Integer;
+    procedure SetRequestTimeout(AValue: Integer);
+
+    property MetadataTTL: Integer read GetMetadataTTL write SetMetadataTTL;
+    property KeysTTL: Integer read GetKeysTTL write SetKeysTTL;
+    property KeysRefreshInterval: Integer read GetKeysRefreshInterval write SetKeysRefreshInterval;
+    property RequestTimeout: Integer read GetRequestTimeout write SetRequestTimeout;
+  end;
+
+  /// <summary>
   ///   Default <see cref="IOAuthMetadataProvider" />: fetches the documents over HTTP
   ///   and keeps them in a thread-safe cache with separate time-to-live values for the
   ///   metadata document and for the key set.
@@ -213,7 +236,7 @@ type
   ///   so the URL a document is retrieved from is always the URL it was asked for. Those
   ///   two together are what make the "jwks_uri" it names safe to fetch keys from.
   /// </remarks>
-  TOAuthMetadataProvider = class(TInterfacedObject, IOAuthMetadataProvider)
+  TOAuthMetadataProvider = class(TInterfacedObject, IOAuthMetadataProvider, IOAuthCacheableMetadataProvider)
   private type
     TMetadataEntry = class
       Metadata: TOAuthServerMetadata;
@@ -268,14 +291,24 @@ type
     function TryGetKey(const AIssuer, AKeyId: string; out AKey: TOAuthJsonWebKey): Boolean;
     procedure Invalidate(const AIssuer: string);
 
+    { IOAuthCacheableMetadataProvider }
+    function GetMetadataTTL: Integer;
+    procedure SetMetadataTTL(AValue: Integer);
+    function GetKeysTTL: Integer;
+    procedure SetKeysTTL(AValue: Integer);
+    function GetKeysRefreshInterval: Integer;
+    procedure SetKeysRefreshInterval(AValue: Integer);
+    function GetRequestTimeout: Integer;
+    procedure SetRequestTimeout(AValue: Integer);
+
     /// <summary>Lifetime of a cached metadata document, in seconds.</summary>
-    property MetadataTTL: Integer read FMetadataTTL write FMetadataTTL;
+    property MetadataTTL: Integer read GetMetadataTTL write SetMetadataTTL;
     /// <summary>Lifetime of a cached key set, in seconds.</summary>
-    property KeysTTL: Integer read FKeysTTL write FKeysTTL;
+    property KeysTTL: Integer read GetKeysTTL write SetKeysTTL;
     /// <summary>Minimum interval between two unknown-key-id refreshes, in seconds.</summary>
-    property KeysRefreshInterval: Integer read FKeysRefreshInterval write FKeysRefreshInterval;
+    property KeysRefreshInterval: Integer read GetKeysRefreshInterval write SetKeysRefreshInterval;
     /// <summary>Connection and response timeout of the HTTP requests, in milliseconds.</summary>
-    property RequestTimeout: Integer read FRequestTimeout write FRequestTimeout;
+    property RequestTimeout: Integer read GetRequestTimeout write SetRequestTimeout;
 
     /// <summary>
     ///   The URLs an issuer's metadata document may be published at, in the order the
@@ -380,6 +413,46 @@ begin
   FMetadataCache.Free;
   FLock.Free;
   inherited;
+end;
+
+function TOAuthMetadataProvider.GetMetadataTTL: Integer;
+begin
+  Result := FMetadataTTL;
+end;
+
+procedure TOAuthMetadataProvider.SetMetadataTTL(AValue: Integer);
+begin
+  FMetadataTTL := AValue;
+end;
+
+function TOAuthMetadataProvider.GetKeysTTL: Integer;
+begin
+  Result := FKeysTTL;
+end;
+
+procedure TOAuthMetadataProvider.SetKeysTTL(AValue: Integer);
+begin
+  FKeysTTL := AValue;
+end;
+
+function TOAuthMetadataProvider.GetKeysRefreshInterval: Integer;
+begin
+  Result := FKeysRefreshInterval;
+end;
+
+procedure TOAuthMetadataProvider.SetKeysRefreshInterval(AValue: Integer);
+begin
+  FKeysRefreshInterval := AValue;
+end;
+
+function TOAuthMetadataProvider.GetRequestTimeout: Integer;
+begin
+  Result := FRequestTimeout;
+end;
+
+procedure TOAuthMetadataProvider.SetRequestTimeout(AValue: Integer);
+begin
+  FRequestTimeout := AValue;
 end;
 
 class function TOAuthMetadataProvider.NormalizeIssuer(const AIssuer: string): string;

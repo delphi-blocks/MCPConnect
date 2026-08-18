@@ -624,8 +624,9 @@ function TOAuthConfig.SetKeyCacheTTL(ASeconds: Integer): IOAuthConfig;
 begin
   FKeyCacheTTL := ASeconds;
 
-  if Assigned(FMetadataProvider) then
-    (FMetadataProvider as TOAuthMetadataProvider).KeysTTL := ASeconds;
+  var LSettings: IOAuthCacheableMetadataProvider;
+  if Supports(FMetadataProvider, IOAuthCacheableMetadataProvider, LSettings) then
+    LSettings.KeysTTL := ASeconds;
 
   Result := Self;
 end;

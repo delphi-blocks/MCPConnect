@@ -74,6 +74,7 @@ begin
     .Plugin.Configure<IOAuthConfig>
       .SetResource(TEnvironment.Get('OIDC_MCP_SERVER'))
       .AddAuthorizationServer(TEnvironment.Get('OIDC_AUTH_SERVER'))
+      //.EnableMetadataProxy(TEnvironment.Get('OIDC_AUTH_SERVER'))
       .AddTrustedIssuer(TEnvironment.Get('OIDC_TOKEN_ISSUER'))
       {$IFDEF DELPHI_JOSE_JWT}
       .SetTokenValidatorClass(TJoseTokenValidator)

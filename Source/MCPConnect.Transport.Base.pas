@@ -450,8 +450,10 @@ begin
   try
     LHttp.ConnectionTimeout := RequestTimeoutMs;
     LHttp.ResponseTimeout := RequestTimeoutMs;
+    LHttp.HandleRedirects := False;
     try
-      var LUpstreamUrl := FOAuthConfig.MetadataProxyUpstream.TrimRight(['/']) + '/.well-known/openid-configuration';
+      var LUpstream := FOAuthConfig.MetadataProxyUpstream.TrimRight(['/']);
+      var LUpstreamUrl := LUpstream + '/.well-known/openid-configuration';
       var LResponse := LHttp.Get(LUpstreamUrl);
 
       if LResponse.StatusCode <> HTTP_CODE_OK then
@@ -465,6 +467,20 @@ begin
 
       var LJSON := TJSONObject.ParseJSONValue(LResponse.ContentAsString, True, True) as TJSONObject;
       try
+        // RFC 8414 §3.3: verify that the upstream document's issuer matches the
+        // configured upstream URL before trusting anything else in the document.
+        // Without this, a compromised or redirected upstream can point
+        // authorization_endpoint / jwks_uri anywhere it likes.
+        var LDocIssuer: string;
+        if not LJSON.TryGetValue<string>('issuer', LDocIssuer)
+           or (LDocIssuer.Trim.TrimRight(['/']).ToLower <> LUpstream.ToLower) then
+        begin
+          FResponse.Code := HTTP_CODE_BADGATEWAY;
+          FResponse.Content := ErrorBody(Format(
+            'Upstream metadata issuer mismatch: expected "%s"', [LUpstream]));
+          Exit;
+        end;
+
         var LMethods: TJSONArray;
         if not (LJSON.TryGetValue<TJSONArray>('code_challenge_methods_supported', LMethods) and (LMethods.Count > 0)) then
         begin

@@ -269,6 +269,11 @@ begin
   Result := True;
   if Assigned(FAuthTokenConfig) and (FAuthTokenConfig.Token <> '') then
   begin
+    if SameText(FRequest.Command, 'OPTIONS') then
+      Exit;
+    if (Length(FOAuthConfig.AuthorizationServers) > 0) and
+       (IsProtectedResourceMetadataRequest or IsMetadataProxyRequest) then
+      Exit;
     case FAuthTokenConfig.Location of
       TAuthTokenLocation.Bearer:
       begin

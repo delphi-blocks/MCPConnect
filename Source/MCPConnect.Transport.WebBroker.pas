@@ -110,7 +110,7 @@ begin
   AWebRequest.AllHeaders.NameValueSeparator := ':';
   for var I := 0 to AWebRequest.AllHeaders.Count - 1 do
     AMCPRequest.AddOrSetHeader(AWebRequest.AllHeaders.KeyNames[I],
-      AWebRequest.AllHeaders.ValueFromIndex[I]);
+      AWebRequest.AllHeaders.ValueFromIndex[I].TrimLeft);
   {$ELSE}
   var LSessionConfig := FServer.GetConfiguration<TSessionConfig>;
 
@@ -155,7 +155,12 @@ procedure TJRPCDispatcher.ConvertResponseHeaders(AWebResponse: TWebResponse;
   AMCPResponse: TMCPTransportResponse);
 begin
   for var pair in AMCPResponse.Headers do
-    AWebResponse.CustomHeaders.AddPair(pair.Key, pair.Value);
+  begin
+    if SameText(pair.Key, 'WWW-Authenticate') then
+      AWebResponse.WWWAuthenticate := pair.Value
+    else
+      AWebResponse.CustomHeaders.AddPair(pair.Key, pair.Value);
+  end;
 end;
 
 constructor TJRPCDispatcher.Create(AOwner: TComponent);

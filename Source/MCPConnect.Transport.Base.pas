@@ -18,7 +18,7 @@ interface
 {$SCOPEDENUMS ON}
 
 uses
-  System.Classes, System.SysUtils, System.JSON,
+  System.Classes, System.SysUtils, System.JSON, System.SyncObjs,
   System.Generics.Collections, System.Generics.Defaults,
   IdCustomHTTPServer, IdContext, IdGlobal,
 
@@ -154,6 +154,23 @@ type
   end;
 
   TMCPTransportHandler = class(TInterfacedObject, IMCPTransportHandler)
+  private type
+    TProxyCacheEntry = class
+      Content: string;
+      FetchedAt: TDateTime;
+    end;
+
+    TProxyCache = class
+    private
+      FLock: TCriticalSection;
+      FEntry: TProxyCacheEntry;
+      FTTLSeconds: Integer;
+    public
+      constructor Create(ATTLSeconds: Integer);
+      destructor Destroy; override;
+      function TryGet(out AContent: string): Boolean;
+      procedure Store(const AContent: string);
+    end;
   private
     FRequest: TMCPTransportRequest;
     FResponse: TMCPTransportResponse;
@@ -170,6 +187,9 @@ type
     FSessionConfig: TSessionConfig;
     FResponseWriter: IMCPTransportWriter;
     FSendResponseHeadersProc: TProc<TMCPTransportResponse>;
+    class var FProxyCache: TProxyCache;
+    class constructor Create;
+    class destructor Destroy;
   private
     procedure InjectCORS;
     function CheckOrigin: Boolean;
@@ -207,6 +227,7 @@ implementation
 
 uses
   System.IOUtils, System.Net.HttpClient, System.Diagnostics,
+  System.DateUtils,
   Logify,
   Neon.Core.Utils,
   MCPConnect.Transport.MediaType,
@@ -214,7 +235,58 @@ uses
   MCPConnect.JRPC.Invoker;
 
 
+{ TMCPTransportHandler.TProxyCache }
+
+constructor TMCPTransportHandler.TProxyCache.Create(ATTLSeconds: Integer);
+begin
+  inherited Create;
+  FLock := TCriticalSection.Create;
+  FTTLSeconds := ATTLSeconds;
+end;
+
+destructor TMCPTransportHandler.TProxyCache.Destroy;
+begin
+  FEntry.Free;
+  FLock.Free;
+  inherited;
+end;
+
+function TMCPTransportHandler.TProxyCache.TryGet(out AContent: string): Boolean;
+begin
+  FLock.Enter;
+  try
+    Result := Assigned(FEntry) and (SecondsBetween(Now, FEntry.FetchedAt) < FTTLSeconds);
+    if Result then
+      AContent := FEntry.Content;
+  finally
+    FLock.Leave;
+  end;
+end;
+
+procedure TMCPTransportHandler.TProxyCache.Store(const AContent: string);
+begin
+  FLock.Enter;
+  try
+    if not Assigned(FEntry) then
+      FEntry := TProxyCacheEntry.Create;
+    FEntry.Content := AContent;
+    FEntry.FetchedAt := Now;
+  finally
+    FLock.Leave;
+  end;
+end;
+
 { TMCPTransportHandler }
+
+class constructor TMCPTransportHandler.Create;
+begin
+  FProxyCache := TProxyCache.Create(300);
+end;
+
+class destructor TMCPTransportHandler.Destroy;
+begin
+  FProxyCache.Free;
+end;
 
 constructor TMCPTransportHandler.Create(AServer: TJRPCServer; AResponseWriter: IMCPTransportWriter);
 begin
@@ -451,6 +523,14 @@ const
 begin
   FResponse.ContentType := TMediaType.APPLICATION_JSON;
 
+  var LCached: string;
+  if FProxyCache.TryGet(LCached) then
+  begin
+    FResponse.Code := HTTP_CODE_OK;
+    FResponse.Content := LCached;
+    Exit;
+  end;
+
   var LHttp := THTTPClient.Create;
   try
     LHttp.ConnectionTimeout := RequestTimeoutMs;
@@ -470,7 +550,15 @@ begin
         Exit;
       end;
 
-      var LJSON := TJSONObject.ParseJSONValue(LResponse.ContentAsString, True, True) as TJSONObject;
+      var LBody := LResponse.ContentAsString;
+      if LBody.Length > 1024 * 1024 then
+      begin
+        FResponse.Code := HTTP_CODE_BADGATEWAY;
+        FResponse.Content := ErrorBody('Upstream metadata document exceeds 1 MB size limit');
+        Exit;
+      end;
+
+      var LJSON := TJSONObject.ParseJSONValue(LBody, True, True) as TJSONObject;
       try
         // RFC 8414 §3.3: verify that the upstream document's issuer matches the
         // configured upstream URL before trusting anything else in the document.
@@ -516,6 +604,7 @@ begin
 
         FResponse.Code := HTTP_CODE_OK;
         FResponse.Content := LJSON.ToJSON;
+        FProxyCache.Store(FResponse.Content);
       finally
         LJSON.Free;
       end;

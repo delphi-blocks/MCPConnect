@@ -549,7 +549,7 @@ begin
 
     procedure (ARequest: TMCPTransportRequest)
     begin
-      ARequest.Headers.AddOrSetValue('Accept', 'application/json');
+      ARequest.SetHeader('Accept', 'application/json');
 
       ARequest.Command := 'POST';
       ARequest.Content := ARequestContent;

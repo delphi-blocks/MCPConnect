@@ -63,6 +63,7 @@ resourcestring
   STransportSessionNotFound = 'Session not found';
   STransportMethodNotFoundFmt = 'Method "%s" not found';
   SSessionIdHeaderRequired = 'Mcp-Session-Id header is required';
+  SDuplicateAuthorizationHeader = 'Multiple Authorization headers are not allowed';
   SOAuthValidatorNotConfigured = 'A bearer token was received but no token validator is ' +
     'registered: the request is rejected. See IOAuthConfig.SetTokenValidatorClass.';
   SOAuthValidatorNotSupportedFmt = 'The registered token validator [%s] does not expose ' +
@@ -91,38 +92,70 @@ type
   TTransportProtocol = (Undefined, Stdio, StreamableHTTP);
 
   TMCPTransportHeaders = class
-  private type
-    THeaders = class(TDictionary<string, string>)
+  private
+  type
+    THeaders = class(TList<TPair<string, string>>)
     end;
+  private
+    FHeaders: THeaders;
   public
-    Headers: THeaders;
 
     constructor Create;
     destructor Destroy; override;
 
-    function GetHeader(const AName: string): string;
-    procedure AddOrSetHeader(const AName, AValue: string);
+    function GetEnumerator: TEnumerator<TPair<string, string>>; inline;
+
+    procedure Clear;
+    // Returns the index of the first header matching AName (case-insensitive), or -1
+    function IndexOf(const AName: string): Integer;
+    // Returns the value of the first matching header, or '' if not found
+    function Get(const AName: string): string; virtual;
+    // Returns all values for headers matching AName (case-insensitive)
+    function GetHeaders(const AName: string): TArray<string>;
+    // Replaces the first matching header or adds a new one (single-value semantics)
+    procedure &Set(const AName, AValue: string);
+    // Appends a header without removing duplicates (use for Set-Cookie, etc.)
+    procedure Add(const AName, AValue: string); virtual;
+    // Removes all headers matching AName (case-insensitive); returns the number removed
+    function RemoveHeader(const AName: string): Integer;
+
+    function Count: Integer; inline;
   end;
 
-  TMCPTransportRequest = class(TMCPTransportHeaders)
+  TMCPRequestHeaders = class(TMCPTransportHeaders)
+  public
+    // RFC 6750 §3.1: reject requests with multiple Authorization headers
+    procedure Add(const AName, AValue: string); override;
+  end;
+
+  TMCPTransportRequest = class(TObject)
   private
     FAcceptItems: TAcceptItemList<TAcceptItem>;
     FProtocol: TTransportProtocol;
+    FHeaders: TMCPRequestHeaders;
     function GetAccept: string;
     procedure SetAccept(const AValue: string);
     function GetAcceptItems: TAcceptItemList<TAcceptItem>;
     function GetAcceptsEventStream: Boolean;
+    function GetAuthorization: string;
+    function GetOrigin: string;
   public
     Url: string;
     Command: string;
     Content: string;
     ContentJSON: TJSONValue;
 
+    function GetHeader(const AName: string): string;
+    procedure SetHeader(const AName, AValue: string);
+
     function GetCookie(const AName: string): string;
     property Accept: string read GetAccept write SetAccept;
     property AcceptItems: TAcceptItemList<TAcceptItem> read GetAcceptItems;
     property AcceptsEventStream: Boolean read GetAcceptsEventStream;
+    property Authorization: string read GetAuthorization;
+    property Origin: string read GetOrigin;
     property Protocol: TTransportProtocol read FProtocol write FProtocol;
+    property Headers: TMCPRequestHeaders read FHeaders;
 
     constructor Create;
     destructor Destroy; override;
@@ -130,17 +163,33 @@ type
 
   TMCPTransportRequestConverter = reference to procedure (ARequest: TMCPTransportRequest);
 
-  TMCPTransportResponse = class(TMCPTransportHeaders)
+  TMCPResponseHeaders = class(TMCPTransportHeaders)
+  end;
+
+  TMCPTransportResponse = class(TObject)
   private
+    FHeaders: TMCPResponseHeaders;
     function GetContentType: string;
     procedure SetContentType(const AValue: string);
+    function GetTransferEncoding: string;
+    procedure SetTransferEncoding(const AValue: string);
   public
     Content: string;
     Code: Integer;
     Outbund: TQueue<string>;
 
     procedure SetCookie(const AName, AValue: string; ASecure: Boolean = True);
+    procedure ClearCookies();
+
+    function GetHeader(const AName: string): string;
+    procedure SetHeader(const AName, AValue: string);
+
+    property Headers: TMCPResponseHeaders read FHeaders;
     property ContentType: string read GetContentType write SetContentType;
+    property TransferEncoding: string read GetTransferEncoding write SetTransferEncoding;
+
+    constructor Create;
+    destructor Destroy; override;
   end;
 
   TMCPTransportResponseConverter = reference to procedure (AResponse: TMCPTransportResponse);
@@ -351,7 +400,7 @@ begin
     case FAuthTokenConfig.Location of
       TAuthTokenLocation.Bearer:
       begin
-        var LAuthHeader := FRequest.GetHeader('Authorization');
+        var LAuthHeader := FRequest.Authorization;
         if not LAuthHeader.StartsWith('Bearer ', True) then
           Exit(False);
         if not ConstantTimeEquals(LAuthHeader.Substring(7), FAuthTokenConfig.Token) then
@@ -415,7 +464,7 @@ begin
   end
   else
   begin
-    var LAuthHeader := FRequest.GetHeader('Authorization');
+    var LAuthHeader := FRequest.Authorization;
     if LAuthHeader.StartsWith(BearerPrefix, True) then
     begin
       var LResult := ValidateAccessToken(LAuthHeader.Substring(Length(BearerPrefix)).Trim);
@@ -486,7 +535,7 @@ end;
 procedure TMCPTransportHandler.SendUnauthorized(const AResult: TTokenValidationResult);
 begin
   FResponse.Code := HTTP_CODE_UNAUTHORIZED;
-  FResponse.Headers.AddOrSetValue('WWW-Authenticate',
+  FResponse.SetHeader('WWW-Authenticate',
     BuildBearerChallenge(FOAuthConfig.Realm, FOAuthConfig.ResourceMetadata, AResult));
 end;
 
@@ -673,7 +722,7 @@ begin
   if Length(FMCPConfig.Security.AllowedOrigins) = 0 then
     Exit(True);
 
-  LHeader := FRequest.GetHeader('Origin').Trim;
+  LHeader := FRequest.Origin.Trim;
 
   // Reject requests with no Origin header, or the opaque "null" origin sent by
   // sandboxed iframes/file:// pages, once an allowlist has been configured.
@@ -742,7 +791,7 @@ begin
         // Add session header
         case FSessionConfig.GetLocation of
           TSessionIdLocation.Header:
-            FResponse.AddOrSetHeader(FSessionConfig.GetHeaderName, FSession.SessionId);
+            FResponse.SetHeader(FSessionConfig.GetHeaderName, FSession.SessionId);
           TSessionIdLocation.Cookie:
             FResponse.SetCookie(FSessionConfig.GetHeaderName, FSession.SessionId, FMCPConfig.Security.CookieSecure);
           else
@@ -1042,7 +1091,7 @@ begin
     if (LRequest.Method = 'initialize') and Assigned(FSession) then
     begin
       if FSessionConfig.GetLocation = TSessionIdLocation.Header then
-        FResponse.Headers.AddOrSetValue(FSessionConfig.GetHeaderName, FSession.SessionId)
+        FResponse.SetHeader(FSessionConfig.GetHeaderName, FSession.SessionId)
       else if FSessionConfig.GetLocation = TSessionIdLocation.Cookie then
         FResponse.SetCookie(FSessionConfig.GetHeaderName, FSession.SessionId, FMCPConfig.Security.CookieSecure);
     end;
@@ -1196,19 +1245,19 @@ begin
     Exit;
 
   // Set the allowed origins (from security configuration)
-  LHValue := FRequest.GetHeader('Origin');
+  LHValue := FRequest.Origin;
   if not LHValue.IsEmpty then
-    FResponse.Headers.AddOrSetValue('Access-Control-Allow-Origin', LHValue);
+    FResponse.SetHeader('Access-Control-Allow-Origin', LHValue);
 
   // Set the allowed methods supported by the server (from security configuration)
   LHValue := FRequest.GetHeader('Access-Control-Request-Method');
   if not LHValue.IsEmpty then
-    FResponse.Headers.AddOrSetValue('Access-Control-Allow-Methods', string.Join(',', FMCPConfig.Security.AllowedMethods));
+    FResponse.SetHeader('Access-Control-Allow-Methods', string.Join(',', FMCPConfig.Security.AllowedMethods));
 
   // Set the allowed headers as requested
   LHValue := FRequest.GetHeader('Access-Control-Request-Headers');
   if not LHValue.IsEmpty then
-    FResponse.Headers.AddOrSetValue('Access-Control-Allow-Headers', LHValue);
+    FResponse.SetHeader('Access-Control-Allow-Headers', LHValue);
 
   // Expose the headers browser-based clients need to read from JS (e.g. to
   // discover the OAuth resource metadata URL from a 401 response, or to pick
@@ -1216,20 +1265,46 @@ begin
   LHValue := 'WWW-Authenticate';
   if Assigned(FSessionConfig) and FSessionConfig.IsApplied and (FSessionConfig.GetLocation = TSessionIdLocation.Header) then
     LHValue := LHValue + ', ' + FSessionConfig.GetHeaderName;
-  FResponse.Headers.AddOrSetValue('Access-Control-Expose-Headers', LHValue);
+  FResponse.SetHeader('Access-Control-Expose-Headers', LHValue);
 
 end;
 
 { TMCPTransportResponse }
+
+constructor TMCPTransportResponse.Create;
+begin
+  FHeaders := TMCPResponseHeaders.Create;
+end;
+
+destructor TMCPTransportResponse.Destroy;
+begin
+  FHeaders.Free;
+  inherited;
+end;
 
 function TMCPTransportResponse.GetContentType: string;
 begin
   Result := GetHeader('Content-Type');
 end;
 
+function TMCPTransportResponse.GetHeader(const AName: string): string;
+begin
+  Result := FHeaders.Get(AName);
+end;
+
 procedure TMCPTransportResponse.SetContentType(const AValue: string);
 begin
-  Headers.AddOrSetValue('Content-Type', AValue);
+  SetHeader('Content-Type', AValue);
+end;
+
+function TMCPTransportResponse.GetTransferEncoding: string;
+begin
+  Result := GetHeader('Transfer-Encoding');
+end;
+
+procedure TMCPTransportResponse.SetTransferEncoding(const AValue: string);
+begin
+  SetHeader('Transfer-Encoding', AValue);
 end;
 
 procedure TMCPTransportResponse.SetCookie(const AName, AValue: string; ASecure: Boolean);
@@ -1243,7 +1318,17 @@ begin
   if ASecure then
     LCookie := LCookie + '; Secure';
 
-  Headers.AddOrSetValue('Set-Cookie', LCookie);
+  FHeaders.Add('Set-Cookie', LCookie);
+end;
+
+procedure TMCPTransportResponse.SetHeader(const AName, AValue: string);
+begin
+  FHeaders.&Set(AName, AValue);
+end;
+
+procedure TMCPTransportResponse.ClearCookies();
+begin
+  FHeaders.RemoveHeader('Set-Cookie');
 end;
 
 { TMCPTransportRequest }
@@ -1252,18 +1337,30 @@ constructor TMCPTransportRequest.Create;
 begin
   inherited Create;
   FAcceptItems := nil;
+  FHeaders := TMCPRequestHeaders.Create;
 end;
 
 destructor TMCPTransportRequest.Destroy;
 begin
   FAcceptItems.Free;
   ContentJSON.Free;
+  FHeaders.Free;
   inherited;
 end;
 
 function TMCPTransportRequest.GetAccept: string;
 begin
   Result := GetHeader('Accept');
+end;
+
+function TMCPTransportRequest.GetAuthorization: string;
+begin
+  Result := GetHeader('Authorization');
+end;
+
+function TMCPTransportRequest.GetOrigin: string;
+begin
+  Result := GetHeader('Origin');
 end;
 
 function TMCPTransportRequest.GetAcceptItems: TAcceptItemList<TAcceptItem>;
@@ -1301,33 +1398,107 @@ begin
 
 end;
 
+function TMCPTransportRequest.GetHeader(const AName: string): string;
+begin
+  Result := FHeaders.Get(AName);
+end;
+
 procedure TMCPTransportRequest.SetAccept(const AValue: string);
 begin
   FreeAndNil(FAcceptItems);
-  Headers.AddOrSetValue('Accept', AValue);
+  SetHeader('Accept', AValue);
 end;
 
-procedure TMCPTransportHeaders.AddOrSetHeader(const AName, AValue: string);
+procedure TMCPTransportRequest.SetHeader(const AName, AValue: string);
 begin
-  Headers.AddOrSetValue(AName, AValue);
+  FHeaders.&Set(AName, AValue);
+end;
+
+procedure TMCPTransportHeaders.Add(const AName, AValue: string);
+begin
+  FHeaders.Add(TPair<string, string>.Create(AName, AValue));
+end;
+
+{ TMCPRequestHeaders }
+
+procedure TMCPRequestHeaders.Add(const AName, AValue: string);
+begin
+  if SameText(AName, 'Authorization') and (IndexOf('Authorization') >= 0) then
+    raise EMCPTransportException.Create(HTTP_CODE_BADREQUEST, SDuplicateAuthorizationHeader);
+  inherited Add(AName, AValue);
+end;
+
+procedure TMCPTransportHeaders.&Set(const AName, AValue: string);
+begin
+  RemoveHeader(AName);
+  FHeaders.Add(TPair<string, string>.Create(AName, AValue));
+end;
+
+function TMCPTransportHeaders.RemoveHeader(const AName: string): Integer;
+begin
+  Result := 0;
+  for var I := FHeaders.Count - 1 downto 0 do
+  begin
+    if SameText(FHeaders[I].Key, AName) then
+    begin
+      FHeaders.Delete(I);
+      Inc(Result);
+    end;
+  end;
+end;
+
+procedure TMCPTransportHeaders.Clear;
+begin
+  FHeaders.Clear;
+end;
+
+function TMCPTransportHeaders.Count: Integer;
+begin
+  Result := FHeaders.Count;
 end;
 
 constructor TMCPTransportHeaders.Create;
 begin
-  // Case-insensitive <string,string> dictionary
-  Headers := THeaders.Create(TIStringComparer.Ordinal);
+  FHeaders := THeaders.Create;
 end;
 
 destructor TMCPTransportHeaders.Destroy;
 begin
-  Headers.Free;
+  FHeaders.Free;
   inherited;
 end;
 
-function TMCPTransportHeaders.GetHeader(const AName: string): string;
+function TMCPTransportHeaders.Get(const AName: string): string;
 begin
-  if not Headers.TryGetValue(AName, Result) then
-    Result := '';
+  Result := '';
+  var I := IndexOf(AName);
+  if I >= 0 then
+    Result := FHeaders[I].Value;
+end;
+
+function TMCPTransportHeaders.GetEnumerator: TEnumerator<TPair<string, string>>;
+begin
+  Result := FHeaders.GetEnumerator;
+end;
+
+function TMCPTransportHeaders.GetHeaders(const AName: string): TArray<string>;
+begin
+  Result := [];
+  for var I := 0 to FHeaders.Count - 1 do
+  begin
+    if SameText(FHeaders[I].Key, AName) then
+      Result := Result + [FHeaders[I].Value];
+  end;
+end;
+
+function TMCPTransportHeaders.IndexOf(const AName: string): Integer;
+begin
+  Result := -1;
+  for var I := 0 to FHeaders.Count - 1 do
+  begin
+    if SameText(FHeaders[I].Key, AName) then
+      Exit(I);
+  end;
 end;
 
 { EMCPTransportException }

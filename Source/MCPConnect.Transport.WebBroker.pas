@@ -106,54 +106,56 @@ end;
 
 procedure TJRPCDispatcher.ConvertRequestHeaders(AWebRequest: TWebRequest; AMCPRequest: TMCPTransportRequest);
 begin
+  AMCPRequest.Headers.Clear();
   {$IFDEF HAS_WEBBROKER_REQUEST_HEADERS}
   AWebRequest.AllHeaders.NameValueSeparator := ':';
   for var I := 0 to AWebRequest.AllHeaders.Count - 1 do
-    AMCPRequest.AddOrSetHeader(AWebRequest.AllHeaders.KeyNames[I],
+    AMCPRequest.Headers.Add(AWebRequest.AllHeaders.KeyNames[I],
       AWebRequest.AllHeaders.ValueFromIndex[I].TrimLeft);
   {$ELSE}
   var LSessionConfig := FServer.GetConfiguration<TSessionConfig>;
 
   if AWebRequest.CacheControl <> '' then  
-    AMCPRequest.Headers.AddOrSetValue('Cache-Control', AWebRequest.CacheControl);
+    AMCPRequest.SetHeader('Cache-Control', AWebRequest.CacheControl);
   if AWebRequest.Cookie <> '' then
-    AMCPRequest.Headers.AddOrSetValue('Cookie', AWebRequest.Cookie);
+    AMCPRequest.SetHeader('Cookie', AWebRequest.Cookie);
   if AWebRequest.Date > 0 then
-    AMCPRequest.Headers.AddOrSetValue('Date', DateToHttpStr(AWebRequest.Date));
+    AMCPRequest.SetHeader('Date', DateToHttpStr(AWebRequest.Date));
   if AWebRequest.Accept <> '' then
-    AMCPRequest.Headers.AddOrSetValue('Accept', AWebRequest.Accept);
+    AMCPRequest.SetHeader('Accept', AWebRequest.Accept);
   if AWebRequest.From <> '' then
-    AMCPRequest.Headers.AddOrSetValue('From', AWebRequest.From);
+    AMCPRequest.SetHeader('From', AWebRequest.From);
   if AWebRequest.Host <> '' then
-    AMCPRequest.Headers.AddOrSetValue('Host', AWebRequest.Host);
+    AMCPRequest.SetHeader('Host', AWebRequest.Host);
   if AWebRequest.IfModifiedSince > 0 then
-    AMCPRequest.Headers.AddOrSetValue('If-Modified-Since', DateToHttpStr(AWebRequest.IfModifiedSince));
+    AMCPRequest.SetHeader('If-Modified-Since', DateToHttpStr(AWebRequest.IfModifiedSince));
   if AWebRequest.Referer <> '' then
-    AMCPRequest.Headers.AddOrSetValue('Referer', AWebRequest.Referer);
+    AMCPRequest.SetHeader('Referer', AWebRequest.Referer);
   if AWebRequest.UserAgent <> '' then
-    AMCPRequest.Headers.AddOrSetValue('User-Agent', AWebRequest.UserAgent);
+    AMCPRequest.SetHeader('User-Agent', AWebRequest.UserAgent);
   if AWebRequest.ContentEncoding <> '' then
-    AMCPRequest.Headers.AddOrSetValue('Content-Encoding', AWebRequest.ContentEncoding);
+    AMCPRequest.SetHeader('Content-Encoding', AWebRequest.ContentEncoding);
   if AWebRequest.ContentType <> '' then
-    AMCPRequest.Headers.AddOrSetValue('Content-Type', AWebRequest.ContentType);
+    AMCPRequest.SetHeader('Content-Type', AWebRequest.ContentType);
   if AWebRequest.ContentLength <> 0 then
-    AMCPRequest.Headers.AddOrSetValue('Content-Length', AWebRequest.ContentLength.ToString);
+    AMCPRequest.SetHeader('Content-Length', AWebRequest.ContentLength.ToString);
   if AWebRequest.ContentVersion <> '' then
-    AMCPRequest.Headers.AddOrSetValue('Content-Version', AWebRequest.ContentVersion);
+    AMCPRequest.SetHeader('Content-Version', AWebRequest.ContentVersion);
   if AWebRequest.DerivedFrom <> '' then
-    AMCPRequest.Headers.AddOrSetValue('Derived-From', AWebRequest.DerivedFrom);
+    AMCPRequest.SetHeader('Derived-From', AWebRequest.DerivedFrom);
   if AWebRequest.Expires > 0 then
-    AMCPRequest.Headers.AddOrSetValue('Expires', DateToHttpStr(AWebRequest.Expires));
+    AMCPRequest.SetHeader('Expires', DateToHttpStr(AWebRequest.Expires));
   if AWebRequest.Title <> '' then
-    AMCPRequest.Headers.AddOrSetValue('Title', AWebRequest.Title);
+    AMCPRequest.SetHeader('Title', AWebRequest.Title);
   if AWebRequest.GetFieldByName(LSessionConfig.GetHeaderName) <> '' then
-    AMCPRequest.Headers.AddOrSetValue(LSessionConfig.GetHeaderName, AWebRequest.GetFieldByName(LSessionConfig.GetHeaderName));
+    AMCPRequest.SetHeader(LSessionConfig.GetHeaderName, AWebRequest.GetFieldByName(LSessionConfig.GetHeaderName));
   {$ENDIF}
 end;
 
 procedure TJRPCDispatcher.ConvertResponseHeaders(AWebResponse: TWebResponse;
   AMCPResponse: TMCPTransportResponse);
 begin
+  AWebResponse.CustomHeaders.Clear();
   for var pair in AMCPResponse.Headers do
   begin
     if SameText(pair.Key, 'WWW-Authenticate') then

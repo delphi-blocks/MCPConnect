@@ -256,15 +256,15 @@ begin
       ARequest.Command := AMethod;
       ARequest.Protocol := AProtocol;
       if AHeaderValue <> '' then
-        ARequest.AddOrSetHeader(AHeaderName, AHeaderValue);
+        ARequest.SetHeader(AHeaderName, AHeaderValue);
     end,
     procedure (AResponse: TMCPTransportResponse)
     begin
       LOutcome.Code := AResponse.Code;
       LOutcome.Content := AResponse.Content;
       LOutcome.ContentType := AResponse.ContentType;
-      LOutcome.HasChallenge :=
-        AResponse.Headers.TryGetValue('WWW-Authenticate', LOutcome.Challenge);
+      LOutcome.Challenge := AResponse.GetHeader('WWW-Authenticate');
+      LOutcome.HasChallenge := LOutcome.Challenge <> '';
     end
   );
 

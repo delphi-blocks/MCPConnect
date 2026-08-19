@@ -101,11 +101,12 @@ begin
     var
       LIndex: Integer;
     begin
+      ARequest.Headers.Clear();
       for LIndex := 0 to ARequestInfo.RawHeaders.Count - 1 do
       begin
         var n := ARequestInfo.RawHeaders.Names[LIndex];
         var v := ARequestInfo.RawHeaders.Values[n];
-        ARequest.AddOrSetHeader(n, v);
+        ARequest.Headers.Add(n, v);
       end;
 
       ARequest.Url := ARequestInfo.URI;
@@ -243,7 +244,7 @@ begin
     AHttpResponse.CustomHeaders.AddValue(LHeaderPair.Key, LHeaderPair.Value);
   end;
   AHttpResponse.ContentType := AResponse.ContentType;
-  AHttpResponse.TransferEncoding := AResponse.GetHeader('Transfer-Encoding');
+  AHttpResponse.TransferEncoding := AResponse.TransferEncoding;
   AHttpResponse.Connection := AResponse.GetHeader('Connection');
   if AResponse.ContentType = TMediaType.TEXT_EVENT_STREAM then
     AHttpResponse.ContentLength := -2; // Prevents indy from sending Content-Length

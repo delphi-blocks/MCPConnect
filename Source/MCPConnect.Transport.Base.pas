@@ -207,6 +207,7 @@ type
     function HandleSession: TMCPSessionBase;
     procedure HandleMessage(AMessage: TJRPCMessage; AResponseQueue: TMCPMessageQueue);
     procedure SendResponseHeaders(AResponse: TMCPTransportResponse);
+    procedure WriteSSEResponse(const AValue: string; const AEventId: string = '');
 
     procedure HandleGET;
     procedure HandlePOST;
@@ -466,6 +467,15 @@ begin
       Logger.LogError('Token validation failed with an exception: %s', [E.Message]);
       Result := TTokenValidationResult.Fail(TTokenValidationErrorCode.InvalidToken, '');
     end;
+  end;
+end;
+
+procedure TMCPTransportHandler.WriteSSEResponse(const AValue, AEventId: string);
+begin
+  if Assigned(FResponseWriter) then
+  begin
+    Logger.LogTrace('[SSE] Event Sent [id=%s, size=%d]', [AEventId, Length(AValue)]);
+    FResponseWriter.Write(AValue, AEventId);
   end;
 end;
 
@@ -780,7 +790,7 @@ begin
     AResponseConverter(FResponse);
   end;
   finally
-    Logger.LogDebug('[PERF] %s %s total: %d ms', [FRequest.Command, FRequest.Url, LStopwatch.ElapsedMilliseconds]);
+    Logger.LogDebug('[PERF] %s %s total: %d ms (HTTP: %d)', [FRequest.Command, FRequest.Url, LStopwatch.ElapsedMilliseconds, FResponse.Code]);
   end;
 end;
 
@@ -887,7 +897,7 @@ const
       begin
         LJson := AMessage.ToJson;
         LEventId := FSession.RecordEvent(LJson);
-        FResponseWriter.Write(LJson, LEventId.ToString);
+        WriteSSEResponse(LJson, LEventId.ToString);
       end,
       QueueReadTimeout
     );
@@ -912,7 +922,7 @@ const
     end;
 
     for LEvent in FSession.GetEventsAfter(LLastEventId) do
-      FResponseWriter.Write(LEvent.Value, LEvent.Key.ToString);
+      WriteSSEResponse(LEvent.Value, LEvent.Key.ToString);
   end;
 
 begin
@@ -1058,9 +1068,9 @@ var
         begin
           var LJson := AMessage.ToJson;
           if Assigned(FSession) then
-            FResponseWriter.Write(LJson, FSession.RecordEvent(LJson).ToString)
+            WriteSSEResponse(LJson, FSession.RecordEvent(LJson).ToString)
           else
-            FResponseWriter.Write(LJson);
+            WriteSSEResponse(LJson);
         end
         else
         begin

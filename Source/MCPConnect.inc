@@ -22,6 +22,10 @@
 }
 {$DEFINE DELPHI_JOSE_JWT}
 
+{$IFDEF DEBUG}
+  {$DEFINE FULL_PAYLOAD_LOGGING}
+{$ENDIF}
+
 {$IF CompilerVersion >= 27} // Delphi XE6
   {$DEFINE HAS_SYSTEM_JSON}
   // https://quality.embarcadero.com/browse/RSP-11620

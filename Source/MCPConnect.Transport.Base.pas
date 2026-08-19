@@ -15,6 +15,7 @@ unit MCPConnect.Transport.Base;
 
 interface
 
+{$I MCPConnect.inc}
 {$SCOPEDENUMS ON}
 
 uses
@@ -474,7 +475,10 @@ procedure TMCPTransportHandler.WriteSSEResponse(const AValue, AEventId: string);
 begin
   if Assigned(FResponseWriter) then
   begin
-    Logger.LogTrace('[SSE] Event Sent [id=%s, size=%d]', [AEventId, Length(AValue)]);
+    Logger.LogDebug('[SSE] Event Sent [id=%s, size=%d]', [AEventId, Length(AValue)]);
+    {$IFDEF FULL_PAYLOAD_LOGGING}
+    Logger.LogTrace('[SSE] data: %s', [AValue]);
+    {$ENDIF}
     FResponseWriter.Write(AValue, AEventId);
   end;
 end;
@@ -697,100 +701,107 @@ begin
   try
     LFragment := TStopwatch.StartNew;
     ARequestConverter(FRequest);
+    {$IFDEF FULL_PAYLOAD_LOGGING}
+    Logger.LogTrace('[REQ] %s', [FRequest.Content]);
+    {$ENDIF}
     Logger.LogDebug('[PERF] RequestConverter: %d ms', [LFragment.ElapsedMilliseconds]);
 
-    try try
-    InjectCORS;
+    try
+      InjectCORS;
 
-    if not CheckOrigin then
-      raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, SCrossOriginBlocked);
+      if not CheckOrigin then
+        raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, SCrossOriginBlocked);
 
-    if not CheckAuthorization then
-      raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, SAuthorizationCheckFailed);
+      if not CheckAuthorization then
+        raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, SAuthorizationCheckFailed);
 
-    // Built before the OAuth check, and not after it, because the token validator
-    // receives this context: it is where it finds the server and, through it, the
-    // OAuth configuration. Requests that end in a 401 pay for a context they will
-    // not use, which is a cheaper price than handing the validator a half-built one.
-    FGarbage := TGarbageCollector.CreateInstance;
-    FContext := TJRPCContext.Create;
+      // Built before the OAuth check, and not after it, because the token validator
+      // receives this context: it is where it finds the server and, through it, the
+      // OAuth configuration. Requests that end in a 401 pay for a context they will
+      // not use, which is a cheaper price than handing the validator a half-built one.
+      FGarbage := TGarbageCollector.CreateInstance;
+      FContext := TJRPCContext.Create;
 
-    FGarbage.Add(FContext);
-    FContext.AddContent(FGarbage);
-    FContext.AddContent(FServer);
-    FContext.AddContent(FAccessToken);
+      FGarbage.Add(FContext);
+      FContext.AddContent(FGarbage);
+      FContext.AddContent(FServer);
+      FContext.AddContent(FAccessToken);
 
-    if not CheckOAuth then
-      Exit;
+      if not CheckOAuth then
+        Exit;
 
-    LFragment := TStopwatch.StartNew;
-    // Handle session (get existing or create new)
-    FSession := HandleSession;
-    Logger.LogDebug('[PERF] HandleSession: %d ms', [LFragment.ElapsedMilliseconds]);
+      LFragment := TStopwatch.StartNew;
+      // Handle session (get existing or create new)
+      FSession := HandleSession;
+      Logger.LogDebug('[PERF] HandleSession: %d ms', [LFragment.ElapsedMilliseconds]);
 
-    if Assigned(FSession) then
-    begin
-      // Add session to context if available
-      FContext.AddContent(FSession);
-      // Add session header
-      case FSessionConfig.GetLocation of
-        TSessionIdLocation.Header:
-          FResponse.AddOrSetHeader(FSessionConfig.GetHeaderName, FSession.SessionId);
-        TSessionIdLocation.Cookie:
-          FResponse.SetCookie(FSessionConfig.GetHeaderName, FSession.SessionId, FMCPConfig.Security.CookieSecure);
-        else
-          raise EMCPTransportException.Create(500, SSessionIdLocationNotFound);
+      if Assigned(FSession) then
+      begin
+        // Add session to context if available
+        FContext.AddContent(FSession);
+        // Add session header
+        case FSessionConfig.GetLocation of
+          TSessionIdLocation.Header:
+            FResponse.AddOrSetHeader(FSessionConfig.GetHeaderName, FSession.SessionId);
+          TSessionIdLocation.Cookie:
+            FResponse.SetCookie(FSessionConfig.GetHeaderName, FSession.SessionId, FMCPConfig.Security.CookieSecure);
+          else
+            raise EMCPTransportException.Create(500, SSessionIdLocationNotFound);
+        end;
+
       end;
 
-    end;
+      LFragment := TStopwatch.StartNew;
+      if FRequest.Command = 'GET' then
+        HandleGET
+      else if FRequest.Command = 'POST' then
+        HandlePOST
+      else if FRequest.Command = 'OPTIONS' then
+        HandleOPTIONS
+      else
+        raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, SHttpMethodNotAllowed);
+      Logger.LogDebug('[PERF] HandleCOMMAND: %d ms', [LFragment.ElapsedMilliseconds]);
 
-    LFragment := TStopwatch.StartNew;
-    if FRequest.Command = 'GET' then
-      HandleGET
-    else if FRequest.Command = 'POST' then
-      HandlePOST
-    else if FRequest.Command = 'OPTIONS' then
-      HandleOPTIONS
-    else
-      raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, SHttpMethodNotAllowed);
-    Logger.LogDebug('[PERF] HandleCOMMAND: %d ms', [LFragment.ElapsedMilliseconds]);
+    except
+      on E: EMCPTransportException do
+      begin
+        FResponse.Code := E.Code;
+        FResponse.ContentType := 'application/json';
+        FResponse.Content := E.ToJSON;
+      end;
 
-  except
-    on E: EMCPTransportException do
-    begin
-      FResponse.Code := E.Code;
-      FResponse.ContentType := 'application/json';
-      FResponse.Content := E.ToJSON;
-    end;
+      on E: EMCPSessionException do
+      begin
+        // Per MCP spec: an unknown or expired session ID gets HTTP 404, prompting
+        // the client to re-initialize, rather than a generic 500.
+        FResponse.Code := HTTP_CODE_NOTFOUND;
+        FResponse.ContentType := 'application/json';
+        FResponse.Content := E.ToJSON;
+      end;
 
-    on E: EMCPSessionException do
-    begin
-      // Per MCP spec: an unknown or expired session ID gets HTTP 404, prompting
-      // the client to re-initialize, rather than a generic 500.
-      FResponse.Code := HTTP_CODE_NOTFOUND;
-      FResponse.ContentType := 'application/json';
-      FResponse.Content := E.ToJSON;
-    end;
+      on E: EJRPCException do
+      begin
+        FResponse.Code := 500;
+        FResponse.ContentType := 'application/json';
+        FResponse.Content := E.ToJSON;
+      end;
 
-    on E: EJRPCException do
-    begin
-      FResponse.Code := 500;
-      FResponse.ContentType := 'application/json';
-      FResponse.Content := E.ToJSON;
+      on E: Exception do
+      begin
+        FResponse.Code := 500;
+        FResponse.ContentType := 'application/json';
+        FResponse.Content := Format('{"message": "%s"}', [E.Message]);
+      end;
     end;
-
-    on E: Exception do
-    begin
-      FResponse.Code := 500;
-      FResponse.ContentType := 'application/json';
-      FResponse.Content := Format('{"message": "%s"}', [E.Message]);
-    end;
-  end;
   finally
-    AResponseConverter(FResponse);
-  end;
-  finally
-    Logger.LogDebug('[PERF] %s %s total: %d ms (HTTP: %d)', [FRequest.Command, FRequest.Url, LStopwatch.ElapsedMilliseconds, FResponse.Code]);
+    try
+      AResponseConverter(FResponse);
+    finally
+      Logger.LogDebug('[PERF] %s %s total: %d ms (HTTP: %d)', [FRequest.Command, FRequest.Url, LStopwatch.ElapsedMilliseconds, FResponse.Code]);
+      {$IFDEF FULL_PAYLOAD_LOGGING}
+      Logger.LogTrace('[RES] %s', [FResponse.Content]);
+      {$ENDIF}
+    end;
   end;
 end;
 

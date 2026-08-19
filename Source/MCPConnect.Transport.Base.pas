@@ -1108,6 +1108,7 @@ begin
   try
     if FRequest.AcceptsEventStream and FResponseWriter.SupportsStreaming then
     begin
+      FResponse.Code := 200;
       FResponse.ContentType := TMediaType.TEXT_EVENT_STREAM;
       SendResponseHeaders(FResponse);
     end;

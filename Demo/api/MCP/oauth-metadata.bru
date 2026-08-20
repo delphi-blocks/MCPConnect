@@ -1,0 +1,16 @@
+meta {
+  name: oauth-metadata
+  type: http
+  seq: 23
+}
+
+get {
+  url: http://localhost:8080/oauth-proxy/.well-known/openid-configuration
+  body: json
+  auth: none
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

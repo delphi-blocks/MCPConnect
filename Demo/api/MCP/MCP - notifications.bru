@@ -1,0 +1,25 @@
+meta {
+  name: MCP - notifications
+  type: http
+  seq: 20
+}
+
+get {
+  url: {{base_url}}/mcp
+  body: json
+  auth: inherit
+}
+
+headers {
+  Accept: text/event-stream
+  ~Mcp-Session-Id: {{session_id}}
+}
+
+vars:pre-request {
+  : 
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

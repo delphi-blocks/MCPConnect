@@ -226,6 +226,14 @@
             <ResourceType>BITMAP</ResourceType>
             <ResourceId>MCPConnectBanner</ResourceId>
         </RcItem>
+        <RcItem Include="..\..\Source\Design\Resources\MCPExpertDark.png">
+            <ResourceType>RCDATA</ResourceType>
+            <ResourceId>MCPExpertDark</ResourceId>
+        </RcItem>
+        <RcItem Include="..\..\Source\Design\Resources\MCPExpertLight.png">
+            <ResourceType>RCDATA</ResourceType>
+            <ResourceId>MCPExpertLight</ResourceId>
+        </RcItem>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

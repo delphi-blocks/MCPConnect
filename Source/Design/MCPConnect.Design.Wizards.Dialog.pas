@@ -17,6 +17,7 @@ interface
 
 uses
   System.SysUtils, System.Classes,
+  Winapi.Messages, Winapi.Windows, Winapi.CommCtrl,
   Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.StdCtrls, Vcl.ExtCtrls, Vcl.ComCtrls,
   Vcl.Imaging.pngimage,
   
@@ -24,7 +25,10 @@ uses
   MCPConnect.Design.Theme;
 
 type
-  /// <summary>
+  TPageControl = class(Vcl.ComCtrls.TPageControl)
+  private
+    procedure TCMAdjustRect(var Msg: TMessage); message TCM_ADJUSTRECT;
+  end;  /// <summary>
   ///   Step by step wizard collecting the options of a new MCP server project.
   ///   The pages live in a TPageControl whose tabs are hidden at run time: the
   ///   navigation is driven by the Back / Next buttons only.
@@ -109,6 +113,7 @@ type
 
     procedure LoadConfig;
     procedure SaveConfig;
+    procedure LoadImageFromRes(AImage: TImage; const AResName: string);
 
     function VisiblePages: TArray<TTabSheet>;
     function CurrentPageIndex: Integer;
@@ -133,7 +138,6 @@ implementation
 {$R *.dfm}
 
 uses
-  Winapi.Windows,
   Vcl.Dialogs;
 
 resourcestring
@@ -196,16 +200,42 @@ begin
   end;
 end;
 
+procedure TFormMCPProjectWizard.LoadImageFromRes(AImage: TImage; const AResName: string);
+var
+  LStream: TStream;
+begin
+  // A missing resource is not an error: the TImage simply stays an empty
+  // placeholder, so the artwork can be swapped without touching the code
+  try
+    LStream := TResourceStream.Create(HInstance, AResName, RT_RCDATA);
+    try
+      AImage.Picture.LoadFromStream(LStream);
+    finally
+      LStream.Free;
+    end;
+  except
+    AImage.Picture.Assign(nil);
+  end;
+end;
+
 procedure TFormMCPProjectWizard.FormCreate(Sender: TObject);
 var
   LIndex: Integer;
 begin
   TMCPIDETheme.ApplyTheme(Self);
+  TMCPIDETheme.ApplyToPanel(PanelButtons, clWindow);
+  TMCPIDETheme.ApplyToPanel(PanelBanner, clWindow);
+
+  if TMCPIDETheme.IsDark then
+    LoadImageFromRes(ImageBanner, 'MCPExpertDark')
+  else
+    LoadImageFromRes(ImageBanner, 'MCPExpertLight');
 
   for LIndex := 0 to PageControl.PageCount - 1 do
     PageControl.Pages[LIndex].TabVisible := False;
 
   PageControl.ActivePage := TabAppKind;
+
 end;
 
 {$REGION 'Configuration transfer'}
@@ -674,5 +704,16 @@ begin
 end;
 
 {$ENDREGION}
+
+{ TPageControl }
+
+procedure TPageControl.TCMAdjustRect(var Msg: TMessage);
+begin
+  inherited;
+  if Msg.WParam = 0 then
+    InflateRect(PRect(Msg.LParam)^, 4, 4)
+  else
+    InflateRect(PRect(Msg.LParam)^, -4, -4);
+end;
 
 end.

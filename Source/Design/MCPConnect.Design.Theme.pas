@@ -20,43 +20,22 @@ uses
   System.Classes,
   Winapi.Windows,
   Vcl.Graphics,
+  Vcl.Controls,
+  Vcl.ExtCtrls,
   Vcl.Forms,
   Vcl.Themes,
-  ToolsAPI;
+  ToolsAPI,
+  BrandingAPI,
+  IDETheme.Utils;
 
 type
-  /// <summary>
-  ///   Wrapper around IOTAIDEThemingServices used to keep the design-time
-  ///   wizards in sync with the active IDE theme (light or dark). Every helper
-  ///   degrades gracefully: when the IDE does not expose the theming service,
-  ///   or theming is turned off, the calls are no-ops and the forms keep their
-  ///   design-time colors.
-  /// </summary>
   TMCPIDETheme = class
-  strict private
-    class var FRegisteredForms: TArray<TCustomFormClass>;
-
-    class function GetServices: IOTAIDEThemingServices;
-    class function IsRegistered(const AFormClass: TCustomFormClass): Boolean;
   public
-    /// <summary>
-    ///   True when the IDE exposes the theming service and theming is enabled.
-    /// </summary>
     class function Active: Boolean;
-    /// <summary>
-    ///   True when the active IDE theme is a dark one.
-    /// </summary>
     class function IsDark: Boolean;
-    /// <summary>
-    ///   Resolves a system color against the active IDE theme; without a theme
-    ///   the color is returned unchanged.
-    /// </summary>
     class function GetColor(const AColor: TColor): TColor;
-    /// <summary>
-    ///   Applies the active IDE theme to a form and registers its class for the
-    ///   IDE style hooks (once), so the wizard draws like an inbuilt IDE dialog.
-    /// </summary>
     class procedure ApplyTheme(AForm: TCustomForm);
+    class procedure ApplyToPanel(APanel: TWinControl; ABackgroundColor: TColor = clBtnFace);
   end;
 
 implementation
@@ -64,79 +43,69 @@ implementation
 { TMCPIDETheme }
 
 class function TMCPIDETheme.Active: Boolean;
-var
-  LServices: IOTAIDEThemingServices;
 begin
-  LServices := GetServices;
-  Result := Assigned(LServices) and LServices.IDEThemingEnabled;
+  Result := IDEThemeAvailable;
 end;
 
 class function TMCPIDETheme.GetColor(const AColor: TColor): TColor;
-var
-  LServices: IOTAIDEThemingServices;
 begin
-  LServices := GetServices;
-  if Assigned(LServices) and LServices.IDEThemingEnabled then
-    Result := LServices.StyleServices.GetSystemColor(AColor)
+  if IDEThemeAvailable then
+    Result := ThemeProperties.StyleServices.GetSystemColor(AColor)
   else
     Result := AColor;
 end;
 
-class function TMCPIDETheme.GetServices: IOTAIDEThemingServices;
-begin
-  if not Supports(BorlandIDEServices, IOTAIDEThemingServices, Result) then
-    Result := nil;
-end;
-
 class function TMCPIDETheme.IsDark: Boolean;
 var
-  LServices: IOTAIDEThemingServices;
   LColor: TColor;
 begin
-  LServices := GetServices;
-  if Assigned(LServices) and LServices.IDEThemingEnabled then
+  if IDEThemeAvailable then
   begin
-    LColor := LServices.StyleServices.GetSystemColor(clWindow);
+    LColor := ThemeProperties.StyleServices.GetSystemColor(clWindow);
     Result := (GetRValue(LColor) + GetGValue(LColor) + GetBValue(LColor)) div 3 < 128;
   end
   else
     Result := False;
 end;
 
-class function TMCPIDETheme.IsRegistered(const AFormClass: TCustomFormClass): Boolean;
-var
-  LIndex: Integer;
-begin
-  Result := False;
-  for LIndex := Low(FRegisteredForms) to High(FRegisteredForms) do
-    if FRegisteredForms[LIndex] = AFormClass then
-      Exit(True);
-end;
-
 class procedure TMCPIDETheme.ApplyTheme(AForm: TCustomForm);
 var
-  LServices: IOTAIDEThemingServices;
-  LFormClass: TCustomFormClass;
+  LStyle: TCustomStyleServices;
 begin
   if not Assigned(AForm) then
     Exit;
 
-  LServices := GetServices;
-  if (not Assigned(LServices)) or (not LServices.IDEThemingEnabled) then
+  if not IDEThemeAvailable then
     Exit;
 
-  // Enable the IDE style hooks for the form class once, so every instance
-  // draws like an inbuilt IDE dialog (e.g. the frameless group boxes of the
-  // Options dialog)
-  LFormClass := TCustomFormClass(AForm.ClassType);
-  if not IsRegistered(LFormClass) then
-  begin
-    LServices.RegisterFormClass(LFormClass);
-    FRegisteredForms := FRegisteredForms + [LFormClass];
-  end;
+  LStyle := ThemeProperties.StyleServices;
+  AForm.StyleElements := AForm.StyleElements - [seClient];
+  AForm.Color := LStyle.GetSystemColor(clWindow);
 
-  // Synchronize Color / Font.Color of the controls without style hooks
-  LServices.ApplyTheme(AForm);
+  IDEThemeManager.RegisterFormClass(TCustomFormClass(AForm.ClassType));
+  ThemeProperties.ApplyTheme(AForm);
+end;
+
+class procedure TMCPIDETheme.ApplyToPanel(APanel: TWinControl; ABackgroundColor: TColor);
+var
+  LStyle: TCustomStyleServices;
+begin
+  if not Assigned(APanel) then
+    Exit;
+
+  if not IDEThemeAvailable then
+    Exit;
+
+  if APanel is TCustomForm then
+    Exit;
+
+  LStyle := ThemeProperties.StyleServices;
+  if APanel is TPanel then
+  begin
+    TPanel(APanel).StyleElements := TPanel(APanel).StyleElements - [seClient];
+    TPanel(APanel).ParentBackground := False;
+    TPanel(APanel).Color := LStyle.GetSystemColor(ABackgroundColor);
+  end;
 end;
 
 end.

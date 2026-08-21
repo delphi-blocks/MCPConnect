@@ -1198,8 +1198,6 @@ begin
   if Assigned(LJRPCAttribute) then
   begin
     Result := LJRPCAttribute.Name;
-    if LJRPCAttribute.GetTags.Exists('separator') then
-      FSeparator := LJRPCAttribute.GetTags.GetValueAs<string>('separator');
   end
   else
     Result := AClass.QualifiedClassName;

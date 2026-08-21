@@ -154,6 +154,7 @@ begin
   Result.Request := ARequest;
   Result.Responses := AResponses;
   Result.ApiInstance := FService;
+  Result.Separator := '/';
   Result.NeonConfig := nil;
 end;
 

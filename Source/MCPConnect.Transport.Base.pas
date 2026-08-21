@@ -1084,6 +1084,7 @@ begin
     LInvokerCtx.Request := LRequest;
     LInvokerCtx.Responses := AResponseQueue;
     LInvokerCtx.ApiInstance := LInstance;
+    LInvokerCtx.Separator := TJRPCRegistry.Instance.Separator;
     LInvokerCtx.SelectConfig(LConstructorProxy.NeonConfig, FContext.FindContextDataAs<TJRPCNeonConfig>);
 
     TJRPCInvoker.Invoke(LInvokerCtx);

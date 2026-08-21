@@ -51,6 +51,7 @@ type
     Garbage: IGarbageCollector;
     Request: TJRPCMethod;
     Responses: TMCPMessageQueue;
+    Separator: string;
 
     ApiInstance: TObject;
     NeonConfig: INeonConfiguration;
@@ -120,19 +121,14 @@ end;
 constructor TJRPCInvoker.Create(AContext: TJRPCInvokerContext);
 begin
   inherited Create;
-  FSeparator := '/';
+  if AContext.Separator <> '' then
+    FSeparator := AContext.Separator
+  else
+    FSeparator := '/';
   FContext := AContext;
   FRttiType := TRttiUtils.GetType(AContext.ApiInstance);
 
   FNeonConfig := RetrieveNeonConfig(AContext.NeonConfig);
-
-  TRttiUtils.HasAttribute<JRPCAttribute>(FRttiType,
-    procedure (LAttrib: JRPCAttribute)
-    begin
-      if LAttrib.Tags.Exists('separator') then
-        FSeparator := LAttrib.Tags.GetValueAs<string>('separator');
-    end);
-
 end;
 
 function TJRPCInvoker.FindMethod(ARequest: TJRPCMethod): TRttiMethod;

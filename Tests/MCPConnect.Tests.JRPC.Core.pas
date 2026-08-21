@@ -82,6 +82,14 @@ type
     procedure TestMessagesFromBatchWithInvalidElement();
     [Test]
     procedure TestErrorSerializeNullId();
+
+    // jsonrpc version validation tests
+    [Test]
+    procedure TestRequestWithInvalidJsonRpcVersion();
+    [Test]
+    procedure TestMessagesWithInvalidJsonRpcVersion();
+    [Test]
+    procedure TestNotificationWithInvalidJsonRpcVersion();
   end;
 
 implementation
@@ -606,6 +614,52 @@ begin
     end;
   finally
     LError.Free;
+  end;
+end;
+
+{ jsonrpc Version Validation Tests }
+
+procedure TJRPCCoreTest.TestRequestWithInvalidJsonRpcVersion;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      var LReq := TJRPCRequest.CreateFromJson('{"jsonrpc": "1.0", "id": 1, "method": "math/sum"}');
+      LReq.Free;
+    end,
+    EJRPCInvalidRequestError,
+    'A request with a jsonrpc version other than 2.0 must be rejected'
+  );
+end;
+
+procedure TJRPCCoreTest.TestMessagesWithInvalidJsonRpcVersion;
+var
+  LMsgs: TJRPCMessages;
+begin
+  LMsgs := TJRPCMessages.CreateFromJson('{"jsonrpc": "1.0", "id": 1, "method": "math/sum"}');
+  try
+    Assert.AreEqual(NativeInt(1), LMsgs.Count, 'Should produce one message');
+    Assert.IsTrue(LMsgs.List[0] is TJRPCError, 'Invalid version must produce an error');
+    Assert.AreEqual(JRPC_INVALID_REQUEST, (LMsgs.List[0] as TJRPCError).Error.Code.Value, 'Error code must be -32600');
+    Assert.AreEqual(1, Integer((LMsgs.List[0] as TJRPCError).Id), 'Request id must be echoed');
+  finally
+    LMsgs.Free;
+  end;
+end;
+
+procedure TJRPCCoreTest.TestNotificationWithInvalidJsonRpcVersion;
+var
+  LMsgs: TJRPCMessages;
+begin
+  // Notifications bypass TJRequestSerializer (they are a sibling class), so the
+  // version check must happen at classification time (GetMessageType).
+  LMsgs := TJRPCMessages.CreateFromJson('{"jsonrpc": "1.0", "method": "notify"}');
+  try
+    Assert.AreEqual(NativeInt(1), LMsgs.Count, 'Should produce one message');
+    Assert.IsTrue(LMsgs.List[0] is TJRPCError, 'Invalid version must produce an error');
+    Assert.AreEqual(JRPC_INVALID_REQUEST, (LMsgs.List[0] as TJRPCError).Error.Code.Value, 'Error code must be -32600');
+  finally
+    LMsgs.Free;
   end;
 end;
 

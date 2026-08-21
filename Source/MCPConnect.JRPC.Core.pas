@@ -1043,6 +1043,9 @@ begin
 
   LReq.Method := AValue.GetValue<string>('method');
   LReq.JsonRpc := AValue.GetValue<string>('jsonrpc');
+  // Per JSON-RPC 2.0 the "jsonrpc" member MUST be exactly "2.0".
+  if LReq.JsonRpc <> TJRPCMessage.JSONRPC_VERSION then
+    raise EJRPCInvalidRequestError.Create(SJRPCInvalidRequest);
   LIdValue := AValue.GetValue<TJSONValue>('id', nil);
   if not Assigned(LIdValue) then
     LReq.Id := ''
@@ -1427,8 +1430,15 @@ end;
 
 function TJRPCMessages.GetMessageType(AMessage: TJSONObject): TJRPCMessageType;
 var
-  LId, LMethod, LResult, LError: TJSONValue;
+  LJsonRpc, LId, LMethod, LResult, LError: TJSONValue;
 begin
+  // Per JSON-RPC 2.0, every message MUST declare exactly "jsonrpc": "2.0".
+  // Validated here (before any object is deserialized) so invalid messages are
+  // rejected without leaking a partially-constructed Neon instance.
+  LJsonRpc := AMessage.GetValue('jsonrpc');
+  if (LJsonRpc = nil) or (not (LJsonRpc is TJSONString)) or (LJsonRpc.Value <> TJRPCMessage.JSONRPC_VERSION) then
+    raise EJRPCInvalidRequestError.Create(SJRPCInvalidRequest);
+
   LMethod := AMessage.GetValue('method');
   LId := AMessage.GetValue('id');
   LResult := AMessage.GetValue('result');
@@ -1703,6 +1713,9 @@ begin
   else
     LResponse.Id := LIdValue.Value;
   LResponse.JsonRpc := AValue.GetValue<string>('jsonrpc');
+  // Per JSON-RPC 2.0 the "jsonrpc" member MUST be exactly "2.0".
+  if LResponse.JsonRpc <> TJRPCMessage.JSONRPC_VERSION then
+    raise EJRPCInvalidRequestError.Create(SJRPCInvalidRequest);
 
   Result := TValue.From<TJRPCResponse>(LResponse);
 end;

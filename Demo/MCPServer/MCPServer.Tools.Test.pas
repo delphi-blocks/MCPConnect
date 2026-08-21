@@ -35,7 +35,7 @@ type
 
   TPersons = class(TObjectList<TPerson>);
 
-  //[McpScope('test')]
+  [McpScope('test')]
   TTestTool = class
   public
     //[McpTool('double_or_nothing', 'Doubles or zeroes the param value', 'category=group1,app=ui://delphiday/ticket-app,icon=money.png')]
@@ -44,7 +44,7 @@ type
       [McpParam('value2', 'Test Parameter 2 for MCP')] ADouble: Boolean
     ): Integer;
 
-    [McpTool('test_structured', 'Test Structured Output', 'structured,icon=money.png')]
+    [McpTool('structured_output', 'Test Structured Output', 'structured,icon=money.png')]
     function TestStructuredObject: TPerson;
 
     [McpTool('test_structured_array', 'Test Structured Output', 'icon=money.png')]
@@ -55,12 +55,12 @@ type
       [McpParam('itemType', 'The type of item to filter. Valid values: ''courses'', ''product'', ''consulting''')] const AItemType: string
     ): string;
 
-    //[McpTool('splitstring', 'Gets the content by splitting the string (e.g. "hello,world" -> ["hello", "world"])', 'icon=tags.png')]
+    [McpTool('splitstring', 'Gets the content by splitting the string (e.g. "hello,world" -> ["hello", "world"])', 'icon=tags.png')]
     function GetSplitString(
       [McpParam('value', 'The string to work with')] const AValue: string
     ): TContentList;
 
-    //[McpTool('get-person', 'Get a person info given his name', 'icon=person.png,structured')]
+    [McpTool('get-person', 'Get a person info given his name', 'icon=person.png,structured')]
     function GetPerson(
       [McpParam('name', 'The name of the person to get')] const AName: string
     ): TPerson;

@@ -18,9 +18,6 @@ uses
   MCPConnect.Session.Core;
 
 type
-  /// <summary>
-  ///   Shopping cart item with typed properties
-  /// </summary>
   TCartItem = class
   private
     FItemId: string;
@@ -32,10 +29,6 @@ type
     constructor Create(const AItemId: string; AQuantity: Integer);
   end;
 
-  /// <summary>
-  ///   Custom typed session for shopping cart.
-  ///   No JSON storage - pure typed properties.
-  /// </summary>
   TShoppingSession = class(TMCPSessionBase)
   private
     FCart: TObjectDictionary<string, TCartItem>;
@@ -63,16 +56,11 @@ type
 
   TTickets = class(TObjectList<TTicket>);
 
-  TRegisterToolTest = class
-  public
-    function RandomNumber(AMax: Integer): Integer;
-  end;
-
-  //[McpNamespace('delphiday')]
+  [McpScope('delphiday')]
   TDelphiDayTool = class
   private
     [Context] FGC: IGarbageCollector;
-    //[Context] FSession: TShoppingSession;
+    [Context] FSession: TShoppingSession;
     [Context] Responses: TMCPMessageQueue;
 
   public
@@ -80,40 +68,27 @@ type
     [McpApp('ui://delphiday/ticket-app')]
     function GetTickets: TTickets;
 
-    [McpTool('buy-tickets', 'Buy tickets for the DelphiDay', 'icon=cart-full.png')]
-    function BuyTicket(
-      [McpParam('id', 'ID of the ticket to buy')] AId: Integer;
-      [McpParam('quantity', 'Number of tickets to buy')] AQuantity: Integer
-    ): TContentList;
-  end;
-
-
-  /// <summary>
-  ///   Shopping cart tool that uses typed session to maintain state across requests
-  /// </summary>
-  [McpScope('shopping')]
-  TShoppingCartTool = class
-  private
-    [Context] FSession: TShoppingSession;
-  public
-    [McpTool('cart_add', 'Add an item to the shopping cart', 'icon=cart-add.png')]
+    [McpTool('cart-add', 'Add a ticket to the cart', 'icon=cart-add.png')]
     function AddToCart(
-      [McpParam('item_id', 'ID of the item to add')] const AItemId: string;
-      [McpParam('quantity', 'Quantity to add')] AQuantity: Integer
+      [McpParam('ticket_id', 'ID of the ticket to add')] const ATicketId: string;
+      [McpParam('quantity', 'Number of tickets')] AQuantity: Integer
     ): string;
 
-    [McpTool('cart_get', 'Get all items in the shopping cart', 'icon=cart-full.png')]
+    [McpTool('cart-get', 'Get all tickets in the cart', 'icon=cart-full.png')]
     function GetCart: string;
 
-    [McpTool('cart_remove', 'Remove an item from the shopping cart', 'icon=cart-remove.png')]
+    [McpTool('cart-remove', 'Remove a ticket from the cart', 'icon=cart-remove.png')]
     function RemoveFromCart(
-      [McpParam('item_id', 'ID of the item to remove')] const AItemId: string
+      [McpParam('ticket_id', 'ID of the ticket to remove')] const ATicketId: string
     ): string;
 
-    [McpTool('cart_clear', 'Clear all items from the shopping cart', 'icon=cart.png')]
+    [McpTool('cart-clear', 'Clear all tickets from the cart', 'icon=cart.png')]
     function ClearCart: string;
 
-    [McpTool('session_info', 'Get session information (ID, created time, last accessed)', 'icon=gear.png')]
+    [McpTool('buy-tickets', 'Confirm purchase of all tickets in the cart', 'icon=cart-full.png')]
+    function BuyTickets: TContentList;
+
+    [McpTool('session-info', 'Get session information (ID, created time, last accessed)', 'icon=gear.png')]
     function GetSessionInfo: string;
   end;
 
@@ -149,17 +124,38 @@ end;
 
 { TDelphiDayTool }
 
-function TDelphiDayTool.BuyTicket(AId, AQuantity: Integer): TContentList;
+function TDelphiDayTool.BuyTickets: TContentList;
 var
-  LExePath: string;
+  LItem: TCartItem;
+  LList: TStringList;
 begin
-  LExePath := ExtractFileDir(ParamStr(0));
+  if FSession.Cart.Count = 0 then
+  begin
+    Result := TContentList.Create;
+    Result.AddText('Cart is empty, nothing to buy.');
+    Exit;
+  end;
 
-  TFile.AppendAllText('purchase.log', Format('%s - Ticket ID %d, People: %d' + sLineBreak, [DateTimeToStr(Now), AId, AQuantity]));
+  LList := TStringList.Create;
+  try
+    LList.Add('Tickets purchased:');
+    LList.Add('');
+    for LItem in FSession.Cart.Values do
+    begin
+      LList.Add(Format('  - Ticket %s: quantity %d', [LItem.ItemId, LItem.Quantity]));
+      TFile.AppendAllText('purchase.log', Format('%s - Ticket ID %s, Quantity: %d' + sLineBreak,
+        [DateTimeToStr(Now), LItem.ItemId, LItem.Quantity]));
+    end;
 
-  Result := TContentList.Create;
+    FSession.Cart.Clear;
 
-  Result.AddText('Purchase completed successfully. Since you made the reservation through an LLM, you will be offered an aperitif at the end of the conference!');
+    Result := TContentList.Create;
+    Result.AddText(LList.Text + sLineBreak +
+      'Purchase completed successfully. Since you made the reservation through an LLM, ' +
+      'you will be offered an aperitif at the end of the conference!');
+  finally
+    LList.Free;
+  end;
 
   var LStream := TFileStream.Create(TPath.Combine(GetCurrentDir, 'data\ticket.png'), fmOpenRead or fmShareDenyWrite);
   try
@@ -171,48 +167,42 @@ end;
 
 function TDelphiDayTool.GetTickets: TTickets;
 begin
+  // Sends progress notifications while loading tickets, simulating a slow backend
   Result := TTickets.Create;
   FGC.Add(Result);
 
   Result.Add(TTicket.Create(1, 'Conferenza + Seminari', EncodeDate(2026, 6, 9), 179.0));
   Responses.Enqueue(TTicketProgressNotification.Create(1, 3));
-  Sleep(1000);
+  Sleep(500);
 
   Result.Add(TTicket.Create(2, 'Solo Conferenza', EncodeDate(2026, 6, 10), 0));
   Responses.Enqueue(TTicketProgressNotification.Create(2, 3));
-  Sleep(1000);
+  Sleep(500);
 
   Result.Add(TTicket.Create(3, 'Young Ticket', EncodeDate(2026, 6, 10), 69.0));
   Responses.Enqueue(TTicketProgressNotification.Create(3, 3));
-  Sleep(1000);
+  Sleep(500);
 
   Responses.Enqueue(TToolListChangedNotification.Create());
-
 end;
 
-{ TShoppingCartTool }
-
-function TShoppingCartTool.AddToCart(const AItemId: string; AQuantity: Integer): string;
+function TDelphiDayTool.AddToCart(const ATicketId: string; AQuantity: Integer): string;
 var
   LItem: TCartItem;
 begin
-  // Check if item already exists in cart
-  if FSession.Cart.TryGetValue(AItemId, LItem) then
+  if FSession.Cart.TryGetValue(ATicketId, LItem) then
   begin
-    // Update quantity
     LItem.Quantity := LItem.Quantity + AQuantity;
-    Result := Format('Updated %s in cart. New quantity: %d', [AItemId, LItem.Quantity]);
+    Result := Format('Updated ticket %s in cart. New quantity: %d', [ATicketId, LItem.Quantity]);
   end
   else
   begin
-    // Add new item
-    LItem := TCartItem.Create(AItemId, AQuantity);
-    FSession.Cart.Add(AItemId, LItem);
-    Result := Format('Added %s to cart. Quantity: %d', [AItemId, AQuantity]);
+    FSession.Cart.Add(ATicketId, TCartItem.Create(ATicketId, AQuantity));
+    Result := Format('Added ticket %s to cart. Quantity: %d', [ATicketId, AQuantity]);
   end;
 end;
 
-function TShoppingCartTool.GetCart: string;
+function TDelphiDayTool.GetCart: string;
 var
   LItem: TCartItem;
   LList: TStringList;
@@ -222,39 +212,37 @@ begin
 
   LList := TStringList.Create;
   try
-    LList.Add('Shopping Cart:');
+    LList.Add('Ticket Cart:');
     LList.Add('');
     for LItem in FSession.Cart.Values do
-      LList.Add(Format('  - %s: quantity %d', [LItem.ItemId, LItem.Quantity]));
-    LList.Add('');
-    LList.Add(Format('Total items: %d', [FSession.Cart.Count]));
+      LList.Add(Format('  - Ticket %s: quantity %d', [LItem.ItemId, LItem.Quantity]));
     Result := LList.Text;
   finally
     LList.Free;
   end;
 end;
 
-function TShoppingCartTool.RemoveFromCart(const AItemId: string): string;
+function TDelphiDayTool.RemoveFromCart(const ATicketId: string): string;
 begin
   if FSession.Cart.Count = 0 then
     Exit('Cart is empty');
 
-  if FSession.Cart.ContainsKey(AItemId) then
+  if FSession.Cart.ContainsKey(ATicketId) then
   begin
-    FSession.Cart.Remove(AItemId);
-    Result := Format('Removed %s from cart', [AItemId]);
+    FSession.Cart.Remove(ATicketId);
+    Result := Format('Removed ticket %s from cart', [ATicketId]);
   end
   else
-    Result := Format('Item %s not found in cart', [AItemId]);
+    Result := Format('Ticket %s not found in cart', [ATicketId]);
 end;
 
-function TShoppingCartTool.ClearCart: string;
+function TDelphiDayTool.ClearCart: string;
 begin
   FSession.Cart.Clear;
   Result := 'Cart cleared successfully';
 end;
 
-function TShoppingCartTool.GetSessionInfo: string;
+function TDelphiDayTool.GetSessionInfo: string;
 begin
   Result := Format(
     'Session Info:' + sLineBreak +
@@ -289,15 +277,5 @@ begin
   FDate := ADate;
   FPrice := APrice;
 end;
-
-{ TRegisterToolTest }
-
-function TRegisterToolTest.RandomNumber(AMax: Integer): Integer;
-begin
-  Result := Random(AMax);
-end;
-
-initialization
-  Randomize();
 
 end.

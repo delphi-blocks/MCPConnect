@@ -15,6 +15,8 @@ unit MCPConnect.MCP.Prompts;
 
 interface
 
+{$I 'MCPConnect.inc' }
+
 uses
   System.SysUtils,
   System.Classes,
@@ -135,7 +137,11 @@ type
   end;
 
   TMCPPrompts = TObjectList<TMCPPrompt>;
+  {$IFDEF HAS_ORDERED_DICTIONARY}
+  TMCPPromptRegistry = class(TObjectOrderedDictionary<string, TMCPPrompt>);
+  {$ELSE}
   TMCPPromptRegistry = class(TObjectDictionary<string, TMCPPrompt>);
+  {$ENDIF}
 
 
   TGetPromptParams = class(TMetaClass)

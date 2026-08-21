@@ -15,6 +15,8 @@ unit MCPConnect.MCP.Tools;
 
 interface
 
+{$I 'MCPConnect.inc' }
+
 uses
   System.SysUtils,
   System.Rtti,
@@ -173,7 +175,11 @@ type
   end;
 
   TMCPTools = class(TObjectList<TMCPTool>);
+  {$IFDEF HAS_ORDERED_DICTIONARY}
+  TMCPToolRegistry = class(TObjectOrderedDictionary<string, TMCPTool>);
+  {$ELSE}
   TMCPToolRegistry = class(TObjectDictionary<string, TMCPTool>);
+  {$ENDIF}
   TMCPToolConfigurator = reference to procedure(ATool: TMCPTool);
   TMCPToolFilterFunc = reference to function (ATool: TMCPTool): Boolean;
 

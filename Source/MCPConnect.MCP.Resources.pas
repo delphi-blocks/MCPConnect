@@ -15,6 +15,7 @@ unit MCPConnect.MCP.Resources;
 
 interface
 
+{$I 'MCPConnect.inc' }
 {$SCOPEDENUMS ON}
 
 uses
@@ -134,7 +135,11 @@ type
   end;
 
   TMCPResources = class(TObjectList<TMCPResource>);
+  {$IFDEF HAS_ORDERED_DICTIONARY}
+  TMCPResourceRegistry = class(TObjectOrderedDictionary<string, TMCPResource>);
+  {$ELSE}
   TMCPResourceRegistry = class(TObjectDictionary<string, TMCPResource>);
+  {$ENDIF}
   TMCPResourceFilterFunc = reference to function (AResource: TMCPResource): Boolean;
 
   /// <summary>

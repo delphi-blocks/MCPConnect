@@ -75,6 +75,7 @@
 
 {$IF CompilerVersion >= 37} // Delphi 13.0 Florence
   {$DEFINE HAS_WEBBROKER_REQUEST_HEADERS}
+  {$DEFINE HAS_ORDERED_DICTIONARY}
 {$ENDIF}
 
 {$IF RTLVersion131} // Delphi 13.1 Florence

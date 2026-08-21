@@ -1490,7 +1490,20 @@ begin
     if (AValue as TJSONArray).Count = 0 then
       raise EJRPCInvalidRequestError.Create(SJRPCInvalidRequest);
     for var LItem in AValue as TJSONArray do
-      FromJsonSingle(LItem as TJSONObject);
+    begin
+      // Per JSON-RPC 2.0, a batch element that is not a valid Request object
+      // gets its own -32600 error response with a null id; the rest of the
+      // batch is still processed instead of aborting the whole batch.
+      if not (LItem is TJSONObject) then
+      begin
+        var LError := TJRPCError.Create;
+        LError.Error.Code := JRPC_INVALID_REQUEST;
+        LError.Error.Message := SJRPCInvalidRequest;
+        AddMessage(LError);
+      end
+      else
+        FromJsonSingle(LItem as TJSONObject);
+    end;
   end
   else
     // Valid JSON that is neither a Request object nor a batch (a scalar, nil,

@@ -79,6 +79,8 @@ type
     [Test]
     procedure TestMessagesFromEmptyBatch();
     [Test]
+    procedure TestMessagesFromBatchWithInvalidElement();
+    [Test]
     procedure TestErrorSerializeNullId();
   end;
 
@@ -551,6 +553,28 @@ begin
     EJRPCInvalidRequestError,
     'An empty batch should raise Invalid Request'
   );
+end;
+
+procedure TJRPCCoreTest.TestMessagesFromBatchWithInvalidElement;
+var
+  LMsgs: TJRPCMessages;
+begin
+  LMsgs := TJRPCMessages.CreateFromJson('''
+    [
+      1,
+      {"jsonrpc": "2.0", "id": 7, "method": "math/sum", "params": {"a": 1, "b": 5}}
+    ]
+  ''');
+  try
+    Assert.AreEqual(NativeInt(2), LMsgs.Count, 'Both elements must be processed');
+    Assert.IsTrue(LMsgs.List[0] is TJRPCError, 'Invalid element must produce an error');
+    Assert.AreEqual(JRPC_INVALID_REQUEST, (LMsgs.List[0] as TJRPCError).Error.Code.Value, 'Error code must be -32600');
+    Assert.IsTrue((LMsgs.List[0] as TJRPCError).Id.IsNull, 'Error id must be null');
+    Assert.IsTrue(LMsgs.List[1] is TJRPCRequest, 'Valid element must still be parsed');
+    Assert.AreEqual('math/sum', (LMsgs.List[1] as TJRPCRequest).Method, 'Valid request method must round-trip');
+  finally
+    LMsgs.Free;
+  end;
 end;
 
 procedure TJRPCCoreTest.TestErrorSerializeNullId;

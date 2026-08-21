@@ -399,12 +399,13 @@ end;
 
 procedure TGarbageCollector.Add(const AValue: TValue);
 begin
-  if AValue.IsObject then
-    Add(AValue, nil);
+  Add(AValue, nil);
 end;
 
 procedure TGarbageCollector.Add(const AValue: TValue; AAction: TDisposeAction);
 begin
+  if not AValue.IsObject then
+    Exit;
   if FGarbage.ContainsKey(AValue.AsObject) then
     Exit;
   FGarbage.Add(AValue.AsObject, AAction);
@@ -420,8 +421,7 @@ var
   LValue: TValue;
 begin
   for LValue in AValues do
-    if LValue.IsObject then
-      Add(LValue, AAction);
+    Add(LValue, AAction);
 end;
 
 procedure TGarbageCollector.CollectGarbage;

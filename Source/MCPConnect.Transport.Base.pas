@@ -1101,6 +1101,9 @@ begin
     on E: Exception do
     begin
       Logger.LogError('TMCPTransportHandler.HandleMessage %s: %s', [E.ClassName, E.Message]);
+      if Assigned(E.InnerException) then
+        Logger.LogError('InnerException %s: %s', [E.InnerException.ClassName, E.InnerException.Message]);
+
       var err := TJRPCInvoker.HandleError(E, LRequest.Id);
       AResponseQueue.Enqueue(err);
     end;

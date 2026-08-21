@@ -172,7 +172,7 @@ begin
     LArgs := RequestToRttiParams(LMethod);
     FContext.Garbage.Add(LArgs);
   except
-    raise EJRPCInvalidParamsError.Create(SJRPCInvalidMethodParameters);
+    Exception.RaiseOuterException(EJRPCInvalidParamsError.Create(SJRPCInvalidMethodParameters));
   end;
   Logger.LogDebug('[PERF] JRPC [%s] RequestToRttiParams: %d ms', [FContext.Request.Method, LStopwatch.ElapsedMilliseconds]);
 
@@ -180,28 +180,32 @@ begin
   try
     LResult := LMethod.Invoke(FContext.ApiInstance, LArgs);
     FContext.Garbage.Add(LResult);
-    LResponse := TJRPCResponse.Create;
   except
     on E: EJRPCException do
       raise;
     on E: Exception do
-      raise EJRPCException.CreateFmt(SJRPCErrorCallingApiMethod,
-        [FContext.ApiInstance.ClassName, FContext.Request.Method]);
+      Exception.RaiseOuterException(
+        EJRPCException.CreateFmt(SJRPCErrorCallingApiMethod,
+        [FContext.ApiInstance.ClassName, FContext.Request.Method]));
   end;
   Logger.LogDebug('[PERF] JRPC [%s] Method.Invoke: %d ms', [FContext.Request.Method, LStopwatch.ElapsedMilliseconds]);
 
-  if FContext.Request is TJRPCRequest then
-    LResponse.Id := TJRPCRequest(FContext.Request).Id;
+  LResponse := TJRPCResponse.Create;
+  try
+    if FContext.Request is TJRPCRequest then
+      LResponse.Id := TJRPCRequest(FContext.Request).Id;
 
-  { TODO -opaolo -c :  31/03/2026 10:46:08 }
-  LStopwatch := TStopwatch.StartNew;
-  if TRttiUtils.HasAttribute<JRPCNotificationAttribute>(LMethod) then
-    LResponse.Result := nil
-  else
-    LResponse.Result := TNeon.ValueToJSON(LResult, FNeonConfig);
-  Logger.LogDebug('[PERF] JRPC [%s] ValueToJSON: %d ms', [FContext.Request.Method, LStopwatch.ElapsedMilliseconds]);
-
-  FContext.Responses.Enqueue(LResponse);
+    LStopwatch := TStopwatch.StartNew;
+    if TRttiUtils.HasAttribute<JRPCNotificationAttribute>(LMethod) then
+      LResponse.Result := nil
+    else
+      LResponse.Result := TNeon.ValueToJSON(LResult, FNeonConfig);
+    Logger.LogDebug('[PERF] JRPC [%s] ValueToJSON: %d ms', [FContext.Request.Method, LStopwatch.ElapsedMilliseconds]);
+    FContext.Responses.Enqueue(LResponse);
+  except
+    LResponse.Free;
+    raise;
+  end;
 end;
 
 function TJRPCInvoker.GetParamName(LParam: TRttiParameter): string;

@@ -1157,10 +1157,23 @@ var
   LFragment: TStopwatch;
 begin
   LFragment := TStopwatch.StartNew;
-  if Assigned(FRequest.ContentJSON) then
-    LRequestList := TJRPCMessages.CreateFromJson(FRequest.ContentJSON)
-  else
-    LRequestList := TJRPCMessages.CreateFromJson(FRequest.Content);
+  try
+    if Assigned(FRequest.ContentJSON) then
+      LRequestList := TJRPCMessages.CreateFromJson(FRequest.ContentJSON)
+    else
+      LRequestList := TJRPCMessages.CreateFromJson(FRequest.Content);
+  except
+    on E: EJRPCException do
+    begin
+      // Per JSON-RPC 2.0, malformed JSON (parse error), an empty batch, or a
+      // top-level value that is neither a Request nor a batch must be answered
+      // with a single JSON-RPC error response carrying a null id - never an
+      // HTTP 500 or an empty body.
+      var LErrorId: TJRPCID;
+      LRequestList := TJRPCMessages.Create(True);
+      LRequestList.AddMessage(TJRPCError.CreateFromException(E, LErrorId));
+    end;
+  end;
   Logger.LogDebug('[PERF] CreateFromJSON total: %d ms', [LFragment.ElapsedMilliseconds]);
 
   FGarbage.Add(LRequestList);

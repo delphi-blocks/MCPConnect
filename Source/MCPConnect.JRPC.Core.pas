@@ -1346,7 +1346,13 @@ procedure TJRPCMessages.FromJson(const AJSON: string);
 var
   LJSON: TJSONValue;
 begin
-  LJSON := TJSONObject.ParseJSONValue(AJSON);
+  try
+    LJSON := TJSONObject.ParseJSONValue(AJSON);
+  except
+    on EJSONParseException do
+      // Invalid JSON is a Parse Error (-32700), not an internal error.
+      raise EJRPCParseError.Create(SJRPCInvalidJSONReceived);
+  end;
   if not Assigned(LJSON) then
     raise EJRPCParseError.Create(SJRPCInvalidJSONReceived);
   try
@@ -1479,8 +1485,17 @@ begin
     FromJsonSingle(AValue as TJSONObject);
   end
   else if AValue is TJSONArray then
+  begin
+    // Per JSON-RPC 2.0, an empty batch is an Invalid Request.
+    if (AValue as TJSONArray).Count = 0 then
+      raise EJRPCInvalidRequestError.Create(SJRPCInvalidRequest);
     for var LItem in AValue as TJSONArray do
       FromJsonSingle(LItem as TJSONObject);
+  end
+  else
+    // Valid JSON that is neither a Request object nor a batch (a scalar, nil,
+    // etc.) is an Invalid Request per the JSON-RPC 2.0 spec.
+    raise EJRPCInvalidRequestError.Create(SJRPCInvalidRequest);
 end;
 
 { TJRPCRequest }
@@ -1632,12 +1647,20 @@ function TJErrorSerializer.Serialize(const AValue: TValue;
   ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue;
 var
   LError: TJRPCError;
+  LResult: TJSONObject;
 begin
   LError := AValue.AsType<TJRPCError>;
 
-  Result := AContext.WriteDataMember(LError, False);
+  LResult := AContext.WriteDataMember(LError, False) as TJSONObject;
+  // The TJRPCID "id" field is [NeonInclude], so Neon already emits the member
+  // (as null when the id is null). Drop it and add a single explicit "id": null
+  // so the serialized error can't carry a duplicate "id" key.
   if LError.Id.IsNull then
-    (Result as TJSONObject).AddPair('id', TJSONNull.Create);
+  begin
+    LResult.RemovePair('id');
+    LResult.AddPair('id', TJSONNull.Create);
+  end;
+  Result := LResult;
 end;
 
 { TJResponseSerializer }

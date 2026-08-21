@@ -70,6 +70,16 @@ type
     procedure TestJRPCIDInteger();
     [Test]
     procedure TestJRPCIDString();
+
+    // TJRPCMessages parsing tests
+    [Test]
+    procedure TestMessagesFromMalformedJSON();
+    [Test]
+    procedure TestMessagesFromScalarJSON();
+    [Test]
+    procedure TestMessagesFromEmptyBatch();
+    [Test]
+    procedure TestErrorSerializeNullId();
   end;
 
 implementation
@@ -500,6 +510,79 @@ begin
   LId := 'test-id-123';
   LValue := LId;
   Assert.AreEqual('test-id-123', LValue, 'TJRPCID should correctly convert to/from String');
+end;
+
+{ TJRPCMessages Parsing Tests }
+
+procedure TJRPCCoreTest.TestMessagesFromMalformedJSON;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      var LMsgs := TJRPCMessages.CreateFromJson('{"jsonrpc": "2.0", "method":');
+      LMsgs.Free;
+    end,
+    EJRPCParseError,
+    'Malformed JSON should raise a parse error'
+  );
+end;
+
+procedure TJRPCCoreTest.TestMessagesFromScalarJSON;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      var LMsgs := TJRPCMessages.CreateFromJson('5');
+      LMsgs.Free;
+    end,
+    EJRPCInvalidRequestError,
+    'A top-level scalar is neither a Request nor a batch: it should raise Invalid Request'
+  );
+end;
+
+procedure TJRPCCoreTest.TestMessagesFromEmptyBatch;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      var LMsgs := TJRPCMessages.CreateFromJson('[]');
+      LMsgs.Free;
+    end,
+    EJRPCInvalidRequestError,
+    'An empty batch should raise Invalid Request'
+  );
+end;
+
+procedure TJRPCCoreTest.TestErrorSerializeNullId;
+var
+  LError: TJRPCError;
+  LJson: string;
+  LObj: TJSONObject;
+  LPair: TJSONPair;
+  LIdCount: Integer;
+begin
+  LError := TJRPCError.Create;
+  try
+    LError.Error.Code := JRPC_INVALID_REQUEST;
+    LError.Error.Message := 'Invalid Request';
+    LJson := LError.ToJson;
+
+    LObj := TJSONObject.ParseJSONValue(LJson) as TJSONObject;
+    try
+      LIdCount := 0;
+      for LPair in LObj do
+        if LPair.JsonString.Value = 'id' then
+          Inc(LIdCount);
+
+      Assert.AreEqual(1, LIdCount, 'Error serialization must emit exactly one "id" member');
+      Assert.IsTrue(LObj.GetValue<TJSONValue>('id') is TJSONNull, '"id" must be null');
+      Assert.AreEqual(JRPC_INVALID_REQUEST, LObj.GetValue<Integer>('error.code'), 'Error code should round-trip');
+    finally
+      LObj.Free;
+    end;
+  finally
+    LError.Free;
+  end;
 end;
 
 initialization

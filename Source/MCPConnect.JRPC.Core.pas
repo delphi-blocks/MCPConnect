@@ -1517,6 +1517,12 @@ begin
   LResult := AMessage.GetValue('result');
   LError := AMessage.GetValue('error');
 
+  // Per JSON-RPC 2.0, a Response object MUST contain exactly one of "result"
+  // and "error". A message carrying both is not a valid Response and must not
+  // have one of the two members silently dropped.
+  if Assigned(LResult) and Assigned(LError) then
+    raise EJRPCInvalidRequestError.Create(SJRPCInvalidRequest);
+
   if Assigned(LMethod) and Assigned(LId) then
     Exit(TJRPCMessageType.Request);
 

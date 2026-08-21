@@ -81,6 +81,8 @@ type
     [Test]
     procedure TestMessagesFromBatchWithInvalidElement();
     [Test]
+    procedure TestMessagesFromResultAndError();
+    [Test]
     procedure TestErrorSerializeNullId();
 
     // jsonrpc version validation tests
@@ -590,6 +592,22 @@ begin
     Assert.IsTrue((LMsgs.List[0] as TJRPCError).Id.IsNull, 'Error id must be null');
     Assert.IsTrue(LMsgs.List[1] is TJRPCRequest, 'Valid element must still be parsed');
     Assert.AreEqual('math/sum', (LMsgs.List[1] as TJRPCRequest).Method, 'Valid request method must round-trip');
+  finally
+    LMsgs.Free;
+  end;
+end;
+
+procedure TJRPCCoreTest.TestMessagesFromResultAndError;
+var
+  LMsgs: TJRPCMessages;
+begin
+  // A Response object MUST contain exactly one of "result" and "error"; a
+  // message with both is an Invalid Request and neither member is dropped.
+  LMsgs := TJRPCMessages.CreateFromJson('{"jsonrpc": "2.0", "id": 1, "result": 42, "error": {"code": -32601, "message": "Method not found"}}');
+  try
+    Assert.AreEqual(NativeInt(1), LMsgs.Count, 'Should produce one message');
+    Assert.IsTrue(LMsgs.List[0] is TJRPCError, 'Message with both result and error must produce an error');
+    Assert.AreEqual(JRPC_INVALID_REQUEST, (LMsgs.List[0] as TJRPCError).Error.Code.Value, 'Error code must be -32600');
   finally
     LMsgs.Free;
   end;

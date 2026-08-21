@@ -199,6 +199,7 @@ type
     [NeonInclude] id: TValue;
   public
     class operator Implicit(ASource: Integer): TJRPCID;
+    class operator Implicit(ASource: Int64): TJRPCID;
     class operator Implicit(ASource: string): TJRPCID;
     class operator Implicit(Value: TObject): TJRPCID;
 
@@ -871,6 +872,11 @@ begin
   Result.id := ASource;
 end;
 
+class operator TJRPCID.Implicit(ASource: Int64): TJRPCID;
+begin
+  Result.id := ASource;
+end;
+
 class operator TJRPCID.Implicit(Value: TObject): TJRPCID;
 begin
   Result.id := nil;
@@ -880,6 +886,8 @@ function TJRPCID.AsString: string;
 begin
   if id.IsType<string> then
     Result := id.AsString
+  else if id.IsType<Int64> then
+    Result := id.AsInt64.ToString
   else
     Result := id.AsInteger.ToString;
 end;
@@ -1024,6 +1032,36 @@ begin
   end;
 end;
 
+{ id parsing }
+
+// Parses the "id" member of a Request/Response object. Per JSON-RPC 2.0 an id
+// is a String, a Number, or Null (Null is legal but discouraged) and "SHOULD
+// NOT contain fractional parts". Booleans, objects, arrays and fractional or
+// out-of-range numbers are Invalid Requests: a fractional number can't be
+// echoed faithfully by TJRPCID (Integer/Int64/string) and must not be silently
+// truncated.
+function ParseJRPCId(AIdValue: TJSONValue): TJRPCID;
+begin
+  if AIdValue is TJSONNull then
+    Result := nil
+  else if AIdValue is TJSONNumber then
+  begin
+    var LNumber := AIdValue.Value;
+    if (Pos('.', LNumber) > 0) or (Pos('e', LNumber) > 0) or (Pos('E', LNumber) > 0) then
+      raise EJRPCInvalidRequestError.Create(SJRPCInvalidRequest);
+    try
+      Result := StrToInt64(LNumber);
+    except
+      on EConvertError do
+        raise EJRPCInvalidRequestError.Create(SJRPCInvalidRequest);
+    end;
+  end
+  else if AIdValue is TJSONString then
+    Result := AIdValue.Value
+  else
+    raise EJRPCInvalidRequestError.Create(SJRPCInvalidRequest);
+end;
+
 { TJRequestSerializer }
 
 class function TJRequestSerializer.CanHandle(AType: PTypeInfo): Boolean;
@@ -1047,12 +1085,8 @@ begin
   if LReq.JsonRpc <> TJRPCMessage.JSONRPC_VERSION then
     raise EJRPCInvalidRequestError.Create(SJRPCInvalidRequest);
   LIdValue := AValue.GetValue<TJSONValue>('id', nil);
-  if not Assigned(LIdValue) then
-    LReq.Id := ''
-  else if LIdValue is TJSONNumber then
-    LReq.Id := LIdValue.AsType<Integer>
-  else
-    LReq.Id := LIdValue.Value;
+  if Assigned(LIdValue) then
+    LReq.Id := ParseJRPCId(LIdValue);
 
   // "params" is optional
   if AValue.TryGetValue<TJSONValue>('params', LParams) then
@@ -1076,8 +1110,20 @@ end;
 
 function TJRequestSerializer.Serialize(const AValue: TValue;
   ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue;
+var
+  LRequest: TJRPCRequest;
+  LResult: TJSONObject;
 begin
-  Result := AContext.WriteDataMember(AValue, False);
+  LRequest := AValue.AsType<TJRPCRequest>;
+  LResult := AContext.WriteDataMember(LRequest, False) as TJSONObject;
+  // Neon omits the unwrapped "id" member when the id is null; emit it explicitly
+  // so a request with "id": null round-trips faithfully.
+  if LRequest.Id.IsNull then
+  begin
+    LResult.RemovePair('id');
+    LResult.AddPair('id', TJSONNull.Create);
+  end;
+  Result := LResult;
 end;
 
 { JRPCAttribute }
@@ -1387,20 +1433,47 @@ begin
     case GetMessageType(AJSON) of
       TJRPCMessageType.Request:
       begin
-        LMsg := TNeon.JSONToObject<TJRPCRequest>(AJSON, JRPCNeonConfig);
+        // The instance is created here so a failed deserialization can be freed
+        // instead of leaking (TNeon.JSONToObject<T> creates the object internally
+        // and never frees it when a deserializer raises).
+        LMsg := TJRPCRequest.Create;
+        try
+          TNeon.JSONToObject(LMsg, AJSON, JRPCNeonConfig);
+        except
+          LMsg.Free;
+          raise;
+        end;
       end;
       TJRPCMessageType.Response:
       begin
-        LMsg := TNeon.JSONToObject<TJRPCResponse>(AJSON, JRPCNeonConfig);
+        LMsg := TJRPCResponse.Create;
+        try
+          TNeon.JSONToObject(LMsg, AJSON, JRPCNeonConfig);
+        except
+          LMsg.Free;
+          raise;
+        end;
       end;
       TJRPCMessageType.Error:
       begin
-        LMsg := TNeon.JSONToObject<TJRPCError>(AJSON, JRPCNeonConfig);
+        LMsg := TJRPCError.Create;
+        try
+          TNeon.JSONToObject(LMsg, AJSON, JRPCNeonConfig);
+        except
+          LMsg.Free;
+          raise;
+        end;
         (LMsg as TJRPCError).Request := True;
       end;
       TJRPCMessageType.Notification:
       begin
-        LMsg := TNeon.JSONToObject<TJRPCNotification>(AJSON, JRPCNeonConfig);
+        LMsg := TJRPCNotification.Create;
+        try
+          TNeon.JSONToObject(LMsg, AJSON, JRPCNeonConfig);
+        except
+          LMsg.Free;
+          raise;
+        end;
       end
     else
       LMsg := nil;
@@ -1611,10 +1684,15 @@ begin
   LValue := AJSON.GetValue('id');
   if Assigned(LValue) then
   begin
-    if LValue is TJSONNumber then
-      LId := LValue.AsType<Integer>
-    else if LValue is TJSONString then
-      LId := LValue.AsType<string>
+    try
+      LId := ParseJRPCId(LValue);
+    except
+      on EJRPCInvalidRequestError do
+        // An id that can't be parsed (boolean, fractional, out of range, ...)
+        // means the id is not detectable: the error response must carry a null
+        // id, and this must not raise while we are already handling an error.
+        LId := nil;
+    end;
   end;
 
   Result := CreateFromException(E, LId);
@@ -1706,12 +1784,8 @@ begin
   LResponse.Result := LResult.Clone as TJSONValue;
 
   LIdValue := AValue.GetValue<TJSONValue>('id', nil);
-  if not Assigned(LIdValue) then
-    LResponse.Id := ''
-  else if LIdValue is TJSONNumber then
-    LResponse.Id := LIdValue.AsType<Integer>
-  else
-    LResponse.Id := LIdValue.Value;
+  if Assigned(LIdValue) then
+    LResponse.Id := ParseJRPCId(LIdValue);
   LResponse.JsonRpc := AValue.GetValue<string>('jsonrpc');
   // Per JSON-RPC 2.0 the "jsonrpc" member MUST be exactly "2.0".
   if LResponse.JsonRpc <> TJRPCMessage.JSONRPC_VERSION then
@@ -1727,8 +1801,20 @@ end;
 
 function TJResponseSerializer.Serialize(const AValue: TValue;
   ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue;
+var
+  LResponse: TJRPCResponse;
+  LResult: TJSONObject;
 begin
-  Result := AContext.WriteDataMember(AValue, False);
+  LResponse := AValue.AsType<TJRPCResponse>;
+  LResult := AContext.WriteDataMember(LResponse, False) as TJSONObject;
+  // Neon omits the unwrapped "id" member when the id is null; the response must
+  // echo the request id (including null), so emit it explicitly.
+  if LResponse.Id.IsNull then
+  begin
+    LResult.RemovePair('id');
+    LResult.AddPair('id', TJSONNull.Create);
+  end;
+  Result := LResult;
 end;
 
 { TMCPMessageQueueBase<T> }

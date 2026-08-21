@@ -90,6 +90,16 @@ type
     procedure TestMessagesWithInvalidJsonRpcVersion();
     [Test]
     procedure TestNotificationWithInvalidJsonRpcVersion();
+
+    // id handling tests
+    [Test]
+    procedure TestRequestWithNullId();
+    [Test]
+    procedure TestRequestWithBooleanId();
+    [Test]
+    procedure TestRequestWithFractionalId();
+    [Test]
+    procedure TestRequestWithLargeId();
   end;
 
 implementation
@@ -658,6 +668,89 @@ begin
     Assert.AreEqual(NativeInt(1), LMsgs.Count, 'Should produce one message');
     Assert.IsTrue(LMsgs.List[0] is TJRPCError, 'Invalid version must produce an error');
     Assert.AreEqual(JRPC_INVALID_REQUEST, (LMsgs.List[0] as TJRPCError).Error.Code.Value, 'Error code must be -32600');
+  finally
+    LMsgs.Free;
+  end;
+end;
+
+{ id Handling Tests }
+
+procedure TJRPCCoreTest.TestRequestWithNullId;
+var
+  LMsgs: TJRPCMessages;
+  LReq: TJRPCRequest;
+  LJson: string;
+  LObj: TJSONObject;
+begin
+  // Deserialization: "id": null stays null (it must not become the string "null").
+  LMsgs := TJRPCMessages.CreateFromJson('{"jsonrpc": "2.0", "id": null, "method": "ping"}');
+  try
+    Assert.AreEqual(NativeInt(1), LMsgs.Count, 'Should produce one message');
+    LReq := LMsgs.List[0] as TJRPCRequest;
+    Assert.IsTrue(LReq.Id.IsNull, 'A null id must stay null');
+
+    // Serialization: round-trips back as a single "id": null.
+    LJson := LReq.ToJson;
+    LObj := TJSONObject.ParseJSONValue(LJson) as TJSONObject;
+    try
+      Assert.IsTrue(Assigned(LObj.GetValue('id')), '"id" member must be present');
+      Assert.IsTrue(LObj.GetValue<TJSONValue>('id') is TJSONNull, '"id" must serialize as null');
+    finally
+      LObj.Free;
+    end;
+  finally
+    LMsgs.Free;
+  end;
+end;
+
+procedure TJRPCCoreTest.TestRequestWithBooleanId;
+var
+  LMsgs: TJRPCMessages;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      var LReq := TJRPCRequest.CreateFromJson('{"jsonrpc": "2.0", "id": true, "method": "ping"}');
+      LReq.Free;
+    end,
+    EJRPCInvalidRequestError,
+    'A boolean id must be rejected as an Invalid Request'
+  );
+
+  LMsgs := TJRPCMessages.CreateFromJson('{"jsonrpc": "2.0", "id": true, "method": "ping"}');
+  try
+    Assert.AreEqual(NativeInt(1), LMsgs.Count, 'Should produce one message');
+    Assert.IsTrue(LMsgs.List[0] is TJRPCError, 'Invalid id must produce an error');
+    Assert.AreEqual(JRPC_INVALID_REQUEST, (LMsgs.List[0] as TJRPCError).Error.Code.Value, 'Error code must be -32600');
+    Assert.IsTrue((LMsgs.List[0] as TJRPCError).Id.IsNull, 'Error id must be null');
+  finally
+    LMsgs.Free;
+  end;
+end;
+
+procedure TJRPCCoreTest.TestRequestWithFractionalId;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      var LReq := TJRPCRequest.CreateFromJson('{"jsonrpc": "2.0", "id": 1.5, "method": "ping"}');
+      LReq.Free;
+    end,
+    EJRPCInvalidRequestError,
+    'A fractional id must be rejected rather than silently truncated'
+  );
+end;
+
+procedure TJRPCCoreTest.TestRequestWithLargeId;
+var
+  LMsgs: TJRPCMessages;
+  LReq: TJRPCRequest;
+begin
+  LMsgs := TJRPCMessages.CreateFromJson('{"jsonrpc": "2.0", "id": 2147483648, "method": "ping"}');
+  try
+    Assert.AreEqual(NativeInt(1), LMsgs.Count, 'Should produce one message');
+    LReq := LMsgs.List[0] as TJRPCRequest;
+    Assert.AreEqual('2147483648', LReq.Id.AsString, 'Ids beyond Integer range must survive as Int64');
   finally
     LMsgs.Free;
   end;

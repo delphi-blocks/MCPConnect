@@ -47,8 +47,6 @@ resourcestring
   SJRPCNotValidTypeForNamed = 'Not a valid type for named allowed';
   SJRPCOnlyPositionParamsAllowed = 'Only position params are allowed';
   SJRPCNotValidTypeForPosition = 'Not a valid type for position allowed';
-  SJRPCIdIsInteger = 'The Id is an integer';
-  SJRPCIdIsString = 'The Id is a string';
   SJRPCInvalidJSONReceived = 'An invalid JSON was received by the server';
   SJRPCInvalidRequest = 'Invalid JRPC Request';
 
@@ -875,7 +873,9 @@ end;
 
 function TJRPCID.AsString: string;
 begin
-  if id.IsType<string> then
+  if id.IsEmpty then
+    Result := ''
+  else if id.IsType<string> then
     Result := id.AsString
   else if id.IsType<Int64> then
     Result := id.AsInt64.ToString
@@ -885,7 +885,9 @@ end;
 
 function TJRPCID.AsInteger: Integer;
 begin
-  if id.IsOrdinal then
+  if id.IsEmpty then
+    Result := 0
+  else if id.IsOrdinal then
     Result := id.AsInteger
   else
     Result := 0;
@@ -893,10 +895,7 @@ end;
 
 class operator TJRPCID.Implicit(const ASource: TJRPCID): string;
 begin
-  if ASource.Id.IsType<Integer> then
-    raise EJRPCParseError.Create(SJRPCIdIsInteger);
-
-  Result := ASource.Id.AsString;
+  Result := ASource.AsString;
 end;
 
 function TJRPCID.IsNull: Boolean;
@@ -906,10 +905,7 @@ end;
 
 class operator TJRPCID.Implicit(const ASource: TJRPCID): Integer;
 begin
-  if ASource.Id.IsType<string> then
-    raise EJRPCParseError.Create(SJRPCIdIsString);
-
-  Result := ASource.Id.AsInteger;
+  Result := ASource.AsInteger;
 end;
 
 

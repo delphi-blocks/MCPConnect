@@ -921,7 +921,10 @@ begin
   Result.InternalId := FInternalId;
   Result.Id := FId;
   Result.JsonRpc := FJsonRpc;
-  Result.Result := FResult.Clone as TJSONValue;
+  if Assigned(FResult) then
+    Result.Result := FResult.Clone as TJSONValue
+  else
+    Result.Result := nil;
 end;
 
 constructor TJRPCResponse.Create;
@@ -1602,7 +1605,10 @@ begin
   Result.InternalId := FInternalId;
   Result.Id := FId;
   Result.Method := FMethod;
-  Result.Params := FParams.Clone as TJSONValue;
+  if Assigned(FParams) then
+    Result.Params := FParams.Clone as TJSONValue
+  else
+    Result.Params := nil;
 end;
 
 class function TJRPCRequest.CreateFromJson(const AJSON: string): TJRPCRequest;
@@ -1628,7 +1634,10 @@ begin
   Result := TJRPCNotification.Create;
   Result.InternalId := FInternalId;
   Result.Method := FMethod;
-  Result.Params := FParams.Clone as TJSONValue;
+  if Assigned(FParams) then
+    Result.Params := FParams.Clone as TJSONValue
+  else
+    Result.Params := nil;
 end;
 
 function TJRPCNotification.GetType: TJRPCMessageType;

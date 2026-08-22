@@ -515,9 +515,9 @@ begin
     LError := TJRPCInvoker.HandleError(LException, LId);
     try
       Assert.IsNotNull(LError, 'Error response should not be nil');
-      Assert.AreEqual(JRPC_INVALID_REQUEST, LError.Error.Code.Value, 'Error code should be INVALID_REQUEST for generic exceptions');
+      Assert.AreEqual(JRPC_INTERNAL_ERROR, LError.Error.Code.Value, 'Error code should be INTERNAL_ERROR for generic exceptions');
       Assert.AreEqual('Generic error', LError.Error.Message.Value, 'Error message should match exception message');
-      Assert.AreEqual('Exception', LError.Error.Data.AsType<string>, 'Error data should contain exception class name');
+      Assert.AreEqual('Exception: Generic error', LError.Error.Data.AsType<string>, 'Error data should contain exception chain detail');
     finally
       LError.Free;
     end;

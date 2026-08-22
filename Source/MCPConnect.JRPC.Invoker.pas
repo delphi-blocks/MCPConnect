@@ -81,8 +81,9 @@ type
 
     constructor Create(AContext: TJRPCInvokerContext);
   public
+    class function GetExceptionDetail(E: Exception): string; static;
     class function HandleError(E: Exception; AId: TJRPCID): TJRPCError; static;
-    class procedure Invoke(AContext: TJRPCInvokerContext);
+    class procedure Invoke(AContext: TJRPCInvokerContext); static;
   end;
 
 implementation
@@ -208,6 +209,26 @@ begin
   end;
 end;
 
+class function TJRPCInvoker.GetExceptionDetail(E: Exception): string;
+const
+  MAX_DEPTH = 10;
+var
+  LCurrent: Exception;
+  LDepth: Integer;
+begin
+  Result := '';
+  LCurrent := E;
+  LDepth := 0;
+  while Assigned(LCurrent) and (LDepth < MAX_DEPTH) do
+  begin
+    if Result <> '' then
+      Result := Result + sLineBreak;
+    Result := Result + LCurrent.ClassName + ': ' + LCurrent.Message;
+    LCurrent := LCurrent.InnerException;
+    Inc(LDepth);
+  end;
+end;
+
 function TJRPCInvoker.GetParamName(LParam: TRttiParameter): string;
 var
   LParamAttrib: JRPCAttribute;
@@ -250,8 +271,8 @@ begin
     Result.Id := AId;
     Result.Error.Code := JRPC_INVALID_REQUEST;
     Result.Error.Message := E.Message;
-    Result.Error.Data := E.ClassName;
   end;
+  Result.Error.Data := GetExceptionDetail(E);
 end;
 
 class procedure TJRPCInvoker.Invoke(AContext: TJRPCInvokerContext);

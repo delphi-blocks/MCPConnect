@@ -215,7 +215,6 @@ type
   protected
     FInternalId: Integer;
     FJsonRpc: string;
-    function GetNeonConfig: INeonConfiguration;
   public
     constructor Create;
 
@@ -715,14 +714,6 @@ begin
   TNeon.JSONToObject(Self, AJSON, JRPCNeonConfig);
 end;
 
-function TJRPCMessage.GetNeonConfig: INeonConfiguration;
-begin
-  Result := TNeonConfiguration.Default
-    .RegisterSerializer(TJSONValueSerializer)
-    .RegisterSerializer(TJValueSerializer)
-    .RegisterSerializer(TJValueSerializer);
-end;
-
 function TJRPCMessage.ToJson: string;
 begin
   Result := TNeon.ObjectToJSONString(Self, JRPCNeonConfig);
@@ -826,7 +817,7 @@ procedure TJRPCMethod.AddNamedParam(const AName: string; const AValue: TValue);
 var
   LParam: TJSONValue;
 begin
-  LParam := TNeon.ValueToJSON(AValue, GetNeonConfig);
+  LParam := TNeon.ValueToJSON(AValue, JRPCNeonConfig);
   if Assigned(LParam) then
     GetNamedParams.AddPair(AName, LParam);
 end;
@@ -1408,8 +1399,14 @@ procedure TJRPCMessages.FromJson(AStream: TStream);
 var
   LJSON: TJSONValue;
   LBuf: TBytes;
+  LRemaining: Int64;
 begin
-  AStream.Read(LBuf, AStream.Size);
+  LRemaining := AStream.Size - AStream.Position;
+  if LRemaining <= 0 then
+    raise EJRPCParseError.Create(SJRPCInvalidJSONReceived);
+
+  SetLength(LBuf, LRemaining);
+  AStream.ReadBuffer(LBuf, LRemaining);
   LJSON := TJSONObject.ParseJSONValue(LBuf, 0, Length(LBuf));
   try
     FromJson(LJSON);

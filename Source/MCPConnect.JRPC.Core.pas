@@ -62,11 +62,7 @@ resourcestring
   SJRPCInvalidConfig = 'Invalid config';
 
   // MCPConnect.JRPC.Invoker
-  SJRPCInvalidParamForNumber = 'Invalid parameter for number [%s]';
-  SJRPCInvalidParamForString = 'Invalid parameter for string [%s]';
-  SJRPCInvalidParamForObject = 'Invalid parameter for object [%s]';
-  SJRPCInvalidParamForArray = 'Invalid parameter for array [%s]';
-  SJRPCInvalidParam = 'Invalid parameter [%s]';
+  SJRPCInvalidParamType = 'Invalid parameter "%s": expected %s';
   SJRPCMethodNonFound = 'Method [%s] non found';
   SJRPCInvalidMethodParameters = 'Invalid method parameters.';
   SJRPCErrorCallingApiMethod = 'Error calling Api method [%s.%s]';
@@ -81,7 +77,6 @@ type
   EJRPCException = class(Exception)
   protected
     FCode: Integer;
-    FData: TValue;
   public
     procedure AfterConstruction; override;
 
@@ -91,11 +86,6 @@ type
     ///   The JSON-RPC error code.
     /// </summary>
     property Code: Integer read FCode;
-
-    /// <summary>
-    ///   Optional data associated with the error.
-    /// </summary>
-    property Data: TValue read FData;
   end;
 
   /// <summary>
@@ -128,6 +118,7 @@ type
   EJRPCInvalidParamsError = class(EJRPCException)
   public
     procedure AfterConstruction; override;
+    constructor Create(const AParamName, AExpectedType: string); overload;
   end;
 
   TJRPCContext = class;
@@ -1338,6 +1329,11 @@ procedure EJRPCInvalidParamsError.AfterConstruction;
 begin
   inherited;
   FCode := JRPC_INVALID_PARAMS;
+end;
+
+constructor EJRPCInvalidParamsError.Create(const AParamName, AExpectedType: string);
+begin
+  CreateFmt(SJRPCInvalidParamType, [AParamName, AExpectedType]);
 end;
 
 { EJRPCParseError }

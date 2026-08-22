@@ -32,21 +32,6 @@ uses
 
 
 type
-  /// <summary>
-  ///   This exception is raised when an error occurs during the invocation of a JRPC method.
-  ///   It provide the standard information required by the JSON-RPC specification.
-  /// </summary>
-  EJRPCInvokerError = class(Exception)
-  private
-    FCode: Integer;
-    FData: string;
-  public
-    property Code: Integer read FCode;
-    property Data: string read FData;
-
-    constructor Create(ACode: Integer; const AMessage: string; const AData: string = '');
-  end;
-
   TJRPCInvokerContext = record
     Garbage: IGarbageCollector;
     Request: TJRPCMethod;
@@ -98,25 +83,25 @@ begin
   if AValue is TJSONNumber then
   begin
     if not (AParam.ParamType.TypeKind in [tkInteger, tkFloat, tkInt64]) then
-      raise EJRPCInvokerError.Create(JRPC_INVALID_PARAMS, Format(SJRPCInvalidParamForNumber, [AParam.Name]));
+      raise EJRPCInvalidParamsError.Create(AParam.Name, 'number');
   end
   else if AValue is TJSONString then
   begin
     if not (AParam.ParamType.TypeKind in [tkString, tkWChar, tkLString, tkWString, tkUString]) then
-      raise EJRPCInvokerError.Create(JRPC_INVALID_PARAMS, Format(SJRPCInvalidParamForString, [AParam.Name]));
+      raise EJRPCInvalidParamsError.Create(AParam.Name, 'string');
   end
   else if AValue is TJSONObject then
   begin
     if not (AParam.ParamType.TypeKind in [tkClass, tkRecord, tkInterface]) then
-      raise EJRPCInvokerError.Create(JRPC_INVALID_PARAMS, Format(SJRPCInvalidParamForObject, [AParam.Name]));
+      raise EJRPCInvalidParamsError.Create(AParam.Name, 'object');
   end
   else if AValue is TJSONArray then
   begin
     if not (AParam.ParamType.TypeKind in [tkArray, tkDynArray]) then
-      raise EJRPCInvokerError.Create(JRPC_INVALID_PARAMS, Format(SJRPCInvalidParamForArray, [AParam.Name]));
+      raise EJRPCInvalidParamsError.Create(AParam.Name, 'array');
   end
   else
-    raise EJRPCInvokerError.Create(JRPC_INVALID_PARAMS, Format(SJRPCInvalidParam, [AParam.Name]));
+    raise EJRPCInvalidParamsError.CreateFmt('Invalid parameter "%s"', [AParam.Name]);
 end;
 
 constructor TJRPCInvoker.Create(AContext: TJRPCInvokerContext);
@@ -269,7 +254,7 @@ begin
   else
   begin
     Result.Id := AId;
-    Result.Error.Code := JRPC_INVALID_REQUEST;
+    Result.Error.Code := JRPC_INTERNAL_ERROR;
     Result.Error.Message := E.Message;
   end;
   Result.Error.Data := GetExceptionDetail(E);
@@ -337,7 +322,7 @@ begin
         TJRPCParamsType.ByPos:
         begin
           if LParamIndex >= (FContext.Request.Params as TJSONArray).Count then
-            raise EJRPCInvokerError.CreateFmt(SJRPCParamIndexNotFound, [LParamIndex, (FContext.Request.Params as TJSONArray).Count]);
+            raise EJRPCInvalidParamsError.CreateFmt(SJRPCParamIndexNotFound, [LParamIndex, (FContext.Request.Params as TJSONArray).Count]);
 
           LParamJSON := (FContext.Request.Params as TJSONArray).Items[LParamIndex];
         end;
@@ -345,10 +330,10 @@ begin
         TJRPCParamsType.ByName:
         begin
           if not (FContext.Request.Params as TJSONObject).TryGetValue(GetParamName(LParam), LParamJSON) then
-            raise EJRPCInvokerError.CreateFmt(SJRPCParamNotFound, [GetParamName(LParam)]);
+            raise EJRPCInvalidParamsError.CreateFmt(SJRPCParamNotFound, [GetParamName(LParam)]);
         end;
       else
-        raise EJRPCInvokerError.Create(JRPC_INTERNAL_ERROR, SJRPCUnknownParamsType);
+        raise EJRPCInvalidParamsError.Create(SJRPCUnknownParamsType);
       end;
 
       Result := Result + [CastJSONValue(LParam, LParamJSON)];
@@ -362,15 +347,6 @@ begin
   Result := ANeonConfig;
   if not Assigned(Result) then
     Result := TNeonConfiguration.Default;
-end;
-
-{ EJRPCInvokerError }
-
-constructor EJRPCInvokerError.Create(ACode: Integer; const AMessage, AData: string);
-begin
-  inherited Create(AMessage);
-  FCode := ACode;
-  FData := AData;
 end;
 
 { TJRPCInvokerContext }

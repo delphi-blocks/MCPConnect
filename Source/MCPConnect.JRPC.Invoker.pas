@@ -77,10 +77,20 @@ uses
   System.Diagnostics,
   Logify;
 
-// Checks the compatibility of the JSONValue with the function parameters
+// Checks the compatibility of the JSONValue with the function parameters.
+// Enums and records (including Nullable types) are handled natively by Neon
+// from multiple JSON representations, so they skip the check.
 procedure CheckCompatibility(AParam: TRttiParameter; AValue: TJSONValue);
 begin
-  if AValue is TJSONNumber then
+  if AParam.ParamType.TypeKind in [tkEnumeration, tkRecord] then
+    Exit;
+
+  if AValue is TJSONBool then
+  begin
+    if not (AParam.ParamType.TypeKind in [tkInteger, tkInt64]) then
+      raise EJRPCInvalidParamsError.Create(AParam.Name, 'boolean');
+  end
+  else if AValue is TJSONNumber then
   begin
     if not (AParam.ParamType.TypeKind in [tkInteger, tkFloat, tkInt64]) then
       raise EJRPCInvalidParamsError.Create(AParam.Name, 'number');
@@ -99,9 +109,7 @@ begin
   begin
     if not (AParam.ParamType.TypeKind in [tkArray, tkDynArray]) then
       raise EJRPCInvalidParamsError.Create(AParam.Name, 'array');
-  end
-  else
-    raise EJRPCInvalidParamsError.CreateFmt('Invalid parameter "%s"', [AParam.Name]);
+  end;
 end;
 
 constructor TJRPCInvoker.Create(AContext: TJRPCInvokerContext);

@@ -1,8 +1,35 @@
 program MCPWindowsService;
 
+{
+  ==============================================================================
+   MCPConnect demo - MCP server as a Windows service
+  ==============================================================================
+
+  A VCL service application (Vcl.SvcMgr) hosting the Indy transport, so the MCP
+  endpoint is available on port 8080 with nobody logged on.
+
+      MCPWindowsService.exe /install      (elevated)
+      MCPWindowsService.exe /uninstall
+
+  Service name and display name: MCPServerDemo.
+
+  All the MCP work happens in MCPServer.Service.pas; the server definition is
+  the shared ..\MCPServer.Config.pas, identical to the desktop demos. Read the
+  header of MCPServer.Service.pas before deploying: the working directory, the
+  absence of any log destination and the service account permissions all
+  differ from the IDE experience.
+
+  Note that this project links no content-writer units: it is a service, not a
+  VCL forms application, so the TPicture/TBitmap writers are compiled out of
+  MCPServer.Config along with the tools that would return them.
+}
+
 uses
   Vcl.SvcMgr,
   MCPServer.Service in 'MCPServer.Service.pas' {ServiceModule: TService},
+
+  // The shared server definition and the classes it registers - the same six
+  // units every flavour of this demo links.
   MCPServer.Config in '..\MCPServer.Config.pas',
   MCPServer.Tools in '..\MCPServer.Tools.pas',
   MCPServer.Notifications in '..\MCPServer.Notifications.pas',
@@ -14,6 +41,8 @@ uses
 {$R *.RES}
 
 begin
+  // Boilerplate from the Delphi service application template, kept verbatim.
+  //
   // Windows 2003 Server requires StartServiceCtrlDispatcher to be
   // called before CoRegisterClassObject, which can be called indirectly
   // by Application.Initialize. TServiceApplication.DelayInitialize allows

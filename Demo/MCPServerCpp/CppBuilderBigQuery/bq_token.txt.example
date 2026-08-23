@@ -1,0 +1,9 @@
+Do not put a real token in source control.
+
+Generate bq_token.txt next to the built executable with:
+
+gcloud auth print-access-token > bq_token.txt
+
+The sample detects the BOM written by Windows PowerShell 5.1 as well as UTF-8
+token files. It also accepts BQ_ACCESS_TOKEN and gives it precedence over this
+file.

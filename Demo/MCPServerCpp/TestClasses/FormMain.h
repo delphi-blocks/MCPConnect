@@ -23,7 +23,7 @@
 // custom attributes such as [McpTool] and [McpParam] from C++ source.
 // FilterTools therefore mirrors the six attributed Delphi methods explicitly.
 // A real MCP server should use MCPConnect's programmatic RegisterTool API, as
-// demonstrated by the CppBuilderBigQuery sample's Delphi configuration bridge.
+// demonstrated by the BigQuery sample's Delphi configuration bridge.
 class __declspec(delphiclass) __declspec(delphirtti) TfrmMain : public TForm
 {
 __published:	// IDE-managed Components

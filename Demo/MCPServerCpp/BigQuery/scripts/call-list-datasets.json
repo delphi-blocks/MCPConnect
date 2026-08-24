@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "bq_list_datasets",
+    "arguments": {
+      "project_id": "__PROJECT_ID__"
+    }
+  }
+}

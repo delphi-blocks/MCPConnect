@@ -1,15 +1,15 @@
 ﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <PropertyGroup>
-        <ProjectGuid>{3D578056-FD84-47B0-B378-389658EA5631}</ProjectGuid>
+        <ProjectGuid>{282BDC41-E0D2-4AFC-BF89-7F00EC338A16}</ProjectGuid>
         <ProjectVersion>20.4</ProjectVersion>
         <FrameworkType>VCL</FrameworkType>
         <Base>True</Base>
         <Config Condition="'$(Config)'==''">Debug</Config>
         <Platform Condition="'$(Platform)'==''">Win32</Platform>
-        <ProjectName Condition="'$(ProjectName)'==''">MCPAuthServerIndy</ProjectName>
+        <ProjectName Condition="'$(ProjectName)'==''">MCPServerSession</ProjectName>
         <TargetedPlatforms>3</TargetedPlatforms>
         <AppType>Application</AppType>
-        <MainSource>MCPAuthServerIndy.dpr</MainSource>
+        <MainSource>MCPServerSession.dpr</MainSource>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Base' or '$(Base)'!=''">
         <Base>true</Base>
@@ -59,17 +59,17 @@
         <Base>true</Base>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base)'!=''">
-        <DCC_ExeOutput>..\..\</DCC_ExeOutput>
+        <DCC_ExeOutput>..\</DCC_ExeOutput>
         <DCC_E>false</DCC_E>
         <DCC_N>false</DCC_N>
         <DCC_S>false</DCC_S>
         <DCC_F>false</DCC_F>
         <DCC_K>false</DCC_K>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Vcl;Vcl.Imaging;Vcl.Touch;Vcl.Samples;Vcl.Shell;$(DCC_Namespace)</DCC_Namespace>
-        <Icon_MainIcon>MCPAuthServerIndy.ico</Icon_MainIcon>
+        <Icon_MainIcon>$(BDS)\bin\delphi_PROJECTICON.ico</Icon_MainIcon>
         <Icns_MainIcns>$(BDS)\bin\delphi_PROJECTICNS.icns</Icns_MainIcns>
-        <SanitizedProjectName>MCPAuthServerIndy</SanitizedProjectName>
-        <DCC_UnitSearchPath>..\..\..\Source;..\..\..\Libs\Neon\Source;..\..\..\Libs\Logify\Source;..\..\..\Libs\JWT\Source\JOSE;..\..\..\Libs\JWT\Source\Common;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <SanitizedProjectName>MCPServerSession</SanitizedProjectName>
+        <DCC_UnitSearchPath>..\..\Source;..\..\Libs\Neon\Source;..\..\Libs\Logify\Source;..\..\Libs\JWT\Source\Common;..\..\Libs\JWT\Source\JOSE;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <VerInfo_Locale>1040</VerInfo_Locale>
         <VerInfo_Keys>CompanyName=;FileDescription=$(MSBuildProjectName);FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProgramID=com.embarcadero.$(MSBuildProjectName);ProductName=$(MSBuildProjectName);ProductVersion=1.0.0.0;Comments=</VerInfo_Keys>
         <DCC_DcuOutput>.\$(Platform)\$(Config)</DCC_DcuOutput>
@@ -128,38 +128,40 @@
         <DelphiCompile Include="$(MainSource)">
             <MainSource>MainSource</MainSource>
         </DelphiCompile>
-        <DCCReference Include="MCPAuthServerIndy.Form.Main.pas">
+        <DCCReference Include="MCPServer.Form.Main.pas">
             <Form>frmMain</Form>
         </DCCReference>
-        <DCCReference Include="..\MCPAuthServer.Config.pas"/>
-        <DCCReference Include="..\MCPAuthServer.Tools.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.Configuration.Auth.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.Configuration.Core.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.Configuration.MCP.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.Configuration.Neon.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.Configuration.Session.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.Content.Writers.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.Content.Writers.RTL.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.Content.Writers.VCL.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Core.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Invoker.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Server.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Attributes.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Config.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Invoker.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Prompts.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Resources.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Server.Api.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Tools.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.Session.Core.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.Transport.Indy.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Classes.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.Transport.Base.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.Transport.AcceptParser.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.Transport.MediaType.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.Security.Jwks.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.Security.Token.pas"/>
+        <DCCReference Include="MCPServer.Apps.pas"/>
+        <DCCReference Include="MCPServer.Config.pas"/>
+        <DCCReference Include="MCPServer.Resources.pas"/>
+        <DCCReference Include="MCPServer.Tools.pas"/>
+        <DCCReference Include="MCPServer.Prompts.pas"/>
+        <DCCReference Include="MCPServer.Notifications.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Configuration.Auth.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Configuration.Core.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Configuration.MCP.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Configuration.Neon.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Configuration.Session.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Content.Writers.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Content.Writers.RTL.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Content.Writers.VCL.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.JRPC.Core.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.JRPC.Invoker.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.JRPC.Server.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Attributes.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Config.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Invoker.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Prompts.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Resources.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Server.Api.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Tools.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Session.Core.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Transport.Indy.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.JRPC.Classes.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Transport.Base.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Transport.AcceptParser.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Transport.MediaType.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
@@ -178,7 +180,7 @@
         <BorlandProject>
             <Delphi.Personality>
                 <Source>
-                    <Source Name="MainSource">MCPAuthServerIndy.dpr</Source>
+                    <Source Name="MainSource">MCPServerSession.dpr</Source>
                 </Source>
                 <Excluded_Packages>
                     <Excluded_Packages Name="$(BDSBIN)\dcloffice2k370.bpl">Microsoft Office 2000 Sample Automation Server Wrapper Components</Excluded_Packages>
@@ -188,9 +190,9 @@
                 </Excluded_Packages>
             </Delphi.Personality>
             <Deployment Version="5">
-                <DeployFile LocalName="..\..\MCPAuthServerIndy.exe" Configuration="Debug" Class="ProjectOutput">
+                <DeployFile LocalName="..\..\MCPServerSession.exe" Configuration="Debug" Class="ProjectOutput">
                     <Platform Name="Win32">
-                        <RemoteName>MCPAuthServerIndy.exe</RemoteName>
+                        <RemoteName>MCPServerSession.exe</RemoteName>
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>

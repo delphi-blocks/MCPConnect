@@ -2,8 +2,8 @@ object frmMain: TfrmMain
   Left = 271
   Top = 114
   Caption = 'frmMain'
-  ClientHeight = 413
-  ClientWidth = 954
+  ClientHeight = 235
+  ClientWidth = 399
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -47,50 +47,17 @@ object frmMain: TfrmMain
     Text = '8080'
   end
   object ButtonOpenBrowser: TButton
-    Left = 186
-    Top = 8
+    Left = 24
+    Top = 112
     Width = 107
     Height = 25
     Caption = 'Open Browser'
     TabOrder = 3
     OnClick = ButtonOpenBrowserClick
   end
-  object memoLog: TMemo
-    Left = 0
-    Top = 104
-    Width = 954
-    Height = 309
-    Align = alBottom
-    Anchors = [akLeft, akTop, akRight, akBottom]
-    Font.Charset = ANSI_CHARSET
-    Font.Color = clWindowText
-    Font.Height = -12
-    Font.Name = 'Consolas'
-    Font.Style = []
-    ParentFont = False
-    ScrollBars = ssVertical
-    TabOrder = 4
-    ExplicitWidth = 437
-    ExplicitHeight = 224
-  end
-  object btnClearLog: TButton
-    Left = 299
-    Top = 8
-    Width = 107
-    Height = 25
-    Caption = 'Clear logs'
-    Font.Charset = DEFAULT_CHARSET
-    Font.Color = clWindowText
-    Font.Height = -12
-    Font.Name = 'Tahoma'
-    Font.Style = []
-    ParentFont = False
-    TabOrder = 5
-    OnClick = btnClearLogClick
-  end
   object ApplicationEvents1: TApplicationEvents
     OnIdle = ApplicationEvents1Idle
-    Left = 96
-    Top = 152
+    Left = 288
+    Top = 24
   end
 end

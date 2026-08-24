@@ -1236,17 +1236,18 @@ begin
   LSessionId := ExtractSessionId;
   LSessionManager := (FServer.SessionManager as TMCPSessionManager);
 
-  // If session ID is provided, try to get existing session
   if not LSessionId.IsEmpty then
   begin
-    // GetSession will raise exception if expired or not found
-    Result := LSessionManager.GetSession(LSessionId);
+    if IsInitializeRequest then
+    begin
+      if not LSessionManager.TryGetSession(LSessionId, Result) then
+        Result := LSessionManager.CreateSession;
+    end
+    else
+      Result := LSessionManager.GetSession(LSessionId);
   end
   else if IsInitializeRequest then
-  begin
-    // No session ID provided - only "initialize" may auto-create a new session
-    Result := LSessionManager.CreateSession;
-  end
+    Result := LSessionManager.CreateSession
   else
     raise EMCPTransportException.Create(HTTP_CODE_BADREQUEST, SSessionIdHeaderRequired);
 end;

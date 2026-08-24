@@ -18,8 +18,8 @@ unit MCPConnect.Transport.WebBroker;
 interface
 
 uses
-  System.SysUtils, System.Classes, System.Masks, System.Diagnostics,
-  Web.HTTPApp,
+  System.SysUtils, System.Classes, System.Masks, System.DateUtils,
+  System.Diagnostics, Web.HTTPApp,
 
   MCPConnect.Transport.Base,
   MCPConnect.JRPC.Core,
@@ -87,21 +87,64 @@ uses
 const
   PingInterval = 15000;
 
-function DateToHttpStr(ADate: TDateTime): string;
-const
-  sDateFormat = '"%s", dd "%s" yyyy hh":"nn":"ss';
-begin
-  Result := Format(FormatDateTime(sDateFormat + ' "GMT"', ADate), [DayOfWeekStr(ADate), MonthStr(ADate)]);
-end;
-
-function DateTimeToHTTPDate(ADateTime: TDateTime): string;
+/// <summary>
+/// Converts a TDateTime value to an HTTP-date string in GMT/UTC format.
+/// </summary>
+/// <param name="ADateTime">
+/// The date and time to convert.
+/// </param>
+/// <param name="AInputIsUTC">
+/// Specifies whether ADateTime is already expressed in UTC.
+/// If False, ADateTime is assumed to be local time and is converted to UTC.
+/// </param>
+/// <returns>
+/// The date formatted according to the HTTP-date format,
+/// for example: "Mon, 24 Aug 2026 08:30:00 GMT".
+/// </returns>
+function DateTimeToHTTPDate(ADateTime: TDateTime; AInputIsUTC: Boolean = True): string;
 const
   HTTPDateFormat = 'ddd, dd mmm yyyy hh:nn:ss "GMT"';
 var
   FS: TFormatSettings;
 begin
   FS := TFormatSettings.Create('en-US');
+
+  if not AInputIsUTC then
+    ADateTime := TTimeZone.Local.ToUniversalTime(ADateTime);
+
   Result := FormatDateTime(HTTPDateFormat, ADateTime, FS);
+end;
+
+/// <summary>
+/// Converts an HTTP-date string to a TDateTime value.
+/// </summary>
+/// <param name="AValue">
+/// The HTTP-date string to convert, for example:
+/// "Mon, 24 Aug 2026 08:30:00 GMT".
+/// </param>
+/// <param name="AReturnUTC">
+/// Specifies whether the returned TDateTime should be expressed in UTC.
+/// If False, the parsed UTC date is converted to local time.
+/// </param>
+/// <returns>
+/// The parsed date and time. Returns 0 if the value cannot be converted.
+/// </returns>
+function HTTPDateToDateTime(const AValue: string; AReturnUTC: Boolean = True): TDateTime;
+var
+  FS: TFormatSettings;
+begin
+  FS := TFormatSettings.Create('en-US');
+  FS.DateSeparator := ' ';
+  FS.ShortDateFormat := 'ddd, dd mmm yyyy';
+  FS.ShortTimeFormat := 'hh:nn:ss';
+
+  if TryStrToDateTime(AValue.Replace(' GMT', ''), Result, FS) then
+  begin
+    if not AReturnUTC then
+      Result := TTimeZone.Local.ToLocalTime(Result);
+  end
+  else
+    Result := 0;
 end;
 
 procedure TJRPCDispatcher.ConvertRequestHeaders(AWebRequest: TWebRequest; AMCPRequest: TMCPTransportRequest);
@@ -120,7 +163,7 @@ begin
   if AWebRequest.Cookie <> '' then
     AMCPRequest.SetHeader('Cookie', AWebRequest.Cookie);
   if AWebRequest.Date > 0 then
-    AMCPRequest.SetHeader('Date', DateToHttpStr(AWebRequest.Date));
+    AMCPRequest.SetHeader('Date', DateTimeToHTTPDate(AWebRequest.Date));
   if AWebRequest.Accept <> '' then
     AMCPRequest.SetHeader('Accept', AWebRequest.Accept);
   if AWebRequest.From <> '' then
@@ -128,7 +171,7 @@ begin
   if AWebRequest.Host <> '' then
     AMCPRequest.SetHeader('Host', AWebRequest.Host);
   if AWebRequest.IfModifiedSince > 0 then
-    AMCPRequest.SetHeader('If-Modified-Since', DateToHttpStr(AWebRequest.IfModifiedSince));
+    AMCPRequest.SetHeader('If-Modified-Since', DateTimeToHTTPDate(AWebRequest.IfModifiedSince));
   if AWebRequest.Referer <> '' then
     AMCPRequest.SetHeader('Referer', AWebRequest.Referer);
   if AWebRequest.UserAgent <> '' then
@@ -144,7 +187,7 @@ begin
   if AWebRequest.DerivedFrom <> '' then
     AMCPRequest.SetHeader('Derived-From', AWebRequest.DerivedFrom);
   if AWebRequest.Expires > 0 then
-    AMCPRequest.SetHeader('Expires', DateToHttpStr(AWebRequest.Expires));
+    AMCPRequest.SetHeader('Expires', DateTimeToHTTPDate(AWebRequest.Expires));
   if AWebRequest.Title <> '' then
     AMCPRequest.SetHeader('Title', AWebRequest.Title);
   if AWebRequest.GetFieldByName(LSessionConfig.GetHeaderName) <> '' then
@@ -160,6 +203,30 @@ begin
   begin
     if SameText(pair.Key, 'WWW-Authenticate') then
       AWebResponse.WWWAuthenticate := pair.Value
+    else if SameText(pair.Key, 'Content-Type') then
+      AWebResponse.ContentType := pair.Value
+    else if SameText(pair.Key, 'Content-Encoding') then
+      AWebResponse.ContentEncoding := pair.Value
+    else if SameText(pair.Key, 'Content-Version') then
+      AWebResponse.ContentVersion := pair.Value
+    else if SameText(pair.Key, 'Server') then
+      AWebResponse.Server := pair.Value
+    else if SameText(pair.Key, 'Realm') then
+      AWebResponse.Realm := pair.Value
+    else if SameText(pair.Key, 'Allow') then
+      AWebResponse.Allow := pair.Value
+    else if SameText(pair.Key, 'Location') then
+      AWebResponse.Location := pair.Value
+    else if SameText(pair.Key, 'Derived-From') then
+      AWebResponse.DerivedFrom := pair.Value
+    else if SameText(pair.Key, 'Title') then
+      AWebResponse.Title := pair.Value
+    else if SameText(pair.Key, 'Date') then
+      AWebResponse.Date := HTTPDateToDateTime(pair.Value)
+    else if SameText(pair.Key, 'Expires') then
+      AWebResponse.Expires := HTTPDateToDateTime(pair.Value)
+    else if SameText(pair.Key, 'Last-Modified') then
+      AWebResponse.LastModified := HTTPDateToDateTime(pair.Value)
     else
       AWebResponse.CustomHeaders.AddPair(pair.Key, pair.Value);
   end;

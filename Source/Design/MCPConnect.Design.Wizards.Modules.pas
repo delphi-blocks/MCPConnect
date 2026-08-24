@@ -426,7 +426,7 @@ begin
       .Add('MCP_PATH', Config.McpPath)
       .Add('CLASS_GROUP', ClassGroupForAppKind(Config.AppKind))
       .Add('EXTRA_UNITS', TMCPCodeGen.BuildUsesList(Config, FToolsUnit))
-      .Add('CONFIG_CODE', TMCPCodeGen.BuildConfigCode(Config, 'FJRPCServer', ConfigIndentLevel))
+      .Add('CONFIG_CODE', TMCPCodeGen.BuildConfigCode(Config, 'JRPCServer', ConfigIndentLevel))
       .Build
   );
 end;

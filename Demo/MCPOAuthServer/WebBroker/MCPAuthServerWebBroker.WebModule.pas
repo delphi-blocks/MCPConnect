@@ -19,14 +19,13 @@ type
       Request: TWebRequest; Response: TWebResponse; var Handled: Boolean);
     procedure WebModuleCreate(Sender: TObject);
   private
-    FJRPCServer: TJRPCServer;
-    FJRPCDispatcher: TJRPCDispatcher;
   public
     { Public declarations }
   end;
 
 var
   WebModuleClass: TComponentClass = TWebModule1;
+  JRPCServer: TJRPCServer;
 
 implementation
 
@@ -48,14 +47,27 @@ begin
 end;
 
 procedure TWebModule1.WebModuleCreate(Sender: TObject);
+var
+  LJRPCDispatcher: TJRPCDispatcher;
 begin
-  FJRPCServer := TJRPCServer.Create(Self);
+  // Singleton: WebBroker creates one web module per thread, but all share one server
+  if not Assigned(JRPCServer) then
+  begin
+    JRPCServer := TJRPCServer.Create(nil);
+    TServerConfigurator.ConfigureServer(JRPCServer);
+  end;
 
-  TServerConfigurator.ConfigureServer(FJRPCServer);
-
-  FJRPCDispatcher := TJRPCDispatcher.Create(Self);
-  FJRPCDispatcher.PathInfo := '*';
-  FJRPCDispatcher.Server := FJRPCServer;
+  LJRPCDispatcher := TJRPCDispatcher.Create(Self);
+  LJRPCDispatcher.PathInfo := '*';
+  LJRPCDispatcher.Server := JRPCServer;
 end;
+
+initialization
+
+  JRPCServer := nil;
+
+finalization
+
+  JRPCServer.Free;
 
 end.

@@ -15,14 +15,12 @@ type
     procedure WebModuleDefaultAction(Sender: TObject; Request: TWebRequest;
       Response: TWebResponse; var Handled: Boolean);
   private
-    FJRPCServer: TJRPCServer;
-    FJRPCDispatcher: TJRPCDispatcher;
-
     procedure ConfigureServer;
   end;
 
 var
   WebModuleClass: TComponentClass = TWebModule1;
+  JRPCServer: TJRPCServer;
 
 implementation
 
@@ -36,13 +34,19 @@ uses
 { TWebModule1 }
 
 procedure TWebModule1.WebModuleCreate(Sender: TObject);
+var
+  LJRPCDispatcher: TJRPCDispatcher;
 begin
-  FJRPCServer := TJRPCServer.Create(Self);
-  ConfigureServer;
+  // Singleton: WebBroker creates one web module per thread, but all share one server
+  if not Assigned(JRPCServer) then
+  begin
+    JRPCServer := TJRPCServer.Create(nil);
+    ConfigureServer;
+  end;
 
-  FJRPCDispatcher := TJRPCDispatcher.Create(Self);
-  FJRPCDispatcher.PathInfo := '%MCP_PATH%';
-  FJRPCDispatcher.Server := FJRPCServer;
+  LJRPCDispatcher := TJRPCDispatcher.Create(Self);
+  LJRPCDispatcher.PathInfo := '%MCP_PATH%';
+  LJRPCDispatcher.Server := JRPCServer;
 end;
 
 procedure TWebModule1.ConfigureServer;
@@ -59,5 +63,13 @@ begin
     '<body>MCP endpoint available at <code>%MCP_PATH%</code></body>' +
     '</html>';
 end;
+
+initialization
+
+  JRPCServer := nil;
+
+finalization
+
+  JRPCServer.Free;
 
 end.

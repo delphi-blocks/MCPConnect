@@ -1,4 +1,4 @@
-unit MCPServerWebBroker.WebModule;
+﻿unit MCPServerWebBroker.WebModule;
 
 {
   ==============================================================================
@@ -18,13 +18,10 @@ unit MCPServerWebBroker.WebModule;
   below, which is why the endpoint and an ordinary web site can coexist in one
   module.
 
-  Both objects are owned by the web module, so their lifetime follows it. That
-  matters more than usual here: WebBroker creates one web module *per request
-  thread*, so with the default pooling you can get several TJRPCServer instances,
-  each with its own configuration and its own session manager. For this demo
-  that is harmless; a production server that must share state across threads
-  should create the TJRPCServer once (a singleton or a form field) and hand the
-  same instance to every dispatcher.
+  WebBroker creates one web module *per request thread*, so the TJRPCServer is
+  created as a global singleton (no owner) shared by every dispatcher instance.
+  This ensures a single session manager and configuration across all threads.
+  The server is freed in the finalization section.
 
   Deployment: the same web module compiles unchanged into a standalone Indy
   host (this demo), ISAPI, Apache, CGI or FastCGI - only the .dpr changes.
@@ -57,23 +54,13 @@ type
       Request: TWebRequest; Response: TWebResponse; var Handled: Boolean);
     procedure WebModuleCreate(Sender: TObject);
   private
-    /// <summary>
-    ///   The protocol engine: JSON-RPC dispatch, plugin configuration chain,
-    ///   session manager. Knows nothing about HTTP.
-    /// </summary>
-    FJRPCServer: TJRPCServer;
-
-    /// <summary>
-    ///   The bridge between WebBroker and the engine. Owned by the web module,
-    ///   which it also registers itself with.
-    /// </summary>
-    FJRPCDispatcher: TJRPCDispatcher;
   public
     { Public declarations }
   end;
 
 var
   WebModuleClass: TComponentClass = TWebModule1;
+  JRPCServer: TJRPCServer;
 
 implementation
 
@@ -87,9 +74,7 @@ uses
 procedure TWebModule1.WebModule1DefaultHandlerAction(Sender: TObject;
   Request: TWebRequest; Response: TWebResponse; var Handled: Boolean);
 begin
-  // Anything that is not /mcp lands here. Handy to prove the server is alive
-  // from a browser, since the MCP endpoint itself only answers POST (and GET
-  // with Accept: text/event-stream).
+  // Anything that is not /mcp lands here
   Response.Content :=
     '<html>' +
     '<head><title>Web Server Application</title></head>' +
@@ -98,20 +83,28 @@ begin
 end;
 
 procedure TWebModule1.WebModuleCreate(Sender: TObject);
+var
+  LJRPCDispatcher: TJRPCDispatcher;
 begin
-  // 1) The engine. Owned by the web module (Self), so it is freed with it.
-  FJRPCServer := TJRPCServer.Create(Self);
+  // Singleton: WebBroker creates one web module per thread, but all share one server
+  if not Assigned(JRPCServer) then
+  begin
+    JRPCServer := TJRPCServer.Create(nil);
+    TServerConfigurator.ConfigureServer(JRPCServer);
+  end;
 
-  // 2) Declare what the server exposes - the shared definition used by every
-  //    transport in this demo. See ..\MCPServer.Config.pas.
-  TServerConfigurator.ConfigureServer(FJRPCServer);
-
-  // 3) The HTTP route. The dispatcher hooks itself into the owning web module
-  //    on construction; PathInfo is the mask it answers to, so the endpoint
-  //    for this demo is  http://localhost:8080/mcp
-  FJRPCDispatcher := TJRPCDispatcher.Create(Self);
-  FJRPCDispatcher.PathInfo := '/mcp';
-  FJRPCDispatcher.Server := FJRPCServer;
+  // The dispatcher hooks itself into the owning web module
+  LJRPCDispatcher := TJRPCDispatcher.Create(Self);
+  LJRPCDispatcher.PathInfo := '/mcp';
+  LJRPCDispatcher.Server := JRPCServer;
 end;
+
+initialization
+
+  JRPCServer := nil;
+
+finalization
+
+  JRPCServer.Free;
 
 end.

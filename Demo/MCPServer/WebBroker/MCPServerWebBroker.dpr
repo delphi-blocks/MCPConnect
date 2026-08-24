@@ -35,8 +35,6 @@ uses
   Vcl.Forms,
   Web.WebReq,
   IdHTTPWebBrokerBridge,
-  // MCPConnect units by explicit path so the demo builds without installing
-  // the packages. In your own project put Source\ on the search path instead.
   MCPConnect.Configuration.Auth in '..\..\..\Source\MCPConnect.Configuration.Auth.pas',
   MCPConnect.Configuration.Core in '..\..\..\Source\MCPConnect.Configuration.Core.pas',
   MCPConnect.Configuration.MCP in '..\..\..\Source\MCPConnect.Configuration.MCP.pas',
@@ -56,12 +54,7 @@ uses
   MCPConnect.MCP.Tools in '..\..\..\Source\MCPConnect.MCP.Tools.pas',
   MCPConnect.MCP.Types in '..\..\..\Source\MCPConnect.MCP.Types.pas',
   MCPConnect.MCP.Config in '..\..\..\Source\MCPConnect.MCP.Config.pas',
-
-  // The transport. This is the only MCPConnect unit that differs between the
-  // WebBroker, Indy and Stdio flavours of this demo.
   MCPConnect.Transport.WebBroker in '..\..\..\Source\MCPConnect.Transport.WebBroker.pas',
-
-  // The shared server definition and the classes it registers.
   MCPServer.Tools in '..\MCPServer.Tools.pas',
   MCPServer.Resources in '..\MCPServer.Resources.pas',
   MCPServer.Apps in '..\MCPServer.Apps.pas',
@@ -70,7 +63,8 @@ uses
   MCPServer.Config in '..\MCPServer.Config.pas',
   MCPServer.Notifications in '..\MCPServer.Notifications.pas',
   MCPServer.Prompts in '..\MCPServer.Prompts.pas',
-  MCPServer.Tools.Test in '..\MCPServer.Tools.Test.pas';
+  MCPServer.Tools.Test in '..\MCPServer.Tools.Test.pas',
+  MCPConnect.Transport.Base in '..\..\..\Source\MCPConnect.Transport.Base.pas';
 
 {$R *.res}
 

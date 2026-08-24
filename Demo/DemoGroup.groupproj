@@ -3,12 +3,6 @@
         <ProjectGuid>{E4B9D31E-3EB0-42B7-BB2C-BE6C824E15C2}</ProjectGuid>
     </PropertyGroup>
     <ItemGroup>
-        <Projects Include="TestClasses\TestClasses.dproj">
-            <Dependencies/>
-        </Projects>
-        <Projects Include="JRPCServer\JRPCServer.dproj">
-            <Dependencies/>
-        </Projects>
         <Projects Include="MCPServer\Stdio\MCPServerStdio.dproj">
             <Dependencies/>
         </Projects>
@@ -24,7 +18,7 @@
         <Projects Include="MCPOAuthServer\WebBroker\MCPAuthServerWebBroker.dproj">
             <Dependencies/>
         </Projects>
-        <Projects Include="MCPServer\WindowsSerivce\MCPWindowsService.dproj">
+        <Projects Include="MCPServer\WindowsService\MCPWindowsService.dproj">
             <Dependencies/>
         </Projects>
     </ItemGroup>
@@ -35,24 +29,6 @@
             <Default.Personality/>
         </BorlandProject>
     </ProjectExtensions>
-    <Target Name="TestClasses">
-        <MSBuild Projects="TestClasses\TestClasses.dproj"/>
-    </Target>
-    <Target Name="TestClasses:Clean">
-        <MSBuild Projects="TestClasses\TestClasses.dproj" Targets="Clean"/>
-    </Target>
-    <Target Name="TestClasses:Make">
-        <MSBuild Projects="TestClasses\TestClasses.dproj" Targets="Make"/>
-    </Target>
-    <Target Name="JRPCServer">
-        <MSBuild Projects="JRPCServer\JRPCServer.dproj"/>
-    </Target>
-    <Target Name="JRPCServer:Clean">
-        <MSBuild Projects="JRPCServer\JRPCServer.dproj" Targets="Clean"/>
-    </Target>
-    <Target Name="JRPCServer:Make">
-        <MSBuild Projects="JRPCServer\JRPCServer.dproj" Targets="Make"/>
-    </Target>
     <Target Name="MCPServerStdio">
         <MSBuild Projects="MCPServer\Stdio\MCPServerStdio.dproj"/>
     </Target>
@@ -99,22 +75,22 @@
         <MSBuild Projects="MCPOAuthServer\WebBroker\MCPAuthServerWebBroker.dproj" Targets="Make"/>
     </Target>
     <Target Name="MCPWindowsService">
-        <MSBuild Projects="MCPServer\WindowsSerivce\MCPWindowsService.dproj"/>
+        <MSBuild Projects="MCPServer\WindowsService\MCPWindowsService.dproj"/>
     </Target>
     <Target Name="MCPWindowsService:Clean">
-        <MSBuild Projects="MCPServer\WindowsSerivce\MCPWindowsService.dproj" Targets="Clean"/>
+        <MSBuild Projects="MCPServer\WindowsService\MCPWindowsService.dproj" Targets="Clean"/>
     </Target>
     <Target Name="MCPWindowsService:Make">
-        <MSBuild Projects="MCPServer\WindowsSerivce\MCPWindowsService.dproj" Targets="Make"/>
+        <MSBuild Projects="MCPServer\WindowsService\MCPWindowsService.dproj" Targets="Make"/>
     </Target>
     <Target Name="Build">
-        <CallTarget Targets="TestClasses;JRPCServer;MCPServerStdio;MCPServerIndy;MCPServerWebBroker;MCPAuthServerIndy;MCPAuthServerWebBroker;MCPWindowsService"/>
+        <CallTarget Targets="MCPServerStdio;MCPServerIndy;MCPServerWebBroker;MCPAuthServerIndy;MCPAuthServerWebBroker;MCPWindowsService"/>
     </Target>
     <Target Name="Clean">
-        <CallTarget Targets="TestClasses:Clean;JRPCServer:Clean;MCPServerStdio:Clean;MCPServerIndy:Clean;MCPServerWebBroker:Clean;MCPAuthServerIndy:Clean;MCPAuthServerWebBroker:Clean;MCPWindowsService:Clean"/>
+        <CallTarget Targets="MCPServerStdio:Clean;MCPServerIndy:Clean;MCPServerWebBroker:Clean;MCPAuthServerIndy:Clean;MCPAuthServerWebBroker:Clean;MCPWindowsService:Clean"/>
     </Target>
     <Target Name="Make">
-        <CallTarget Targets="TestClasses:Make;JRPCServer:Make;MCPServerStdio:Make;MCPServerIndy:Make;MCPServerWebBroker:Make;MCPAuthServerIndy:Make;MCPAuthServerWebBroker:Make;MCPWindowsService:Make"/>
+        <CallTarget Targets="MCPServerStdio:Make;MCPServerIndy:Make;MCPServerWebBroker:Make;MCPAuthServerIndy:Make;MCPAuthServerWebBroker:Make;MCPWindowsService:Make"/>
     </Target>
     <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
 </Project>

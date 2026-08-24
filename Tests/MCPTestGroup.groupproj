@@ -1,0 +1,60 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{0939802D-301E-4637-A54A-0FF06F53E361}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="UnitTest\MCPConnect.Tests.Framework.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="JRPCServer\JRPCServer.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="ConsoleTest\MCPConsoleIndyTest.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="MCPConnect_Tests_Framework">
+        <MSBuild Projects="UnitTest\MCPConnect.Tests.Framework.dproj"/>
+    </Target>
+    <Target Name="MCPConnect_Tests_Framework:Clean">
+        <MSBuild Projects="UnitTest\MCPConnect.Tests.Framework.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="MCPConnect_Tests_Framework:Make">
+        <MSBuild Projects="UnitTest\MCPConnect.Tests.Framework.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="JRPCServer">
+        <MSBuild Projects="JRPCServer\JRPCServer.dproj"/>
+    </Target>
+    <Target Name="JRPCServer:Clean">
+        <MSBuild Projects="JRPCServer\JRPCServer.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="JRPCServer:Make">
+        <MSBuild Projects="JRPCServer\JRPCServer.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="MCPConsoleIndyTest">
+        <MSBuild Projects="ConsoleTest\MCPConsoleIndyTest.dproj"/>
+    </Target>
+    <Target Name="MCPConsoleIndyTest:Clean">
+        <MSBuild Projects="ConsoleTest\MCPConsoleIndyTest.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="MCPConsoleIndyTest:Make">
+        <MSBuild Projects="ConsoleTest\MCPConsoleIndyTest.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="MCPConnect_Tests_Framework;JRPCServer;MCPConsoleIndyTest"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="MCPConnect_Tests_Framework:Clean;JRPCServer:Clean;MCPConsoleIndyTest:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="MCPConnect_Tests_Framework:Make;JRPCServer:Make;MCPConsoleIndyTest:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>

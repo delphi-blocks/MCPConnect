@@ -12,7 +12,7 @@ unit MCPServer.Config;
       Demo\MCPServer\Indy            (TJRPCIndyServer  - HTTP + SSE)
       Demo\MCPServer\WebBroker       (TJRPCDispatcher  - standalone/ISAPI/CGI)
       Demo\MCPServer\Stdio           (TJRPCStdioServer - launched by the client)
-      Demo\MCPServer\WindowsSerivce  (Indy, hosted in a Windows service)
+      Demo\MCPServer\WindowsService  (Indy, hosted in a Windows service)
 
   The scenario is the ticket desk of the "Delphi Day" conference in Italy:
   tools to browse tickets and manage a per-session shopping cart, resources
@@ -107,7 +107,6 @@ uses
   MCPServer.Resources,
   MCPServer.Apps,
   MCPServer.Tools,
-  MCPServer.Tools.Test,
   MCPServer.Prompts;
 
 
@@ -359,7 +358,6 @@ begin
     // Removes every tool that came from the class. A single tool can be
     // dropped by name with .UnregisterTool('delphiday_cart-add'), and
     // .ClearAll wipes the whole section.
-    .UnregisterClass(TTestTool)
     .UnregisterClass(TDelphiDayTool)
   .BackToMCP
 

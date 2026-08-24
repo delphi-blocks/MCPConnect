@@ -63,7 +63,6 @@ uses
   MCPServer.Config in '..\MCPServer.Config.pas',
   MCPServer.Notifications in '..\MCPServer.Notifications.pas',
   MCPServer.Prompts in '..\MCPServer.Prompts.pas',
-  MCPServer.Tools.Test in '..\MCPServer.Tools.Test.pas',
   MCPConnect.Transport.Base in '..\..\..\Source\MCPConnect.Transport.Base.pas';
 
 {$R *.res}

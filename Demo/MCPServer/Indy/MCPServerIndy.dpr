@@ -58,8 +58,7 @@ uses
   MCPConnect.Transport.AcceptParser in '..\..\..\Source\MCPConnect.Transport.AcceptParser.pas',
   MCPConnect.Transport.MediaType in '..\..\..\Source\MCPConnect.Transport.MediaType.pas',
   MCPServer.Prompts in '..\MCPServer.Prompts.pas',
-  MCPServer.Notifications in '..\MCPServer.Notifications.pas',
-  MCPServer.Tools.Test in '..\MCPServer.Tools.Test.pas';
+  MCPServer.Notifications in '..\MCPServer.Notifications.pas';
 
 {$R *.res}
 

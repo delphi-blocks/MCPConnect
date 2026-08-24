@@ -43,10 +43,6 @@ program MCPServerStdio;
 
 uses
   System.SysUtils,
-  // The MCPConnect units are listed with explicit relative paths so that the
-  // demo compiles without installing the packages first. In a real project
-  // you would put Source\ (plus the Neon/Logify/JOSE source folders) on the
-  // project search path and keep only your own units here.
   MCPConnect.Configuration.Auth in '..\..\..\Source\MCPConnect.Configuration.Auth.pas',
   MCPConnect.Configuration.Core in '..\..\..\Source\MCPConnect.Configuration.Core.pas',
   MCPConnect.Configuration.MCP in '..\..\..\Source\MCPConnect.Configuration.MCP.pas',
@@ -66,22 +62,13 @@ uses
   MCPConnect.JRPC.Classes in '..\..\..\Source\MCPConnect.JRPC.Classes.pas',
   MCPConnect.Session.Core in '..\..\..\Source\MCPConnect.Session.Core.pas',
   MCPConnect.Content.Writers in '..\..\..\Source\MCPConnect.Content.Writers.pas',
-
-  // The transport. This is the *only* line that differs from the Indy and
-  // WebBroker versions of the same demo.
   MCPConnect.Transport.Stdio in '..\..\..\Source\MCPConnect.Transport.Stdio.pas',
-
-  // The shared server definition and the classes it registers. Note that the
-  // VCL content writers are absent here: this is a console application, so
-  // FRAMEWORK_VCL is not defined and the TPicture/TBitmap writers are compiled
-  // out of MCPServer.Config.
   MCPServer.Tools in '..\MCPServer.Tools.pas',
   MCPServer.Config in '..\MCPServer.Config.pas',
   MCPServer.Resources in '..\MCPServer.Resources.pas',
   MCPServer.Apps in '..\MCPServer.Apps.pas',
   MCPServer.Notifications in '..\MCPServer.Notifications.pas',
-  MCPServer.Prompts in '..\MCPServer.Prompts.pas',
-  MCPServer.Tools.Test in '..\MCPServer.Tools.Test.pas';
+  MCPServer.Prompts in '..\MCPServer.Prompts.pas';
 
 procedure StartServer;
 var

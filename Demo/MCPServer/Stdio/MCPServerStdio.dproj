@@ -140,7 +140,6 @@
         <DCCReference Include="..\MCPServer.Apps.pas"/>
         <DCCReference Include="..\MCPServer.Notifications.pas"/>
         <DCCReference Include="..\MCPServer.Prompts.pas"/>
-        <DCCReference Include="..\MCPServer.Tools.Test.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
@@ -178,15 +177,15 @@
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>
-                <DeployFile LocalName="..\..\MCPServerStdio" Configuration="Debug" Class="ProjectOutput">
-                    <Platform Name="Linux64">
-                        <RemoteName>MCPServerStdio</RemoteName>
+                <DeployFile LocalName="..\..\MCPServerStdio.exe" Configuration="Debug" Class="ProjectOutput">
+                    <Platform Name="Win32">
+                        <RemoteName>MCPServerStdio.exe</RemoteName>
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>
-                <DeployFile LocalName="Win32\Debug\MCPServerStdio.exe" Configuration="Debug" Class="ProjectOutput">
-                    <Platform Name="Win32">
-                        <RemoteName>MCPServerStdio.exe</RemoteName>
+                <DeployFile LocalName="..\..\MCPServerStdio" Configuration="Debug" Class="ProjectOutput">
+                    <Platform Name="Linux64">
+                        <RemoteName>MCPServerStdio</RemoteName>
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>

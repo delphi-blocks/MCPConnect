@@ -27,16 +27,12 @@ program MCPWindowsService;
 uses
   Vcl.SvcMgr,
   MCPServer.Service in 'MCPServer.Service.pas' {ServiceModule: TService},
-
-  // The shared server definition and the classes it registers - the same six
-  // units every flavour of this demo links.
   MCPServer.Config in '..\MCPServer.Config.pas',
   MCPServer.Tools in '..\MCPServer.Tools.pas',
   MCPServer.Notifications in '..\MCPServer.Notifications.pas',
   MCPServer.Apps in '..\MCPServer.Apps.pas',
   MCPServer.Prompts in '..\MCPServer.Prompts.pas',
-  MCPServer.Resources in '..\MCPServer.Resources.pas',
-  MCPServer.Tools.Test in '..\MCPServer.Tools.Test.pas';
+  MCPServer.Resources in '..\MCPServer.Resources.pas';
 
 {$R *.RES}
 

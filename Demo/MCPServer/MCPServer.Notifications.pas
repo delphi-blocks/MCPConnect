@@ -19,7 +19,7 @@ unit MCPServer.Notifications;
   This is the JRPC layer showing through: MCPConnect.JRPC.* is a complete,
   standalone JSON-RPC 2.0 implementation, and MCP is "just" a set of APIs
   registered on top of it. The same [JRPC] / [JRPCMethod] / [JRPCParam]
-  attributes are what Demo\JRPCServer uses without any MCP at all.
+  attributes are what Tests\JRPCServer uses without any MCP at all.
 
   Note that RegisterApi is per-server and takes precedence over the global
   TJRPCRegistry, so two servers in the same process can expose different

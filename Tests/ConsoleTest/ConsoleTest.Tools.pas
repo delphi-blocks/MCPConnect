@@ -1,19 +1,9 @@
-unit MCPServer.Tools.Test;
+unit ConsoleTest.Tools;
 
 {
   ==============================================================================
-   MCPConnect demo - the serialization playground
+   MCPConnect test - the serialization playground
   ==============================================================================
-
-  Where MCPServer.Tools.pas tells the DelphiDay story, this unit exists to
-  exercise the *return-type* machinery: what happens when a tool returns an
-  object, a list of objects, a multi-part result or a VCL image, and how the
-  JSON Schema published in tools/list is derived from it.
-
-  It is NOT registered by default - the RegisterClass call is commented out in
-  MCPServer.Config (.Tools section) to keep the demo tool list readable.
-  Uncomment it when you want to see structured output or image content in an
-  MCP client.
 
   Reading order, from the simplest to the most involved:
 
@@ -38,9 +28,6 @@ uses
   System.Classes, System.SysUtils, System.JSON, System.Generics.Collections,
   System.IOUtils, System.Rtti,
 
-  // FRAMEWORK_VCL is defined by the VCL hosts of this demo (Indy, WebBroker)
-  // and absent from the console/service ones, so the image tool below compiles
-  // out where TPicture does not exist.
   {$IFDEF FRAMEWORK_VCL}
   Vcl.Graphics, Vcl.ExtCtrls, Vcl.Dialogs,
   {$ENDIF}
@@ -164,16 +151,6 @@ type
 
   end;
 
-  /// <summary>
-  ///   Dead code: an exact duplicate of the class with the same name in
-  ///   MCPServer.Tools.pas. Nothing in this unit references it, and because
-  ///   MCPServer.Tools.Test comes later in the MCPServer.Config uses clause it
-  ///   silently shadows the original. Safe to delete.
-  /// </summary>
-  TTicketProgressNotification = class(TJRPCNotification)
-  public
-    constructor Create(APosition, ASize: Integer);
-  end;
 
 implementation
 
@@ -258,16 +235,6 @@ begin
   inherited Create;
   FName := AName;
   FDeveloper := ADev;
-end;
-
-{ TTicketProgressNotification }
-
-constructor TTicketProgressNotification.Create(APosition, ASize: Integer);
-begin
-  inherited Create;
-  Method := 'notification/logging';
-  AddNamedParam('position', APosition);
-  AddNamedParam('size', ASize);
 end;
 
 end.

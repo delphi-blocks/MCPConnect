@@ -67,7 +67,7 @@
         <SanitizedProjectName>MCPConnect_Tests_Framework</SanitizedProjectName>
         <VerInfo_Keys>CompanyName=;FileDescription=;FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProductName=;ProductVersion=1.0.0.0;Comments=</VerInfo_Keys>
         <DCC_DcuOutput>.\$(Platform)\$(Config)</DCC_DcuOutput>
-        <DCC_ExeOutput>.\$(Platform)\$(Config)</DCC_ExeOutput>
+        <DCC_ExeOutput>..\Bin</DCC_ExeOutput>
         <DCC_E>false</DCC_E>
         <DCC_N>false</DCC_N>
         <DCC_S>false</DCC_S>
@@ -133,29 +133,29 @@
         <DelphiCompile Include="$(MainSource)">
             <MainSource>MainSource</MainSource>
         </DelphiCompile>
-        <DCCReference Include="..\..\Source\MCPConnect.Configuration.Auth.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.Configuration.Core.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.Configuration.MCP.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.Configuration.Neon.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.Configuration.Session.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.JRPC.Core.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.JRPC.Invoker.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.JRPC.Server.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Attributes.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Invoker.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Prompts.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Resources.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Server.Api.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Tools.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.Security.Jwks.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.Security.Token.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.Security.Token.JOSE.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.Session.Core.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.Content.Writers.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.Transport.AcceptParser.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.Transport.MediaType.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.Transport.Base.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Configuration.Auth.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Configuration.Core.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Configuration.MCP.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Configuration.Neon.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Configuration.Session.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.JRPC.Core.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.JRPC.Invoker.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.JRPC.Server.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.MCP.Attributes.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.MCP.Invoker.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.MCP.Prompts.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.MCP.Resources.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.MCP.Server.Api.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.MCP.Tools.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.MCP.Types.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Security.Jwks.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Security.Token.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Security.Token.JOSE.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Session.Core.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Content.Writers.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Transport.AcceptParser.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Transport.MediaType.pas"/>
+        <DCCReference Include="..\Source\MCPConnect.Transport.Base.pas"/>
         <DCCReference Include="MCPConnect.Tests.JRPC.Core.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Tools.pas"/>
         <DCCReference Include="MCPConnect.Tests.JRPC.Invoker.pas"/>
@@ -166,6 +166,7 @@
         <DCCReference Include="MCPConnect.Tests.Security.Token.pas"/>
         <DCCReference Include="MCPConnect.Tests.Security.Token.JOSE.pas"/>
         <DCCReference Include="MCPConnect.Tests.Transport.OAuth.pas"/>
+        <DCCReference Include="MCPConnect.Tests.Transport.Headers.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
@@ -188,8 +189,11 @@
         <BorlandProject>
             <Delphi.Personality>
                 <Excluded_Packages>
+                    <Excluded_Packages Name="C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl\WiRLDesign370.bpl">WiRL REST Components</Excluded_Packages>
                     <Excluded_Packages Name="$(BDSBIN)\dcloffice2k370.bpl">Microsoft Office 2000 Sample Automation Server Wrapper Components</Excluded_Packages>
                     <Excluded_Packages Name="$(BDSBIN)\dclofficexp370.bpl">Microsoft Office XP Sample Automation Server Wrapper Components</Excluded_Packages>
+                    <Excluded_Packages Name="$(BDSBIN)\bcboffice2k370.bpl">Embarcadero C++Builder Office 2000 Servers Package</Excluded_Packages>
+                    <Excluded_Packages Name="$(BDSBIN)\bcbofficexp370.bpl">Embarcadero C++Builder Office XP Servers Package</Excluded_Packages>
                 </Excluded_Packages>
                 <Source>
                     <Source Name="MainSource">MCPConnect.Tests.Framework.dpr</Source>

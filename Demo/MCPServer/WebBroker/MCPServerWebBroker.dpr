@@ -62,8 +62,7 @@ uses
   MCPServerWebBroker.WebModule in 'MCPServerWebBroker.WebModule.pas' {WebModule1: TWebModule},
   MCPServer.Config in '..\MCPServer.Config.pas',
   MCPServer.Notifications in '..\MCPServer.Notifications.pas',
-  MCPServer.Prompts in '..\MCPServer.Prompts.pas',
-  MCPConnect.Transport.Base in '..\..\..\Source\MCPConnect.Transport.Base.pas';
+  MCPServer.Prompts in '..\MCPServer.Prompts.pas';
 
 {$R *.res}
 

@@ -30,7 +30,7 @@ type
     { IJRPCApplication }
     function GetConfigByClassRef(AClass: TJRPCConfigurationClass): TJRPCConfiguration;
     function GetAppConfigurator: TAppConfigurator;
-    function GetConfigurations: TEnumerable<TJRPCConfiguration>;
+    function GetConfigurations: TArray<TJRPCConfiguration>;
 
     function GetConfiguration<T: TJRPCConfiguration>: T;
     function GetConfigByInterfaceRef(AInterfaceRef: TGUID): IInterface;
@@ -126,9 +126,9 @@ begin
   Result := GetConfigByClassRef(TJRPCConfigurationClass(T)) as T;
 end;
 
-function TJRPCServer.GetConfigurations: TEnumerable<TJRPCConfiguration>;
+function TJRPCServer.GetConfigurations: TArray<TJRPCConfiguration>;
 begin
-  Result := FConfigRegistry.Values;
+  Result := FConfigRegistry.ValuesSnapshot;
 end;
 
 { TAppConfiguratorImpl }

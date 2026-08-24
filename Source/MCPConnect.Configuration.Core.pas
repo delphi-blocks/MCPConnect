@@ -69,8 +69,13 @@ type
     /// <summary>
     ///   Returns all registered configuration instances.
     /// </summary>
-    /// <returns>Enumerable collection of all active configurations</returns>
-    function GetConfigurations: TEnumerable<TJRPCConfiguration>;
+    /// <returns>
+    ///   A snapshot of the active configurations. Deliberately an array rather
+    ///   than the live collection: this is called per request, on threads that
+    ///   may concurrently cause a new configuration to be registered, and a
+    ///   dynamic array insulates the caller's loop from that insert.
+    /// </returns>
+    function GetConfigurations: TArray<TJRPCConfiguration>;
 
     /// <summary>
     ///   Notify the application that the plugin config is completed.
@@ -148,10 +153,29 @@ type
     constructor Create(AInterfaceRef: TGUID);
   end;
 
+  /// <summary>
+  ///   Per-application registry of configuration instances, created on demand.
+  /// </summary>
+  /// <remarks>
+  ///   A single server instance is shared by every request thread (always on the
+  ///   Indy transport, and on WebBroker whenever the TJRPCServer is shared across
+  ///   the web-module pool), so this registry is written to concurrently: the
+  ///   transport asks for four configurations per request and creates any that
+  ///   configuration never touched. Both the get-or-create and the value snapshot
+  ///   are therefore serialized on the instance monitor - see
+  ///   .docs\ConfigRegistry-Race-Review.md.
+  /// </remarks>
   TJRPCConfigRegistry = class(TObjectDictionary<TJRPCConfigurationClass, TJRPCConfiguration>)
   public
     procedure Add(AConfiguration: TJRPCConfiguration); overload;
     function GetApplicationConfig(AClass: TJRPCConfigurationClass; AApp: IJRPCApplication): TJRPCConfiguration;
+
+    /// <summary>
+    ///   Copy of the registered configurations, taken under the lock. Callers get
+    ///   a private dynamic array, so a concurrent insert (which rebuilds the
+    ///   dictionary's buckets) cannot tear an enumeration in progress.
+    /// </summary>
+    function ValuesSnapshot: TArray<TJRPCConfiguration>;
   end;
 
   TJRPCConfigClassRegistry = class(TDictionary<TGUID, TJRPCConfigurationClass>)
@@ -286,10 +310,19 @@ function TJRPCConfigRegistry.GetApplicationConfig(
 var
   LArgs: TArray<TValue>;
 begin
-  SetLength(LArgs, 1);
-  LArgs[0] := TValue.From<IJRPCApplication>(AApp);
-  if not TryGetValue(AClass, Result) then
-  begin
+  // Check-construct-insert must be atomic: without the lock two threads can both
+  // miss, both construct, and then collide in Add - raising EListError on one
+  // request, or corrupting the dictionary if the insert rehashes underneath a
+  // concurrent reader. TMonitor is re-entrant, so a configuration constructor
+  // that asks for another configuration cannot deadlock against itself.
+  TMonitor.Enter(Self);
+  try
+    if TryGetValue(AClass, Result) then
+      Exit;
+
+    SetLength(LArgs, 1);
+    LArgs[0] := TValue.From<IJRPCApplication>(AApp);
+
     Result := TRttiUtils.CreateInstance(AClass, LArgs) as TJRPCConfiguration;
     try
       Add(Result);
@@ -297,8 +330,19 @@ begin
       Result.Free;
       raise;
     end;
+  finally
+    TMonitor.Exit(Self);
   end;
+end;
 
+function TJRPCConfigRegistry.ValuesSnapshot: TArray<TJRPCConfiguration>;
+begin
+  TMonitor.Enter(Self);
+  try
+    Result := Values.ToArray;
+  finally
+    TMonitor.Exit(Self);
+  end;
 end;
 
 end.

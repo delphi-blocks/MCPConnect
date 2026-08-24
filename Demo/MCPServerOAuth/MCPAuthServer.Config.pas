@@ -70,6 +70,21 @@ begin
 
   LDataPath := TPath.Combine(ExtractFilePath(ParamStr(0)), 'data');
 
+  // Resource identifier for this MCP server (e.g. "https://mcp.example.com")
+  if TEnvironment.Get('OIDC_MCP_SERVER') = '' then
+    raise Exception.Create('Environment variable "OIDC_MCP_SERVER" is not set. ' +
+      'Please define it in the .env file or as a system environment variable.');
+
+  // Base URL of the OIDC authorization server (e.g. "https://login.example.com")
+  if TEnvironment.Get('OIDC_AUTH_SERVER') = '' then
+    raise Exception.Create('Environment variable "OIDC_AUTH_SERVER" is not set. ' +
+      'Please define it in the .env file or as a system environment variable.');
+
+  // Expected "iss" claim in access tokens (e.g. "https://login.example.com/v2.0")
+  if TEnvironment.Get('OIDC_TOKEN_ISSUER') = '' then
+    raise Exception.Create('Environment variable "OIDC_TOKEN_ISSUER" is not set. ' +
+      'Please define it in the .env file or as a system environment variable.');
+
   AServer
     .Plugin.Configure<IOAuthConfig>
       .SetResource(TEnvironment.Get('OIDC_MCP_SERVER'))

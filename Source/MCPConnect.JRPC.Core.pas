@@ -317,7 +317,6 @@ type
 
     function GetPositionParams: TJSONArray;
     function GetNamedParams: TJSONObject;
-    procedure SetParams(AValue: TJSONValue);
   public
     constructor Create;
     destructor Destroy; override;
@@ -353,7 +352,7 @@ type
     /// </summary>
     [NeonProperty('params')]
     [NeonInclude(IncludeIf.NotNull)]
-    property Params: TJSONValue read FParams write SetParams;
+    property Params: TJSONValue read FParams write FParams;
 
   public
     /// <summary>
@@ -831,15 +830,6 @@ begin
     GetPositionParams.AddElement(LParam);
 end;
 
-procedure TJRPCMethod.SetParams(AValue: TJSONValue);
-begin
-  if Assigned(FParams) and (FParams <> AValue) then
-  begin
-    FParams.Free;
-    FParams := AValue;
-  end;
-end;
-
 { TJRPCID }
 
 class operator TJRPCID.Implicit(ASource: Integer): TJRPCID;
@@ -1074,11 +1064,17 @@ begin
   begin
     // Position parameters
     if LParams is TJSONArray then
+    begin
+      LReq.Params.Free;
       LReq.Params := LParams.Clone as TJSONArray;
+    end;
 
     // Named parameters
     if LParams is TJSONObject then
+    begin
+      LReq.Params.Free;
       LReq.Params := LParams.Clone as TJSONObject;
+    end;
   end;
 
   Result := TValue.From<TJRPCRequest>(LReq);

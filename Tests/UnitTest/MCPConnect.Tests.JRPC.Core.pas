@@ -85,6 +85,26 @@ type
     [Test]
     procedure TestErrorSerializeNullId();
 
+    // TJRPCNotification serialization/deserialization tests
+    [Test]
+    procedure TestNotificationSerializeWithoutParams();
+    [Test]
+    procedure TestNotificationSerializeWithNamedParams();
+    [Test]
+    procedure TestNotificationSerializeWithPositionParams();
+    [Test]
+    procedure TestNotificationDeserializeWithoutParams();
+    [Test]
+    procedure TestNotificationDeserializeWithNamedParams();
+    [Test]
+    procedure TestNotificationDeserializeWithPositionParams();
+    [Test]
+    procedure TestNotificationRoundTripWithoutParams();
+    [Test]
+    procedure TestNotificationRoundTripWithNamedParams();
+    [Test]
+    procedure TestNotificationHasNoId();
+
     // jsonrpc version validation tests
     [Test]
     procedure TestRequestWithInvalidJsonRpcVersion();
@@ -154,6 +174,32 @@ const
       "code": -32601,
       "message": "Method not found"
     }
+  }
+  ''';
+
+  NotificationNoParams = '''
+  {
+    "jsonrpc": "2.0",
+    "method": "notifications/initialized"
+  }
+  ''';
+
+  NotificationWithNamedParams = '''
+  {
+    "jsonrpc": "2.0",
+    "method": "notifications/resources/updated",
+    "params": {
+      "uri": "file:///data.json",
+      "reason": "modified"
+    }
+  }
+  ''';
+
+  NotificationWithPositionParams = '''
+  {
+    "jsonrpc": "2.0",
+    "method": "notify_sum",
+    "params": [1, 2, 3]
   }
   ''';
 
@@ -642,6 +688,240 @@ begin
     end;
   finally
     LError.Free;
+  end;
+end;
+
+{ TJRPCNotification Serialization/Deserialization Tests }
+
+procedure TJRPCCoreTest.TestNotificationSerializeWithoutParams;
+var
+  LNotification: TJRPCNotification;
+  LJson: string;
+  LObj: TJSONObject;
+begin
+  LNotification := TJRPCNotification.Create;
+  try
+    LNotification.Method := 'notifications/initialized';
+
+    LJson := LNotification.ToJson;
+    LObj := TJSONObject.ParseJSONValue(LJson) as TJSONObject;
+    try
+      Assert.AreEqual('2.0', LObj.GetValue<string>('jsonrpc'), 'jsonrpc version should be 2.0');
+      Assert.AreEqual('notifications/initialized', LObj.GetValue<string>('method'), 'Method should match');
+      Assert.IsNull(LObj.GetValue('id'), 'Notification must not have an id field');
+    finally
+      LObj.Free;
+    end;
+  finally
+    LNotification.Free;
+  end;
+end;
+
+procedure TJRPCCoreTest.TestNotificationSerializeWithNamedParams;
+var
+  LNotification: TJRPCNotification;
+  LJson: string;
+  LObj: TJSONObject;
+  LParams: TJSONObject;
+begin
+  LNotification := TJRPCNotification.Create;
+  try
+    LNotification.Method := 'notifications/resources/updated';
+    LNotification.AddNamedParam('uri', TValue.From<string>('file:///data.json'));
+    LNotification.AddNamedParam('reason', TValue.From<string>('modified'));
+
+    LJson := LNotification.ToJson;
+    LObj := TJSONObject.ParseJSONValue(LJson) as TJSONObject;
+    try
+      Assert.AreEqual('notifications/resources/updated', LObj.GetValue<string>('method'), 'Method should match');
+      Assert.IsNull(LObj.GetValue('id'), 'Notification must not have an id field');
+      LParams := LObj.GetValue<TJSONObject>('params');
+      Assert.IsNotNull(LParams, 'Params should be present');
+      Assert.AreEqual('file:///data.json', LParams.GetValue<string>('uri'), 'Param uri should match');
+      Assert.AreEqual('modified', LParams.GetValue<string>('reason'), 'Param reason should match');
+    finally
+      LObj.Free;
+    end;
+  finally
+    LNotification.Free;
+  end;
+end;
+
+procedure TJRPCCoreTest.TestNotificationSerializeWithPositionParams;
+var
+  LNotification: TJRPCNotification;
+  LJson: string;
+  LObj: TJSONObject;
+  LParams: TJSONArray;
+begin
+  LNotification := TJRPCNotification.Create;
+  try
+    LNotification.Method := 'notify_sum';
+    LNotification.AddPositionParam(TValue.From<Integer>(1));
+    LNotification.AddPositionParam(TValue.From<Integer>(2));
+    LNotification.AddPositionParam(TValue.From<Integer>(3));
+
+    LJson := LNotification.ToJson;
+    LObj := TJSONObject.ParseJSONValue(LJson) as TJSONObject;
+    try
+      Assert.AreEqual('notify_sum', LObj.GetValue<string>('method'), 'Method should match');
+      Assert.IsNull(LObj.GetValue('id'), 'Notification must not have an id field');
+      LParams := LObj.GetValue<TJSONArray>('params');
+      Assert.IsNotNull(LParams, 'Params should be present');
+      Assert.AreEqual(3, LParams.Count, 'Params should have 3 elements');
+      Assert.AreEqual(1, LParams.Items[0].AsType<Integer>, 'First param should be 1');
+      Assert.AreEqual(2, LParams.Items[1].AsType<Integer>, 'Second param should be 2');
+      Assert.AreEqual(3, LParams.Items[2].AsType<Integer>, 'Third param should be 3');
+    finally
+      LObj.Free;
+    end;
+  finally
+    LNotification.Free;
+  end;
+end;
+
+procedure TJRPCCoreTest.TestNotificationDeserializeWithoutParams;
+var
+  LMsgs: TJRPCMessages;
+  LNotification: TJRPCNotification;
+begin
+  LMsgs := TJRPCMessages.CreateFromJson(NotificationNoParams);
+  try
+    Assert.AreEqual(NativeInt(1), LMsgs.Count, 'Should contain one message');
+    Assert.IsTrue(LMsgs.List[0] is TJRPCNotification, 'Message should be a TJRPCNotification');
+    LNotification := LMsgs.List[0] as TJRPCNotification;
+    Assert.AreEqual('2.0', LNotification.JsonRpc, 'JsonRpc version should be 2.0');
+    Assert.AreEqual('notifications/initialized', LNotification.Method, 'Method should match');
+    Assert.IsTrue(LNotification.GetType = TJRPCMessageType.Notification, 'Type should be Notification');
+    Assert.AreEqual(TJRPCParamsType.Null, LNotification.ParamsType, 'ParamsType should be Null');
+    Assert.AreEqual(0, LNotification.ParamsCount, 'ParamsCount should be 0');
+  finally
+    LMsgs.Free;
+  end;
+end;
+
+procedure TJRPCCoreTest.TestNotificationDeserializeWithNamedParams;
+var
+  LMsgs: TJRPCMessages;
+  LNotification: TJRPCNotification;
+begin
+  LMsgs := TJRPCMessages.CreateFromJson(NotificationWithNamedParams);
+  try
+    Assert.AreEqual(NativeInt(1), LMsgs.Count, 'Should contain one message');
+    Assert.IsTrue(LMsgs.List[0] is TJRPCNotification, 'Message should be a TJRPCNotification');
+    LNotification := LMsgs.List[0] as TJRPCNotification;
+    Assert.AreEqual('notifications/resources/updated', LNotification.Method, 'Method should match');
+    Assert.IsTrue(LNotification.GetType = TJRPCMessageType.Notification, 'Type should be Notification');
+    Assert.AreEqual(TJRPCParamsType.ByName, LNotification.ParamsType, 'ParamsType should be ByName');
+    Assert.AreEqual(2, LNotification.ParamsCount, 'ParamsCount should be 2');
+    Assert.AreEqual('file:///data.json', LNotification.Params.GetValue<string>('uri'), 'Param uri should match');
+    Assert.AreEqual('modified', LNotification.Params.GetValue<string>('reason'), 'Param reason should match');
+  finally
+    LMsgs.Free;
+  end;
+end;
+
+procedure TJRPCCoreTest.TestNotificationDeserializeWithPositionParams;
+var
+  LMsgs: TJRPCMessages;
+  LNotification: TJRPCNotification;
+  LParams: TJSONArray;
+begin
+  LMsgs := TJRPCMessages.CreateFromJson(NotificationWithPositionParams);
+  try
+    Assert.AreEqual(NativeInt(1), LMsgs.Count, 'Should contain one message');
+    Assert.IsTrue(LMsgs.List[0] is TJRPCNotification, 'Message should be a TJRPCNotification');
+    LNotification := LMsgs.List[0] as TJRPCNotification;
+    Assert.AreEqual('notify_sum', LNotification.Method, 'Method should match');
+    Assert.IsTrue(LNotification.GetType = TJRPCMessageType.Notification, 'Type should be Notification');
+    Assert.AreEqual(TJRPCParamsType.ByPos, LNotification.ParamsType, 'ParamsType should be ByPos');
+    Assert.AreEqual(3, LNotification.ParamsCount, 'ParamsCount should be 3');
+    LParams := LNotification.Params as TJSONArray;
+    Assert.AreEqual(1, LParams.Items[0].AsType<Integer>, 'First param should be 1');
+    Assert.AreEqual(2, LParams.Items[1].AsType<Integer>, 'Second param should be 2');
+    Assert.AreEqual(3, LParams.Items[2].AsType<Integer>, 'Third param should be 3');
+  finally
+    LMsgs.Free;
+  end;
+end;
+
+procedure TJRPCCoreTest.TestNotificationRoundTripWithoutParams;
+var
+  LNotification: TJRPCNotification;
+  LJson: string;
+  LMsgs: TJRPCMessages;
+  LDeserialized: TJRPCNotification;
+begin
+  LNotification := TJRPCNotification.Create;
+  try
+    LNotification.Method := 'notifications/initialized';
+    LJson := LNotification.ToJson;
+  finally
+    LNotification.Free;
+  end;
+
+  LMsgs := TJRPCMessages.CreateFromJson(LJson);
+  try
+    Assert.AreEqual(NativeInt(1), LMsgs.Count, 'Should contain one message');
+    Assert.IsTrue(LMsgs.List[0] is TJRPCNotification, 'Round-tripped message should be a TJRPCNotification');
+    LDeserialized := LMsgs.List[0] as TJRPCNotification;
+    Assert.AreEqual('notifications/initialized', LDeserialized.Method, 'Method should survive round-trip');
+    Assert.AreEqual(TJRPCParamsType.Null, LDeserialized.ParamsType, 'ParamsType should be Null after round-trip');
+  finally
+    LMsgs.Free;
+  end;
+end;
+
+procedure TJRPCCoreTest.TestNotificationRoundTripWithNamedParams;
+var
+  LNotification: TJRPCNotification;
+  LJson: string;
+  LMsgs: TJRPCMessages;
+  LDeserialized: TJRPCNotification;
+begin
+  LNotification := TJRPCNotification.Create;
+  try
+    LNotification.Method := 'notifications/resources/updated';
+    LNotification.AddNamedParam('uri', TValue.From<string>('file:///data.json'));
+    LJson := LNotification.ToJson;
+  finally
+    LNotification.Free;
+  end;
+
+  LMsgs := TJRPCMessages.CreateFromJson(LJson);
+  try
+    Assert.AreEqual(NativeInt(1), LMsgs.Count, 'Should contain one message');
+    Assert.IsTrue(LMsgs.List[0] is TJRPCNotification, 'Round-tripped message should be a TJRPCNotification');
+    LDeserialized := LMsgs.List[0] as TJRPCNotification;
+    Assert.AreEqual('notifications/resources/updated', LDeserialized.Method, 'Method should survive round-trip');
+    Assert.AreEqual(TJRPCParamsType.ByName, LDeserialized.ParamsType, 'ParamsType should be ByName after round-trip');
+    Assert.AreEqual('file:///data.json', LDeserialized.Params.GetValue<string>('uri'), 'Param uri should survive round-trip');
+  finally
+    LMsgs.Free;
+  end;
+end;
+
+procedure TJRPCCoreTest.TestNotificationHasNoId;
+var
+  LNotification: TJRPCNotification;
+  LJson: string;
+  LObj: TJSONObject;
+  LPair: TJSONPair;
+begin
+  LNotification := TJRPCNotification.Create;
+  try
+    LNotification.Method := 'test/notify';
+    LJson := LNotification.ToJson;
+
+    LObj := TJSONObject.ParseJSONValue(LJson) as TJSONObject;
+    try
+      for LPair in LObj do
+        Assert.AreNotEqual('id', LPair.JsonString.Value, 'Notification JSON must not contain an "id" field');
+    finally
+      LObj.Free;
+    end;
+  finally
+    LNotification.Free;
   end;
 end;
 

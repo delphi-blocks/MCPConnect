@@ -724,15 +724,19 @@ begin
 
   LHeader := FRequest.Origin.Trim;
 
-  // No Origin header => same-origin or non-browser client => allow
   if LHeader.IsEmpty then
+  begin
+    if FMCPConfig.Security.RequireOrigin then
+    begin
+      Logger.LogWarning('CheckOrigin: request blocked, missing Origin header');
+      Exit(False);
+    end;
     Exit(True);
+  end;
 
-  // Reject requests with the opaque "null" origin sent by
-  // sandboxed iframes/file:// pages, once an allowlist has been configured.
   if SameText(LHeader, 'null') then
   begin
-    Logger.LogWarning('CheckOrigin: request blocked, missing or null Origin header');
+    Logger.LogWarning('CheckOrigin: request blocked, null Origin header');
     Exit(False);
   end;
 

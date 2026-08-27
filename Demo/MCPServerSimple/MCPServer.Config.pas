@@ -59,10 +59,9 @@ begin
 
       .Security
         .SetCORS(True)
-        .SetAllowedMethods(['POST'])
-        {$IFNDEF DEBUG}
-        .SetAllowedOrigins(['http://localhost'])
-        {$ENDIF}
+        .SetAllowedMethods(['GET', 'POST'])
+        .SetAllowedOrigins(['*'])
+        //.SetRequireOrigin(True)
       .BackToMCP
 
       .Resources

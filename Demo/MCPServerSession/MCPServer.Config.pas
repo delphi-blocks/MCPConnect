@@ -269,15 +269,9 @@ begin
         // Only POST is needed for JSON-RPC; add 'GET' if you want browser
         // clients to open the SSE stream. OPTIONS preflights are always
         // answered.
-        .SetAllowedMethods(['POST'])
+        .SetAllowedMethods(['GET', 'POST'])
 
-        // Once an origin allowlist is set, requests with a missing or null
-        // Origin are rejected too - which breaks curl/Bruno, hence the DEBUG
-        // guard. Exact matches plus explicit wildcard subdomains
-        // ('https://*.example.com') are supported.
-        {$IFNDEF DEBUG}
-        .SetAllowedOrigins(['http://localhost'])
-        {$ENDIF}
+        .SetAllowedOrigins(['*'])
 
         // .SetCookieSecure(False)  // only for plain-HTTP development: session
         //                          // cookies are HttpOnly + SameSite=Strict +

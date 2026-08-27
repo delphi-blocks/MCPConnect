@@ -386,6 +386,7 @@ type
     /// </summary>
     CookieSecure: Boolean;
     ExposeHeaders: TArray<string>;
+    RequireOrigin: Boolean;
   public
     constructor Create(AConfig: IMCPConfig);
 
@@ -394,6 +395,7 @@ type
     function SetAllowedOrigins(const AOrigins: TArray<string>): TMCPSecurityConfig;
     function SetCookieSecure(AEnable: Boolean): TMCPSecurityConfig;
     function SetExposeHeaders(const AHeaders: TArray<string>): TMCPSecurityConfig;
+    function SetRequireOrigin(AEnable: Boolean): TMCPSecurityConfig;
   end;
 
   TMCPToolConfig = class(TMCPTool)
@@ -1931,6 +1933,12 @@ end;
 function TMCPSecurityConfig.SetExposeHeaders(const AHeaders: TArray<string>): TMCPSecurityConfig;
 begin
   ExposeHeaders := AHeaders;
+  Result := Self;
+end;
+
+function TMCPSecurityConfig.SetRequireOrigin(AEnable: Boolean): TMCPSecurityConfig;
+begin
+  RequireOrigin := AEnable;
   Result := Self;
 end;
 

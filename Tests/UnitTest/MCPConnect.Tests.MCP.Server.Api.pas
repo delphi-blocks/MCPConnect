@@ -184,6 +184,7 @@ begin
     try
       Assert.AreEqual('2.0', LObj.GetValue<string>('jsonrpc'), 'jsonrpc version should be 2.0');
       Assert.AreEqual(AExpectedMethod, LObj.GetValue<string>('method'), 'Method should match');
+      Assert.IsNull(LObj.GetValue('params'), 'Params should be nil');
       Assert.IsNull(LObj.GetValue('id'), 'Notification must not have an id field');
     finally
       LObj.Free;

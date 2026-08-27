@@ -1666,7 +1666,7 @@ constructor TToolListChangedNotification.Create;
 begin
   inherited;
   Method := 'notifications/tools/list_changed';
-  Params := nil;
+  AssignParams(nil);
 end;
 
 { TPromptListChangedNotification }
@@ -1675,7 +1675,7 @@ constructor TPromptListChangedNotification.Create;
 begin
   inherited;
   Method := 'notifications/prompts/list_changed';
-  Params := nil;
+  AssignParams(nil);
 end;
 
 { TResourceListChangedNotification }
@@ -1684,7 +1684,7 @@ constructor TResourceListChangedNotification.Create;
 begin
   inherited;
   Method := 'notifications/resources/list_changed';
-  Params := nil;
+  AssignParams(nil);
 end;
 
 { TRootsListChangedNotification }
@@ -1693,7 +1693,7 @@ constructor TRootsListChangedNotification.Create;
 begin
   inherited;
   Method := 'notifications/roots/list_changed';
-  Params := nil;
+  AssignParams(nil);
 end;
 
 { TContentList }

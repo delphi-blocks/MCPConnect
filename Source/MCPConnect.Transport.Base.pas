@@ -724,9 +724,13 @@ begin
 
   LHeader := FRequest.Origin.Trim;
 
-  // Reject requests with no Origin header, or the opaque "null" origin sent by
+  // No Origin header => same-origin or non-browser client => allow
+  if LHeader.IsEmpty then
+    Exit(True);
+
+  // Reject requests with the opaque "null" origin sent by
   // sandboxed iframes/file:// pages, once an allowlist has been configured.
-  if LHeader.IsEmpty or SameText(LHeader, 'null') then
+  if SameText(LHeader, 'null') then
   begin
     Logger.LogWarning('CheckOrigin: request blocked, missing or null Origin header');
     Exit(False);
@@ -1249,7 +1253,7 @@ begin
   else if IsInitializeRequest then
     Result := LSessionManager.CreateSession
   else
-    raise EMCPTransportException.Create(HTTP_CODE_BADREQUEST, SSessionIdHeaderRequired);
+    raise EMCPTransportException.Create(HTTP_CODE_BADREQUEST, SSessionIdHeaderRequired + FRequest.Command + ' ' + FRequest.Content);
 end;
 
 procedure TMCPTransportHandler.InjectCORS;
@@ -1261,8 +1265,10 @@ begin
 
   // Set the allowed origins (from security configuration)
   LHValue := FRequest.Origin;
-  if not LHValue.IsEmpty then
-    FResponse.SetHeader('Access-Control-Allow-Origin', LHValue);
+  if LHValue.IsEmpty then
+    Exit;
+
+  FResponse.SetHeader('Access-Control-Allow-Origin', LHValue);
 
   // Set the allowed methods supported by the server (from security configuration)
   LHValue := FRequest.GetHeader('Access-Control-Request-Method');
@@ -1277,9 +1283,14 @@ begin
   // Expose the headers browser-based clients need to read from JS (e.g. to
   // discover the OAuth resource metadata URL from a 401 response, or to pick
   // up the session id when it is returned via header).
-  LHValue := 'WWW-Authenticate';
-  if Assigned(FSessionConfig) and FSessionConfig.IsApplied and (FSessionConfig.GetLocation = TSessionIdLocation.Header) then
-    LHValue := LHValue + ', ' + FSessionConfig.GetHeaderName;
+  if Length(FMCPConfig.Security.ExposeHeaders) > 0 then
+    LHValue := string.Join(', ', FMCPConfig.Security.ExposeHeaders)
+  else
+  begin
+    LHValue := 'WWW-Authenticate';
+    if Assigned(FSessionConfig) and FSessionConfig.IsApplied and (FSessionConfig.GetLocation = TSessionIdLocation.Header) then
+      LHValue := LHValue + ', ' + FSessionConfig.GetHeaderName;
+  end;
   FResponse.SetHeader('Access-Control-Expose-Headers', LHValue);
 
 end;

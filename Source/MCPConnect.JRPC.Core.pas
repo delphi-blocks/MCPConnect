@@ -321,6 +321,8 @@ type
     constructor Create;
     destructor Destroy; override;
 
+    procedure AssignParams(AParams: TJSONValue);
+
     /// <summary>
     ///   Returns the type of parameters (ByPos, ByName, or Null).
     /// </summary>
@@ -828,6 +830,15 @@ begin
   LParam := TNeon.ValueToJSON(AValue, JRPCNeonConfig);
   if Assigned(LParam) then
     GetPositionParams.AddElement(LParam);
+end;
+
+procedure TJRPCMethod.AssignParams(AParams: TJSONValue);
+begin
+  if FParams <> AParams then
+  begin
+    FParams.Free;
+    FParams := AParams;
+  end;
 end;
 
 { TJRPCID }
@@ -1594,10 +1605,7 @@ begin
   Result.InternalId := FInternalId;
   Result.Id := FId;
   Result.Method := FMethod;
-  if Assigned(FParams) then
-    Result.Params := FParams.Clone as TJSONValue
-  else
-    Result.Params := nil;
+  Result.AssignParams(FParams.Clone as TJSONValue);
 end;
 
 class function TJRPCRequest.CreateFromJson(const AJSON: string): TJRPCRequest;
@@ -1623,10 +1631,7 @@ begin
   Result := TJRPCNotification.Create;
   Result.InternalId := FInternalId;
   Result.Method := FMethod;
-  if Assigned(FParams) then
-    Result.Params := FParams.Clone as TJSONValue
-  else
-    Result.Params := nil;
+  Result.AssignParams(FParams.Clone as TJSONValue);
 end;
 
 function TJRPCNotification.GetType: TJRPCMessageType;

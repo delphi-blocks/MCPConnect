@@ -385,6 +385,7 @@ type
     ///   where browsers would otherwise silently drop the cookie.
     /// </summary>
     CookieSecure: Boolean;
+    ExposeHeaders: TArray<string>;
   public
     constructor Create(AConfig: IMCPConfig);
 
@@ -392,6 +393,7 @@ type
     function SetAllowedMethods(const AMethods: TArray<string>): TMCPSecurityConfig;
     function SetAllowedOrigins(const AOrigins: TArray<string>): TMCPSecurityConfig;
     function SetCookieSecure(AEnable: Boolean): TMCPSecurityConfig;
+    function SetExposeHeaders(const AHeaders: TArray<string>): TMCPSecurityConfig;
   end;
 
   TMCPToolConfig = class(TMCPTool)
@@ -1923,6 +1925,12 @@ end;
 function TMCPSecurityConfig.SetAllowedOrigins(const AOrigins: TArray<string>): TMCPSecurityConfig;
 begin
   AllowedOrigins := AOrigins;
+  Result := Self;
+end;
+
+function TMCPSecurityConfig.SetExposeHeaders(const AHeaders: TArray<string>): TMCPSecurityConfig;
+begin
+  ExposeHeaders := AHeaders;
   Result := Self;
 end;
 

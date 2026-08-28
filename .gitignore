@@ -32,6 +32,7 @@
 *.apk
 *.drc
 *.map
+*.res
 *.dres
 *.rsm
 *.tds

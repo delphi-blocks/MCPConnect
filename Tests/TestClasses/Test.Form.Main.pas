@@ -26,6 +26,7 @@ uses
   Neon.Core.Attributes,
   Neon.Core.Persistence,
   Neon.Core.Serializers.RTL,
+  Neon.Core.Serializers.Nullables,
   Neon.Core.Persistence.JSON,
   Neon.Core.Persistence.JSON.Schema;
 
@@ -343,21 +344,26 @@ end;
 
 procedure TfrmMain.actInitializeRequestExecute(Sender: TObject);
 begin
-  var pars := TInitializeParams.Create;
-  pars.ProtocolVersion := '2025-06-18';
-  pars.ClientInfo.Name := 'Delphi MCPLib';
-  pars.ClientInfo.Version := '0.8';
-  pars.Capabilities.Roots.ListChanged := True;
+  var pars := TRequestParams.Create;
+  pars.RequestMeta.ProtocolVersion := '2026-07-28';
+  pars.RequestMeta.ClientInfo.Name := 'Delphi MCPConnect';
+  pars.RequestMeta.ClientInfo.Version := '2.0';
+  pars.RequestMeta.Capabilities.Sampling.AddPair('test', 'Value');
+  pars.RequestMeta.Capabilities.EnableRoots;
+  pars.RequestMeta.ProgressToken := '2ueyt283gr632g362rg';
+
+  pars.RequestMeta.AdditionalData.addPair('custom', TNeon.ValueToJSON('Custom Value'));
 
   var j := TNeon.ObjectToJSON(pars, GetMCPNeonConfig);
-  mmoLog.Lines.Add(j.ToJson);
+  mmoLog.Lines.Add(TNeon.Print(j, True));
 
   var req := TJRPCRequest.Create;
-  req.Method := 'initialize';
+  req.id := 1;
+  req.Method := 'request';
   req.Params := j;
 
   pars.Free;
-  mmoLog.Lines.Add(req.ToJson);
+  mmoLog.Lines.Add(req.ToJson(True));
 
   req.free;
 end;
@@ -537,7 +543,11 @@ end;
 
 function TfrmMain.GetMCPNeonConfig: INeonConfiguration;
 begin
-  Result := MCPNeonConfig.SetPrettyPrint(True);
+  Result := MCPNeonConfig
+    .SetPrettyPrint(True)
+    //.RegisterSerializer(TNullableSerializer)
+    .RegisterSerializer(TJRequestSerializer)
+    .RegisterSerializer(TJValueSerializer)
 end;
 
 function TfrmMain.GetNeonConfig: INeonConfiguration;

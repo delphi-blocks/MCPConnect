@@ -31,22 +31,20 @@ uses
   MCPConnect.JRPC.Classes;
 
 const
-  MCP_PROTOCOL_VERSION_2025_06_18 = '2025-06-18';
-  MCP_PROTOCOL_VERSION_2025_11_25 = '2025-11-25';
+  MCP_PROTOCOL_VERSION_2026_07_28 = '2026-07-28';
 
   /// <summary>
   ///   The protocol version the server proposes when the client requests a version
   ///   the server does not support.
   /// </summary>
-  MCP_LATEST_PROTOCOL_VERSION = MCP_PROTOCOL_VERSION_2025_11_25;
+  MCP_LATEST_PROTOCOL_VERSION = MCP_PROTOCOL_VERSION_2026_07_28;
 
   /// <summary>
   ///   Protocol versions this server is able to speak, checked during the
-  ///   initialize handshake against the client-requested version.
+  ///   handshake against the client-requested version.
   /// </summary>
-  MCP_SUPPORTED_PROTOCOL_VERSIONS: array[0..1] of string = (
-    MCP_PROTOCOL_VERSION_2025_06_18,
-    MCP_PROTOCOL_VERSION_2025_11_25
+  MCP_SUPPORTED_PROTOCOL_VERSIONS: array[0..0] of string = (
+    MCP_PROTOCOL_VERSION_2026_07_28
   );
 
 resourcestring
@@ -193,6 +191,25 @@ type
     property NotBefore: TDateTime read GetNotBefore;
   end;
 
+  TTypedMeta = class
+
+  end;
+
+  TFlatMetaClass = class
+  public
+    [NeonIgnore] Tags: TAttributeTags;
+
+    /// <summary>
+    /// AdditionalData is a metadata object that is reserved by MCP for storing additional information
+    /// </summary>
+    [NeonUnwrapped, NeonInclude(IncludeIf.NotEmpty)]
+    AdditionalData: TJSONObject;
+  public
+    constructor Create;
+    destructor Destroy; override;
+  end;
+
+
   TMetaClass = class
   public
     [NeonIgnore] Tags: TAttributeTags;
@@ -204,9 +221,6 @@ type
   public
     constructor Create;
     destructor Destroy; override;
-  end;
-
-  TRequestParams = class(TMetaClass)
   end;
 
   TPaginatedParams = record
@@ -357,17 +371,28 @@ type
   ///   TRootsCapability is present if the client supports listing roots.
   /// </summary>
   TRootsCapability = record
+    [NeonIgnore] Enabled: Boolean;
+    procedure SetEnabled(AValue: Boolean);
+  end;
 
-    /// <summary>
-    ///   Whether the client supports notifications for changes to the roots list.
-    /// </summary>
-    ListChanged: NullBoolean;
+  TMCPElicitation = class
+  public
+    [NeonInclude(IncludeIf.NotEmpty)] Form: TJSONObject;
+    [NeonInclude(IncludeIf.NotEmpty)] Url: TJSONObject;
+  public
+    constructor Create;
+    destructor Destroy; override;
   end;
 
   /// <summary>
   ///   TClientCapabilities represents capabilities a client may support.
   /// </summary>
   TClientCapabilities = class
+
+    /// <summary>
+    ///   Present if the client supports elicitation from the server.
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)] Elicitation: TMCPElicitation;
 
     /// <summary>
     ///   Experimental, non-standard capabilities that the client supports.
@@ -377,7 +402,7 @@ type
     /// <summary>
     ///   Present if the client supports listing roots.
     /// </summary>
-    [NeonInclude(IncludeIf.NotEmpty)] Roots: TRootsCapability;
+    [NeonInclude(IncludeIf.NotNull)] Roots: Nullable<TRootsCapability>;
 
     /// <summary>
     ///   Present if the client supports sampling from an LLM.
@@ -387,6 +412,8 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+
+    procedure EnableRoots;
   end;
 
 
@@ -460,11 +487,6 @@ type
     [NeonInclude(IncludeIf.NotEmpty)] Resources: TResourcesCapability;
 
     /// <summary>
-    ///   Present if the server supports sending sampling requests to clients.
-    /// </summary>
-    [NeonInclude(IncludeIf.NotEmpty)] Sampling: TJSONObject;
-
-    /// <summary>
     ///   Present if the server offers any tools to call.
     /// </summary>
     [NeonInclude(IncludeIf.NotEmpty)] Tools: TToolsCapability;
@@ -474,101 +496,87 @@ type
     destructor Destroy; override;
   end;
 
-  /// <summary>
-  ///   TInitializeParams is sent from the client to the server when it first connects.
-  /// </summary>
-  TInitializeParams = class
+  TMCPLogLevel = (Alert, Critical, Debug, Emergency, Error, Info, Notice, Warning);
+
+  TRequestMetaObject = class(TFlatMetaClass)
 
     /// <summary>
-    /// The latest version of the Model Context Protocol that the client supports.
+    ///   REQUIRED: The latest version of the Model Context Protocol that the client supports.
     /// </summary>
+    [NeonProperty('io.modelcontextprotocol/protocolVersion')]
     ProtocolVersion: string;
 
     /// <summary>
-    ///   Client capabilities.
+    ///   REQUIRED: Client capabilities.
     /// </summary>
+    [NeonProperty('io.modelcontextprotocol/clientCapabilities')]
     Capabilities: TClientCapabilities;
 
     /// <summary>
     ///   Client implementation information.
     /// </summary>
+    [NeonProperty('io.modelcontextprotocol/clientInfo'), NeonInclude(IncludeIf.NotEmpty)]
     ClientInfo: TImplementation;
 
+    /// <summary>
+    ///   The severity of a log message.
+    /// </summary>
+    [NeonProperty('io.modelcontextprotocol/logLevel')]
+    LogLevel: Nullable<TMCPLogLevel>;
+
+    /// <summary>
+    ///   A progress token, used to associate progress notifications with the original request.
+    ///   TODO: convert to int U str: TAnyOf<Int64,string>
+    /// </summary>
+    ProgressToken: NullString;
+
   public
     constructor Create;
     destructor Destroy; override;
   end;
 
-  /// <summary>
-  ///   TInitializeResult is sent after receiving an initialize request from the
-  ///   client.
-  /// </summary>
-  TInitializeResult = class
+  TRequestParams = class
+    [NeonProperty('_meta')]
+    RequestMeta: TRequestMetaObject;
 
-    /// <summary>
-    ///   The version of the Model Context Protocol that the server wants to use.
-    /// </summary>
-    ProtocolVersion: string;
+    constructor Create;
+    destructor Destroy; override;
+  end;
 
-    /// <summary>
-    ///   Capabilities that a server may support. Known capabilities are defined here, in this
-    ///   schema, but this is not a closed set: any server can define its own, additional
-    ///   capabilities.
-    /// </summary>
-    Capabilities: TServerCapabilities;
-
-    /// <summary>
-    ///   Server implementation information.
-    /// </summary>
+  TResultMetaObject = class(TFlatMetaClass)
+  public
+    [NeonProperty('io.modelcontextprotocol/serverInfo')]
     ServerInfo: TImplementation;
-
-    /// <summary>
-    ///   Instructions describing how to use the server and its features.
-    ///   This can be used by clients to improve the LLM's understanding of available
-    ///   tools, resources, etc. It can be thought of like a "hint" to the model.
-    ///   For example, this information MAY be added to the system prompt.
-    /// </summary>
-    Instructions: NullString;
-
-    /// <summary>
-    /// When True, the destructor frees Capabilities; when False the instance is shared
-    /// with the owner (e.g. MCPConfig.Server) and must not be freed here.
-    /// </summary>
-    [NeonIgnore]
-    OwnCapabilities: Boolean;
-
   public
     constructor Create;
     destructor Destroy; override;
-
-    function ToJSON(APrettyPrint: Boolean = False): string;
   end;
+
+  [NeonEnumNames('complete,input_required')]
+  TMCPResultType = (Complete, InputRequired);
+
+  [NeonEnumNames('public,private')]
+  TMCPCacheScope = (ScopePublic, ScopePrivate);
 
   /// <summary>
-  ///   TInitializedNotification is sent from the client to the server after
-  ///   initialization has finished.
+  ///   The result returned by the server for a server/discover request.
   /// </summary>
-  TInitializedNotificationParams = class(TMetaClass)
+  TDiscoverResult = class
+  public
+    [NeonProperty('_meta')]
+    ResultMeta: TResultMetaObject;
+    SupportedVersions: TArray<string>;
+    ResultType: TMCPResultType;
+    Capabilities: TServerCapabilities;
+    CacheScope: TMCPCacheScope;
+    TtlMs: UInt64;
+
+    Instructions: NullString;
+  public
+    constructor Create;
+    destructor Destroy; override;
   end;
 
-  /// <summary>
-  ///   To cancel an in-progress request, send a notifications/cancelled:<br />
-  ///   *The ID of the request to cancel <br />
-  ///   *An optional reason string that can be logged or displayed
-  /// </summary>
-  TCancelledNotificationParams = class
-
-    /// <summary>
-    ///   A uniquely identifying ID for a request in JSON-RPC.
-    /// </summary>
-    RequestId: Integer;
-
-    /// <summary>
-    ///   An optional string describing the reason for the cancellation. This MAY be logged or
-    ///   presented to the user.
-    /// </summary>
-    Reason: NullString;
-  end;
 
 
   TLogSetLevel = (Alert, Critical, Debug, Emergency, Error, Info, Notice, Warning);
@@ -907,32 +915,11 @@ begin
 end;
 
 
-{ TInitializeResult }
-
-constructor TInitializeResult.Create;
-begin
-  Capabilities := TServerCapabilities.Create;
-  OwnCapabilities := True;
-  ServerInfo := TImplementation.Create;
-end;
-
-destructor TInitializeResult.Destroy;
-begin
-  ServerInfo.Free;
-  if OwnCapabilities then
-    Capabilities.Free;
-  inherited;
-end;
-
-function TInitializeResult.ToJSON(APrettyPrint: Boolean): string;
-begin
-  Result := TNeon.ObjectToJSONString(Self, MCPNeonConfig.SetPrettyPrint(APrettyPrint));
-end;
-
 { TClientCapabilities }
 
 constructor TClientCapabilities.Create;
 begin
+  Elicitation := TMCPElicitation.Create;
   &Experimental := TJSONObject.Create;
   Sampling := TJSONObject.Create;
 end;
@@ -941,7 +928,15 @@ destructor TClientCapabilities.Destroy;
 begin
   Sampling.Free;
   &Experimental.Free;
+  Elicitation.Free;
   inherited;
+end;
+
+procedure TClientCapabilities.EnableRoots;
+var
+  LRoots: TRootsCapability;
+begin
+  Roots := LRoots;
 end;
 
 { TServerCapabilities }
@@ -951,12 +946,10 @@ begin
   Completions := TJSONObject.Create;
   &Experimental := TJSONObject.Create;
   Logging := TJSONObject.Create;
-  Sampling := TJSONObject.Create;
 end;
 
 destructor TServerCapabilities.Destroy;
 begin
-  Sampling.Free;
   Logging.Free;
   &Experimental.Free;
   Completions.Free;
@@ -975,21 +968,6 @@ begin
       LPair.Value.AsObject.Free;
   end;
 
-  inherited;
-end;
-
-{ TInitializeParams }
-
-constructor TInitializeParams.Create;
-begin
-  Capabilities := TClientCapabilities.Create;
-  ClientInfo := TImplementation.Create;
-end;
-
-destructor TInitializeParams.Destroy;
-begin
-  Capabilities.Free;
-  ClientInfo.Free;
   inherited;
 end;
 
@@ -1830,6 +1808,103 @@ constructor TTextContent.CreateWithText(const AText: string);
 begin
   Create;
   Text := AText;
+end;
+
+{ TRequestMetaObject }
+
+constructor TRequestMetaObject.Create;
+begin
+  inherited;
+  Capabilities := TClientCapabilities.Create;
+  ClientInfo := TImplementation.Create;
+end;
+
+destructor TRequestMetaObject.Destroy;
+begin
+  Capabilities.Free;
+  ClientInfo.Free;
+  inherited;
+end;
+
+{ TFlatMetaClass }
+
+constructor TFlatMetaClass.Create;
+begin
+  Tags := TAttributeTags.Create();
+  AdditionalData := TJSONObject.Create;
+end;
+
+destructor TFlatMetaClass.Destroy;
+begin
+  AdditionalData.Free;
+  Tags.Free;
+  inherited;
+end;
+
+{ TRequestParams }
+
+constructor TRequestParams.Create;
+begin
+  RequestMeta := TRequestMetaObject.Create;
+end;
+
+destructor TRequestParams.Destroy;
+begin
+  RequestMeta.Free;
+  inherited;
+end;
+
+{ TMCPElicitation }
+
+constructor TMCPElicitation.Create;
+begin
+  inherited;
+  Form := TJSONObject.Create;
+  Url := TJSONObject.Create;
+end;
+
+destructor TMCPElicitation.Destroy;
+begin
+  Url.Free;
+  Form.Free;
+  inherited;
+end;
+
+{ TRootsCapability }
+
+procedure TRootsCapability.SetEnabled(AValue: Boolean);
+begin
+  Enabled := AValue;
+end;
+
+{ TDiscoverResult }
+
+constructor TDiscoverResult.Create;
+begin
+  inherited;
+  Capabilities := TServerCapabilities.Create;
+  ResultMeta := TResultMetaObject.Create;
+end;
+
+destructor TDiscoverResult.Destroy;
+begin
+  Capabilities.Free;
+  ResultMeta.Free;
+  inherited;
+end;
+
+{ TResultMetaObject }
+
+constructor TResultMetaObject.Create;
+begin
+  inherited;
+  ServerInfo := TImplementation.Create;
+end;
+
+destructor TResultMetaObject.Destroy;
+begin
+  ServerInfo.Free;
+  inherited;
 end;
 
 end.

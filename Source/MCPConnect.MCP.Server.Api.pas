@@ -28,6 +28,18 @@ uses
   MCPConnect.MCP.Prompts;
 
 type
+
+  [JRPC('server')]
+  TMCPServerApi = class
+  public
+    [Context] RPCContext: TJRPCContext;
+    [Context] MCPConfig: TMCPConfig;
+
+    [JRPC('discover')]
+    function Discover([JRPCParams] AParams: TRequestParams):  TDiscoverResult;
+  end;
+
+
   [JRPC('tools')]
   TMCPToolsApi = class
   public
@@ -81,42 +93,19 @@ type
     [Context] Context: TJRPCContext;
     [Context] FConfig: IMCPConfig;
   public
-    [JRPC('initialized'), JRPCNotification]
-    procedure Initialized;
-
-    [JRPC('cancelled'), JRPCNotification]
-    procedure Cancelled([JRPCParams] ACancelledParams: TCancelledNotificationParams);
-
+    [JRPC('subscriptions/acknowledged'), JRPCNotification]
+    procedure SubAck();
   end;
 
-  [JRPC('initialize')]
-  TMCPInitializeApi = class
-  public
-    [Context] MCPConfig: TMCPConfig;
-
-    [JRPC('')]
-    function Initialize([JRPCParams] AInitializeParams: TInitializeParams): TInitializeResult;
-  end;
-
-  [JRPC('logging')]
-  TMCPLoggingApi = class
-  public
+  [JRPC('subscriptions')]
+  TMCPSubscriptionsApi = class
+  private
     [Context] Context: TJRPCContext;
-    [Context] MCPConfig: TMCPConfig;
-
-    [JRPC('setLevel')]
-    function SetLevel([JRPCParams] ASetLevelParams: TSetLevelRequestParams): TSetLevelResult;
-  end;
-
-  [JRPC('ping')]
-  TMCPPingApi = class
+    [Context] FConfig: IMCPConfig;
   public
-    [Context] MCPConfig: TMCPConfig;
-
-    [JRPC('')]
-    function Ping(): TJSONObject;
+    [JRPC('listen'), JRPCNotification]
+    procedure Listen;
   end;
-
 
 implementation
 
@@ -167,7 +156,6 @@ begin
   end;
 end;
 
-
 function TMCPToolsApi.ToolsList: TListToolsResult;
 var
   LStopwatch: TStopwatch;
@@ -180,65 +168,9 @@ begin
   end;
 end;
 
-{ TMCPNotificationsApi }
-
-procedure TMCPNotificationsApi.Cancelled(ACancelledParams: TCancelledNotificationParams);
+procedure TMCPNotificationsApi.SubAck;
 begin
-  if Assigned(FConfig.MessageHandling.CancelledProc) then
-    FConfig.MessageHandling.CancelledProc(Context, ACancelledParams);
-end;
 
-procedure TMCPNotificationsApi.Initialized;
-begin
-  if Assigned(FConfig.MessageHandling.InitializedProc) then
-    FConfig.MessageHandling.InitializedProc(Context);
-end;
-
-
-{ TMCPInitializeApi }
-
-function TMCPInitializeApi.Initialize(AInitializeParams: TInitializeParams): TInitializeResult;
-begin
-  Result := TInitializeResult.Create;
-  try
-    if MatchStr(AInitializeParams.ProtocolVersion, MCP_SUPPORTED_PROTOCOL_VERSIONS) then
-      Result.ProtocolVersion := AInitializeParams.ProtocolVersion
-    else
-      Result.ProtocolVersion := MCP_LATEST_PROTOCOL_VERSION;
-    Result.ServerInfo.Name := MCPConfig.Server.Name;
-    Result.ServerInfo.Version := MCPConfig.Server.Version;
-    Result.ServerInfo.Description := MCPConfig.Server.Description;
-
-    if Assigned(MCPConfig.Server.Capabilities) then
-    begin
-      Result.Capabilities.Free;
-      Result.Capabilities := MCPConfig.Server.Capabilities;
-      Result.OwnCapabilities := False;
-    end
-    else
-    begin
-      if MCPConfig.Tools.Registry.Count > 0 then
-      begin
-        Result.Capabilities.Tools.ListChanged := False;
-      end;
-
-      if MCPConfig.Resources.Registry.Count + MCPConfig.Resources.TemplateRegistry.Count > 0 then
-      begin
-        Result.Capabilities.Resources.ListChanged := False;
-        Result.Capabilities.Resources.Subscribe := False;
-      end;
-
-      if MCPConfig.Prompts.Registry.Count > 0 then
-      begin
-        Result.Capabilities.Prompts.ListChanged := False;
-      end;
-
-    end;
-
-  except
-    Result.Free;
-    raise;
-  end;
 end;
 
 { TMCPResourcesApi }
@@ -357,22 +289,6 @@ begin
   end;
 end;
 
-{ TMCPLoggingApi }
-
-function TMCPLoggingApi.SetLevel(ASetLevelParams: TSetLevelRequestParams): TSetLevelResult;
-begin
-  if Assigned(MCPConfig.MessageHandling.SetLogLevelProc) then
-    MCPConfig.MessageHandling.SetLogLevelProc(Context, ASetLevelParams.Level);
-  Result := TSetLevelResult.Create;
-end;
-
-{ TMCPPingApi }
-
-function TMCPPingApi.Ping: TJSONObject;
-begin
-  Result := TJSONObject.Create;
-end;
-
 { TMCPPromptsApi }
 
 function TMCPPromptsApi.PromptList: TListPromptsResult;
@@ -419,12 +335,29 @@ begin
   end;
 end;
 
+{ TMCPServerApi }
+
+function TMCPServerApi.Discover([JRPCParams] AParams: TRequestParams): TDiscoverResult;
+begin
+  Result := TDiscoverResult.Create;
+  Result.SupportedVersions := ['2026-07-28'];
+  Result.ResultType := TMCPResultType.Complete;
+  Result.CacheScope := TMCPCacheScope.ScopePublic;
+  Result.Capabilities.Tools.ListChanged := True;
+end;
+
+{ TMCPSubscriptionsApi }
+
+procedure TMCPSubscriptionsApi.Listen;
+begin
+
+end;
+
 initialization
-  TJRPCRegistry.Instance.RegisterClass(TMCPInitializeApi, MCPNeonConfig);
+  TJRPCRegistry.Instance.RegisterClass(TMCPServerApi, MCPNeonConfig);
   TJRPCRegistry.Instance.RegisterClass(TMCPToolsApi, MCPNeonConfig);
   TJRPCRegistry.Instance.RegisterClass(TMCPPromptsApi, MCPNeonConfig);
   TJRPCRegistry.Instance.RegisterClass(TMCPResourcesApi, MCPNeonConfig);
   TJRPCRegistry.Instance.RegisterClass(TMCPNotificationsApi, MCPNeonConfig);
-  TJRPCRegistry.Instance.RegisterClass(TMCPLoggingApi, MCPNeonConfig);
-  TJRPCRegistry.Instance.RegisterClass(TMCPPingApi, MCPNeonConfig);
+
 end.

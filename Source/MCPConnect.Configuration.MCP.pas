@@ -294,7 +294,7 @@ type
   TMCPMessageHandlingConfig = class(TMCPBaseConfig)
   private
     FRegistry: TJRPCRegistry;
-    FCancelledProc: TProc<TJRPCContext, TCancelledNotificationParams>;
+    //FCancelledProc: TProc<TJRPCContext, TCancelledNotificationParams>;
     FInitializedProc: TProc<TJRPCContext>;
     FSetLogLevelProc: TProc<TJRPCContext, TLogSetLevel>;
   public
@@ -321,17 +321,6 @@ type
     property Registry: TJRPCRegistry read FRegistry;
 
     /// <summary>
-    ///   Registers a handler for the "notifications/cancelled" notification,
-    ///   sent by the client when it wants to cancel an in-flight request.
-    /// </summary>
-    /// <param name="AProc">
-    ///   Callback receiving the cancellation parameters (request id and optional reason).
-    ///   Pass nil to unregister.
-    /// </param>
-    /// <returns>Self for fluent chaining</returns>
-    function OnCancelled(AProc: TProc<TJRPCContext, TCancelledNotificationParams>): TMCPMessageHandlingConfig;
-
-    /// <summary>
     ///   Registers a handler for the "notifications/initialized" notification,
     ///   sent by the client once the initialization handshake is complete.
     /// </summary>
@@ -350,12 +339,6 @@ type
     /// </param>
     /// <returns>Self for fluent chaining</returns>
     function OnSetLogLevel(AProc: TProc<TJRPCContext, TLogSetLevel>): TMCPMessageHandlingConfig;
-
-    /// <summary>
-    ///   Read-only access to the registered "notifications/cancelled" handler.
-    ///   Used by the framework to dispatch incoming cancellation notifications.
-    /// </summary>
-    property CancelledProc: TProc<TJRPCContext, TCancelledNotificationParams> read FCancelledProc;
 
     /// <summary>
     ///   Read-only access to the registered "notifications/initialized" handler.
@@ -1965,12 +1948,6 @@ end;
 function TMCPMessageHandlingConfig.RegisterApi(AClass: TClass): TMCPMessageHandlingConfig;
 begin
   FRegistry.RegisterClass(AClass, MCPNeonConfig);
-  Result := Self;
-end;
-
-function TMCPMessageHandlingConfig.OnCancelled(AProc: TProc<TJRPCContext, TCancelledNotificationParams>): TMCPMessageHandlingConfig;
-begin
-  FCancelledProc := AProc;
   Result := Self;
 end;
 

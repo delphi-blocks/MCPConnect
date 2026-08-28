@@ -224,7 +224,7 @@ type
     /// <summary>
     ///   Serializes the message to a JSON string.
     /// </summary>
-    function ToJson: string; virtual;
+    function ToJson(APretty: Boolean = False): string; virtual;
 
     /// <summary>
     ///   Serializes the message to a TJSONObject.
@@ -719,9 +719,9 @@ begin
   TNeon.JSONToObject(Self, AJSON, JRPCNeonConfig);
 end;
 
-function TJRPCMessage.ToJson: string;
+function TJRPCMessage.ToJson(APretty: Boolean): string;
 begin
-  Result := TNeon.ObjectToJSONString(Self, JRPCNeonConfig);
+  Result := TNeon.ObjectToJSONString(Self, JRPCNeonConfig.SetPrettyPrint(APretty));
 end;
 
 function TJRPCMessage.ToJsonObject: TJSONObject;

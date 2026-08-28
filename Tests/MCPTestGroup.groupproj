@@ -12,6 +12,9 @@
         <Projects Include="ConsoleTest\MCPConsoleIndyTest.dproj">
             <Dependencies/>
         </Projects>
+        <Projects Include="TestClasses\TestClasses.dproj">
+            <Dependencies/>
+        </Projects>
     </ItemGroup>
     <ProjectExtensions>
         <Borland.Personality>Default.Personality.12</Borland.Personality>
@@ -47,14 +50,23 @@
     <Target Name="MCPConsoleIndyTest:Make">
         <MSBuild Projects="ConsoleTest\MCPConsoleIndyTest.dproj" Targets="Make"/>
     </Target>
+    <Target Name="TestClasses">
+        <MSBuild Projects="TestClasses\TestClasses.dproj"/>
+    </Target>
+    <Target Name="TestClasses:Clean">
+        <MSBuild Projects="TestClasses\TestClasses.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="TestClasses:Make">
+        <MSBuild Projects="TestClasses\TestClasses.dproj" Targets="Make"/>
+    </Target>
     <Target Name="Build">
-        <CallTarget Targets="MCPConnect_Tests_Framework;JRPCServer;MCPConsoleIndyTest"/>
+        <CallTarget Targets="MCPConnect_Tests_Framework;JRPCServer;MCPConsoleIndyTest;TestClasses"/>
     </Target>
     <Target Name="Clean">
-        <CallTarget Targets="MCPConnect_Tests_Framework:Clean;JRPCServer:Clean;MCPConsoleIndyTest:Clean"/>
+        <CallTarget Targets="MCPConnect_Tests_Framework:Clean;JRPCServer:Clean;MCPConsoleIndyTest:Clean;TestClasses:Clean"/>
     </Target>
     <Target Name="Make">
-        <CallTarget Targets="MCPConnect_Tests_Framework:Make;JRPCServer:Make;MCPConsoleIndyTest:Make"/>
+        <CallTarget Targets="MCPConnect_Tests_Framework:Make;JRPCServer:Make;MCPConsoleIndyTest:Make;TestClasses:Make"/>
     </Target>
     <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
 </Project>

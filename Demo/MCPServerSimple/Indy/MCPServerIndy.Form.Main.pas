@@ -32,6 +32,9 @@ uses
   Winapi.Messages, System.SysUtils, System.Classes, Vcl.Graphics, Vcl.Controls,
   Vcl.Forms, Vcl.Dialogs, Vcl.AppEvnts, Vcl.StdCtrls,
 
+  Logify,
+  Logify.Adapter.Buffer,
+
   // TJRPCServer is the protocol engine: it owns the JSON-RPC dispatch, the
   // plugin/configuration chain and the session manager. It is transport
   // agnostic - the unit below is what plugs it into HTTP.
@@ -48,6 +51,7 @@ type
     Label1: TLabel;
     ApplicationEvents1: TApplicationEvents;
     ButtonOpenBrowser: TButton;
+    memoLog: TMemo;
     procedure FormDestroy(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
@@ -62,7 +66,7 @@ type
     ///   Its JRPCServer property exposes the protocol engine to configure.
     /// </summary>
     FServer: TJRPCIndyServer;
-
+    FLogifyAdapterFactory: ILoggerAdapterFactory;
     procedure StartServer;
   public
     { Public declarations }
@@ -78,11 +82,6 @@ implementation
 uses
   WinApi.Windows, Winapi.ShellApi,
 
-  // Logify is MCPConnect's logging facade. Registering an adapter (see the
-  // initialization section at the bottom) is what makes the library's own
-  // [PERF] / protocol trace messages visible.
-  Logify, Logify.Adapter.Debug,
-
   // The shared, transport-independent server definition.
   MCPServer.Config;
 
@@ -90,6 +89,12 @@ uses
 
 procedure TfrmMain.FormCreate(Sender: TObject);
 begin
+  // Route MCPConnect's internal logging to the memo: the buffer adapter
+  // collects messages from background threads and flushes them to the
+  // TStrings target (memoLog.Lines) on the main thread via a timer.
+  FLogifyAdapterFactory := TLogifyAdapterBufferFactory.CreateAdapterFactory(TLogLevel.Debug, memoLog.Lines);
+  TLoggerAdapterRegistry.Instance.RegisterFactory(FLogifyAdapterFactory);
+
   // 1) Build the transport.
   //    CreateMCPServer is a convenience factory: it creates the Indy server,
   //    creates and owns a TJRPCServer, and wires the MCP request handler
@@ -108,6 +113,10 @@ end;
 
 procedure TfrmMain.FormDestroy(Sender: TObject);
 begin
+  // Unregister before the memo is destroyed, otherwise background threads
+  // still logging would write to a freed TStrings and cause an AV.
+  TLoggerAdapterRegistry.Instance.UnregisterFactory(FLogifyAdapterFactory);
+
   // Registrations live in the server's configuration objects, which are owned
   // by FServer and freed with it - so this call is *not* required for correct
   // shutdown. It is here to demonstrate the runtime unregistration API
@@ -169,13 +178,5 @@ begin
     Logger.Log('MCP Server Started', TLogLevel.Debug);
   end;
 end;
-
-initialization
-  // Route MCPConnect's internal logging to the IDE's Event Log (OutputDebugString).
-  // Swap TLogifyAdapterDebugFactory for a file/console adapter to keep a trace
-  // outside the debugger. Lowering the level from Debug to Info silences the
-  // per-request [PERF] timings.
-  TLoggerAdapterRegistry.Instance.RegisterFactory(
-    TLogifyAdapterDebugFactory.CreateAdapterFactory('Debug log', TLogLevel.Debug));
 
 end.

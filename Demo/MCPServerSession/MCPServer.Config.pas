@@ -100,6 +100,7 @@ uses
   System.IOUtils,
   System.TypInfo,
   Logify,
+  Logify.Adapter.Debug,
 
   // The units holding the decorated classes. A class is only visible to the
   // protocol once it is *registered* below - simply linking the unit does
@@ -372,5 +373,13 @@ begin
 
   ;
 end;
+
+initialization
+  // Route MCPConnect's internal logging to the IDE's Event Log (OutputDebugString).
+  // Swap TLogifyAdapterDebugFactory for a file/console adapter to keep a trace
+  // outside the debugger. Lowering the level from Debug to Info silences the
+  // per-request [PERF] timings.
+  TLoggerAdapterRegistry.Instance.RegisterFactory(
+    TLogifyAdapterDebugFactory.CreateAdapterFactory('Debug log', TLogLevel.Debug));
 
 end.

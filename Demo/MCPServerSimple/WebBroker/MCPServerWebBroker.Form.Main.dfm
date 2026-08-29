@@ -2,20 +2,21 @@ object frmMain: TfrmMain
   Left = 271
   Top = 114
   Caption = 'frmMain'
-  ClientHeight = 328
-  ClientWidth = 437
+  ClientHeight = 490
+  ClientWidth = 932
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
   Font.Height = -11
-  Font.Name = 'Tahoma'
+  Font.Name = 'Segoe UI'
   Font.Style = []
   OnCreate = FormCreate
+  OnDestroy = FormDestroy
   TextHeight = 13
   object Label1: TLabel
     Left = 24
     Top = 48
-    Width = 20
+    Width = 21
     Height = 13
     Caption = 'Port'
   end
@@ -57,27 +58,19 @@ object frmMain: TfrmMain
   object memoLog: TMemo
     Left = 0
     Top = 104
-    Width = 437
-    Height = 224
+    Width = 932
+    Height = 386
     Align = alBottom
     Anchors = [akLeft, akTop, akRight, akBottom]
     Font.Charset = ANSI_CHARSET
     Font.Color = clWindowText
-    Font.Height = -18
+    Font.Height = -13
     Font.Name = 'Consolas'
     Font.Style = []
     ParentFont = False
-    ScrollBars = ssVertical
+    ScrollBars = ssBoth
     TabOrder = 4
-  end
-  object btnConfig: TButton
-    Left = 299
-    Top = 8
-    Width = 107
-    Height = 25
-    Caption = 'Generate MCP.json'
-    TabOrder = 5
-    OnClick = btnConfigClick
+    WordWrap = False
   end
   object ApplicationEvents1: TApplicationEvents
     OnIdle = ApplicationEvents1Idle

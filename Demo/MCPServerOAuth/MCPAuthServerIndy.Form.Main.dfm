@@ -2,8 +2,8 @@ object frmMain: TfrmMain
   Left = 271
   Top = 114
   Caption = 'frmMain'
-  ClientHeight = 235
-  ClientWidth = 399
+  ClientHeight = 490
+  ClientWidth = 932
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -11,6 +11,7 @@ object frmMain: TfrmMain
   Font.Name = 'Tahoma'
   Font.Style = []
   OnCreate = FormCreate
+  OnDestroy = FormDestroy
   TextHeight = 13
   object Label1: TLabel
     Left = 24
@@ -53,6 +54,23 @@ object frmMain: TfrmMain
     Caption = 'Open Browser'
     TabOrder = 3
     OnClick = ButtonOpenBrowserClick
+  end
+  object memoLog: TMemo
+    Left = 0
+    Top = 104
+    Width = 932
+    Height = 386
+    Align = alBottom
+    Anchors = [akLeft, akTop, akRight, akBottom]
+    Font.Charset = ANSI_CHARSET
+    Font.Color = clWindowText
+    Font.Height = -13
+    Font.Name = 'Consolas'
+    Font.Style = []
+    ParentFont = False
+    ScrollBars = ssBoth
+    WordWrap = False
+    TabOrder = 4
   end
   object ApplicationEvents1: TApplicationEvents
     OnIdle = ApplicationEvents1Idle

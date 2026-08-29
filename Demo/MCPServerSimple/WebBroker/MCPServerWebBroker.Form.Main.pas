@@ -24,6 +24,8 @@ uses
   Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.AppEvnts, Vcl.StdCtrls,
   IdHTTPWebBrokerBridge, IdGlobal, Web.HTTPApp, IdContext,
 
+  Logify,
+  Logify.Adapter.Buffer,
   MCPServerWebBroker.WebModule;
 
 type
@@ -35,13 +37,12 @@ type
     Label1: TLabel;
     ApplicationEvents1: TApplicationEvents;
     ButtonOpenBrowser: TButton;
-    btnConfig: TButton;
     procedure FormCreate(Sender: TObject);
     procedure ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);
-    procedure btnConfigClick(Sender: TObject);
     procedure ButtonStartClick(Sender: TObject);
     procedure ButtonStopClick(Sender: TObject);
     procedure ButtonOpenBrowserClick(Sender: TObject);
+    procedure FormDestroy(Sender: TObject);
   private
     /// <summary>
     ///   Indy-based WebBroker host. It instantiates the web module registered
@@ -50,6 +51,7 @@ type
     ///   see the note in MCPServerWebBroker.WebModule.pas.
     /// </summary>
     FServer: TIdHTTPWebBrokerBridge;
+    FLogifyAdapterFactory: ILoggerAdapterFactory;
     procedure StartServer;
 
     procedure ParseAuthentication(AContext: TIdContext; const AAuthType, AAuthData: String; var VUsername, VPassword: String; var VHandled: Boolean);
@@ -75,50 +77,6 @@ begin
   ButtonStart.Enabled := not FServer.Active;
   ButtonStop.Enabled := FServer.Active;
   EditPort.Enabled := not FServer.Active;
-end;
-
-procedure TfrmMain.btnConfigClick(Sender: TObject);
-begin
-{
-  Kept as a snippet rather than live code: it builds the JSON an MCP *client*
-  needs in order to reach this server, using the same Neon serializer the
-  library uses internally. Handy for generating claude_desktop_config.json or
-  ~/.lmstudio/mcp.json entries from Delphi.
-
-  Two server kinds are shown - "http" (this demo, reached over the network,
-  with the Authorization header a token-protected server would require) and
-  "stdio" (a local executable the client launches itself, as in
-  Demo\MCPServer\Stdio).
-
-  To bring it back, add MCPConnect.MCP.Config to the uses clause.
-
-  var mcp := TMCPConfig.Create;
-
-  var remote := TMCPConfigServerRemote.Create;
-  remote.&Type := 'http';
-  remote.Url := 'http://localhost:8080/mcp';
-  remote.Headers.Add('Authorization', 'Bearer ' + '378eye6t.e3y883yee3eu8yg32e63.93ue983u');
-  mcp.Servers.Add('mcp-connect-remote', remote);
-
-  var local := TMCPConfigServerLocal.Create;
-  local.&Type := 'stdio';
-  local.Command := 'mcp.exe';
-  local.Args := ['-v', './data'];
-  local.Env.Add('KEY', 'aabbccdd');
-  mcp.Servers.Add('mcp-connect-local', local);
-
-  var s := TNeon.ObjectToJSONString(mcp,
-    TNeonConfiguration
-      .Camel
-      .SetMembers([TNeonMembers.Fields])
-      .SetPrettyPrint(True)
-      .SetMemberSort(TNeonSort.RttiReverse)
-  );
-
-  memoLog.Lines.Add(s);
-
-  mcp.Free;
-}
 end;
 
 procedure TfrmMain.ButtonOpenBrowserClick(Sender: TObject);
@@ -152,6 +110,13 @@ end;
 
 procedure TfrmMain.FormCreate(Sender: TObject);
 begin
+  // Route MCPConnect's internal logging to the memo: the buffer adapter
+  // collects messages from background threads and flushes them to the
+  // TStrings target (memoLog.Lines) on the main thread via a timer.
+  FLogifyAdapterFactory := TLogifyAdapterBufferFactory.CreateAdapterFactory(TLogLevel.Debug, memoLog.Lines);
+  TLoggerAdapterRegistry.Instance.RegisterFactory(FLogifyAdapterFactory);
+
+
   FServer := TIdHTTPWebBrokerBridge.Create(Self);
 
   // Without this handler Indy tries to parse the Authorization header itself
@@ -161,6 +126,13 @@ begin
   FServer.OnParseAuthentication := ParseAuthentication;
 
   StartServer;
+end;
+
+procedure TfrmMain.FormDestroy(Sender: TObject);
+begin
+  // Unregister before the memo is destroyed, otherwise background threads
+  // still logging would write to a freed TStrings and cause an AV.
+  TLoggerAdapterRegistry.Instance.UnregisterFactory(FLogifyAdapterFactory);
 end;
 
 procedure TfrmMain.ParseAuthentication(AContext: TIdContext; const AAuthType,

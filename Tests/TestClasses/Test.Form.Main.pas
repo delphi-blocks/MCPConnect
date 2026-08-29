@@ -330,6 +330,7 @@ end;
 
 procedure TfrmMain.InitializeResultExecute(Sender: TObject);
 begin
+  {
   var res := TInitializeResult.Create;
 
   res.ProtocolVersion := '1.0';
@@ -340,6 +341,7 @@ begin
   mmoLog.Lines.Add(res.ToJSON(True));
 
   res.Free;
+  }
 end;
 
 procedure TfrmMain.actInitializeRequestExecute(Sender: TObject);

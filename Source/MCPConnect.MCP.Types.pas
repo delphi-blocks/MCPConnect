@@ -31,6 +31,7 @@ uses
   MCPConnect.JRPC.Classes;
 
 const
+  MCP_PROTOCOL_SUPPORTED_VERSIONS: array of string = ['2026-07-28'];
   MCP_PROTOCOL_VERSION_2026_07_28 = '2026-07-28';
 
   /// <summary>
@@ -221,15 +222,6 @@ type
   public
     constructor Create;
     destructor Destroy; override;
-  end;
-
-  TPaginatedParams = record
-
-    /// <summary>
-    ///   An opaque token representing the current pagination position. If provided, the server
-    ///   should return results starting after this cursor.
-    /// </summary>
-    Cursor: NullString;
   end;
 
   /// <summary>
@@ -543,6 +535,20 @@ type
     destructor Destroy; override;
   end;
 
+
+  TPaginatedRequestParams = class(TRequestParams)
+
+    /// <summary>
+    ///   An opaque token representing the current pagination position. If provided, the server
+    ///   should return results starting after this cursor.
+    /// </summary>
+    Cursor: NullString;
+  end;
+
+  /// <summary>
+  ///   Extends MetaObject with additional result-specific fields. All key
+  ///   naming rules from MetaObject apply.
+  /// </summary>
   TResultMetaObject = class(TFlatMetaClass)
   public
     [NeonProperty('io.modelcontextprotocol/serverInfo')]
@@ -558,26 +564,80 @@ type
   [NeonEnumNames('public,private')]
   TMCPCacheScope = (ScopePublic, ScopePrivate);
 
-  /// <summary>
-  ///   The result returned by the server for a server/discover request.
-  /// </summary>
-  TDiscoverResult = class
-  public
+
+  TBaseResult = class
+    /// <summary>
+    ///   Extends MetaObject with additional result-specific fields. All key
+    ///   naming rules from MetaObject apply.
+    /// </summary>
     [NeonProperty('_meta')]
     ResultMeta: TResultMetaObject;
-    SupportedVersions: TArray<string>;
-    ResultType: TMCPResultType;
-    Capabilities: TServerCapabilities;
-    CacheScope: TMCPCacheScope;
-    TtlMs: UInt64;
 
-    Instructions: NullString;
+    /// <summary>
+    ///   Indicates the type of the result, which allows the client to determine
+    ///   how to parse the result object.
+    ///   Servers implementing this protocol version MUST include this field.
+    /// </summary>
+    ResultType: TMCPResultType;
+
   public
     constructor Create;
     destructor Destroy; override;
   end;
 
 
+  TCachedResult = class(TBaseResult)
+  public
+    /// <summary>
+    ///   Indicates the intended scope of the cached response, analogous to HTTP
+    ///   Cache-Control: public vs Cache-Control: private.
+    /// </summary>
+    CacheScope: TMCPCacheScope;
+
+    /// <summary>
+    ///   A hint from the server indicating how long (in milliseconds) the
+    ///   client MAY cache this response before re-fetching. Semantics are
+    ///   analogous to HTTP Cache-Control max-age.
+    /// </summary>
+    TtlMs: UInt64;
+  end;
+
+  /// <summary>
+  ///   The result returned by the server for a server/discover request.
+  /// </summary>
+  TDiscoverResult = class(TCachedResult)
+  public
+
+    /// <summary>
+    ///   MCP Protocol Versions this server supports. The client should choose a
+    ///   version from this list for use in subsequent requests.
+    /// </summary>
+    SupportedVersions: TArray<string>;
+
+    /// <summary>
+    ///   Capabilities that a server may support. Known capabilities are defined
+    ///   here, in this schema, but this is not a closed set: any server can
+    ///   define its own, additional capabilities.
+    /// </summary>
+    Capabilities: TServerCapabilities;
+
+    /// <summary>
+    ///   <para>
+    ///     Natural-language guidance describing the server and its features.
+    ///   </para>
+    ///   <para>
+    ///     This can be used by clients to improve an LLM's understanding of
+    ///     available tools (e.g., by including it in a system prompt). It
+    ///     should focus on information that helps the model use the server
+    ///     effectively and should not duplicate information already in tool
+    ///     descriptions.
+    ///   </para>
+    /// </summary>
+    Instructions: NullString;
+  public
+    constructor Create;
+    destructor Destroy; override;
+  end;
 
   TLogSetLevel = (Alert, Critical, Debug, Emergency, Error, Info, Notice, Warning);
   TSetLevelRequestParams = class(TMetaClass)
@@ -1883,13 +1943,11 @@ constructor TDiscoverResult.Create;
 begin
   inherited;
   Capabilities := TServerCapabilities.Create;
-  ResultMeta := TResultMetaObject.Create;
 end;
 
 destructor TDiscoverResult.Destroy;
 begin
   Capabilities.Free;
-  ResultMeta.Free;
   inherited;
 end;
 
@@ -1904,6 +1962,20 @@ end;
 destructor TResultMetaObject.Destroy;
 begin
   ServerInfo.Free;
+  inherited;
+end;
+
+{ TBaseResult }
+
+constructor TBaseResult.Create;
+begin
+  inherited;
+  ResultMeta := TResultMetaObject.Create;
+end;
+
+destructor TBaseResult.Destroy;
+begin
+  ResultMeta.Free;
   inherited;
 end;
 

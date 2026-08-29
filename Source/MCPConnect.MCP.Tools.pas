@@ -183,7 +183,10 @@ type
   TMCPToolConfigurator = reference to procedure(ATool: TMCPTool);
   TMCPToolFilterFunc = reference to function (ATool: TMCPTool): Boolean;
 
-  TListToolsResult = class(TMetaClass)
+  /// <summary>
+  ///   The result returned by the server for a tools/list request.
+  /// </summary>
+  TListToolsResult = class(TCachedResult)
   public
 
     /// <summary>
@@ -203,15 +206,14 @@ type
   end;
 
   /// <summary>
-  ///   Can be TextContent, ImageContent, AudioContent, ResourceLink, or
-  ///   EmbeddedResource
+  ///   The result returned by the server for a tools/call request.
   /// </summary>
-  TCallToolResult = class(TMetaClass)
+  TCallToolResult = class(TBaseResult)
   public
 
    /// <summary>
    ///   Can be TextContent, ImageContent, AudioContent, ResourceLink, or
-   ///   EmbeddedResource
+   ///   EmbeddedResource.
    /// </summary>
 	  Content: TContentList;
 
@@ -225,6 +227,8 @@ type
     ///   Currently limited to a JSONObject ( <see
     ///   href="https://github.com/modelcontextprotocol/php-sdk/issues/357" />)
     /// </remarks>
+
+    { TODO -opaolo -c : Lift the object constraint 29/08/2026 09:37:25 }
     [NeonInclude(IncludeIf.NotEmpty)] StructuredContent: TJSONObject;
 
     /// <summary>

@@ -47,7 +47,7 @@ type
     [Context] MCPConfig: TMCPConfig;
 
     [JRPC('list')]
-    function ToolsList: TListToolsResult;
+    function ToolsList([JRPCParams] AParams: TPaginatedRequestParams): TListToolsResult;
 
     [JRPC('call')]
     function CallTool([JRPCParams] AParams: TCallToolParams): TCallToolResult;
@@ -156,10 +156,11 @@ begin
   end;
 end;
 
-function TMCPToolsApi.ToolsList: TListToolsResult;
+function TMCPToolsApi.ToolsList([JRPCParams] AParams: TPaginatedRequestParams): TListToolsResult;
 var
   LStopwatch: TStopwatch;
 begin
+  { TODO -opaolo -c : Read the params 29/08/2026 09:25:00 }
   LStopwatch := TStopwatch.StartNew;
   try
     Result := MCPConfig.Tools.ListEnabled;
@@ -340,10 +341,12 @@ end;
 function TMCPServerApi.Discover([JRPCParams] AParams: TRequestParams): TDiscoverResult;
 begin
   Result := TDiscoverResult.Create;
-  Result.SupportedVersions := ['2026-07-28'];
+  Result.SupportedVersions := MCP_PROTOCOL_SUPPORTED_VERSIONS;
   Result.ResultType := TMCPResultType.Complete;
   Result.CacheScope := TMCPCacheScope.ScopePublic;
   Result.Capabilities.Tools.ListChanged := True;
+  Result.Capabilities.Resources.ListChanged := True;
+  Result.Capabilities.Prompts.ListChanged := True;
 end;
 
 { TMCPSubscriptionsApi }

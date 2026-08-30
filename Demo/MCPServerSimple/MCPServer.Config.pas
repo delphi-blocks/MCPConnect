@@ -39,6 +39,7 @@ uses
   Logify,
 
   MCPServer.Resources,
+  MCPServer.Apps,
   MCPServer.Tools,
   MCPServer.Prompts;
 
@@ -66,6 +67,7 @@ begin
 
       .Resources
         .RegisterClass(TTodoResource)
+        .RegisterClass(TTodoAppUI)
       .BackToMCP
 
       .Prompts
@@ -88,6 +90,7 @@ begin
 
   .Resources
     .UnregisterClass(TTodoResource)
+    .UnregisterClass(TTodoAppUI)
   .BackToMCP
 
   .Prompts

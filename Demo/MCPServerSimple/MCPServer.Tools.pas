@@ -59,7 +59,8 @@ type
       [McpParam('description', 'Optional description of the task')] const ADescription: string = ''
     ): string;
 
-    [McpTool('list_tasks', 'List all tasks in the todo list')]
+    [McpTool('list_tasks', 'List all tasks in the todo list. Call this tool when the user wants to work with tasks: it includes an interactive UI to delete and complete tasks')]
+    [McpApp('ui://todo/todo-app')]
     function ListTasks(): string;
 
     [McpTool('complete_task', 'Mark a task as completed')]

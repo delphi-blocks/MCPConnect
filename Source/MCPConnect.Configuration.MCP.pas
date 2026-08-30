@@ -28,12 +28,12 @@ uses
 
   MCPConnect.JRPC.Classes,
   MCPConnect.JRPC.Core,
-  MCPConnect.MCP.Types,
+  MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Tool,
   MCPConnect.MCP.Types.Mrtr,
-  MCPConnect.MCP.Tools,
-  MCPConnect.MCP.Prompts,
-  MCPConnect.MCP.Resources,
+  MCPConnect.MCP.Types.Tools,
+  MCPConnect.MCP.Types.Prompts,
+  MCPConnect.MCP.Types.Resources,
 
   MCPConnect.MCP.Attributes,
   MCPConnect.Content.Writers,

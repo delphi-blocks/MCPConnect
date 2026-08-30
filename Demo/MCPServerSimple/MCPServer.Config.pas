@@ -12,7 +12,7 @@ uses
   MCPConnect.JRPC.Server,
 
   MCPConnect.MCP.Server.Api,
-  MCPConnect.MCP.Types,
+  MCPConnect.MCP.Types.Base,
 
   MCPConnect.Configuration.MCP,
   MCPConnect.Configuration.Session,

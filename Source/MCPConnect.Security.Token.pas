@@ -20,7 +20,7 @@ uses
 
   MCPConnect.Configuration.Auth,
   MCPConnect.JRPC.Core,
-  MCPConnect.MCP.Types,
+  MCPConnect.MCP.Types.Base,
   MCPConnect.Security.Jwks;
 
 {$SCOPEDENUMS ON}

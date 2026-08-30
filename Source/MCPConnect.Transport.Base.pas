@@ -31,7 +31,7 @@ uses
   MCPConnect.Configuration.Session,
   MCPConnect.Security.Token,
   MCPConnect.Session.Core,
-  MCPConnect.MCP.Types,
+  MCPConnect.MCP.Types.Base,
   MCPConnect.JRPC.Classes,
   MCPConnect.JRPC.Core,
   MCPConnect.JRPC.Server;

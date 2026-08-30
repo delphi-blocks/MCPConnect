@@ -18,8 +18,8 @@ interface
 uses
   System.SysUtils, System.Classes, System.TypInfo, System.Rtti, System.Generics.Collections,
 
-  MCPConnect.MCP.Types,
-  MCPConnect.MCP.Tools,
+  MCPConnect.MCP.Types.Base,
+  MCPConnect.MCP.Types.Tools,
   MCPConnect.MCP.Attributes,
   MCPConnect.Content.Writers;
 

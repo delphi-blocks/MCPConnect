@@ -11,7 +11,7 @@
 {  Licensed under the MIT license                                              }
 {                                                                              }
 {******************************************************************************}
-unit MCPConnect.MCP.Tools;
+unit MCPConnect.MCP.Types.Tools;
 
 interface
 
@@ -33,7 +33,7 @@ uses
   Neon.Core.Serializers.RTL,
   Neon.Core.Utils,
 
-  MCPConnect.MCP.Types,
+  MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Tool,
   MCPConnect.MCP.Types.Mrtr,
 

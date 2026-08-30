@@ -12,10 +12,10 @@ uses
   MCPConnect.JRPC.Classes,
 
   MCPConnect.MCP.Attributes,
-  MCPConnect.MCP.Types,
-  MCPConnect.MCP.Tools,
-  MCPConnect.MCP.Resources,
-  MCPConnect.MCP.Prompts,
+  MCPConnect.MCP.Types.Base,
+  MCPConnect.MCP.Types.Tools,
+  MCPConnect.MCP.Types.Resources,
+  MCPConnect.MCP.Types.Prompts,
 
   MCPConnect.JRPC.Invoker,
   MCPConnect.JRPC.Core,

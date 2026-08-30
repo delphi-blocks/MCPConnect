@@ -41,7 +41,7 @@ var
 implementation
 
 uses
-  MCPConnect.MCP.Types,
+  MCPConnect.MCP.Types.Base,
   MCPConnect.JRPC.Classes,
 
   System.RegularExpressions;

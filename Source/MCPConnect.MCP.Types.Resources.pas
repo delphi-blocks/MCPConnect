@@ -11,7 +11,7 @@
 {  Licensed under the MIT license                                              }
 {                                                                              }
 {******************************************************************************}
-unit MCPConnect.MCP.Resources;
+unit MCPConnect.MCP.Types.Resources;
 
 interface
 
@@ -32,7 +32,7 @@ uses
 
 
   MCPConnect.MCP.Attributes,
-  MCPConnect.MCP.Types;
+  MCPConnect.MCP.Types.Base;
 
 type
   /// <summary>

@@ -19,10 +19,10 @@ uses
   System.SysUtils, System.TypInfo, System.Rtti, System.SyncObjs, System.Generics.Collections,
 
   MCPConnect.MCP.Attributes,
-  MCPConnect.MCP.Types,
-  MCPConnect.MCP.Tools,
-  MCPConnect.MCP.Prompts,
-  MCPConnect.MCP.Resources;
+  MCPConnect.MCP.Types.Base,
+  MCPConnect.MCP.Types.Tools,
+  MCPConnect.MCP.Types.Prompts,
+  MCPConnect.MCP.Types.Resources;
 
 
 type

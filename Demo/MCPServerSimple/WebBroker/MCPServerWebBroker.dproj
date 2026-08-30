@@ -141,11 +141,11 @@
         <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Server.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Attributes.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Invoker.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Prompts.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Resources.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Server.Api.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Tools.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.Base.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.Prompts.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.Resources.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.Tools.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Config.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.Transport.WebBroker.pas"/>
         <DCCReference Include="..\MCPServer.Tools.pas"/>
@@ -153,11 +153,9 @@
         <DCCReference Include="..\MCPServer.Apps.pas"/>
         <DCCReference Include="MCPServerWebBroker.Form.Main.pas">
             <Form>frmMain</Form>
-            <FormType>dfm</FormType>
         </DCCReference>
         <DCCReference Include="MCPServerWebBroker.WebModule.pas">
             <Form>WebModule1</Form>
-            <FormType>dfm</FormType>
             <DesignClass>TWebModule</DesignClass>
         </DCCReference>
         <DCCReference Include="..\MCPServer.Config.pas"/>

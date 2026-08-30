@@ -20,11 +20,11 @@ uses
   MCPConnect.MCP.Attributes in '..\..\Source\MCPConnect.MCP.Attributes.pas',
   MCPConnect.MCP.Config in '..\..\Source\MCPConnect.MCP.Config.pas',
   MCPConnect.MCP.Invoker in '..\..\Source\MCPConnect.MCP.Invoker.pas',
-  MCPConnect.MCP.Prompts in '..\..\Source\MCPConnect.MCP.Prompts.pas',
-  MCPConnect.MCP.Resources in '..\..\Source\MCPConnect.MCP.Resources.pas',
+  MCPConnect.MCP.Types.Prompts in '..\..\Source\MCPConnect.MCP.Types.Prompts.pas',
+  MCPConnect.MCP.Types.Resources in '..\..\Source\MCPConnect.MCP.Types.Resources.pas',
   MCPConnect.MCP.Server.Api in '..\..\Source\MCPConnect.MCP.Server.Api.pas',
-  MCPConnect.MCP.Tools in '..\..\Source\MCPConnect.MCP.Tools.pas',
-  MCPConnect.MCP.Types in '..\..\Source\MCPConnect.MCP.Types.pas';
+  MCPConnect.MCP.Types.Tools in '..\..\Source\MCPConnect.MCP.Types.Tools.pas',
+  MCPConnect.MCP.Types.Base in '..\..\Source\MCPConnect.MCP.Types.Base.pas';
 
 {$R *.res}
 

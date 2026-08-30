@@ -11,7 +11,7 @@
 {  Licensed under the MIT license                                              }
 {                                                                              }
 {******************************************************************************}
-unit MCPConnect.MCP.Prompts;
+unit MCPConnect.MCP.Types.Prompts;
 
 interface
 
@@ -34,7 +34,7 @@ uses
   Neon.Core.Serializers.RTL,
   Neon.Core.Utils,
 
-  MCPConnect.MCP.Types,
+  MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Attributes;
 
 

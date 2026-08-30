@@ -9,7 +9,7 @@ uses
 
   MCPConnect.JRPC.Core,
   MCPConnect.JRPC.Classes,
-  MCPConnect.MCP.Types,
+  MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Attributes;
 
 type

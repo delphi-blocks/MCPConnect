@@ -19,7 +19,7 @@ uses
   Neon.Core.Serializers.RTL,
   Neon.Core.Utils,
 
-  MCPConnect.MCP.Types,
+  MCPConnect.MCP.Types.Base,
 
   MCPConnect.MCP.Attributes;
 

@@ -15,9 +15,6 @@
         <Projects Include="MCPServerSimple\WindowsService\MCPWindowsService.dproj">
             <Dependencies/>
         </Projects>
-        <Projects Include="MCPServerSession\MCPServerSession.dproj">
-            <Dependencies/>
-        </Projects>
         <Projects Include="MCPServerOAuth\MCPAuthServer.dproj">
             <Dependencies/>
         </Projects>
@@ -65,15 +62,6 @@
     <Target Name="MCPWindowsService:Make">
         <MSBuild Projects="MCPServerSimple\WindowsService\MCPWindowsService.dproj" Targets="Make"/>
     </Target>
-    <Target Name="MCPServerSession">
-        <MSBuild Projects="MCPServerSession\MCPServerSession.dproj"/>
-    </Target>
-    <Target Name="MCPServerSession:Clean">
-        <MSBuild Projects="MCPServerSession\MCPServerSession.dproj" Targets="Clean"/>
-    </Target>
-    <Target Name="MCPServerSession:Make">
-        <MSBuild Projects="MCPServerSession\MCPServerSession.dproj" Targets="Make"/>
-    </Target>
     <Target Name="MCPAuthServer">
         <MSBuild Projects="MCPServerOAuth\MCPAuthServer.dproj"/>
     </Target>
@@ -84,13 +72,13 @@
         <MSBuild Projects="MCPServerOAuth\MCPAuthServer.dproj" Targets="Make"/>
     </Target>
     <Target Name="Build">
-        <CallTarget Targets="MCPServerStdio;MCPServerIndy;MCPServerWebBroker;MCPWindowsService;MCPServerSession;MCPAuthServer"/>
+        <CallTarget Targets="MCPServerStdio;MCPServerIndy;MCPServerWebBroker;MCPWindowsService;MCPAuthServer"/>
     </Target>
     <Target Name="Clean">
-        <CallTarget Targets="MCPServerStdio:Clean;MCPServerIndy:Clean;MCPServerWebBroker:Clean;MCPWindowsService:Clean;MCPServerSession:Clean;MCPAuthServer:Clean"/>
+        <CallTarget Targets="MCPServerStdio:Clean;MCPServerIndy:Clean;MCPServerWebBroker:Clean;MCPWindowsService:Clean;MCPAuthServer:Clean"/>
     </Target>
     <Target Name="Make">
-        <CallTarget Targets="MCPServerStdio:Make;MCPServerIndy:Make;MCPServerWebBroker:Make;MCPWindowsService:Make;MCPServerSession:Make;MCPAuthServer:Make"/>
+        <CallTarget Targets="MCPServerStdio:Make;MCPServerIndy:Make;MCPServerWebBroker:Make;MCPWindowsService:Make;MCPAuthServer:Make"/>
     </Target>
     <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
 </Project>

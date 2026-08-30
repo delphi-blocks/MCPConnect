@@ -21,13 +21,13 @@ uses
   MCPConnect.JRPC.Core,
   MCPConnect.Configuration.MCP,
 
-  MCPConnect.MCP.Types,
+  MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Tool,
   MCPConnect.MCP.Types.Mrtr,
   MCPConnect.MCP.Attributes,
-  MCPConnect.MCP.Tools,
-  MCPConnect.MCP.Resources,
-  MCPConnect.MCP.Prompts;
+  MCPConnect.MCP.Types.Tools,
+  MCPConnect.MCP.Types.Resources,
+  MCPConnect.MCP.Types.Prompts;
 
 type
 

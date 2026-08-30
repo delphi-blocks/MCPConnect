@@ -29,11 +29,11 @@ uses
   MCPConnect.Configuration.MCP,
 
   MCPConnect.MCP.Attributes,
-  MCPConnect.MCP.Types,
+  MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Tool,
-  MCPConnect.MCP.Tools,
-  MCPConnect.MCP.Prompts,
-  MCPConnect.MCP.Resources;
+  MCPConnect.MCP.Types.Tools,
+  MCPConnect.MCP.Types.Prompts,
+  MCPConnect.MCP.Types.Resources;
 
 type
   TMCPInvoker = class

@@ -19,7 +19,7 @@ uses
   System.SysUtils, System.JSON, System.Generics.Collections,
 
   Neon.Core.Attributes,
-  MCPConnect.MCP.Types;
+  MCPConnect.MCP.Types.Base;
 
 type
 

@@ -155,11 +155,11 @@
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Attributes.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Config.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Invoker.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Prompts.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Resources.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Prompts.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Resources.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Server.Api.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Tools.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Tools.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Base.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

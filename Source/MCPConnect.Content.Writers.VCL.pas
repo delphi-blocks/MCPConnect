@@ -18,9 +18,9 @@ interface
 uses
   System.SysUtils, System.Classes, System.TypInfo, System.Rtti,
 
-  MCPConnect.MCP.Types,
-  MCPConnect.MCP.Tools,
-  MCPConnect.MCP.Prompts,
+  MCPConnect.MCP.Types.Base,
+  MCPConnect.MCP.Types.Tools,
+  MCPConnect.MCP.Types.Prompts,
   MCPConnect.MCP.Attributes,
   MCPConnect.Content.Writers;
 

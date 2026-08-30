@@ -11,7 +11,7 @@
 {  Licensed under the MIT license                                              }
 {                                                                              }
 {******************************************************************************}
-unit MCPConnect.MCP.Types;
+unit MCPConnect.MCP.Types.Base;
 
 interface
 

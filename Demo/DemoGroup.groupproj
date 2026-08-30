@@ -3,16 +3,16 @@
         <ProjectGuid>{E4B9D31E-3EB0-42B7-BB2C-BE6C824E15C2}</ProjectGuid>
     </PropertyGroup>
     <ItemGroup>
-        <Projects Include="MCPServerSimple\Stdio\MCPServerStdio.dproj">
+        <Projects Include="MCPServer\Stdio\MCPServerStdio.dproj">
             <Dependencies/>
         </Projects>
-        <Projects Include="MCPServerSimple\Indy\MCPServerIndy.dproj">
+        <Projects Include="MCPServer\Indy\MCPServerIndy.dproj">
             <Dependencies/>
         </Projects>
-        <Projects Include="MCPServerSimple\WebBroker\MCPServerWebBroker.dproj">
+        <Projects Include="MCPServer\WebBroker\MCPServerWebBroker.dproj">
             <Dependencies/>
         </Projects>
-        <Projects Include="MCPServerSimple\WindowsService\MCPWindowsService.dproj">
+        <Projects Include="MCPServer\WindowsService\MCPWindowsService.dproj">
             <Dependencies/>
         </Projects>
         <Projects Include="MCPServerOAuth\MCPAuthServer.dproj">
@@ -27,40 +27,40 @@
         </BorlandProject>
     </ProjectExtensions>
     <Target Name="MCPServerStdio">
-        <MSBuild Projects="MCPServerSimple\Stdio\MCPServerStdio.dproj"/>
+        <MSBuild Projects="MCPServer\Stdio\MCPServerStdio.dproj"/>
     </Target>
     <Target Name="MCPServerStdio:Clean">
-        <MSBuild Projects="MCPServerSimple\Stdio\MCPServerStdio.dproj" Targets="Clean"/>
+        <MSBuild Projects="MCPServer\Stdio\MCPServerStdio.dproj" Targets="Clean"/>
     </Target>
     <Target Name="MCPServerStdio:Make">
-        <MSBuild Projects="MCPServerSimple\Stdio\MCPServerStdio.dproj" Targets="Make"/>
+        <MSBuild Projects="MCPServer\Stdio\MCPServerStdio.dproj" Targets="Make"/>
     </Target>
     <Target Name="MCPServerIndy">
-        <MSBuild Projects="MCPServerSimple\Indy\MCPServerIndy.dproj"/>
+        <MSBuild Projects="MCPServer\Indy\MCPServerIndy.dproj"/>
     </Target>
     <Target Name="MCPServerIndy:Clean">
-        <MSBuild Projects="MCPServerSimple\Indy\MCPServerIndy.dproj" Targets="Clean"/>
+        <MSBuild Projects="MCPServer\Indy\MCPServerIndy.dproj" Targets="Clean"/>
     </Target>
     <Target Name="MCPServerIndy:Make">
-        <MSBuild Projects="MCPServerSimple\Indy\MCPServerIndy.dproj" Targets="Make"/>
+        <MSBuild Projects="MCPServer\Indy\MCPServerIndy.dproj" Targets="Make"/>
     </Target>
     <Target Name="MCPServerWebBroker">
-        <MSBuild Projects="MCPServerSimple\WebBroker\MCPServerWebBroker.dproj"/>
+        <MSBuild Projects="MCPServer\WebBroker\MCPServerWebBroker.dproj"/>
     </Target>
     <Target Name="MCPServerWebBroker:Clean">
-        <MSBuild Projects="MCPServerSimple\WebBroker\MCPServerWebBroker.dproj" Targets="Clean"/>
+        <MSBuild Projects="MCPServer\WebBroker\MCPServerWebBroker.dproj" Targets="Clean"/>
     </Target>
     <Target Name="MCPServerWebBroker:Make">
-        <MSBuild Projects="MCPServerSimple\WebBroker\MCPServerWebBroker.dproj" Targets="Make"/>
+        <MSBuild Projects="MCPServer\WebBroker\MCPServerWebBroker.dproj" Targets="Make"/>
     </Target>
     <Target Name="MCPWindowsService">
-        <MSBuild Projects="MCPServerSimple\WindowsService\MCPWindowsService.dproj"/>
+        <MSBuild Projects="MCPServer\WindowsService\MCPWindowsService.dproj"/>
     </Target>
     <Target Name="MCPWindowsService:Clean">
-        <MSBuild Projects="MCPServerSimple\WindowsService\MCPWindowsService.dproj" Targets="Clean"/>
+        <MSBuild Projects="MCPServer\WindowsService\MCPWindowsService.dproj" Targets="Clean"/>
     </Target>
     <Target Name="MCPWindowsService:Make">
-        <MSBuild Projects="MCPServerSimple\WindowsService\MCPWindowsService.dproj" Targets="Make"/>
+        <MSBuild Projects="MCPServer\WindowsService\MCPWindowsService.dproj" Targets="Make"/>
     </Target>
     <Target Name="MCPAuthServer">
         <MSBuild Projects="MCPServerOAuth\MCPAuthServer.dproj"/>

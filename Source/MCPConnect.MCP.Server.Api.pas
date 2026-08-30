@@ -22,6 +22,8 @@ uses
   MCPConnect.Configuration.MCP,
 
   MCPConnect.MCP.Types,
+  MCPConnect.MCP.Types.Tool,
+  MCPConnect.MCP.Types.Mrtr,
   MCPConnect.MCP.Attributes,
   MCPConnect.MCP.Tools,
   MCPConnect.MCP.Resources,

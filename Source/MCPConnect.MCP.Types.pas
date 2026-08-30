@@ -602,6 +602,7 @@ type
     TtlMs: UInt64;
   end;
 
+
   /// <summary>
   ///   The result returned by the server for a server/discover request.
   /// </summary>
@@ -639,6 +640,18 @@ type
     destructor Destroy; override;
   end;
 
+  TElicitAction = (Accept, Cancel, Decline);
+  TElicitResult = class(TMetaClass)
+
+    /// <summary>
+    ///   The user action in response to the elicitation.
+    /// </summary>
+    Action: TElicitAction;
+
+    // anyOf [Array<string>, string ∪ integer ∪ boolean]
+    Content: TJSONValue;
+  end;
+
   TLogSetLevel = (Alert, Critical, Debug, Emergency, Error, Info, Notice, Warning);
   TSetLevelRequestParams = class(TMetaClass)
 
@@ -650,7 +663,7 @@ type
   end;
 
   TSetLevelResult = class
-    
+
   end;
 
   { ************ Contents ************ }
@@ -935,25 +948,6 @@ type
     function Count: NativeInt;
   end;
 
-  TToolListChangedNotification = class(TJRPCNotification)
-  public
-    constructor Create;
-  end;
-
-  TPromptListChangedNotification = class(TJRPCNotification)
-  public
-    constructor Create;
-  end;
-
-  TResourceListChangedNotification = class(TJRPCNotification)
-  public
-    constructor Create;
-  end;
-
-  TRootsListChangedNotification = class(TJRPCNotification)
-  public
-    constructor Create;
-  end;
 
 function MCPNeonConfig: INeonConfiguration;
 
@@ -1696,42 +1690,6 @@ begin
     if ExtExists(AExtension, m.Ext) then
       Exit(m.Mime);
   end;
-end;
-
-{ TToolListChangedNotification }
-
-constructor TToolListChangedNotification.Create;
-begin
-  inherited;
-  Method := 'notifications/tools/list_changed';
-  Params := nil;
-end;
-
-{ TPromptListChangedNotification }
-
-constructor TPromptListChangedNotification.Create;
-begin
-  inherited;
-  Method := 'notifications/prompts/list_changed';
-  Params := nil;
-end;
-
-{ TResourceListChangedNotification }
-
-constructor TResourceListChangedNotification.Create;
-begin
-  inherited;
-  Method := 'notifications/resources/list_changed';
-  Params := nil;
-end;
-
-{ TRootsListChangedNotification }
-
-constructor TRootsListChangedNotification.Create;
-begin
-  inherited;
-  Method := 'notifications/roots/list_changed';
-  Params := nil;
 end;
 
 { TContentList }

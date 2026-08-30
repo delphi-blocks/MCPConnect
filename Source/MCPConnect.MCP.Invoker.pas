@@ -30,6 +30,7 @@ uses
 
   MCPConnect.MCP.Attributes,
   MCPConnect.MCP.Types,
+  MCPConnect.MCP.Types.Tool,
   MCPConnect.MCP.Tools,
   MCPConnect.MCP.Prompts,
   MCPConnect.MCP.Resources;

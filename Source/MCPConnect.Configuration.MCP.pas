@@ -29,6 +29,8 @@ uses
   MCPConnect.JRPC.Classes,
   MCPConnect.JRPC.Core,
   MCPConnect.MCP.Types,
+  MCPConnect.MCP.Types.Tool,
+  MCPConnect.MCP.Types.Mrtr,
   MCPConnect.MCP.Tools,
   MCPConnect.MCP.Prompts,
   MCPConnect.MCP.Resources,

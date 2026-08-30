@@ -162,6 +162,8 @@
         <DCCReference Include="..\..\..\Source\MCPConnect.Transport.MediaType.pas"/>
         <DCCReference Include="..\MCPServer.Prompts.pas"/>
         <DCCReference Include="..\MCPServer.Notifications.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.Mrtr.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.Tool.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

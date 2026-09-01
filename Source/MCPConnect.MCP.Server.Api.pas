@@ -344,8 +344,8 @@ function TMCPServerApi.Discover([JRPCParams] AParams: TRequestParams): TDiscover
 begin
   Result := TDiscoverResult.Create;
   Result.SupportedVersions := MCP_PROTOCOL_SUPPORTED_VERSIONS;
-  Result.ResultType := TMCPResultType.Complete;
-  Result.CacheScope := TMCPCacheScope.ScopePublic;
+  Result.ResultType := TResultType.Complete;
+  Result.CacheScope := TCacheScope.ScopePublic;
   Result.Capabilities.Tools.ListChanged := True;
   Result.Capabilities.Resources.ListChanged := True;
   Result.Capabilities.Prompts.ListChanged := True;

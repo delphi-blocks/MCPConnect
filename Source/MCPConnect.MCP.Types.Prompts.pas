@@ -35,10 +35,22 @@ uses
   Neon.Core.Utils,
 
   MCPConnect.MCP.Types.Base,
+  MCPConnect.MCP.Types.Mrtr,
   MCPConnect.MCP.Attributes;
 
 
 type
+
+
+  /// <summary>
+  ///   Parameters for a `prompts/get` request.
+  /// </summary>
+  TGetPromptRequestParams = class(TMrtrRequestParams);
+
+
+  /// <summary>
+  ///   Describes an argument that a prompt can accept.
+  /// </summary>
   TPromptArgument = record
     /// <summary>
     /// The name of the argument.

@@ -60,23 +60,7 @@ type
     destructor Destroy; override;
   end;
 
-  TCallToolRequestParams = class(TRequestParams)
-  public
-    /// <summary>
-    ///   Name for the params
-    /// </summary>
-    Name: string;
-
-    /// <summary>
-    ///   Arguments for the tool
-    /// </summary>
-    [NeonInclude(IncludeIf.NotEmpty)] Arguments: TJSONObject;
-
-    InputResponses: TInputResponses;
-  public
-    constructor Create;
-    destructor Destroy; override;
-  end;
+  TCallToolRequestParams = class(TMrtrRequestParams);
 
 
   TMCPTools = class(TObjectList<TMCPTool>);
@@ -215,20 +199,6 @@ end;
 procedure TCallToolResult.AddContent(AContent: TToolContent);
 begin
   Content.Add(AContent);
-end;
-
-{ TCallToolRequestParams }
-
-constructor TCallToolRequestParams.Create;
-begin
-  inherited;
-  InputResponses := TInputResponses.Create;
-end;
-
-destructor TCallToolRequestParams.Destroy;
-begin
-  InputResponses.Free;
-  inherited;
 end;
 
 end.

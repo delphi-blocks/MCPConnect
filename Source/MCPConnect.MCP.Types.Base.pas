@@ -559,10 +559,10 @@ type
   end;
 
   [NeonEnumNames('complete,input_required')]
-  TMCPResultType = (Complete, InputRequired);
+  TResultType = (Complete, InputRequired);
 
   [NeonEnumNames('public,private')]
-  TMCPCacheScope = (ScopePublic, ScopePrivate);
+  TCacheScope = (ScopePublic, ScopePrivate);
 
 
   TBaseResult = class
@@ -578,7 +578,7 @@ type
     ///   how to parse the result object.
     ///   Servers implementing this protocol version MUST include this field.
     /// </summary>
-    ResultType: TMCPResultType;
+    ResultType: TResultType;
 
   public
     constructor Create;
@@ -592,7 +592,7 @@ type
     ///   Indicates the intended scope of the cached response, analogous to HTTP
     ///   Cache-Control: public vs Cache-Control: private.
     /// </summary>
-    CacheScope: TMCPCacheScope;
+    CacheScope: TCacheScope;
 
     /// <summary>
     ///   A hint from the server indicating how long (in milliseconds) the

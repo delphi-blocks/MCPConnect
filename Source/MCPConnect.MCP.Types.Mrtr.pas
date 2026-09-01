@@ -18,7 +18,7 @@ interface
 {$SCOPEDENUMS ON}
 
 uses
-  System.SysUtils, System.Classes, System.Generics.Collections, System.JSON, System.Rtti,
+  System.SysUtils, System.Classes, System.Generics.Collections, System.JSON,
 
   Neon.Core.Tags,
   Neon.Core.Types,
@@ -37,7 +37,7 @@ type
   /// <summary>
   ///   The sender or recipient of messages and data in a conversation.
   /// </summary>
-  TMCPRole = (
+  TRole = (
     Assistant,
     User
   );
@@ -45,7 +45,7 @@ type
   /// <summary>
   ///   Controls tool selection behavior for sampling requests.
   /// </summary>
-  TMCPToolChoice = (
+  TToolChoiceMode = (
     /// <summary>
     ///   Model decides whether to use tools (default)
     /// </summary>
@@ -60,11 +60,96 @@ type
     None
   );
 
+  ToolChoice = record
+    Mode: TToolChoiceMode;
+  end;
+
+  /// <summary>
+  /// ToolUseContent represents a request from the assistant to call a tool within a sampling message.
+  /// It must have Type set to "tool_use".
+  /// </summary>
+  TToolUseContent = class(TMetaClass)
+  public
+
+    /// <summary>
+    /// Must be "tool_use".
+    /// </summary>
+    [NeonProperty('type')]
+    &Type: string;
+
+    /// <summary>
+    /// ID is a unique identifier for this tool use, used to match tool results to their corresponding tool uses.
+    /// </summary>
+    Id: string;
+
+    /// <summary>
+    /// Name is the name of the tool to call.
+    /// </summary>
+    Name: string;
+
+    /// <summary>
+    ///   Input contains the arguments to pass to the tool, conforming to the
+    ///   tool's input schema.
+    /// </summary>
+    /// <remarks>
+    ///   Like Arguments in TCallToolParams
+    /// </remarks>
+    Input: TJSONObject;
+
+    constructor Create;
+    destructor Destroy; override;
+  end;
+
+  /// <summary>
+  /// ToolResultContent represents the result of a tool invocation within a sampling message.
+  /// It must have Type set to "tool_result".
+  /// </summary>
+  TToolResultContent = class(TMetaClass)
+  public
+
+    /// <summary>
+    /// Must be "tool_result".
+    /// </summary>
+    &Type: string;
+
+    /// <summary>
+    /// ToolUseID is the ID of the tool use this result corresponds to.
+    /// This MUST match the ID from a previous ToolUseContent.
+    /// </summary>
+    ToolUseId: string;
+
+    /// <summary>
+    /// Content is the unstructured result content of the tool use.
+    /// </summary>
+    Content: TContentList;
+
+    /// <summary>
+    ///   An optional structured result value.
+    /// </summary>
+    /// <remarks>
+    ///   This can be any JSON value (object, array, string, number, boolean, or
+    ///   null). If the tool defined an outputSchema, this SHOULD conform to
+    ///   that schema.
+    /// </remarks>
+    [NeonInclude(IncludeIf.NotEmpty)]
+    StructuredContent: TJSONObject;
+
+    /// <summary>
+    /// Whether the tool use resulted in an error.
+    /// </summary>
+    IsError: NullBoolean;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    procedure AddContent(AContent: TToolContent);
+  end;
+
 
   /// <summary>
   ///   Represents a root directory or file that the server can operate on.
   /// </summary>
-  TMCPRoot = class(TMetaClass)
+  TRoot = class(TMetaClass)
   public
 
     /// <summary>
@@ -90,7 +175,9 @@ type
     Uri: string
   end;
 
-  TMCPRoots = class(TObjectList<TMCPRoot>);
+  TRoots = class(TObjectList<TRoot>);
+
+  TListRootsRequest = class(TMetaClass);
 
   TListRootsResult = class
   public
@@ -99,7 +186,7 @@ type
     ///   Array of Root objects, each representing a root
     ///   directory or file that the server can operate on.
     /// </summary>
-    Roots: TMCPRoots;
+    Roots: TRoots;
   public
     constructor Create;
     destructor Destroy; override;
@@ -107,14 +194,33 @@ type
 
   { TODO -opaolo -c : Hot to free the object(s) in TValue 29/08/2026 11:11:54 }
   TSamplingMessage = class(TMetaClass)
+  private
+    [NeonIgnore] Text: TObjectList<TTextContent>;
+    [NeonIgnore] Image: TObjectList<TImageContent>;
+    [NeonIgnore] Audio: TObjectList<TAudioContent>;
+    [NeonIgnore] ToolUse: TObjectList<TToolUseContent>;
+    [NeonIgnore] ToolResult: TObjectList<TToolResultContent>;
+    //Array<anyOf [TextContent, ImageContent, AudioContent, ToolUseContent, ToolResultContent]>]
   public
+    [NeonIgnore] Single: NullBoolean;
+
     /// <summary>
     ///   The sender or recipient of messages and data in a conversation.
     /// </summary>
-    Role: TMCPRole;
+    Role: TRole;
 
-    { TODO -opaolo -c : perhaps a TJSONValue so I can deserialize the object and free it? 29/08/2026 11:13:49 }
-    Content: TValue; // anyOf [TextContent, ImageContent, AudioContent, ToolUseContent, ToolResultContent, Array<anyOf [TextContent, ImageContent, AudioContent, ToolUseContent, ToolResultContent]>]
+    Content: TJSONValue;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    {
+    procedure AddContent(AContent: TToolContent); overload;
+    procedure AddContent(AContent: TToolUseContent); overload;
+    procedure AddContent(AContent: TToolResultContent); overload;
+
+    function GetClass: TClass;
+    }
   end;
 
 
@@ -269,40 +375,122 @@ type
     /// <summary>
     ///   Controls how the model uses tools during generation.
     /// </summary>
-    ToolChoice: Nullable<TMCPToolChoice>;
+    ToolChoice: Nullable<TToolChoiceMode>;
   public
     constructor Create;
     destructor Destroy; override;
   end;
 
 
-
-
+  /// <summary>
+  ///   InputRequest is a single server-initiated request embedded in an
+  ///   [InputRequiredResult]. Exactly one of its fields is populated, selected
+  ///   by the Method field.
+  /// </summary>
   TInputRequest = class
-
-  end;
-
-  TInputRequests = class(TObjectList<TInputRequest>);
-
-
-  TInputResponse = class
-
+  public
     // Elicitation answers an elicitation/create input request.
-    Elicitation: TElicitResult;
+    [NeonIgnore] Elicitation: TElicitResult;
 
     // Sampling answers a sampling/createMessage input request.
-    Sampling: TCreateMessageResult;
+    [NeonIgnore] Sampling: TCreateMessageResult;
 
     // Roots answers a roots/list input request.
-    Roots: TListRootsResult;
+    [NeonIgnore] Roots: TListRootsRequest;
 
     // raw preserves the original JSON so that a response can be round-tripped
     // and decoded against the method of the request it answers.
-    Raw: TJSONValue;
+    [NeonUnwrapped] Raw: TJSONValue;
+  public
+    constructor Create;
+    destructor Destroy; override;
   end;
 
+  /// <summary>
+  ///   A map of server-initiated requests that the client must fulfill. Keys
+  ///   are server-assigned identifiers; values are the request objects.
+  /// </summary>
+  TInputRequests = class(TObjectDictionary<string, TInputRequest>)
+  public
+    //procedure AddElicitationRequest(
+  end;
+
+  /// <summary>
+  ///   InputResponse is a client's answer to a single [InputRequest]. Exactly
+  ///   one of its fields is populated, matching the method of the request it
+  ///   answers. <br />
+  /// </summary>
+  TInputResponse = class
+
+    // Elicitation answers an elicitation/create input request.
+    [NeonIgnore] Elicitation: TElicitResult;
+
+    // Sampling answers a sampling/createMessage input request.
+    [NeonIgnore] Sampling: TCreateMessageResult;
+
+    // Roots answers a roots/list input request.
+    [NeonIgnore] Roots: TListRootsResult;
+
+    // Raw preserves the original JSON so that a response can be round-tripped
+    // and decoded against the method of the request it answers.
+    [NeonUnwrapped] Raw: TJSONValue;
+  end;
+
+  /// <summary>
+  ///   A map of client responses to server-initiated requests. Keys correspond
+  ///   to the keys in the InputRequests map; values are the client's result for
+  ///   each request.
+  /// </summary>
   TInputResponses = class(TObjectDictionary<string, TInputResponse>);
 
+  TMrtrRequestParams = class(TRequestParams)
+  public
+    /// <summary>
+    ///   Name for the params
+    /// </summary>
+    Name: string;
+
+    /// <summary>
+    ///   Arguments for the tool
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)] Arguments: TJSONObject;
+
+    /// <summary>
+    ///   A map of client responses to server-initiated requests. Keys
+    ///   correspond to the keys in the InputRequests map; values are the
+    ///   client's result for each request.
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)] InputResponses: TInputResponses;
+
+    RequestState: NullString;
+  public
+    constructor Create;
+    destructor Destroy; override;
+  end;
+
+  TInputRequiredResult = class(TRequestMetaObject)
+  public
+    /// <summary>
+    ///   A map of server-initiated requests that the client must fulfill. Keys
+    ///   are server-assigned identifiers; values are the request objects.
+    /// </summary>
+    InputRequests: TInputRequests;
+
+    /// <summary>
+    ///   RequestState is an opaque, untrusted continuation token used to
+    ///   securely manage state during Multi Round-Trip Requests (MRTR)
+    /// </summary>
+    RequestState: NullString;
+
+    /// <summary>
+    ///   Indicates the type of the result, which allows the client to determine
+    ///   how to parse the result object.
+    /// </summary>
+    ResultType: TResultType;
+  public
+    constructor Create;
+    destructor Destroy; override;
+  end;
 
 
 implementation
@@ -340,7 +528,7 @@ end;
 
 constructor TListRootsResult.Create;
 begin
-  Roots := TMCPRoots.Create;
+  Roots := TRoots.Create;
 end;
 
 destructor TListRootsResult.Destroy;
@@ -350,5 +538,99 @@ begin
 end;
 
 
+
+{ TToolUseContent }
+
+constructor TToolUseContent.Create;
+begin
+  Input := TJSONObject.Create;
+  &Type := 'tool_use';
+end;
+
+destructor TToolUseContent.Destroy;
+begin
+  Input.Free;
+  inherited;
+end;
+
+{ TToolResultContent }
+
+procedure TToolResultContent.AddContent(AContent: TToolContent);
+begin
+  Content.Add(AContent);
+end;
+
+constructor TToolResultContent.Create;
+begin
+  Content := TContentList.Create;
+  StructuredContent := TJSONObject.Create;
+  &type := 'tool_result';
+end;
+
+destructor TToolResultContent.Destroy;
+begin
+  StructuredContent.Free;
+  Content.Free;
+  inherited;
+end;
+
+{ TSamplingMessage }
+
+constructor TSamplingMessage.Create;
+begin
+
+end;
+
+destructor TSamplingMessage.Destroy;
+begin
+
+  inherited;
+end;
+
+{ TInputRequest }
+
+constructor TInputRequest.Create;
+begin
+  Elicitation := TElicitResult.Create;
+  Sampling := TCreateMessageResult.Create;
+  Roots := TListRootsRequest.Create;
+end;
+
+destructor TInputRequest.Destroy;
+begin
+  Roots.Free;
+  Sampling.Free;
+  Elicitation.Free;
+  Raw.Free;
+  inherited;
+end;
+
+{ TMrtrRequestParams }
+
+constructor TMrtrRequestParams.Create;
+begin
+  inherited;
+  InputResponses := TInputResponses.Create;
+end;
+
+destructor TMrtrRequestParams.Destroy;
+begin
+  InputResponses.Free;
+  inherited;
+end;
+
+{ TInputRequiredResult }
+
+constructor TInputRequiredResult.Create;
+begin
+  inherited;
+  InputRequests := TInputRequests.Create;
+end;
+
+destructor TInputRequiredResult.Destroy;
+begin
+  InputRequests.Free;
+  inherited;
+end;
 
 end.

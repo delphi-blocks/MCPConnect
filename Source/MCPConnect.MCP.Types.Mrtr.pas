@@ -172,12 +172,12 @@ type
     ///     toallow other URI schemes.
     ///   </para>
     /// </remarks>
-    Uri: string
+    Uri: string;
   end;
 
   TRoots = class(TObjectList<TRoot>);
 
-  TListRootsRequest = class(TMetaClass);
+  TListRootsParams = class(TMetaClass);
 
   TListRootsResult = class
   public
@@ -389,14 +389,14 @@ type
   /// </summary>
   TInputRequest = class
   public
-    // Elicitation answers an elicitation/create input request.
-    [NeonIgnore] Elicitation: TElicitResult;
+    // Elicitation holds the params of an elicitation/create input request.
+    [NeonIgnore] Elicitation: TElicitRequestParams;
 
-    // Sampling answers a sampling/createMessage input request.
-    [NeonIgnore] Sampling: TCreateMessageResult;
+    // Sampling holds the params of a sampling/createMessage input request.
+    [NeonIgnore] Sampling: TCreateMessageParams;
 
-    // Roots answers a roots/list input request.
-    [NeonIgnore] Roots: TListRootsRequest;
+    // Roots holds the params of a roots/list input request.
+    [NeonIgnore] Roots: TListRootsParams;
 
     // raw preserves the original JSON so that a response can be round-tripped
     // and decoded against the method of the request it answers.
@@ -443,7 +443,28 @@ type
   /// </summary>
   TInputResponses = class(TObjectDictionary<string, TInputResponse>);
 
-  TMrtrRequestParams = class(TRequestParams)
+
+  TInputRequestParams = class(TRequestMetaParams)
+  public
+    /// <summary>
+    ///   A map of client responses to server-initiated requests. Keys
+    ///   correspond to the keys in the InputRequests map; values are the
+    ///   client's result for each request.
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)] InputResponses: TInputResponses;
+
+    /// <summary>
+    ///   Integrity-protected continuation token used to support multi
+    ///   round-trip requests (MRTR) in MCP.
+    /// </summary>
+    RequestState: NullString;
+
+  public
+    constructor Create;
+    destructor Destroy; override;
+  end;
+
+  TMrtrRequestParams = class(TInputRequestParams)
   public
     /// <summary>
     ///   Name for the params
@@ -455,38 +476,29 @@ type
     /// </summary>
     [NeonInclude(IncludeIf.NotEmpty)] Arguments: TJSONObject;
 
-    /// <summary>
-    ///   A map of client responses to server-initiated requests. Keys
-    ///   correspond to the keys in the InputRequests map; values are the
-    ///   client's result for each request.
-    /// </summary>
-    [NeonInclude(IncludeIf.NotEmpty)] InputResponses: TInputResponses;
-
-    RequestState: NullString;
   public
     constructor Create;
     destructor Destroy; override;
   end;
 
-  TInputRequiredResult = class(TRequestMetaObject)
+  /// <summary>
+  ///   The interim result a server returns when it needs more information from
+  ///   the client before it can complete the request. Carries "resultType":
+  ///   "input_required" and, from TBaseResult, the result "_meta".
+  /// </summary>
+  TInputRequiredResult = class(TBaseResult)
   public
     /// <summary>
     ///   A map of server-initiated requests that the client must fulfill. Keys
     ///   are server-assigned identifiers; values are the request objects.
     /// </summary>
-    InputRequests: TInputRequests;
+    [NeonInclude(IncludeIf.NotEmpty)] InputRequests: TInputRequests;
 
     /// <summary>
     ///   RequestState is an opaque, untrusted continuation token used to
     ///   securely manage state during Multi Round-Trip Requests (MRTR)
     /// </summary>
     RequestState: NullString;
-
-    /// <summary>
-    ///   Indicates the type of the result, which allows the client to determine
-    ///   how to parse the result object.
-    /// </summary>
-    ResultType: TResultType;
   public
     constructor Create;
     destructor Destroy; override;
@@ -591,9 +603,9 @@ end;
 
 constructor TInputRequest.Create;
 begin
-  Elicitation := TElicitResult.Create;
-  Sampling := TCreateMessageResult.Create;
-  Roots := TListRootsRequest.Create;
+  Elicitation := TElicitRequestParams.Create;
+  Sampling := TCreateMessageParams.Create;
+  Roots := TListRootsParams.Create;
 end;
 
 destructor TInputRequest.Destroy;
@@ -610,12 +622,12 @@ end;
 constructor TMrtrRequestParams.Create;
 begin
   inherited;
-  InputResponses := TInputResponses.Create;
+  Arguments := TJSONObject.Create;
 end;
 
 destructor TMrtrRequestParams.Destroy;
 begin
-  InputResponses.Free;
+  Arguments.Free;
   inherited;
 end;
 
@@ -624,12 +636,27 @@ end;
 constructor TInputRequiredResult.Create;
 begin
   inherited;
-  InputRequests := TInputRequests.Create;
+  ResultType := TResultType.InputRequired;
+  InputRequests := TInputRequests.Create([doOwnsValues]);
 end;
 
 destructor TInputRequiredResult.Destroy;
 begin
   InputRequests.Free;
+  inherited;
+end;
+
+{ TInputRequestParams }
+
+constructor TInputRequestParams.Create;
+begin
+  inherited;
+  InputResponses := TInputResponses.Create([doOwnsValues]);
+end;
+
+destructor TInputRequestParams.Destroy;
+begin
+  InputResponses.Free;
   inherited;
 end;
 

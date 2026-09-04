@@ -32,7 +32,8 @@ uses
 
 
   MCPConnect.MCP.Attributes,
-  MCPConnect.MCP.Types.Base;
+  MCPConnect.MCP.Types.Base,
+  MCPConnect.MCP.Types.Mrtr;
 
 type
   /// <summary>
@@ -230,7 +231,7 @@ type
   /// <summary>
   /// The server's response to a resources/list request from the client.
   /// </summary>
-  TListResourcesResult = class(TMetaClass)
+  TListResourcesResult = class(TCachedResult)
   public
     //[NeonProperty('PaginatedResult')] PaginatedResult: TPaginatedResult;
     /// <summary>
@@ -261,7 +262,7 @@ type
   /// <summary>
   /// The server's response to a resources/templates/list request from the client.
   /// </summary>
-  TListResourceTemplatesResult = class(TMetaClass)
+  TListResourceTemplatesResult = class(TCachedResult)
   public
     //[NeonProperty('PaginatedResult')] PaginatedResult: TPaginatedResult;
 
@@ -285,7 +286,7 @@ type
   /// <summary>
   /// Represents the parameters for a resources/read request.
   /// </summary>
-  TReadResourceParams = class(TMetaClass)
+  TReadResourceParams = class(TInputRequestParams)
   public
     /// <summary>
     /// The URI of the resource to read.
@@ -297,7 +298,7 @@ type
   /// <summary>
   /// The server's response to a resources/read request from the client.
   /// </summary>
-  TReadResourceResult = class(TMetaClass)
+  TReadResourceResult = class(TCachedResult)
   public
     /// <summary>
     /// The contents of the resource. Can be either a TTextResourceContents or TBlobResourceContents.

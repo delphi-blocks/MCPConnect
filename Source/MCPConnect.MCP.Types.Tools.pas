@@ -43,23 +43,6 @@ type
   /// <summary>
   /// Parameters for CallToolRequest
   /// </summary>
-  TCallToolParams = class(TMetaClass)
-  public
-
-    /// <summary>
-    ///   Name for the params
-    /// </summary>
-    Name: string;
-
-    /// <summary>
-    ///   Arguments for the tool
-    /// </summary>
-    [NeonInclude(IncludeIf.NotEmpty)] Arguments: TJSONObject;
-  public
-    constructor Create;
-    destructor Destroy; override;
-  end;
-
   TCallToolRequestParams = class(TMrtrRequestParams);
 
 
@@ -112,19 +95,15 @@ type
     ///   structured content SHOULD also return functionally equivalent
     ///   unstructured content.
     /// </summary>
-    /// <remarks>
-    ///   Currently limited to a JSONObject ( <see
-    ///   href="https://github.com/modelcontextprotocol/php-sdk/issues/357" />)
-    /// </remarks>
 
     { TODO -opaolo -c : Lift the object constraint 29/08/2026 09:37:25 }
-    [NeonInclude(IncludeIf.NotEmpty)] StructuredContent: TJSONObject;
+    [NeonInclude(IncludeIf.NotEmpty)] StructuredContent: TJSONValue;
 
     /// <summary>
     ///   Whether the tool call ended in an error. If not set, this is assumed
     ///   to be false (the call was successful).
     /// </summary>
-    [NeonIgnore] IsError: Nullable<Boolean>;
+    IsError: Nullable<Boolean>;
 
   public
     constructor Create; overload;
@@ -133,6 +112,22 @@ type
     destructor Destroy; override;
 
     procedure AddContent(AContent: TToolContent);
+  end;
+
+  TCallToolResultResponse = class
+  private
+    InputRequiredResult: TInputRequiredResult;
+    CallToolResult: TCallToolResult;
+
+  public
+    [NeonUnwrapped] Raw: TJSONObject;
+  end;
+
+  TCallToolResponse<T> = record
+  private
+
+  public
+
   end;
 
 implementation
@@ -159,18 +154,6 @@ begin
   Result := TNeon.ObjectToJSONString(Self, MCPNeonConfig.SetPrettyPrint(APrettyPrint));
 end;
 
-constructor TCallToolParams.Create;
-begin
-  inherited;
-  Arguments := TJSONObject.Create;
-end;
-
-destructor TCallToolParams.Destroy;
-begin
-  Arguments.Free;
-  inherited;
-end;
-
 { TCallToolResult }
 
 constructor TCallToolResult.Create;
@@ -178,6 +161,7 @@ begin
   inherited;
   Content := TContentList.Create;
   //StructuredContent := TJSONNull.Create;
+  ResultType := TResultType.Complete;
 end;
 
 constructor TCallToolResult.Create(AContent: TContentList);

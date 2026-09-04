@@ -31,7 +31,10 @@ uses
   MCPConnect.JRPC.Classes;
 
 const
-  MCP_PROTOCOL_SUPPORTED_VERSIONS: array of string = ['2026-07-28'];
+  // Declared as TArray<string> rather than as an anonymous "array of string":
+  // Delphi 11 treats the latter as a distinct dynamic-array type and refuses to
+  // assign it to a TArray<string> field or parameter.
+  MCP_PROTOCOL_SUPPORTED_VERSIONS: TArray<string> = ['2026-07-28'];
   MCP_PROTOCOL_VERSION_2026_07_28 = '2026-07-28';
 
   /// <summary>
@@ -401,6 +404,18 @@ type
     /// </summary>
     [NeonInclude(IncludeIf.NotEmpty)] Sampling: TJSONObject;
 
+    /// <summary>
+    ///   Optional MCP extensions that the client supports. Keys are extension
+    ///   identifiers (e.g., "io.modelcontextprotocol/oauth-client-credentials"),
+    ///   and values are per-extension settings objects. An empty object indicates
+    ///   support with no settings.
+    /// </summary>
+    /// <remarks>
+    ///   Keys MUST follow the _meta key naming rules, with a mandatory prefix.
+    /// </remarks>
+    [NeonInclude(IncludeIf.NotEmpty)] Extensions: TJSONObject;
+
+
   public
     constructor Create;
     destructor Destroy; override;
@@ -462,6 +477,15 @@ type
     ///   Experimental, non-standard capabilities that the server supports.
     /// </summary>
     [NeonProperty('experimental'), NeonInclude(IncludeIf.NotEmpty)] &Experimental: TJSONObject;
+
+
+    /// <summary>
+    ///   Optional MCP extensions that the server supports. Keys are extension
+    ///   identifiers (e.g., "io.modelcontextprotocol/tasks"), and values are
+    ///   per-extension settings objects. An empty object indicates support with
+    ///   no settings.
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)] Extensions: TJSONObject;
 
     /// <summary>
     ///   Present if the server supports sending log messages to the client.
@@ -527,8 +551,7 @@ type
     destructor Destroy; override;
   end;
 
-  TRequestParams = class
-    [NeonProperty('_meta')]
+  TRequestMetaParams = class
     RequestMeta: TRequestMetaObject;
 
     constructor Create;
@@ -536,7 +559,7 @@ type
   end;
 
 
-  TPaginatedRequestParams = class(TRequestParams)
+  TPaginatedRequestParams = class(TRequestMetaParams)
 
     /// <summary>
     ///   An opaque token representing the current pagination position. If provided, the server
@@ -635,6 +658,45 @@ type
     ///   </para>
     /// </summary>
     Instructions: NullString;
+  public
+    constructor Create;
+    destructor Destroy; override;
+  end;
+
+  /// <summary>
+  ///   Parameters of an "elicitation/create" input request: the server asks the
+  ///   client to collect information from the user, either by rendering a form
+  ///   (mode "form", the default) or by opening a URL (mode "url").
+  /// </summary>
+  TElicitRequestParams = class(TMetaClass)
+  public
+
+    /// <summary>
+    ///   The message to present to the user.
+    /// </summary>
+    Message: string;
+
+    /// <summary>
+    ///   The elicitation mode: "form" or "url". An absent value means "form".
+    /// </summary>
+    Mode: NullString;
+
+    /// <summary>
+    ///   [form mode] A restricted subset of JSON Schema describing the content
+    ///   requested from the user: an object schema whose properties are all
+    ///   PrimitiveSchemaDefinition values.
+    /// </summary>
+    /// <remarks>
+    ///   Kept as raw JSON until the PrimitiveSchemaDefinition family
+    ///   (StringSchema, NumberSchema, BooleanSchema and the EnumSchema
+    ///   variants) is typed.
+    /// </remarks>
+    [NeonInclude(IncludeIf.NotEmpty)] RequestedSchema: TJSONObject;
+
+    /// <summary>
+    ///   [url mode] The URL the client must open to complete the interaction.
+    /// </summary>
+    Url: NullString;
   public
     constructor Create;
     destructor Destroy; override;
@@ -806,13 +868,19 @@ type
     /// </summary>
     [NeonInclude(IncludeIf.NotEmpty)] MimeType: string;
 
+    /// <summary>
+    ///   Optional set of sized icons that the client can display in a user
+    ///   interface.
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)] Icons: TMCPIconList;
+
     constructor Create; override;
   end;
 
   /// <summary>
   ///   The contents of a specific resource or sub-resource (TextResourceContents, BlobResourceContents)
   /// </summary>
-  TResourceContents = class(TBaseContent)
+  TResourceContents = class(TMetaClass)
   public
 
     /// <summary>
@@ -976,10 +1044,12 @@ begin
   Elicitation := TMCPElicitation.Create;
   &Experimental := TJSONObject.Create;
   Sampling := TJSONObject.Create;
+  Extensions := TJSONObject.Create;
 end;
 
 destructor TClientCapabilities.Destroy;
 begin
+  Extensions.Free;
   Sampling.Free;
   &Experimental.Free;
   Elicitation.Free;
@@ -999,6 +1069,7 @@ constructor TServerCapabilities.Create;
 begin
   Completions := TJSONObject.Create;
   &Experimental := TJSONObject.Create;
+  Extensions := TJSONObject.Create;
   Logging := TJSONObject.Create;
 end;
 
@@ -1006,6 +1077,7 @@ destructor TServerCapabilities.Destroy;
 begin
   Logging.Free;
   &Experimental.Free;
+  Extensions.Free;
   Completions.Free;
   inherited;
 end;
@@ -1859,14 +1931,14 @@ begin
   inherited;
 end;
 
-{ TRequestParams }
+{ TRequestMetaParams }
 
-constructor TRequestParams.Create;
+constructor TRequestMetaParams.Create;
 begin
   RequestMeta := TRequestMetaObject.Create;
 end;
 
-destructor TRequestParams.Destroy;
+destructor TRequestMetaParams.Destroy;
 begin
   RequestMeta.Free;
   inherited;
@@ -1885,6 +1957,20 @@ destructor TMCPElicitation.Destroy;
 begin
   Url.Free;
   Form.Free;
+  inherited;
+end;
+
+{ TElicitRequestParams }
+
+constructor TElicitRequestParams.Create;
+begin
+  inherited;
+  RequestedSchema := TJSONObject.Create;
+end;
+
+destructor TElicitRequestParams.Destroy;
+begin
+  RequestedSchema.Free;
   inherited;
 end;
 

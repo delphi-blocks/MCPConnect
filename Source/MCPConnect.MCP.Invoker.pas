@@ -56,7 +56,7 @@ type
     procedure ResultToTool(const AToolResult: TValue; AResult: TCallToolResult);  public
     constructor Create(AInstance: TObject; ATool: TMCPTool);
 
-    function Invoke(AParams: TCallToolParams): TCallToolResult;
+    function Invoke(AParams: TCallToolRequestParams): TCallToolResult;
   end;
 
   TMCPResourceInvoker = class(TMCPInvoker)
@@ -271,7 +271,7 @@ begin
   AResult.Content.Add(LContent);
 end;
 
-function TMCPToolInvoker.Invoke(AParams: TCallToolParams): TCallToolResult;
+function TMCPToolInvoker.Invoke(AParams: TCallToolRequestParams): TCallToolResult;
 var
   LArgs: TArray<TValue>;
   LMethodResult: TValue;

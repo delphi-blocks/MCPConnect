@@ -255,7 +255,7 @@ type
   /// <summary>
   /// The server's response to a resources/list request from the client.
   /// </summary>
-  TListPromptsResult = class(TMetaClass)
+  TListPromptsResult = class(TCachedResult)
   public
     //[NeonProperty('PaginatedResult')] PaginatedResult: TPaginatedResult;
     /// <summary>

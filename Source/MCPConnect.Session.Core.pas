@@ -24,19 +24,29 @@ uses
 
 const
   /// <summary>
+  ///   Session errors are application-defined, so their codes sit outside the
+  ///   JSON-RPC reserved range (-32768..-32000) as the MCP specification asks.
+  /// </summary>
+  /// <remarks>
+  ///   They used to be -32001/-32002/-32003. MCP 2026-07-28 reserves
+  ///   -32020..-32099 for itself, deprecates the whole -32000..-32019 legacy
+  ///   sub-range, and forbids emitting -32002 (the retired resource-not-found).
+  /// </remarks>
+
+  /// <summary>
   ///   JSON-RPC error code: Session not found
   /// </summary>
-  JRPC_SESSION_NOT_FOUND = -32001;
+  JRPC_SESSION_NOT_FOUND = -31001;
 
   /// <summary>
   ///   JSON-RPC error code: Session has expired
   /// </summary>
-  JRPC_SESSION_EXPIRED = -32002;
+  JRPC_SESSION_EXPIRED = -31002;
 
   /// <summary>
   ///   JSON-RPC error code: Invalid session ID format
   /// </summary>
-  JRPC_SESSION_INVALID = -32003;
+  JRPC_SESSION_INVALID = -31003;
 
 resourcestring
   SSessionNotFoundFmt = 'Session "%s" not found';

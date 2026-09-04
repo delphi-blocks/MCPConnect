@@ -106,6 +106,13 @@ type
     Name: string;
 
     /// <summary>
+    ///   Intended for UI and end-user contexts — optimized to be
+    ///   human-readable and easily understood, even by those unfamiliar with
+    ///   domain-specific terminology.
+    /// </summary>
+    Title: NullString;
+
+    /// <summary>
     /// A human-readable description of the tool
     /// </summary>
     Description: Nullable<string>;

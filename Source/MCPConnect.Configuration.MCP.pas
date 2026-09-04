@@ -217,8 +217,8 @@ type
     /// </param>
     /// <returns>Self for fluent chaining</returns>
     /// <remarks>
-    ///   IMPORTANT: MCP requires tool names to match ^[a-zA-Z0-9_-]{1,64}$
-    ///   Do NOT use '.', ':', or other special characters.
+    ///   IMPORTANT: MCP requires tool names to match ^[a-zA-Z0-9_.-]{1,128}$
+    ///   Do NOT use ':', or other special characters.
     /// </remarks>
     function SetScopeSeparator(const ASeparator: string): TMCPServerConfig;
 
@@ -1038,7 +1038,7 @@ begin
   WriterRegistry := TMCPWriterRegistry.Create;
 
   IconFolder := '';
-  ScopeSeparator := '_';  // Default separator (MCP requires ^[a-zA-Z0-9_-]{1,64}$)
+  ScopeSeparator := '_';  // Default separator
   Capabilities := nil;
 end;
 

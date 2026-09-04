@@ -38,7 +38,7 @@ type
     [Context] MCPConfig: TMCPConfig;
 
     [JRPC('discover')]
-    function Discover([JRPCParams] AParams: TRequestParams):  TDiscoverResult;
+    function Discover([JRPCParams] AParams: TRequestMetaParams):  TDiscoverResult;
   end;
 
 
@@ -52,7 +52,7 @@ type
     function ToolsList([JRPCParams] AParams: TPaginatedRequestParams): TListToolsResult;
 
     [JRPC('call')]
-    function CallTool([JRPCParams] AParams: TCallToolParams): TCallToolResult;
+    function CallTool([JRPCParams] AParams: TCallToolRequestParams): TCallToolResult;
   end;
 
   [JRPC('resources')]
@@ -119,7 +119,7 @@ uses
 
 { TMCPToolApi }
 
-function TMCPToolsApi.CallTool(AParams: TCallToolParams): TCallToolResult;
+function TMCPToolsApi.CallTool(AParams: TCallToolRequestParams): TCallToolResult;
 var
   LInvoker: TMCPToolInvoker;
   LTool: TMCPTool;
@@ -129,7 +129,7 @@ begin
   LStopwatch := TStopwatch.StartNew;
   try
     if not MCPConfig.Tools.Registry.TryGetValue(AParams.Name, LTool) then
-      raise EMCPException.CreateFmt(SMCPToolNotFound, [AParams.Name]);
+      raise EJRPCInvalidParamsError.CreateFmt(SMCPToolNotFound, [AParams.Name]);
 
     // Instance of the tool class
     LToolObj := TRttiUtils.CreateInstance(LTool.ToolClass);
@@ -250,8 +250,10 @@ begin
     begin
       LTpl := MCPConfig.Resources.GetTemplate(AParams.Uri);
 
+      // Resource-not-found is Invalid Params (-32602) since 2026-07-28; the
+      // -32002 of earlier revisions MUST NOT be emitted any more.
       if not Assigned(LTpl) then
-        raise EMCPException.CreateFmt(SMCPResourceNotFound, [AParams.Uri]);
+        raise EJRPCInvalidParamsError.CreateFmt(SMCPResourceNotFound, [AParams.Uri]);
     end;
 
     if Assigned(LRes) then
@@ -316,7 +318,7 @@ begin
   LStopwatch := TStopwatch.StartNew;
   try
     if not MCPConfig.Prompts.Registry.TryGetValue(AParams.Name, LPrompt) then
-      raise EMCPException.CreateFmt(SMCPPromptNotFound, [AParams.Name]);
+      raise EJRPCInvalidParamsError.CreateFmt(SMCPPromptNotFound, [AParams.Name]);
 
     // Create an instance of the tool class
     LPromptObj := TRttiUtils.CreateInstance(LPrompt.PromptClass);
@@ -340,7 +342,7 @@ end;
 
 { TMCPServerApi }
 
-function TMCPServerApi.Discover([JRPCParams] AParams: TRequestParams): TDiscoverResult;
+function TMCPServerApi.Discover([JRPCParams] AParams: TRequestMetaParams): TDiscoverResult;
 begin
   Result := TDiscoverResult.Create;
   Result.SupportedVersions := MCP_PROTOCOL_SUPPORTED_VERSIONS;

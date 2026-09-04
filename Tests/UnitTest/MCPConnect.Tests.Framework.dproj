@@ -148,6 +148,7 @@
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Tools.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Base.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Completion.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Elicitation.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Errors.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Server.Api.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Security.Jwks.pas"/>
@@ -171,6 +172,7 @@
         <DCCReference Include="MCPConnect.Tests.Transport.Headers.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Errors.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Completion.pas"/>
+        <DCCReference Include="MCPConnect.Tests.MCP.Elicitation.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

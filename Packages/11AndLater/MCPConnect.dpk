@@ -72,6 +72,7 @@ contains
   MCPConnect.MCP.Server.Api in '..\..\Source\MCPConnect.MCP.Server.Api.pas',
   MCPConnect.MCP.Types.Base in '..\..\Source\MCPConnect.MCP.Types.Base.pas',
   MCPConnect.MCP.Types.Completion in '..\..\Source\MCPConnect.MCP.Types.Completion.pas',
+  MCPConnect.MCP.Types.Elicitation in '..\..\Source\MCPConnect.MCP.Types.Elicitation.pas',
   MCPConnect.MCP.Types.Errors in '..\..\Source\MCPConnect.MCP.Types.Errors.pas',
   MCPConnect.MCP.Types.Mrtr in '..\..\Source\MCPConnect.MCP.Types.Mrtr.pas',
   MCPConnect.MCP.Types.Prompts in '..\..\Source\MCPConnect.MCP.Types.Prompts.pas',

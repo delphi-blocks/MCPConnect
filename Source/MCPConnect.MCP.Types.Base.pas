@@ -697,9 +697,10 @@ type
     ///   PrimitiveSchemaDefinition values.
     /// </summary>
     /// <remarks>
-    ///   Kept as raw JSON until the PrimitiveSchemaDefinition family
-    ///   (StringSchema, NumberSchema, BooleanSchema and the EnumSchema
-    ///   variants) is typed.
+    ///   Build it with TMCPElicitationSchema (MCPConnect.MCP.Types.Elicitation),
+    ///   which types the PrimitiveSchemaDefinition family and renders it; the
+    ///   raw object stays the carrier because the eight schema variants are a
+    ///   union Neon cannot write polymorphically.
     /// </remarks>
     [NeonInclude(IncludeIf.NotEmpty)] RequestedSchema: TJSONObject;
 

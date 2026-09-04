@@ -45,6 +45,7 @@ uses
   MCPConnect.MCP.Types.Tools in '..\..\Source\MCPConnect.MCP.Types.Tools.pas',
   MCPConnect.MCP.Types.Base in '..\..\Source\MCPConnect.MCP.Types.Base.pas',
   MCPConnect.MCP.Types.Completion in '..\..\Source\MCPConnect.MCP.Types.Completion.pas',
+  MCPConnect.MCP.Types.Elicitation in '..\..\Source\MCPConnect.MCP.Types.Elicitation.pas',
   MCPConnect.MCP.Types.Errors in '..\..\Source\MCPConnect.MCP.Types.Errors.pas',
   MCPConnect.MCP.Server.Api in '..\..\Source\MCPConnect.MCP.Server.Api.pas',
   MCPConnect.Security.Jwks in '..\..\Source\MCPConnect.Security.Jwks.pas',
@@ -67,7 +68,8 @@ uses
   MCPConnect.Tests.Transport.OAuth in 'MCPConnect.Tests.Transport.OAuth.pas',
   MCPConnect.Tests.Transport.Headers in 'MCPConnect.Tests.Transport.Headers.pas',
   MCPConnect.Tests.MCP.Errors in 'MCPConnect.Tests.MCP.Errors.pas',
-  MCPConnect.Tests.MCP.Completion in 'MCPConnect.Tests.MCP.Completion.pas';
+  MCPConnect.Tests.MCP.Completion in 'MCPConnect.Tests.MCP.Completion.pas',
+  MCPConnect.Tests.MCP.Elicitation in 'MCPConnect.Tests.MCP.Elicitation.pas';
 
 var
   runner : ITestRunner;

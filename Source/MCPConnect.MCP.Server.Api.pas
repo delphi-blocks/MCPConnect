@@ -28,7 +28,9 @@ uses
   MCPConnect.MCP.Types.Tools,
   MCPConnect.MCP.Types.Resources,
   MCPConnect.MCP.Types.Prompts,
-  MCPConnect.MCP.Types.Completion;
+  MCPConnect.MCP.Types.Completion,
+  MCPConnect.MCP.Types.Notifications,
+  MCPConnect.MCP.Types.Subscriptions;
 
 type
 
@@ -106,18 +108,36 @@ type
     [Context] Context: TJRPCContext;
     [Context] FConfig: IMCPConfig;
   public
+    /// <summary>
+    ///   Client-sent acknowledgement of a subscription. A server normally
+    ///   *sends* this notification rather than receiving one, so the handler
+    ///   only accepts and discards it.
+    /// </summary>
     [JRPC('subscriptions/acknowledged'), JRPCNotification]
-    procedure SubAck();
+    procedure SubAck([JRPCParams] AParams: TSubscriptionsAcknowledgedNotificationParams);
   end;
 
   [JRPC('subscriptions')]
   TMCPSubscriptionsApi = class
   private
-    [Context] Context: TJRPCContext;
-    [Context] FConfig: IMCPConfig;
+    /// <summary>
+    ///   The subset of AUris this server actually serves.
+    /// </summary>
+    function KnownResourceUris(const AUris: TArray<string>): TArray<string>;
   public
-    [JRPC('listen'), JRPCNotification]
-    procedure Listen;
+    [Context] RPCContext: TJRPCContext;
+    [Context] MCPConfig: TMCPConfig;
+    [Context] Responses: TMCPMessageQueue;
+    [Context] Request: TJRPCRequest;
+
+    /// <summary>
+    ///   Opens the notification stream. This is a long-lived *request*, not a
+    ///   notification: it carries an id, the notifications sent on the stream
+    ///   are correlated with it, and its response is sent only when the server
+    ///   tears the subscription down.
+    /// </summary>
+    [JRPC('listen')]
+    function Listen([JRPCParams] AParams: TSubscriptionsListenRequestParams): TSubscriptionsListenResult;
   end;
 
 implementation
@@ -182,9 +202,10 @@ begin
   end;
 end;
 
-procedure TMCPNotificationsApi.SubAck;
+procedure TMCPNotificationsApi.SubAck(AParams: TSubscriptionsAcknowledgedNotificationParams);
 begin
-
+  // Nothing to do: the acknowledgement travels server to client, so a server
+  // receiving one just accepts it rather than rejecting the method
 end;
 
 { TMCPResourcesApi }
@@ -426,9 +447,55 @@ end;
 
 { TMCPSubscriptionsApi }
 
-procedure TMCPSubscriptionsApi.Listen;
+function TMCPSubscriptionsApi.Listen(AParams: TSubscriptionsListenRequestParams): TSubscriptionsListenResult;
+var
+  LAck: TSubscriptionsAcknowledgedNotificationParams;
 begin
+  // Acknowledge with the subset this server can actually serve: a type it has
+  // nothing to report on is left out rather than silently never sent
+  LAck := TSubscriptionsAcknowledgedNotificationParams.Create;
+  try
+    if AParams.Notifications.WantsToolsListChanged and (MCPConfig.Tools.Registry.Count > 0) then
+      LAck.Notifications.ToolsListChanged := True;
 
+    if AParams.Notifications.WantsPromptsListChanged and (MCPConfig.Prompts.Registry.Count > 0) then
+      LAck.Notifications.PromptsListChanged := True;
+
+    if AParams.Notifications.WantsResourcesListChanged and
+       ((MCPConfig.Resources.Registry.Count > 0) or (MCPConfig.Resources.TemplateRegistry.Count > 0)) then
+      LAck.Notifications.ResourcesListChanged := True;
+
+    LAck.Notifications.ResourceSubscriptions := KnownResourceUris(AParams.Notifications.ResourceSubscriptions);
+
+    if Assigned(Responses) then
+      Responses.Enqueue(TMCPNotification.FromParams(MCP_NOTIFY_SUBSCRIPTIONS_ACKNOWLEDGED, LAck))
+    else
+      LAck.Free;
+  except
+    LAck.Free;
+    raise;
+  end;
+
+  // The stream itself is transport work: until the transport holds this request
+  // open, the subscription is torn down as soon as it is acknowledged, which is
+  // the graceful teardown this result reports.
+  Result := TSubscriptionsListenResult.Create;
+  // The stream id is the id of this very request, keeping its JSON type
+  if Request.Id.IsString then
+    Result.Meta.SetSubscriptionId(Request.Id.AsString)
+  else
+    Result.Meta.SetSubscriptionId(Int64(Request.Id.AsInteger));
+end;
+
+function TMCPSubscriptionsApi.KnownResourceUris(const AUris: TArray<string>): TArray<string>;
+var
+  LUri: string;
+begin
+  Result := [];
+  for LUri in AUris do
+    if MCPConfig.Resources.Registry.ContainsKey(LUri) or
+       MCPConfig.Resources.TemplateRegistry.ContainsKey(LUri) then
+      Result := Result + [LUri];
 end;
 
 initialization
@@ -438,5 +505,6 @@ initialization
   TJRPCRegistry.Instance.RegisterClass(TMCPResourcesApi, MCPNeonConfig);
   TJRPCRegistry.Instance.RegisterClass(TMCPCompletionApi, MCPNeonConfig);
   TJRPCRegistry.Instance.RegisterClass(TMCPNotificationsApi, MCPNeonConfig);
+  TJRPCRegistry.Instance.RegisterClass(TMCPSubscriptionsApi, MCPNeonConfig);
 
 end.

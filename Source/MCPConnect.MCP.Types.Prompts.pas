@@ -232,7 +232,13 @@ type
   /// <summary>
   ///  The server's response to a prompts/get request from the client.
   /// </summary>
-  TGetPromptResult = class(TMetaClass)
+  /// <remarks>
+  ///   A Result, so it carries the required "resultType" - prompts/get is one
+  ///   of the three requests that may answer "input_required" instead of
+  ///   completing - but not a CacheableResult: the schema gives it no
+  ///   ttlMs/cacheScope.
+  /// </remarks>
+  TGetPromptResult = class(TBaseResult)
   public
 
     /// <summary>
@@ -282,6 +288,8 @@ implementation
 
 constructor TGetPromptResult.Create;
 begin
+  // The inherited call was missing, so the result "_meta" was never created
+  inherited;
   Messages := TPromptMessages.Create;
 end;
 

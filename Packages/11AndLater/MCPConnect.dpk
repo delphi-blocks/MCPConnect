@@ -78,6 +78,7 @@ contains
   MCPConnect.MCP.Types.Notifications in '..\..\Source\MCPConnect.MCP.Types.Notifications.pas',
   MCPConnect.MCP.Types.Prompts in '..\..\Source\MCPConnect.MCP.Types.Prompts.pas',
   MCPConnect.MCP.Types.Resources in '..\..\Source\MCPConnect.MCP.Types.Resources.pas',
+  MCPConnect.MCP.Types.Subscriptions in '..\..\Source\MCPConnect.MCP.Types.Subscriptions.pas',
   MCPConnect.MCP.Types.Tool in '..\..\Source\MCPConnect.MCP.Types.Tool.pas',
   MCPConnect.MCP.Types.Tools in '..\..\Source\MCPConnect.MCP.Types.Tools.pas',
   MCPConnect.Security.Jwks in '..\..\Source\MCPConnect.Security.Jwks.pas',

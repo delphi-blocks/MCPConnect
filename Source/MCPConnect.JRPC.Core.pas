@@ -208,6 +208,14 @@ type
     class operator Implicit(const ASource: TJRPCID): string;
 
     function IsNull: Boolean;
+
+    /// <summary>
+    ///   True when the id is carried as a string rather than as a number.
+    ///   AsInteger cannot answer this: it returns 0 both for a string id and
+    ///   for the perfectly legal integer id 0.
+    /// </summary>
+    function IsString: Boolean;
+
     function AsInteger: Integer;
     function AsString: string;
   end;
@@ -918,6 +926,11 @@ end;
 function TJRPCID.IsNull: Boolean;
 begin
   Result := id.IsEmpty;
+end;
+
+function TJRPCID.IsString: Boolean;
+begin
+  Result := not id.IsEmpty and id.IsType<string>;
 end;
 
 class operator TJRPCID.Implicit(const ASource: TJRPCID): Integer;

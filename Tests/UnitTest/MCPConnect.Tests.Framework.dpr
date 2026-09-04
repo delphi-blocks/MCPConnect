@@ -42,6 +42,7 @@ uses
   MCPConnect.MCP.Invoker in '..\..\Source\MCPConnect.MCP.Invoker.pas',
   MCPConnect.MCP.Types.Prompts in '..\..\Source\MCPConnect.MCP.Types.Prompts.pas',
   MCPConnect.MCP.Types.Resources in '..\..\Source\MCPConnect.MCP.Types.Resources.pas',
+  MCPConnect.MCP.Types.Subscriptions in '..\..\Source\MCPConnect.MCP.Types.Subscriptions.pas',
   MCPConnect.MCP.Types.Tools in '..\..\Source\MCPConnect.MCP.Types.Tools.pas',
   MCPConnect.MCP.Types.Base in '..\..\Source\MCPConnect.MCP.Types.Base.pas',
   MCPConnect.MCP.Types.Completion in '..\..\Source\MCPConnect.MCP.Types.Completion.pas',
@@ -71,7 +72,9 @@ uses
   MCPConnect.Tests.MCP.Errors in 'MCPConnect.Tests.MCP.Errors.pas',
   MCPConnect.Tests.MCP.Completion in 'MCPConnect.Tests.MCP.Completion.pas',
   MCPConnect.Tests.MCP.Elicitation in 'MCPConnect.Tests.MCP.Elicitation.pas',
-  MCPConnect.Tests.MCP.Notifications in 'MCPConnect.Tests.MCP.Notifications.pas';
+  MCPConnect.Tests.MCP.Notifications in 'MCPConnect.Tests.MCP.Notifications.pas',
+  MCPConnect.Tests.MCP.Prompts in 'MCPConnect.Tests.MCP.Prompts.pas',
+  MCPConnect.Tests.MCP.Subscriptions in 'MCPConnect.Tests.MCP.Subscriptions.pas';
 
 var
   runner : ITestRunner;

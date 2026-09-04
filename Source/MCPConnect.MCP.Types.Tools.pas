@@ -114,21 +114,10 @@ type
     procedure AddContent(AContent: TToolContent);
   end;
 
-  TCallToolResultResponse = class
-  private
-    InputRequiredResult: TInputRequiredResult;
-    CallToolResult: TCallToolResult;
-
-  public
-    [NeonUnwrapped] Raw: TJSONObject;
-  end;
-
-  TCallToolResponse<T> = record
-  private
-
-  public
-
-  end;
+  // The schema's CallToolResultResponse is the JSON-RPC envelope, which the
+  // JRPC layer owns, and its result is anyOf[InputRequiredResult|CallToolResult].
+  // That union needs no carrier type: both descend from TBaseResult, which is
+  // what tools/call returns, and Neon writes an object by its runtime class.
 
 implementation
 

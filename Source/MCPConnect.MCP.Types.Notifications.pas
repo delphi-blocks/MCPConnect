@@ -158,6 +158,12 @@ type
 
     procedure SetProgressToken(const AToken: string); overload;
     procedure SetProgressToken(AToken: Int64); overload;
+
+    /// <summary>
+    ///   Answers on the token carried by a request, copying it so the request
+    ///   params stay the owner of theirs.
+    /// </summary>
+    procedure SetProgressToken(AToken: TJSONValue); overload;
   end;
 
   /// <summary>
@@ -225,6 +231,13 @@ type
     class function Progress(const AToken: string; AProgress, ATotal: Double; const AMessage: string = ''): TJRPCNotification; overload; static;
     class function Progress(AToken: Int64; AProgress: Double): TJRPCNotification; overload; static;
     class function Progress(AToken: Int64; AProgress, ATotal: Double; const AMessage: string = ''): TJRPCNotification; overload; static;
+
+    /// <summary>
+    ///   Answers on the token a request carried, taken straight from its
+    ///   RequestMeta.ProgressToken. The token is copied, not adopted.
+    /// </summary>
+    class function Progress(AToken: TJSONValue; AProgress: Double): TJRPCNotification; overload; static;
+    class function Progress(AToken: TJSONValue; AProgress, ATotal: Double; const AMessage: string = ''): TJRPCNotification; overload; static;
 
     class function LogMessage(ALevel: TMCPLogLevel; const AMessage: string; const ALogger: string = ''): TJRPCNotification; overload; static;
     class function LogMessage(ALevel: TMCPLogLevel; AData: TJSONValue; const ALogger: string = ''): TJRPCNotification; overload; static;
@@ -331,6 +344,18 @@ procedure TProgressNotificationParams.SetProgressToken(AToken: Int64);
 begin
   ProgressToken.Free;
   ProgressToken := TJSONNumber.Create(AToken);
+end;
+
+procedure TProgressNotificationParams.SetProgressToken(AToken: TJSONValue);
+begin
+  if ProgressToken = AToken then
+    Exit;
+
+  ProgressToken.Free;
+  if Assigned(AToken) then
+    ProgressToken := AToken.Clone as TJSONValue
+  else
+    ProgressToken := nil;
 end;
 
 { TLoggingMessageNotificationParams }
@@ -444,6 +469,31 @@ end;
 
 class function TMCPNotification.Progress(AToken: Int64; AProgress, ATotal: Double;
   const AMessage: string): TJRPCNotification;
+var
+  LParams: TProgressNotificationParams;
+begin
+  LParams := TProgressNotificationParams.Create;
+  LParams.SetProgressToken(AToken);
+  LParams.Progress := AProgress;
+  LParams.Total := ATotal;
+  if not AMessage.IsEmpty then
+    LParams.Message := AMessage;
+
+  Result := FromParams(MCP_NOTIFY_PROGRESS, LParams);
+end;
+
+class function TMCPNotification.Progress(AToken: TJSONValue; AProgress: Double): TJRPCNotification;
+var
+  LParams: TProgressNotificationParams;
+begin
+  LParams := TProgressNotificationParams.Create;
+  LParams.SetProgressToken(AToken);
+  LParams.Progress := AProgress;
+
+  Result := FromParams(MCP_NOTIFY_PROGRESS, LParams);
+end;
+
+class function TMCPNotification.Progress(AToken: TJSONValue; AProgress, ATotal: Double; const AMessage: string): TJRPCNotification;
 var
   LParams: TProgressNotificationParams;
 begin

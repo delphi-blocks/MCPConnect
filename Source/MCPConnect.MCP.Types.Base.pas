@@ -605,14 +605,28 @@ type
     LogLevel: Nullable<TMCPLogLevel>;
 
     /// <summary>
-    ///   A progress token, used to associate progress notifications with the original request.
-    ///   TODO: convert to int U str: TAnyOf<Int64,string>
+    ///   A progress token, used to associate progress notifications with the
+    ///   original request. Present only when the client asked for out-of-band
+    ///   progress; a server is not obliged to send any.
     /// </summary>
-    ProgressToken: NullString;
+    /// <remarks>
+    ///   A ProgressToken is a string or an integer, so it is carried as raw
+    ///   JSON and owned here. Read it with HasProgressToken, and hand it to
+    ///   TMCPNotification.Progress to answer on it.
+    /// </remarks>
+    [NeonInclude(IncludeIf.NotEmpty)] ProgressToken: TJSONValue;
 
   public
     constructor Create;
     destructor Destroy; override;
+
+    /// <summary>
+    ///   True when the client asked for progress notifications on this request.
+    /// </summary>
+    function HasProgressToken: Boolean;
+
+    procedure SetProgressToken(const AToken: string); overload;
+    procedure SetProgressToken(AToken: Int64); overload;
   end;
 
   /// <summary>
@@ -1986,9 +2000,27 @@ end;
 
 destructor TRequestMetaObject.Destroy;
 begin
+  ProgressToken.Free;
   Capabilities.Free;
   ClientInfo.Free;
   inherited;
+end;
+
+function TRequestMetaObject.HasProgressToken: Boolean;
+begin
+  Result := Assigned(ProgressToken);
+end;
+
+procedure TRequestMetaObject.SetProgressToken(const AToken: string);
+begin
+  ProgressToken.Free;
+  ProgressToken := TJSONString.Create(AToken);
+end;
+
+procedure TRequestMetaObject.SetProgressToken(AToken: Int64);
+begin
+  ProgressToken.Free;
+  ProgressToken := TJSONNumber.Create(AToken);
 end;
 
 { TFlatMetaClass }

@@ -34,7 +34,8 @@ uses
   MCPConnect.MCP.Types.Tools,
   MCPConnect.MCP.Types.Prompts,
   MCPConnect.MCP.Types.Resources,
-  MCPConnect.MCP.Types.Completion;
+  MCPConnect.MCP.Types.Completion,
+  MCPConnect.MCP.Types.Mrtr;
 
 type
   TMCPInvoker = class
@@ -57,7 +58,11 @@ type
     procedure ResultToTool(const AToolResult: TValue; AResult: TCallToolResult);  public
     constructor Create(AInstance: TObject; ATool: TMCPTool);
 
-    function Invoke(AParams: TCallToolRequestParams): TCallToolResult;
+    /// <summary>
+    ///   Returns a TCallToolResult, or a TInputRequiredResult when the tool
+    ///   needs more from the client before it can finish (MRTR).
+    /// </summary>
+    function Invoke(AParams: TCallToolRequestParams): TBaseResult;
   end;
 
   TMCPResourceInvoker = class(TMCPInvoker)
@@ -287,10 +292,11 @@ begin
   AResult.Content.Add(LContent);
 end;
 
-function TMCPToolInvoker.Invoke(AParams: TCallToolRequestParams): TCallToolResult;
+function TMCPToolInvoker.Invoke(AParams: TCallToolRequestParams): TBaseResult;
 var
   LArgs: TArray<TValue>;
   LMethodResult: TValue;
+  LToolResult: TCallToolResult;
   LStopwatch: TStopwatch;
 begin
   LStopwatch := TStopwatch.StartNew;
@@ -308,6 +314,13 @@ begin
     Exit;
   end;
 
+  // A tool that cannot finish yet answers with the requests it needs filled
+  if LMethodResult.IsType<TInputRequiredResult> then
+  begin
+    Result := TInputRequiredResult(LMethodResult.AsObject);
+    Exit;
+  end;
+
   if LMethodResult.IsType<TContentList> then
   begin
     Result := TCallToolResult.Create(TContentList(LMethodResult.AsObject));
@@ -315,10 +328,12 @@ begin
   end;
 
   FGC.Add(LMethodResult);
-  Result := TCallToolResult.Create;
+
+  LToolResult := TCallToolResult.Create;
+  Result := LToolResult;
 
   LStopwatch := TStopwatch.StartNew;
-  ResultToTool(LMethodResult, Result);
+  ResultToTool(LMethodResult, LToolResult);
   Logger.LogDebug('[PERF] Tool [%s] ResultToTool (result serialization): %d ms', [FTool.Name, LStopwatch.ElapsedMilliseconds]);
 end;
 

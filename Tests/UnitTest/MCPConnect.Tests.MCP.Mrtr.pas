@@ -21,6 +21,13 @@ uses
 
   Neon.Core.Persistence.JSON,
 
+  MCPConnect.JRPC.Classes,
+  MCPConnect.JRPC.Core,
+  MCPConnect.JRPC.Server,
+  MCPConnect.Configuration.MCP,
+  MCPConnect.MCP.Attributes,
+  MCPConnect.MCP.Server.Api,
+  MCPConnect.MCP.Types.Tools,
   MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Elicitation,
   MCPConnect.MCP.Types.Mrtr;
@@ -90,6 +97,44 @@ type
     procedure TestFind;
     [Test]
     procedure TestRetryCarriesRequestState;
+  end;
+
+  TMrtrTools = class
+  public
+    [McpTool('who', 'Needs to know who you are first')]
+    function Who: TInputRequiredResult;
+
+    [McpTool('plain', 'An ordinary tool')]
+    function Plain: string;
+  end;
+
+  /// <summary>
+  ///   tools/call answers anyOf[InputRequiredResult|CallToolResult]. The
+  ///   discrimination is the result class itself, carried on the common
+  ///   TBaseResult the endpoint returns.
+  /// </summary>
+  [TestFixture]
+  TMCPToolCallResultUnionTest = class(TObject)
+  private
+    FServer: TJRPCServer;
+    FConfig: IMCPConfig;
+    FApi: TMCPToolsApi;
+    FContext: TJRPCContext;
+    FGarbage: IGarbageCollector;
+
+    function CallTool(const AName: string): TBaseResult;
+  public
+    [Setup]
+    procedure Setup;
+    [TearDown]
+    procedure TearDown;
+
+    [Test]
+    procedure TestOrdinaryToolReturnsCallToolResult;
+    [Test]
+    procedure TestToolCanAnswerInputRequired;
+    [Test]
+    procedure TestInputRequiredSerializesByItsRuntimeClass;
   end;
 
 implementation
@@ -343,8 +388,122 @@ begin
   Assert.AreEqual(1, FParams.InputResponses.Count);
 end;
 
+{ TMrtrTools }
+
+function TMrtrTools.Who: TInputRequiredResult;
+var
+  LSchema: TMCPElicitationSchema;
+begin
+  Result := TInputRequiredResult.Create;
+  LSchema := TMCPElicitationSchema.Create;
+  try
+    LSchema.AddString('name', 'Your name', True);
+    Result.InputRequests.AddElicitation('who', TMCPElicitRequest.Form('Who are you?', LSchema));
+  finally
+    LSchema.Free;
+  end;
+  Result.RequestState := 'signed';
+end;
+
+function TMrtrTools.Plain: string;
+begin
+  Result := 'ok';
+end;
+
+{ TMCPToolCallResultUnionTest }
+
+procedure TMCPToolCallResultUnionTest.Setup;
+begin
+  FServer := TJRPCServer.Create(nil);
+  FConfig := FServer.Plugin.Configure<IMCPConfig>;
+  FConfig.Tools.RegisterClass(TMrtrTools);
+
+  FGarbage := TGarbageCollector.Create;
+  FContext := TJRPCContext.Create;
+  FContext.AddContent(TObject(FGarbage));
+  FContext.AddContent(FServer.GetConfiguration<TMCPConfig>);
+
+  FApi := TMCPToolsApi.Create;
+  FContext.Inject(FApi);
+end;
+
+procedure TMCPToolCallResultUnionTest.TearDown;
+begin
+  FApi.Free;
+  FContext.Free;
+  FGarbage := nil;
+  FConfig := nil;
+  FServer.Free;
+end;
+
+function TMCPToolCallResultUnionTest.CallTool(const AName: string): TBaseResult;
+var
+  LParams: TCallToolRequestParams;
+begin
+  LParams := TCallToolRequestParams.Create;
+  try
+    LParams.Name := AName;
+    Result := FApi.CallTool(LParams);
+  finally
+    LParams.Free;
+  end;
+end;
+
+procedure TMCPToolCallResultUnionTest.TestOrdinaryToolReturnsCallToolResult;
+var
+  LResult: TBaseResult;
+begin
+  LResult := CallTool('plain');
+  try
+    Assert.IsTrue(LResult is TCallToolResult);
+    Assert.AreEqual(TResultType.Complete, LResult.ResultType);
+  finally
+    LResult.Free;
+  end;
+end;
+
+procedure TMCPToolCallResultUnionTest.TestToolCanAnswerInputRequired;
+var
+  LResult: TBaseResult;
+begin
+  // tools/call is anyOf[InputRequiredResult|CallToolResult]; a tool that needs
+  // more from the client answers with the other arm
+  LResult := CallTool('who');
+  try
+    Assert.IsTrue(LResult is TInputRequiredResult);
+    Assert.AreEqual(TResultType.InputRequired, LResult.ResultType);
+    Assert.AreEqual('signed', TInputRequiredResult(LResult).RequestState.Value);
+  finally
+    LResult.Free;
+  end;
+end;
+
+procedure TMCPToolCallResultUnionTest.TestInputRequiredSerializesByItsRuntimeClass;
+var
+  LResult: TBaseResult;
+  LJson: TJSONObject;
+begin
+  // The declared return type is TBaseResult; the fields of the actual class
+  // still have to reach the wire
+  LResult := CallTool('who');
+  try
+    LJson := TNeon.ObjectToJSON(LResult, MCPNeonConfig) as TJSONObject;
+    try
+      Assert.AreEqual('input_required', LJson.GetValue<string>('resultType'));
+      Assert.IsNotNull(LJson.GetValue('inputRequests'));
+      Assert.AreEqual('signed', LJson.GetValue<string>('requestState'));
+      Assert.IsNull(LJson.GetValue('content'), 'It is not a CallToolResult');
+    finally
+      LJson.Free;
+    end;
+  finally
+    LResult.Free;
+  end;
+end;
+
 initialization
   TDUnitX.RegisterTestFixture(TMCPInputRequestsTest);
   TDUnitX.RegisterTestFixture(TMCPInputResponsesTest);
+  TDUnitX.RegisterTestFixture(TMCPToolCallResultUnionTest);
 
 end.

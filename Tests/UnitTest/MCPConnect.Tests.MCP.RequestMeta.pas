@@ -21,7 +21,9 @@ uses
 
   Neon.Core.Persistence.JSON,
 
+  MCPConnect.JRPC.Core,
   MCPConnect.MCP.Types.Base,
+  MCPConnect.MCP.Types.Notifications,
   MCPConnect.MCP.Types.Tools,
   MCPConnect.MCP.Types.Prompts,
   MCPConnect.MCP.Types.Resources,
@@ -57,6 +59,34 @@ type
     procedure TestMetaIsWrittenBackUnderTheProtocolName;
     [Test]
     procedure TestClientInfoAndLogLevelSurvive;
+  end;
+
+  /// <summary>
+  ///   A ProgressToken is a string or an integer, and is absent unless the
+  ///   client actually asked for progress.
+  /// </summary>
+  [TestFixture]
+  TMCPProgressTokenTest = class(TObject)
+  private
+    FMeta: TRequestMetaObject;
+  public
+    [Setup]
+    procedure Setup;
+    [TearDown]
+    procedure TearDown;
+
+    [Test]
+    procedure TestAbsentByDefault;
+    [Test]
+    procedure TestReadsIntegerToken;
+    [Test]
+    procedure TestReadsStringToken;
+    [Test]
+    procedure TestIntegerTokenIsWrittenBackUnquoted;
+    [Test]
+    procedure TestSettersReplaceTheToken;
+    [Test]
+    procedure TestNotificationCopiesTheTokenRatherThanAdoptingIt;
   end;
 
 implementation
@@ -177,7 +207,84 @@ begin
   end;
 end;
 
+{ TMCPProgressTokenTest }
+
+procedure TMCPProgressTokenTest.Setup;
+begin
+  FMeta := TRequestMetaObject.Create;
+end;
+
+procedure TMCPProgressTokenTest.TearDown;
+begin
+  FMeta.Free;
+end;
+
+procedure TMCPProgressTokenTest.TestAbsentByDefault;
+begin
+  // A server must not send progress the client never asked for
+  Assert.IsFalse(FMeta.HasProgressToken);
+  Assert.IsNull(FMeta.ProgressToken);
+end;
+
+procedure TMCPProgressTokenTest.TestReadsIntegerToken;
+begin
+  TNeon.JSONToObject(FMeta, '{"progressToken":42}', MCPNeonConfig);
+
+  Assert.IsTrue(FMeta.HasProgressToken);
+  Assert.AreEqual('42', FMeta.ProgressToken.ToJSON, 'An integer token must not be flattened to a string');
+end;
+
+procedure TMCPProgressTokenTest.TestReadsStringToken;
+begin
+  TNeon.JSONToObject(FMeta, '{"progressToken":"tok-a"}', MCPNeonConfig);
+
+  Assert.IsTrue(FMeta.HasProgressToken);
+  Assert.AreEqual('"tok-a"', FMeta.ProgressToken.ToJSON);
+end;
+
+procedure TMCPProgressTokenTest.TestIntegerTokenIsWrittenBackUnquoted;
+var
+  LJson: string;
+begin
+  FMeta.SetProgressToken(Int64(7));
+
+  LJson := TNeon.ObjectToJSONString(FMeta, MCPNeonConfig);
+  Assert.IsTrue(LJson.Contains('"progressToken":7'), LJson);
+end;
+
+procedure TMCPProgressTokenTest.TestSettersReplaceTheToken;
+begin
+  // Leak-checked: setting twice must free the first token
+  FMeta.SetProgressToken('first');
+  FMeta.SetProgressToken(Int64(2));
+
+  Assert.AreEqual('2', FMeta.ProgressToken.ToJSON);
+end;
+
+procedure TMCPProgressTokenTest.TestNotificationCopiesTheTokenRatherThanAdoptingIt;
+var
+  LNotification: TJRPCNotification;
+begin
+  FMeta.SetProgressToken(Int64(42));
+
+  LNotification := TMCPNotification.Progress(FMeta.ProgressToken, 5, 10, 'half way');
+  try
+    Assert.IsTrue((LNotification.Params as TJSONObject).ToJSON.Contains('"progressToken":42'),
+      LNotification.Params.ToJSON);
+
+    // The request params still own theirs: freeing the notification must not
+    // take the token with it
+    Assert.IsTrue(FMeta.HasProgressToken);
+    Assert.AreEqual('42', FMeta.ProgressToken.ToJSON);
+  finally
+    LNotification.Free;
+  end;
+
+  Assert.AreEqual('42', FMeta.ProgressToken.ToJSON, 'The token survives the notification');
+end;
+
 initialization
   TDUnitX.RegisterTestFixture(TMCPRequestMetaTest);
+  TDUnitX.RegisterTestFixture(TMCPProgressTokenTest);
 
 end.

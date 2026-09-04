@@ -55,7 +55,11 @@ type
     function ToolsList([JRPCParams] AParams: TPaginatedRequestParams): TListToolsResult;
 
     [JRPC('call')]
-    function CallTool([JRPCParams] AParams: TCallToolRequestParams): TCallToolResult;
+    /// <summary>
+    ///   Answers with a TCallToolResult, or a TInputRequiredResult when the
+    ///   tool needs more input first. Both are results the schema allows here.
+    /// </summary>
+    function CallTool([JRPCParams] AParams: TCallToolRequestParams): TBaseResult;
   end;
 
   [JRPC('resources')]
@@ -150,7 +154,7 @@ uses
 
 { TMCPToolApi }
 
-function TMCPToolsApi.CallTool(AParams: TCallToolRequestParams): TCallToolResult;
+function TMCPToolsApi.CallTool(AParams: TCallToolRequestParams): TBaseResult;
 var
   LInvoker: TMCPToolInvoker;
   LTool: TMCPTool;

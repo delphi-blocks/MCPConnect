@@ -37,24 +37,6 @@ uses
 
 type
   /// <summary>
-  /// Represents a paginated request.
-  /// </summary>
-  TPaginatedRequest = record
-  end;
-
-  /// <summary>
-  /// Represents a paginated result.
-  /// </summary>
-  TPaginatedResult = record
-  end;
-
-  /// <summary>
-  /// Represents a base result.
-  /// </summary>
-  TResult = record
-  end;
-
-  /// <summary>
   /// Represents a known resource that the server is capable of reading.
   /// </summary>
   TMCPResourceBase = class(TMetaClass)
@@ -217,19 +199,10 @@ type
 
 
   /// <summary>
-  /// Sent from the client to request a list of resources the server has.
-  /// </summary>
-  TListResourcesRequest = record
-  public
-    [NeonProperty('PaginatedRequest')] PaginatedRequest: TPaginatedRequest;
-  end;
-
-  /// <summary>
   /// The server's response to a resources/list request from the client.
   /// </summary>
   TListResourcesResult = class(TCachedResult)
   public
-    //[NeonProperty('PaginatedResult')] PaginatedResult: TPaginatedResult;
     /// <summary>
     /// A list of available resources.
     /// </summary>
@@ -248,19 +221,10 @@ type
   end;
 
   /// <summary>
-  /// Sent from the client to request a list of resource templates the server has.
-  /// </summary>
-  TListResourceTemplatesRequest = record
-  public
-    //[NeonProperty('PaginatedRequest')] PaginatedRequest: TPaginatedRequest;
-  end;
-
-  /// <summary>
   /// The server's response to a resources/templates/list request from the client.
   /// </summary>
   TListResourceTemplatesResult = class(TCachedResult)
   public
-    //[NeonProperty('PaginatedResult')] PaginatedResult: TPaginatedResult;
 
     /// <summary>
     /// A list of available resource templates.
@@ -311,28 +275,9 @@ type
     procedure AddBase64Content(const AUri, AMime, ABase64: string);
   end;
 
-  /// <summary>
-  /// Represents the parameters for a resources/subscribe request.
-  /// </summary>
-  TSubscribeParams = record
-  public
-    /// <summary>
-    /// The URI of the resource to subscribe to.
-    /// </summary>
-    /// <remarks>The URI can use any protocol; it is up to the server how to interpret it.</remarks>
-    Uri: string;
-  end;
-
-  /// <summary>
-  /// Represents the parameters for a resources/unsubscribe request.
-  /// </summary>
-  TUnsubscribeParams = record
-  public
-    /// <summary>
-    /// The URI of the resource to unsubscribe from.
-    /// </summary>
-    Uri: string;
-  end;
+  // resources/subscribe and resources/unsubscribe were removed in 2026-07-28:
+  // a client subscribes through the resourceSubscriptions filter of a
+  // subscriptions/listen request (MCPConnect.MCP.Types.Subscriptions).
 
 
 implementation

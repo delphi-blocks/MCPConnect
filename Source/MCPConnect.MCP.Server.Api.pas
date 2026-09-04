@@ -93,7 +93,7 @@ type
     function PromptList: TListPromptsResult;
 
     [JRPC('get')]
-    function ReadPrompt([JRPCParams] AParams: TGetPromptParams): TGetPromptResult;
+    function ReadPrompt([JRPCParams] AParams: TGetPromptRequestParams): TGetPromptResult;
   end;
 
   [JRPC('completion')]
@@ -344,7 +344,7 @@ begin
   end;
 end;
 
-function TMCPPromptsApi.ReadPrompt(AParams: TGetPromptParams): TGetPromptResult;
+function TMCPPromptsApi.ReadPrompt(AParams: TGetPromptRequestParams): TGetPromptResult;
 var
   LInvoker: TMCPPromptInvoker;
   LPrompt: TMCPPrompt;

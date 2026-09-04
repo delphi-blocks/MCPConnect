@@ -73,9 +73,6 @@ resourcestring
 type
   EMCPException = class(Exception);
 
-  TMCPURIBuilder = class
-  end;
-
 
   TStringPair = TPair<string, string>;
   TStringMap = TArray<TStringPair>;

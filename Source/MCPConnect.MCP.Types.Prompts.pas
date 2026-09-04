@@ -156,32 +156,9 @@ type
   {$ENDIF}
 
 
-  TGetPromptParams = class(TMetaClass)
-    /// <summary>
-    ///  The name of the prompt or prompt template.
-    /// </summary>
-    Name: string;
-
-    /// <summary>
-    /// Arguments to use for templating the prompt.
-    /// </summary>
-    [NeonInclude(IncludeIf.NotEmpty)] Arguments: TJSONObject;
-  public
-    constructor Create;
-    destructor Destroy; override;
-  end;
-
-  /// <summary>
-  ///   Used by the client to get a prompt provided by the server.
-  /// </summary>
-  TGetPromptRequest = class
-    Method: string;
-
-    Params: TGetPromptParams;
-  public
-    constructor Create;
-    destructor Destroy; override;
-  end;
+  // The pre-MRTR TGetPromptParams and the TGetPromptRequest envelope are gone:
+  // prompts/get takes TGetPromptRequestParams above, and the envelope is the
+  // JRPC layer's.
 
   TPromptMessageBase = class
   public
@@ -259,13 +236,12 @@ type
 
 
   /// <summary>
-  /// The server's response to a resources/list request from the client.
+  /// The server's response to a prompts/list request from the client.
   /// </summary>
   TListPromptsResult = class(TCachedResult)
   public
-    //[NeonProperty('PaginatedResult')] PaginatedResult: TPaginatedResult;
     /// <summary>
-    /// A list of available resources.
+    /// A list of available prompts.
     /// </summary>
     Prompts: TMCPPrompts;
 
@@ -304,32 +280,6 @@ end;
 destructor TGetPromptResult.Destroy;
 begin
   Messages.Free;
-  inherited;
-end;
-
-{ TGetPromptParams }
-
-constructor TGetPromptParams.Create;
-begin
-  Arguments := TJSONObject.Create;
-end;
-
-destructor TGetPromptParams.Destroy;
-begin
-  Arguments.Free;
-  inherited;
-end;
-
-{ TGetPromptRequest }
-
-constructor TGetPromptRequest.Create;
-begin
-  Params := TGetPromptParams.Create;
-end;
-
-destructor TGetPromptRequest.Destroy;
-begin
-  Params.Free;
   inherited;
 end;
 

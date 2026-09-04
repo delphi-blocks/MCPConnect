@@ -95,7 +95,7 @@ type
   public
     constructor Create(AInstance: TObject; APrompt: TMCPPrompt);
 
-    function Invoke(AParams: TGetPromptParams): TGetPromptResult;
+    function Invoke(AParams: TGetPromptRequestParams): TGetPromptResult;
   end;
 
   /// <summary>
@@ -682,7 +682,7 @@ begin
     Result := AParam.Name;
 end;
 
-function TMCPPromptInvoker.Invoke(AParams: TGetPromptParams): TGetPromptResult;
+function TMCPPromptInvoker.Invoke(AParams: TGetPromptRequestParams): TGetPromptResult;
 var
   LArgs: TArray<TValue>;
   LMethodResult: TValue;

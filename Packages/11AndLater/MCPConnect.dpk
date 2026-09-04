@@ -75,6 +75,7 @@ contains
   MCPConnect.MCP.Types.Elicitation in '..\..\Source\MCPConnect.MCP.Types.Elicitation.pas',
   MCPConnect.MCP.Types.Errors in '..\..\Source\MCPConnect.MCP.Types.Errors.pas',
   MCPConnect.MCP.Types.Mrtr in '..\..\Source\MCPConnect.MCP.Types.Mrtr.pas',
+  MCPConnect.MCP.Types.Notifications in '..\..\Source\MCPConnect.MCP.Types.Notifications.pas',
   MCPConnect.MCP.Types.Prompts in '..\..\Source\MCPConnect.MCP.Types.Prompts.pas',
   MCPConnect.MCP.Types.Resources in '..\..\Source\MCPConnect.MCP.Types.Resources.pas',
   MCPConnect.MCP.Types.Tool in '..\..\Source\MCPConnect.MCP.Types.Tool.pas',

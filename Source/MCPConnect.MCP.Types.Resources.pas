@@ -54,15 +54,6 @@ type
   TResult = record
   end;
 
-  TNotificationParams = record
-    // This parameter name is reserved by MCP to allow clients and
-    // servers to attach additional metadata to their notifications.
-    [NeonProperty('_meta'), NeonInclude(IncludeIf.NotEmpty)] Meta: TJSONObject;
-
-    // Additional fields can be added to this map
-    [NeonIgnore] AdditionalFields: TJSONObject;
-  end;
-
   TMCPAnnotation = record
   
     // Describes who the intended customer of this object or data is.
@@ -335,18 +326,6 @@ type
     /// <summary>
     /// The URI of the resource to unsubscribe from.
     /// </summary>
-    Uri: string;
-  end;
-
-  /// <summary>
-  /// Represents the parameters for a resources/updated notification.
-  /// </summary>
-  TResourceUpdatedNotificationParams = record
-  public
-    /// <summary>
-    /// The URI of the resource that has been updated.
-    /// </summary>
-    /// <remarks>This might be a sub-resource of the one that the client actually subscribed to.</remarks>
     Uri: string;
   end;
 

@@ -522,6 +522,11 @@ type
     procedure EnableCompletions;
   end;
 
+  /// <summary>
+  ///   The severity of a log message. These map to the syslog severities of
+  ///   RFC 5424 §6.2.1, and are named in lower case on the wire.
+  /// </summary>
+  [NeonEnumNames('alert,critical,debug,emergency,error,info,notice,warning')]
   TMCPLogLevel = (Alert, Critical, Debug, Emergency, Error, Info, Notice, Warning);
 
   TRequestMetaObject = class(TFlatMetaClass)
@@ -723,20 +728,6 @@ type
 
     // anyOf [Array<string>, string ∪ integer ∪ boolean]
     Content: TJSONValue;
-  end;
-
-  TLogSetLevel = (Alert, Critical, Debug, Emergency, Error, Info, Notice, Warning);
-  TSetLevelRequestParams = class(TMetaClass)
-
-    /// <summary>
-    ///   The severity of a log message. These map to syslog message severities, as specified in
-    ///   RFC-5424: <see href="https://datatracker.ietf.org/doc/html/rfc5424#section-6.2.1" />
-    /// </summary>
-    Level: TLogSetLevel;
-  end;
-
-  TSetLevelResult = class
-
   end;
 
   { ************ Contents ************ }

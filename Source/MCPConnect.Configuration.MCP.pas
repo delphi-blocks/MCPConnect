@@ -310,7 +310,7 @@ type
     FRegistry: TJRPCRegistry;
     //FCancelledProc: TProc<TJRPCContext, TCancelledNotificationParams>;
     FInitializedProc: TProc<TJRPCContext>;
-    FSetLogLevelProc: TProc<TJRPCContext, TLogSetLevel>;
+    FSetLogLevelProc: TProc<TJRPCContext, TMCPLogLevel>;
   public
     constructor Create(AConfig: IMCPConfig);
     destructor Destroy; override;
@@ -343,16 +343,21 @@ type
     function OnInitialized(AProc: TProc<TJRPCContext>): TMCPMessageHandlingConfig;
 
     /// <summary>
-    ///   Registers a handler for the "logging/setLevel" request, sent by the
-    ///   client to adjust the minimum severity the server should emit.
+    ///   Registers a handler for the log level a client asks the server to emit
+    ///   at.
     /// </summary>
+    /// <remarks>
+    ///   2026-07-28 removed the "logging/setLevel" request: the level now
+    ///   arrives per request, in "_meta.io.modelcontextprotocol/logLevel", and
+    ///   a server that is sent no level MUST NOT emit log notifications for
+    ///   that request.
+    /// </remarks>
     /// <param name="AProc">
     ///   Callback receiving the requested log level (RFC-5424 severities).
-    ///   The server is expected to apply the level synchronously; the response
-    ///   is sent automatically with an empty result. Pass nil to unregister.
+    ///   Pass nil to unregister.
     /// </param>
     /// <returns>Self for fluent chaining</returns>
-    function OnSetLogLevel(AProc: TProc<TJRPCContext, TLogSetLevel>): TMCPMessageHandlingConfig;
+    function OnSetLogLevel(AProc: TProc<TJRPCContext, TMCPLogLevel>): TMCPMessageHandlingConfig;
 
     /// <summary>
     ///   Read-only access to the registered "notifications/initialized" handler.
@@ -364,7 +369,7 @@ type
     ///   Read-only access to the registered "logging/setLevel" handler.
     ///   Used by the framework to apply log level changes requested by the client.
     /// </summary>
-    property SetLogLevelProc: TProc<TJRPCContext, TLogSetLevel> read FSetLogLevelProc;
+    property SetLogLevelProc: TProc<TJRPCContext, TMCPLogLevel> read FSetLogLevelProc;
   end;
 
   /// <summary>
@@ -2078,7 +2083,7 @@ begin
   Result := Self;
 end;
 
-function TMCPMessageHandlingConfig.OnSetLogLevel(AProc: TProc<TJRPCContext, TLogSetLevel>): TMCPMessageHandlingConfig;
+function TMCPMessageHandlingConfig.OnSetLogLevel(AProc: TProc<TJRPCContext, TMCPLogLevel>): TMCPMessageHandlingConfig;
 begin
   FSetLogLevelProc := AProc;
   Result := Self;

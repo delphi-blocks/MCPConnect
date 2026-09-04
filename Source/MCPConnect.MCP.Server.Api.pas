@@ -27,7 +27,8 @@ uses
   MCPConnect.MCP.Attributes,
   MCPConnect.MCP.Types.Tools,
   MCPConnect.MCP.Types.Resources,
-  MCPConnect.MCP.Types.Prompts;
+  MCPConnect.MCP.Types.Prompts,
+  MCPConnect.MCP.Types.Completion;
 
 type
 
@@ -87,6 +88,16 @@ type
 
     [JRPC('get')]
     function ReadPrompt([JRPCParams] AParams: TGetPromptParams): TGetPromptResult;
+  end;
+
+  [JRPC('completion')]
+  TMCPCompletionApi = class
+  public
+    [Context] RPCContext: TJRPCContext;
+    [Context] MCPConfig: TMCPConfig;
+
+    [JRPC('complete')]
+    function Complete([JRPCParams] AParams: TCompleteRequestParams): TCompleteResult;
   end;
 
   [JRPC('notifications')]
@@ -340,6 +351,62 @@ begin
   end;
 end;
 
+{ TMCPCompletionApi }
+
+function TMCPCompletionApi.Complete(AParams: TCompleteRequestParams): TCompleteResult;
+var
+  LInvoker: TMCPCompletionInvoker;
+  LProvider: TMCPCompletionProvider;
+  LProviderObj: TObject;
+  LTarget: string;
+  LStopwatch: TStopwatch;
+begin
+  LStopwatch := TStopwatch.StartNew;
+  try
+    LTarget := AParams.Ref.Target;
+
+    // Per the spec a malformed reference or an unknown prompt/template is
+    // Invalid Params, not Method Not Found
+    case AParams.Ref.Kind of
+      TMCPCompletionRefKind.Prompt:
+        if not MCPConfig.Prompts.Registry.ContainsKey(LTarget) then
+          raise EJRPCInvalidParamsError.CreateFmt(SMCPPromptNotFound, [LTarget]);
+
+      TMCPCompletionRefKind.ResourceTemplate:
+        if not MCPConfig.Resources.TemplateRegistry.ContainsKey(LTarget) and
+           not MCPConfig.Resources.Registry.ContainsKey(LTarget) then
+          raise EJRPCInvalidParamsError.CreateFmt(SMCPResourceNotFound, [LTarget]);
+    else
+      raise EJRPCInvalidParamsError.CreateFmt(SMCPCompletionRefUnknownFmt, [AParams.Ref.&Type]);
+    end;
+
+    LProvider := MCPConfig.Completions.Find(AParams.Ref.Kind, LTarget, AParams.Argument.Name);
+
+    // A known prompt or template whose argument simply has no provider is not
+    // an error: the server just has nothing to suggest for it
+    if not Assigned(LProvider) then
+      Exit(TCompleteResult.Create);
+
+    LProviderObj := TRttiUtils.CreateInstance(LProvider.ProviderClass);
+    try
+      RPCContext.Inject(LProviderObj);
+
+      LInvoker := TMCPCompletionInvoker.Create(LProviderObj, LProvider);
+      try
+        RPCContext.Inject(LInvoker);
+        Result := LInvoker.Invoke(AParams);
+      finally
+        LInvoker.Free;
+      end;
+    finally
+      LProviderObj.Free;
+    end;
+  finally
+    Logger.LogDebug('[PERF] Complete [%s/%s] total: %d ms',
+      [AParams.Ref.Target, AParams.Argument.Name, LStopwatch.ElapsedMilliseconds]);
+  end;
+end;
+
 { TMCPServerApi }
 
 function TMCPServerApi.Discover([JRPCParams] AParams: TRequestMetaParams): TDiscoverResult;
@@ -351,6 +418,10 @@ begin
   Result.Capabilities.Tools.ListChanged := True;
   Result.Capabilities.Resources.ListChanged := True;
   Result.Capabilities.Prompts.ListChanged := True;
+
+  // Only advertised when something can actually answer completion/complete
+  if MCPConfig.Completions.HasProviders then
+    Result.Capabilities.EnableCompletions;
 end;
 
 { TMCPSubscriptionsApi }
@@ -365,6 +436,7 @@ initialization
   TJRPCRegistry.Instance.RegisterClass(TMCPToolsApi, MCPNeonConfig);
   TJRPCRegistry.Instance.RegisterClass(TMCPPromptsApi, MCPNeonConfig);
   TJRPCRegistry.Instance.RegisterClass(TMCPResourcesApi, MCPNeonConfig);
+  TJRPCRegistry.Instance.RegisterClass(TMCPCompletionApi, MCPNeonConfig);
   TJRPCRegistry.Instance.RegisterClass(TMCPNotificationsApi, MCPNeonConfig);
 
 end.

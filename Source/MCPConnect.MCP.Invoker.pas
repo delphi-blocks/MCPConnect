@@ -33,7 +33,8 @@ uses
   MCPConnect.MCP.Types.Tool,
   MCPConnect.MCP.Types.Tools,
   MCPConnect.MCP.Types.Prompts,
-  MCPConnect.MCP.Types.Resources;
+  MCPConnect.MCP.Types.Resources,
+  MCPConnect.MCP.Types.Completion;
 
 type
   TMCPInvoker = class
@@ -90,6 +91,21 @@ type
     constructor Create(AInstance: TObject; APrompt: TMCPPrompt);
 
     function Invoke(AParams: TGetPromptParams): TGetPromptResult;
+  end;
+
+  /// <summary>
+  ///   Invokes a registered completion provider for a "completion/complete"
+  ///   request and turns whatever it returns into a TCompleteResult.
+  /// </summary>
+  TMCPCompletionInvoker = class(TMCPInvoker)
+  protected
+    FProvider: TMCPCompletionProvider;
+    function BuildArgs(AParams: TCompleteRequestParams): TArray<TValue>;
+    procedure ResultToCompletion(const AMethodResult: TValue; AResult: TCompleteResult);
+  public
+    constructor Create(AInstance: TObject; AProvider: TMCPCompletionProvider);
+
+    function Invoke(AParams: TCompleteRequestParams): TCompleteResult;
   end;
 
 
@@ -750,6 +766,82 @@ begin
 
   end;
 
+end;
+
+{ TMCPCompletionInvoker }
+
+constructor TMCPCompletionInvoker.Create(AInstance: TObject; AProvider: TMCPCompletionProvider);
+begin
+  inherited Create(AInstance);
+  FProvider := AProvider;
+end;
+
+function TMCPCompletionInvoker.BuildArgs(AParams: TCompleteRequestParams): TArray<TValue>;
+var
+  LParams: TArray<TRttiParameter>;
+begin
+  // A provider says how much of the request it wants by its arity: nothing, the
+  // value typed so far, or that value plus the already-resolved arguments.
+  LParams := FProvider.Method.GetParameters;
+
+  if Length(LParams) > 2 then
+    raise EMCPException.CreateFmt(SCompletionMethodSignatureFmt, [FProvider.Method.Name]);
+
+  if (Length(LParams) >= 1) and (LParams[0].ParamType.TypeKind <> tkUString) then
+    raise EMCPException.CreateFmt(SCompletionMethodSignatureFmt, [FProvider.Method.Name]);
+
+  if (Length(LParams) = 2) and (LParams[1].ParamType.Handle <> TypeInfo(TMCPCompletionContext)) then
+    raise EMCPException.CreateFmt(SCompletionMethodSignatureFmt, [FProvider.Method.Name]);
+
+  case Length(LParams) of
+    1: Result := [TValue.From<string>(AParams.Argument.Value)];
+    2: Result := [TValue.From<string>(AParams.Argument.Value),
+                  TValue.From<TMCPCompletionContext>(AParams.Context)];
+  else
+    Result := [];
+  end;
+end;
+
+function TMCPCompletionInvoker.Invoke(AParams: TCompleteRequestParams): TCompleteResult;
+var
+  LMethodResult: TValue;
+  LStopwatch: TStopwatch;
+begin
+  LStopwatch := TStopwatch.StartNew;
+  LMethodResult := FProvider.Method.Invoke(FInstance, BuildArgs(AParams));
+  Logger.LogDebug('[PERF] Completion [%s/%s] Method.Invoke (business logic): %d ms',
+    [FProvider.RefTarget, FProvider.Argument, LStopwatch.ElapsedMilliseconds]);
+
+  // A provider that builds the whole result itself keeps control of total/hasMore
+  if LMethodResult.IsType<TCompleteResult> then
+    Exit(LMethodResult.AsObject as TCompleteResult);
+
+  FGC.Add(LMethodResult);
+  Result := TCompleteResult.Create;
+  try
+    ResultToCompletion(LMethodResult, Result);
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+procedure TMCPCompletionInvoker.ResultToCompletion(const AMethodResult: TValue;
+  AResult: TCompleteResult);
+begin
+  if AMethodResult.IsType<TArray<string>> then
+  begin
+    AResult.SetValues(AMethodResult.AsType<TArray<string>>);
+    Exit;
+  end;
+
+  if AMethodResult.IsObject and (AMethodResult.AsObject is TStrings) then
+  begin
+    AResult.SetValues(TStrings(AMethodResult.AsObject).ToStringArray);
+    Exit;
+  end;
+
+  raise EMCPException.CreateFmt(SCompletionResultTypeFmt, [FProvider.Method.Name]);
 end;
 
 end.

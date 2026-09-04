@@ -143,11 +143,13 @@
         <DCCReference Include="..\..\Source\MCPConnect.JRPC.Server.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Attributes.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Invoker.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Prompts.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Resources.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Prompts.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Resources.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Tools.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Base.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Completion.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Errors.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Server.Api.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Tools.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Security.Jwks.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Security.Token.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Security.Token.JOSE.pas"/>
@@ -167,6 +169,8 @@
         <DCCReference Include="MCPConnect.Tests.Security.Token.JOSE.pas"/>
         <DCCReference Include="MCPConnect.Tests.Transport.OAuth.pas"/>
         <DCCReference Include="MCPConnect.Tests.Transport.Headers.pas"/>
+        <DCCReference Include="MCPConnect.Tests.MCP.Errors.pas"/>
+        <DCCReference Include="MCPConnect.Tests.MCP.Completion.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

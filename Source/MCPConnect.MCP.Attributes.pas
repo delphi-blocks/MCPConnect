@@ -122,6 +122,55 @@ type
 
   MCPArgumentAttribute = MCPParamAttribute;
 
+  /// <summary>
+  ///   Common part of the completion attributes: the argument whose value the
+  ///   decorated method suggests values for.
+  /// </summary>
+  MCPCompleteBaseAttribute = class(McpBaseAttribute)
+  private
+    FArgument: string;
+  public
+    property Argument: string read FArgument;
+  end;
+
+  /// <summary>
+  ///   Marks a method as the source of "completion/complete" suggestions for
+  ///   one argument of a prompt. The prompt name is scoped like the prompt
+  ///   itself, so [McpScope] applies to it too.
+  /// </summary>
+  /// <example>
+  ///   <code>
+  ///   [McpComplete('code_review', 'language')]
+  ///   function CompleteLanguage(const AValue: string): TArray&lt;string&gt;;
+  ///   </code>
+  /// </example>
+  MCPCompleteAttribute = class(MCPCompleteBaseAttribute)
+  private
+    FName: string;
+  public
+    property Name: string read FName;
+    constructor Create(const AName, AArgument: string; const AAdditionalTags: string = '');
+  end;
+
+  /// <summary>
+  ///   Marks a method as the source of "completion/complete" suggestions for
+  ///   one placeholder of a resource template (or of a plain resource uri).
+  ///   The uri is matched verbatim and is never scoped.
+  /// </summary>
+  /// <example>
+  ///   <code>
+  ///   [McpCompleteTemplate('file:///{path}', 'path')]
+  ///   function CompletePath(const AValue: string): TArray&lt;string&gt;;
+  ///   </code>
+  /// </example>
+  MCPCompleteTemplateAttribute = class(MCPCompleteBaseAttribute)
+  private
+    FUriTemplate: string;
+  public
+    property UriTemplate: string read FUriTemplate;
+    constructor Create(const AUriTemplate, AArgument: string; const AAdditionalTags: string = '');
+  end;
+
   //MCPToolNoteAttribute = class(TCustomAttribute);
 
   TAttributes = TArray<TCustomAttribute>;
@@ -223,6 +272,26 @@ constructor MCPPromptAttribute.Create(const AName, ATitle, ADescription, AAdditi
 begin
   inherited Create(AName, ADescription, AAdditionalTags);
   FTitle := ATitle;
+end;
+
+{ MCPCompleteAttribute }
+
+constructor MCPCompleteAttribute.Create(const AName, AArgument, AAdditionalTags: string);
+begin
+  inherited Create;
+  FName := AName;
+  FArgument := AArgument;
+  FAdditionalTags := AAdditionalTags;
+end;
+
+{ MCPCompleteTemplateAttribute }
+
+constructor MCPCompleteTemplateAttribute.Create(const AUriTemplate, AArgument, AAdditionalTags: string);
+begin
+  inherited Create;
+  FUriTemplate := AUriTemplate;
+  FArgument := AArgument;
+  FAdditionalTags := AAdditionalTags;
 end;
 
 end.

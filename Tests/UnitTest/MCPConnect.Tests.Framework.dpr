@@ -40,11 +40,13 @@ uses
   MCPConnect.JRPC.Server in '..\..\Source\MCPConnect.JRPC.Server.pas',
   MCPConnect.MCP.Attributes in '..\..\Source\MCPConnect.MCP.Attributes.pas',
   MCPConnect.MCP.Invoker in '..\..\Source\MCPConnect.MCP.Invoker.pas',
-  MCPConnect.MCP.Prompts in '..\..\Source\MCPConnect.MCP.Prompts.pas',
-  MCPConnect.MCP.Resources in '..\..\Source\MCPConnect.MCP.Resources.pas',
+  MCPConnect.MCP.Types.Prompts in '..\..\Source\MCPConnect.MCP.Types.Prompts.pas',
+  MCPConnect.MCP.Types.Resources in '..\..\Source\MCPConnect.MCP.Types.Resources.pas',
+  MCPConnect.MCP.Types.Tools in '..\..\Source\MCPConnect.MCP.Types.Tools.pas',
+  MCPConnect.MCP.Types.Base in '..\..\Source\MCPConnect.MCP.Types.Base.pas',
+  MCPConnect.MCP.Types.Completion in '..\..\Source\MCPConnect.MCP.Types.Completion.pas',
+  MCPConnect.MCP.Types.Errors in '..\..\Source\MCPConnect.MCP.Types.Errors.pas',
   MCPConnect.MCP.Server.Api in '..\..\Source\MCPConnect.MCP.Server.Api.pas',
-  MCPConnect.MCP.Tools in '..\..\Source\MCPConnect.MCP.Tools.pas',
-  MCPConnect.MCP.Types in '..\..\Source\MCPConnect.MCP.Types.pas',
   MCPConnect.Security.Jwks in '..\..\Source\MCPConnect.Security.Jwks.pas',
   MCPConnect.Security.Token in '..\..\Source\MCPConnect.Security.Token.pas',
   MCPConnect.Security.Token.JOSE in '..\..\Source\MCPConnect.Security.Token.JOSE.pas',
@@ -63,7 +65,9 @@ uses
   MCPConnect.Tests.Security.Token in 'MCPConnect.Tests.Security.Token.pas',
   MCPConnect.Tests.Security.Token.JOSE in 'MCPConnect.Tests.Security.Token.JOSE.pas',
   MCPConnect.Tests.Transport.OAuth in 'MCPConnect.Tests.Transport.OAuth.pas',
-  MCPConnect.Tests.Transport.Headers in 'MCPConnect.Tests.Transport.Headers.pas';
+  MCPConnect.Tests.Transport.Headers in 'MCPConnect.Tests.Transport.Headers.pas',
+  MCPConnect.Tests.MCP.Errors in 'MCPConnect.Tests.MCP.Errors.pas',
+  MCPConnect.Tests.MCP.Completion in 'MCPConnect.Tests.MCP.Completion.pas';
 
 var
   runner : ITestRunner;

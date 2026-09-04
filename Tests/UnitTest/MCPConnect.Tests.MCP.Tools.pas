@@ -19,8 +19,9 @@ uses
   System.SysUtils, System.JSON, System.Rtti, System.Generics.Collections,
   DUnitX.TestFramework,
 
-  MCPConnect.MCP.Tools,
-  MCPConnect.MCP.Types,
+  MCPConnect.MCP.Types.Tool,
+  MCPConnect.MCP.Types.Tools,
+  MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Attributes;
 
 type

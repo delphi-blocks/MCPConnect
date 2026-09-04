@@ -34,6 +34,7 @@ uses
   MCPConnect.MCP.Types.Tools,
   MCPConnect.MCP.Types.Prompts,
   MCPConnect.MCP.Types.Resources,
+  MCPConnect.MCP.Types.Completion,
 
   MCPConnect.MCP.Attributes,
   MCPConnect.Content.Writers,
@@ -68,6 +69,11 @@ resourcestring
   SPromptParamNotFoundFmt = 'Param [%s] for Prompt [%s] not found';
   SNonConfiguredPromptParamsNotPermitted = 'Non-configured prompt params are not permitted';
   STemplateNotFoundFmt = 'Template [%s] not found';
+  SCompletionProviderNotFoundFmt = 'Completion provider for argument [%s] of [%s] not found';
+  SCompletionProviderDuplicateFmt = 'A completion provider for argument [%s] of [%s] is already registered';
+  SCompletionRefTargetEmpty = 'Completion reference must name a prompt or a uri';
+  SCompletionMethodSignatureFmt = 'Completion method [%s] must take no parameter, a string, or a string and a TMCPCompletionContext';
+  SCompletionResultTypeFmt = 'Completion method [%s] must return a TArray<string>, a TStrings or a TCompleteResult';
 
 type
   /// <summary>
@@ -85,6 +91,7 @@ type
   TMCPServerConfig = class;
   TMCPSecurityConfig = class;
   TMCPMessageHandlingConfig = class;
+  TMCPCompletionsConfig = class;
 
   /// <summary>
   ///   Primary configuration interface for Model Context Protocol (MCP) servers.
@@ -170,6 +177,11 @@ type
     ///   Resources configuration
     /// </summary>
     function Resources: TMCPResourcesConfig;
+
+    /// <summary>
+    ///   Argument-completion configuration (the "completion/complete" request)
+    /// </summary>
+    function Completions: TMCPCompletionsConfig;
   end;
 
   /// <summary>
@@ -637,6 +649,102 @@ type
   end;
 
   /// <summary>
+  ///   Configuration for argument completion: the providers backing the
+  ///   "completion/complete" request.
+  /// </summary>
+  /// <remarks>
+  ///   A provider answers for one argument of one prompt, or one placeholder of
+  ///   one resource template. Its method may take no parameter, the value typed
+  ///   so far, or that value plus the TMCPCompletionContext holding the
+  ///   arguments the client has already resolved; it returns the candidates as
+  ///   a TArray&lt;string&gt;, a TStrings, or a ready-made TCompleteResult.
+  /// </remarks>
+  /// <example>
+  ///   <code>
+  ///   [McpScope('demo')]
+  ///   TMyPrompts = class
+  ///     [McpPrompt('code_review', 'Code review', 'Reviews code')]
+  ///     [McpArgument('language', 'Programming language')]
+  ///     function CodeReview(const language: string): TMCPGetPromptResult;
+  ///
+  ///     [McpComplete('code_review', 'language')]
+  ///     function CompleteLanguage(const AValue: string): TArray&lt;string&gt;;
+  ///   end;
+  ///
+  ///   // .Completions.RegisterClass(TMyPrompts)
+  ///   </code>
+  /// </example>
+  TMCPCompletionsConfig = class(TMCPBaseConfig)
+  private
+    function AddProvider(AClass: TClass; AMethod: TRttiMethod;
+      ARefKind: TMCPCompletionRefKind; const ATarget, AArgument: string): TMCPCompletionProvider;
+    function FindMethod(AClass: TClass; const AMethodName: string): TRttiMethod;
+  public
+    Registry: TMCPCompletionRegistry;
+  public
+    constructor Create(AConfig: IMCPConfig);
+    destructor Destroy; override;
+
+    /// <summary>
+    ///   Registers every [McpComplete] / [McpCompleteTemplate] method of AClass.
+    ///   [McpComplete] prompt names are scoped with [McpScope] exactly as the
+    ///   prompts themselves are; [McpCompleteTemplate] uris never are.
+    /// </summary>
+    function RegisterClass(AClass: TClass): TMCPCompletionsConfig;
+
+    /// <summary>
+    ///   Registers a single prompt-argument completion method directly, without
+    ///   needing an [McpComplete] attribute. APromptName is the MCP-facing name,
+    ///   scope included.
+    /// </summary>
+    function RegisterCompletion(AClass: TClass; const AMethodName, APromptName,
+      AArgument: string): TMCPCompletionsConfig;
+
+    /// <summary>
+    ///   Registers a single resource-template completion method directly,
+    ///   without needing an [McpCompleteTemplate] attribute.
+    /// </summary>
+    function RegisterTemplateCompletion(AClass: TClass; const AMethodName,
+      AUriTemplate, AArgument: string): TMCPCompletionsConfig;
+
+    /// <summary>
+    ///   Unregisters the provider for one argument of one prompt. Raises
+    ///   EMCPException if nothing is registered for that pair.
+    /// </summary>
+    function UnregisterCompletion(const APromptName, AArgument: string): TMCPCompletionsConfig;
+
+    /// <summary>
+    ///   Unregisters the provider for one placeholder of one resource template.
+    ///   Raises EMCPException if nothing is registered for that pair.
+    /// </summary>
+    function UnregisterTemplateCompletion(const AUriTemplate, AArgument: string): TMCPCompletionsConfig;
+
+    /// <summary>
+    ///   Unregisters every provider backed by AClass, however it was registered.
+    ///   A no-op if none is.
+    /// </summary>
+    function UnregisterClass(AClass: TClass): TMCPCompletionsConfig;
+
+    /// <summary>
+    ///   Unregisters every provider, clearing the registry entirely.
+    /// </summary>
+    function ClearAll: TMCPCompletionsConfig;
+
+    /// <summary>
+    ///   The provider for a (reference, argument) pair, or nil when none is
+    ///   registered or the one registered is disabled.
+    /// </summary>
+    function Find(ARefKind: TMCPCompletionRefKind; const ATarget,
+      AArgument: string): TMCPCompletionProvider;
+
+    /// <summary>
+    ///   Whether any provider is registered, which is what makes the server
+    ///   advertise the "completions" capability.
+    /// </summary>
+    function HasProviders: Boolean;
+  end;
+
+  /// <summary>
   ///   Main implementation of IMCPConfig, aggregating all configuration sections.
   /// </summary>
   [Implements(IMCPConfig)]
@@ -649,6 +757,7 @@ type
     FTools: TMCPToolsConfig;
     FPrompts: TMCPPromptsConfig;
     FResources: TMCPResourcesConfig;
+    FCompletions: TMCPCompletionsConfig;
   public
     constructor Create(AApp: IJRPCApplication); override;
     destructor Destroy; override;
@@ -659,6 +768,7 @@ type
     function Tools: TMCPToolsConfig;
     function Prompts: TMCPPromptsConfig;
     function Resources: TMCPResourcesConfig;
+    function Completions: TMCPCompletionsConfig;
     function MessageHandling: TMCPMessageHandlingConfig;
     function GetConstructorProxy(const AName: string; out AProxy: TJRPCConstructorProxy): Boolean;
   end;
@@ -683,10 +793,12 @@ begin
   FTools := TMCPToolsConfig.Create(Self);
   FPrompts := TMCPPromptsConfig.Create(Self);
   FResources := TMCPResourcesConfig.Create(Self);
+  FCompletions := TMCPCompletionsConfig.Create(Self);
 end;
 
 destructor TMCPConfig.Destroy;
 begin
+  FCompletions.Free;
   FPrompts.Free;
   FResources.Free;
   FTools.Free;
@@ -717,6 +829,11 @@ end;
 function TMCPConfig.Resources: TMCPResourcesConfig;
 begin
   Result := FResources;
+end;
+
+function TMCPConfig.Completions: TMCPCompletionsConfig;
+begin
+  Result := FCompletions;
 end;
 
 function TMCPConfig.Tools: TMCPToolsConfig;
@@ -1079,6 +1196,8 @@ begin
   end;
   if TMCPCapability.Prompts in ACapabilities then
     Capabilities.Prompts.ListChanged := False;
+  if TMCPCapability.Completions in ACapabilities then
+    Capabilities.EnableCompletions;
 
   Result := Self;
 end;
@@ -2012,6 +2131,172 @@ begin
   MethodParams.Add(toolPar);
 
   Result := Self;
+end;
+
+{ TMCPCompletionsConfig }
+
+constructor TMCPCompletionsConfig.Create(AConfig: IMCPConfig);
+begin
+  inherited;
+  Registry := TMCPCompletionRegistry.Create([doOwnsValues]);
+end;
+
+destructor TMCPCompletionsConfig.Destroy;
+begin
+  Registry.Free;
+  inherited;
+end;
+
+function TMCPCompletionsConfig.FindMethod(AClass: TClass; const AMethodName: string): TRttiMethod;
+begin
+  Result := TRttiUtils.Context.GetType(AClass).GetMethod(AMethodName);
+  if not Assigned(Result) then
+    raise EMCPException.CreateFmt(SMethodNotFoundInClassFmt, [AMethodName, AClass.ClassName]);
+end;
+
+function TMCPCompletionsConfig.AddProvider(AClass: TClass; AMethod: TRttiMethod;
+  ARefKind: TMCPCompletionRefKind; const ATarget, AArgument: string): TMCPCompletionProvider;
+var
+  LKey: string;
+begin
+  if ATarget.IsEmpty then
+    raise EMCPException.Create(SCompletionRefTargetEmpty);
+
+  LKey := TMCPCompletionProvider.KeyFor(ARefKind, ATarget, AArgument);
+  if Registry.ContainsKey(LKey) then
+    raise EMCPException.CreateFmt(SCompletionProviderDuplicateFmt, [AArgument, ATarget]);
+
+  Result := TMCPCompletionProvider.Create;
+  try
+    Result.ProviderClass := AClass;
+    Result.Method := AMethod;
+    Result.RefKind := ARefKind;
+    Result.RefTarget := ATarget;
+    Result.Argument := AArgument;
+
+    Registry.Add(LKey, Result);
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+function TMCPCompletionsConfig.RegisterClass(AClass: TClass): TMCPCompletionsConfig;
+var
+  LScope: string;
+  LClassType: TRttiType;
+  LScopeAttr: MCPScopeAttribute;
+  LPromptAttr: MCPCompleteAttribute;
+  LTemplateAttr: MCPCompleteTemplateAttribute;
+begin
+  LScope := '';
+  LClassType := TRttiUtils.Context.GetType(AClass);
+  LScopeAttr := TRttiUtils.FindAttribute<MCPScopeAttribute>(LClassType);
+  if Assigned(LScopeAttr) then
+    LScope := LScopeAttr.Name + FConfig.Server.ScopeSeparator;
+
+  for var LMethod in LClassType.GetMethods do
+  begin
+    // A prompt reference names a prompt, so it carries the same scope prefix
+    // the prompt itself was registered under
+    LPromptAttr := TRttiUtils.FindAttribute<MCPCompleteAttribute>(LMethod);
+    if Assigned(LPromptAttr) then
+      AddProvider(AClass, LMethod, TMCPCompletionRefKind.Prompt,
+        LScope + LPromptAttr.Name, LPromptAttr.Argument);
+
+    // A resource reference is a uri, which is never scoped
+    LTemplateAttr := TRttiUtils.FindAttribute<MCPCompleteTemplateAttribute>(LMethod);
+    if Assigned(LTemplateAttr) then
+      AddProvider(AClass, LMethod, TMCPCompletionRefKind.ResourceTemplate,
+        LTemplateAttr.UriTemplate, LTemplateAttr.Argument);
+  end;
+
+  Result := Self;
+end;
+
+function TMCPCompletionsConfig.RegisterCompletion(AClass: TClass;
+  const AMethodName, APromptName, AArgument: string): TMCPCompletionsConfig;
+begin
+  AddProvider(AClass, FindMethod(AClass, AMethodName),
+    TMCPCompletionRefKind.Prompt, APromptName, AArgument);
+
+  Result := Self;
+end;
+
+function TMCPCompletionsConfig.RegisterTemplateCompletion(AClass: TClass;
+  const AMethodName, AUriTemplate, AArgument: string): TMCPCompletionsConfig;
+begin
+  AddProvider(AClass, FindMethod(AClass, AMethodName),
+    TMCPCompletionRefKind.ResourceTemplate, AUriTemplate, AArgument);
+
+  Result := Self;
+end;
+
+function TMCPCompletionsConfig.UnregisterCompletion(const APromptName,
+  AArgument: string): TMCPCompletionsConfig;
+var
+  LKey: string;
+begin
+  LKey := TMCPCompletionProvider.KeyFor(TMCPCompletionRefKind.Prompt, APromptName, AArgument);
+  if not Registry.ContainsKey(LKey) then
+    raise EMCPException.CreateFmt(SCompletionProviderNotFoundFmt, [AArgument, APromptName]);
+
+  Registry.Remove(LKey);
+  Result := Self;
+end;
+
+function TMCPCompletionsConfig.UnregisterTemplateCompletion(const AUriTemplate,
+  AArgument: string): TMCPCompletionsConfig;
+var
+  LKey: string;
+begin
+  LKey := TMCPCompletionProvider.KeyFor(TMCPCompletionRefKind.ResourceTemplate, AUriTemplate, AArgument);
+  if not Registry.ContainsKey(LKey) then
+    raise EMCPException.CreateFmt(SCompletionProviderNotFoundFmt, [AArgument, AUriTemplate]);
+
+  Registry.Remove(LKey);
+  Result := Self;
+end;
+
+function TMCPCompletionsConfig.UnregisterClass(AClass: TClass): TMCPCompletionsConfig;
+var
+  LKeys: TArray<string>;
+begin
+  LKeys := [];
+  for var LPair in Registry do
+    if LPair.Value.ProviderClass = AClass then
+      LKeys := LKeys + [LPair.Key];
+
+  // Collected first: removing while enumerating invalidates the enumerator
+  for var LKey in LKeys do
+    Registry.Remove(LKey);
+
+  Result := Self;
+end;
+
+function TMCPCompletionsConfig.ClearAll: TMCPCompletionsConfig;
+begin
+  Registry.Clear;
+  Result := Self;
+end;
+
+function TMCPCompletionsConfig.Find(ARefKind: TMCPCompletionRefKind;
+  const ATarget, AArgument: string): TMCPCompletionProvider;
+begin
+  if not Registry.TryGetValue(TMCPCompletionProvider.KeyFor(ARefKind, ATarget, AArgument), Result) then
+    Exit(nil);
+
+  if Result.Disabled then
+    Result := nil;
+end;
+
+function TMCPCompletionsConfig.HasProviders: Boolean;
+begin
+  for var LPair in Registry do
+    if not LPair.Value.Disabled then
+      Exit(True);
+
+  Result := False;
 end;
 
 initialization

@@ -1,4 +1,4 @@
-{******************************************************************************}
+﻿{******************************************************************************}
 {                                                                              }
 {  Delphi MCP Connect Library                                                  }
 {                                                                              }
@@ -36,7 +36,7 @@ uses
   MCPConnect.Configuration.Auth,
   MCPConnect.Security.Token,
   MCPConnect.Transport.Base,
-  MCPConnect.MCP.Types,
+  MCPConnect.MCP.Types.Base,
   MCPConnect.JRPC.Core,
   MCPConnect.JRPC.Server;
 

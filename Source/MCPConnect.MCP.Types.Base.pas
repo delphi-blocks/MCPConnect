@@ -471,7 +471,12 @@ type
     /// <summary>
     ///   Present if the server supports argument autocompletion suggestions
     /// </summary>
-    [NeonInclude(IncludeIf.NotEmpty)] Completions: TJSONObject;
+    /// <remarks>
+    ///   Left nil until EnableCompletions is called, and included on NotNull
+    ///   rather than NotEmpty: the capability is declared by an empty object,
+    ///   which NotEmpty would drop.
+    /// </remarks>
+    [NeonInclude(IncludeIf.NotNull)] Completions: TJSONObject;
 
     /// <summary>
     ///   Experimental, non-standard capabilities that the server supports.
@@ -510,6 +515,11 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+
+    /// <summary>
+    ///   Declares support for argument autocompletion (completion/complete).
+    /// </summary>
+    procedure EnableCompletions;
   end;
 
   TMCPLogLevel = (Alert, Critical, Debug, Emergency, Error, Info, Notice, Warning);
@@ -1067,10 +1077,15 @@ end;
 
 constructor TServerCapabilities.Create;
 begin
-  Completions := TJSONObject.Create;
   &Experimental := TJSONObject.Create;
   Extensions := TJSONObject.Create;
   Logging := TJSONObject.Create;
+end;
+
+procedure TServerCapabilities.EnableCompletions;
+begin
+  if not Assigned(Completions) then
+    Completions := TJSONObject.Create;
 end;
 
 destructor TServerCapabilities.Destroy;

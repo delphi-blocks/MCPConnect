@@ -22,6 +22,8 @@ IF %ERRORLEVEL% NEQ 0 (
   ECHO =================================================
   EXIT /B 1
   
-) ELSE ( 
-  %_PLATFORM%\%_CONFIG%\MCPConnect.Tests.Framework.exe 
+) ELSE (
+  :: The project's DCC_ExeOutput is ..\Bin - %_PLATFORM%\%_CONFIG% holds only
+  :: the .dcu files, so running from there silently re-runs a stale binary.
+  ..\Bin\MCPConnect.Tests.Framework.exe
 )    

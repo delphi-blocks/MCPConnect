@@ -76,7 +76,11 @@ uses
   MCPConnect.Tests.MCP.Notifications in 'MCPConnect.Tests.MCP.Notifications.pas',
   MCPConnect.Tests.MCP.Prompts in 'MCPConnect.Tests.MCP.Prompts.pas',
   MCPConnect.Tests.MCP.Subscriptions in 'MCPConnect.Tests.MCP.Subscriptions.pas',
-  MCPConnect.Tests.MCP.Mrtr in 'MCPConnect.Tests.MCP.Mrtr.pas';
+  MCPConnect.Tests.MCP.Mrtr in 'MCPConnect.Tests.MCP.Mrtr.pas',
+  MCPConnect.Tests.MCP.RequestMeta in 'MCPConnect.Tests.MCP.RequestMeta.pas',
+  MCPConnect.Tests.MCP.Resources in 'MCPConnect.Tests.MCP.Resources.pas',
+  MCPConnect.Tests.MCP.Capabilities in 'MCPConnect.Tests.MCP.Capabilities.pas',
+  MCPConnect.Tests.MCP.ToolNames in 'MCPConnect.Tests.MCP.ToolNames.pas';
 
 var
   runner : ITestRunner;

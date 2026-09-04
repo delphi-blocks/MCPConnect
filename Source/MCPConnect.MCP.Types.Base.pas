@@ -391,6 +391,40 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+
+    /// <summary>True when the client declared the form elicitation mode.</summary>
+    function SupportsForm: Boolean;
+
+    /// <summary>True when the client declared the url elicitation mode.</summary>
+    function SupportsUrl: Boolean;
+  end;
+
+  /// <summary>
+  ///   The sampling sub-capabilities a client may declare. 2026-07-28 turned
+  ///   "sampling" from a bare marker object into a structured one.
+  /// </summary>
+  TMCPSampling = class
+  public
+    /// <summary>
+    ///   Present if the client can include conversation context in a sampling
+    ///   request (the "includeContext" parameter).
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)] Context: TJSONObject;
+
+    /// <summary>
+    ///   Present if the client can pass tools to the model during sampling
+    ///   (the "tools" and "toolChoice" parameters).
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)] Tools: TJSONObject;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    /// <summary>True when the client declared the context sub-capability.</summary>
+    function SupportsContext: Boolean;
+
+    /// <summary>True when the client declared the tools sub-capability.</summary>
+    function SupportsTools: Boolean;
   end;
 
   /// <summary>
@@ -414,9 +448,10 @@ type
     [NeonInclude(IncludeIf.NotNull)] Roots: Nullable<TRootsCapability>;
 
     /// <summary>
-    ///   Present if the client supports sampling from an LLM.
+    ///   Present if the client supports sampling from an LLM, and which of the
+    ///   sampling sub-capabilities it offers.
     /// </summary>
-    [NeonInclude(IncludeIf.NotEmpty)] Sampling: TJSONObject;
+    [NeonInclude(IncludeIf.NotEmpty)] Sampling: TMCPSampling;
 
     /// <summary>
     ///   Optional MCP extensions that the client supports. Keys are extension
@@ -1078,7 +1113,7 @@ constructor TClientCapabilities.Create;
 begin
   Elicitation := TMCPElicitation.Create;
   &Experimental := TJSONObject.Create;
-  Sampling := TJSONObject.Create;
+  Sampling := TMCPSampling.Create;
   Extensions := TJSONObject.Create;
 end;
 
@@ -1998,6 +2033,42 @@ begin
   Url.Free;
   Form.Free;
   inherited;
+end;
+
+function TMCPElicitation.SupportsForm: Boolean;
+begin
+  Result := Assigned(Form);
+end;
+
+function TMCPElicitation.SupportsUrl: Boolean;
+begin
+  Result := Assigned(Url);
+end;
+
+{ TMCPSampling }
+
+constructor TMCPSampling.Create;
+begin
+  inherited;
+  Context := TJSONObject.Create;
+  Tools := TJSONObject.Create;
+end;
+
+destructor TMCPSampling.Destroy;
+begin
+  Tools.Free;
+  Context.Free;
+  inherited;
+end;
+
+function TMCPSampling.SupportsContext: Boolean;
+begin
+  Result := Assigned(Context);
+end;
+
+function TMCPSampling.SupportsTools: Boolean;
+begin
+  Result := Assigned(Tools);
 end;
 
 { TElicitRequestParams }

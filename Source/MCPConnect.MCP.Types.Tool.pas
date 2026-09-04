@@ -24,6 +24,15 @@ uses
   MCPConnect.MCP.Attributes;
 
 
+const
+  /// <summary>
+  ///   Tool names SHOULD be 1 to 128 characters long, case-sensitive, made only
+  ///   of ASCII letters, digits, underscore, hyphen and dot. 2026-07-28 added
+  ///   the dot and raised the length from the 64 of earlier revisions.
+  /// </summary>
+  MCP_TOOL_NAME_MIN_LENGTH = 1;
+  MCP_TOOL_NAME_MAX_LENGTH = 128;
+
 type
   /// <summary>
   /// Optional properties describing tool behavior
@@ -106,7 +115,7 @@ type
     Name: string;
 
     /// <summary>
-    ///   Intended for UI and end-user contexts — optimized to be
+    ///   Intended for UI and end-user contexts ï¿½ optimized to be
     ///   human-readable and easily understood, even by those unfamiliar with
     ///   domain-specific terminology.
     /// </summary>
@@ -149,10 +158,36 @@ type
     function ToJSON(APrettyPrint: Boolean = False): string;
   end;
 
-
-
+/// <summary>
+///   Whether AName satisfies the tool-name rule of the 2026-07-28 spec: 1 to
+///   128 characters drawn from A-Z, a-z, 0-9, underscore, hyphen and dot.
+/// </summary>
+/// <remarks>
+///   Scoped names are validated whole, separator included, since the scope
+///   prefix is part of the name the client sees.
+/// </remarks>
+function IsValidToolName(const AName: string): Boolean;
 
 implementation
+
+function IsValidToolName(const AName: string): Boolean;
+var
+  LChar: Char;
+begin
+  if (Length(AName) < MCP_TOOL_NAME_MIN_LENGTH) or
+     (Length(AName) > MCP_TOOL_NAME_MAX_LENGTH) then
+    Exit(False);
+
+  for LChar in AName do
+    case LChar of
+      'A'..'Z', 'a'..'z', '0'..'9', '_', '-', '.': ;
+    else
+      // Anything else, non-ASCII letters included, is out
+      Exit(False);
+    end;
+
+  Result := True;
+end;
 
 { TMCPUIApp }
 

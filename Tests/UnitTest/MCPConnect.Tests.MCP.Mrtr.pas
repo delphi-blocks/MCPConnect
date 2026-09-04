@@ -169,10 +169,10 @@ end;
 procedure TMCPInputRequestsTest.TestAddSampling;
 var
   LRequest: TInputRequest;
-  LParams: TCreateMessageParams;
+  LParams: TCreateMessageRequestParams;
   LJson: TJSONObject;
 begin
-  LParams := TCreateMessageParams.Create;
+  LParams := TCreateMessageRequestParams.Create;
   LParams.MaxTokens := 256;
 
   LRequest := FResult.InputRequests.AddSampling('ask', LParams);

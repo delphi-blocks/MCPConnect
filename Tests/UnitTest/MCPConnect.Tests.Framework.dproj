@@ -180,6 +180,10 @@
         <DCCReference Include="MCPConnect.Tests.MCP.Prompts.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Subscriptions.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Mrtr.pas"/>
+        <DCCReference Include="MCPConnect.Tests.MCP.RequestMeta.pas"/>
+        <DCCReference Include="MCPConnect.Tests.MCP.Resources.pas"/>
+        <DCCReference Include="MCPConnect.Tests.MCP.Capabilities.pas"/>
+        <DCCReference Include="MCPConnect.Tests.MCP.ToolNames.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

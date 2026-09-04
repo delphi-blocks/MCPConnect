@@ -61,7 +61,7 @@ type
     None
   );
 
-  ToolChoice = record
+  TToolChoice = record
     Mode: TToolChoiceMode;
   end;
 
@@ -318,11 +318,12 @@ type
     StopReason: NullString;
   end;
 
+  TIncludeContext = (None, ThisServer, AllServers);
 
   /// <summary>
   ///   Parameters for the sampling/createMessage request.
   /// </summary>
-  TCreateMessageParams = class(TMetaClass)
+  TCreateMessageRequestParams = class(TMetaClass)
   public
     /// <summary>
     ///   The messages to sample.
@@ -338,12 +339,12 @@ type
     /// <summary>
     ///   An optional system prompt the server wants to use for sampling.
     /// </summary>
-    //SystemPrompt: NullString;
+    SystemPrompt: NullString;
 
     /// <summary>
     ///   How much of the conversation history to include.
     /// </summary>
-    IncludeContext: NullString;
+    IncludeContext: TIncludeContext;
 
     /// <summary>
     ///   The temperature to use for sampling.
@@ -376,7 +377,8 @@ type
     /// <summary>
     ///   Controls how the model uses tools during generation.
     /// </summary>
-    ToolChoice: Nullable<TToolChoiceMode>;
+    [NeonInclude(IncludeIf.NotEmpty)]
+    ToolChoice: TToolChoice;
   public
     constructor Create;
     destructor Destroy; override;
@@ -398,7 +400,7 @@ type
     [NeonIgnore] Elicitation: TElicitRequestParams;
 
     // Sampling holds the params of a sampling/createMessage input request.
-    [NeonIgnore] Sampling: TCreateMessageParams;
+    [NeonIgnore] Sampling: TCreateMessageRequestParams;
 
     // Roots holds the params of a roots/list input request.
     [NeonIgnore] Roots: TListRootsParams;
@@ -419,7 +421,7 @@ type
     ///   Populates this request as a "sampling/createMessage", taking ownership
     ///   of AParams.
     /// </summary>
-    procedure SetSampling(AParams: TCreateMessageParams);
+    procedure SetSampling(AParams: TCreateMessageRequestParams);
 
     /// <summary>
     ///   Populates this request as a "roots/list". AParams is optional and, when
@@ -450,7 +452,7 @@ type
     function AddElicitation(const AKey: string; AParams: TElicitRequestParams): TInputRequest;
 
     /// <summary>Asks the client to sample an LLM.</summary>
-    function AddSampling(const AKey: string; AParams: TCreateMessageParams): TInputRequest;
+    function AddSampling(const AKey: string; AParams: TCreateMessageRequestParams): TInputRequest;
 
     /// <summary>Asks the client for its list of roots.</summary>
     function AddRoots(const AKey: string): TInputRequest;
@@ -603,15 +605,15 @@ begin
   inherited;
 end;
 
-{ TCreateMessageParams }
+{ TCreateMessageRequestParams }
 
-constructor TCreateMessageParams.Create;
+constructor TCreateMessageRequestParams.Create;
 begin
   inherited;
   Messages := TObjectList<TSamplingMessage>.Create(True);
 end;
 
-destructor TCreateMessageParams.Destroy;
+destructor TCreateMessageRequestParams.Destroy;
 begin
   Messages.Free;
   inherited;
@@ -720,7 +722,7 @@ begin
   Raw := BuildInputRequestRaw(Method, AParams);
 end;
 
-procedure TInputRequest.SetSampling(AParams: TCreateMessageParams);
+procedure TInputRequest.SetSampling(AParams: TCreateMessageRequestParams);
 begin
   Sampling.Free;
   Sampling := AParams;
@@ -755,8 +757,7 @@ begin
   end;
 end;
 
-function TInputRequests.AddSampling(const AKey: string;
-  AParams: TCreateMessageParams): TInputRequest;
+function TInputRequests.AddSampling(const AKey: string; AParams: TCreateMessageRequestParams): TInputRequest;
 begin
   Result := TInputRequest.Create;
   try

@@ -41,6 +41,7 @@ uses
   MCPConnect.Configuration.Core;
 
 resourcestring
+  SToolNameInvalidFmt = 'Tool name [%s] is not valid: it must be 1 to %d characters of A-Z, a-z, 0-9, underscore, hyphen or dot';
   SToolNotFoundFmt = 'Tool [%s] not found';
   SToolParamNotFoundFmt = 'Param [%s] for Tool [%s] not found';
   SMethodInClassNotFoundFmt = 'Method [%s] in class [%s] not found';
@@ -224,13 +225,15 @@ type
     ///   Default is '_' (underscore), resulting in names like "auth_login".
     /// </summary>
     /// <param name="ASeparator">
-    ///   Separator string. Must be MCP-compliant (only a-zA-Z0-9_-).
-    ///   Common values: '_' (default), '-'
+    ///   Separator string. It becomes part of the tool name, so it may only use
+    ///   the characters a name may: a-zA-Z0-9, underscore, hyphen and dot.
+    ///   Common values: '_' (default), '-', '.'
     /// </param>
     /// <returns>Self for fluent chaining</returns>
     /// <remarks>
-    ///   IMPORTANT: MCP requires tool names to match ^[a-zA-Z0-9_.-]{1,128}$
-    ///   Do NOT use ':', or other special characters.
+    ///   Tool names must match ^[a-zA-Z0-9_.-]{1,128}$ and are checked when a
+    ///   tool is registered, scope prefix included, so a separator such as ':'
+    ///   raises there rather than being rejected later by the client.
     /// </remarks>
     function SetScopeSeparator(const ASeparator: string): TMCPServerConfig;
 
@@ -1070,6 +1073,13 @@ procedure TMCPToolsConfig.WriteTool(ATool: TMCPTool);
 var
   LIcon: TMCPIcon;
 begin
+  // Caught here, at registration, rather than left for the client to reject:
+  // both the attribute and the programmatic path pass through WriteTool, and
+  // the name checked is the scoped one the client actually sees
+  if not IsValidToolName(ATool.Name) then
+    raise EMCPException.CreateFmt(SToolNameInvalidFmt,
+      [ATool.Name, MCP_TOOL_NAME_MAX_LENGTH]);
+
   if SetIcon(ATool.Tags.GetValueAs<string>('icon'), LIcon) then
     ATool.Icons := ATool.Icons + [LIcon];
 

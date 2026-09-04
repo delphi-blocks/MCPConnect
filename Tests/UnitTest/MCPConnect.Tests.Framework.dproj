@@ -149,6 +149,7 @@
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Base.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Completion.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Elicitation.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Mrtr.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Errors.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Notifications.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Subscriptions.pas"/>
@@ -178,6 +179,7 @@
         <DCCReference Include="MCPConnect.Tests.MCP.Notifications.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Prompts.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Subscriptions.pas"/>
+        <DCCReference Include="MCPConnect.Tests.MCP.Mrtr.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

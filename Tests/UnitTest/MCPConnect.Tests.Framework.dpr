@@ -44,6 +44,7 @@ uses
   MCPConnect.MCP.Types.Resources in '..\..\Source\MCPConnect.MCP.Types.Resources.pas',
   MCPConnect.MCP.Types.Subscriptions in '..\..\Source\MCPConnect.MCP.Types.Subscriptions.pas',
   MCPConnect.MCP.Types.Tools in '..\..\Source\MCPConnect.MCP.Types.Tools.pas',
+  MCPConnect.MCP.Types.Mrtr in '..\..\Source\MCPConnect.MCP.Types.Mrtr.pas',
   MCPConnect.MCP.Types.Base in '..\..\Source\MCPConnect.MCP.Types.Base.pas',
   MCPConnect.MCP.Types.Completion in '..\..\Source\MCPConnect.MCP.Types.Completion.pas',
   MCPConnect.MCP.Types.Elicitation in '..\..\Source\MCPConnect.MCP.Types.Elicitation.pas',
@@ -74,7 +75,8 @@ uses
   MCPConnect.Tests.MCP.Elicitation in 'MCPConnect.Tests.MCP.Elicitation.pas',
   MCPConnect.Tests.MCP.Notifications in 'MCPConnect.Tests.MCP.Notifications.pas',
   MCPConnect.Tests.MCP.Prompts in 'MCPConnect.Tests.MCP.Prompts.pas',
-  MCPConnect.Tests.MCP.Subscriptions in 'MCPConnect.Tests.MCP.Subscriptions.pas';
+  MCPConnect.Tests.MCP.Subscriptions in 'MCPConnect.Tests.MCP.Subscriptions.pas',
+  MCPConnect.Tests.MCP.Mrtr in 'MCPConnect.Tests.MCP.Mrtr.pas';
 
 var
   runner : ITestRunner;

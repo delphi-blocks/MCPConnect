@@ -726,8 +726,16 @@ type
     /// </summary>
     Action: TElicitAction;
 
-    // anyOf [Array<string>, string ∪ integer ∪ boolean]
+    /// <summary>
+    ///   The values the user supplied, as a map of property name to value.
+    ///   Present only when Action is Accept. Owned by the result.
+    /// </summary>
+    /// <remarks>
+    ///   anyOf [Array&lt;string&gt;, string U integer U boolean]
+    /// </remarks>
     Content: TJSONValue;
+  public
+    destructor Destroy; override;
   end;
 
   { ************ Contents ************ }
@@ -1978,6 +1986,14 @@ end;
 destructor TElicitRequestParams.Destroy;
 begin
   RequestedSchema.Free;
+  inherited;
+end;
+
+{ TElicitResult }
+
+destructor TElicitResult.Destroy;
+begin
+  Content.Free;
   inherited;
 end;
 

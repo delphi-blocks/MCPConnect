@@ -16,12 +16,14 @@ unit MCPConnect.Tests.MCP.RequestMeta;
 interface
 
 uses
-  System.SysUtils, System.JSON,
+  System.SysUtils, System.Rtti, System.JSON,
   DUnitX.TestFramework,
 
+  Neon.Core.Utils,
   Neon.Core.Persistence.JSON,
 
   MCPConnect.JRPC.Core,
+  MCPConnect.MCP.Server.Api,
   MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Notifications,
   MCPConnect.MCP.Types.Tools,
@@ -59,6 +61,16 @@ type
     procedure TestMetaIsWrittenBackUnderTheProtocolName;
     [Test]
     procedure TestClientInfoAndLogLevelSurvive;
+
+    [Test]
+    [TestCase('resources/list', 'resources/list')]
+    [TestCase('resources/templates/list', 'resources/templates/list')]
+    [TestCase('prompts/list', 'prompts/list')]
+    [TestCase('tools/list', 'tools/list')]
+    procedure TestListEndpointsDeclareTheirParams(const AMethod: string);
+
+    [Test]
+    procedure TestListEndpointsStillWorkWithoutParams;
   end;
 
   /// <summary>
@@ -202,6 +214,59 @@ begin
     Assert.IsTrue(LParams.RequestMeta.LogLevel.HasValue,
       'The per-request log level replaced logging/setLevel and has to arrive');
     Assert.AreEqual(TMCPLogLevel.Debug, LParams.RequestMeta.LogLevel.Value);
+  finally
+    LParams.Free;
+  end;
+end;
+
+procedure TMCPRequestMetaTest.TestListEndpointsDeclareTheirParams(const AMethod: string);
+var
+  LApiClass: TClass;
+  LMethodName: string;
+  LMethod: TRttiMethod;
+  LParams: TArray<TRttiParameter>;
+begin
+  // Every list endpoint has to declare params: PaginatedRequestParams._meta is
+  // required, and a method taking none simply discards it
+  if AMethod = 'resources/list' then
+  begin
+    LApiClass := TMCPResourcesApi; LMethodName := 'ResourcesList';
+  end
+  else if AMethod = 'resources/templates/list' then
+  begin
+    LApiClass := TMCPResourcesApi; LMethodName := 'TemplatesList';
+  end
+  else if AMethod = 'prompts/list' then
+  begin
+    LApiClass := TMCPPromptsApi; LMethodName := 'PromptList';
+  end
+  else
+  begin
+    LApiClass := TMCPToolsApi; LMethodName := 'ToolsList';
+  end;
+
+  LMethod := TRttiUtils.Context.GetType(LApiClass).GetMethod(LMethodName);
+  Assert.IsNotNull(LMethod, LMethodName);
+
+  LParams := LMethod.GetParameters;
+  Assert.AreEqual(1, Length(LParams), LMethodName + ' should take exactly one params object');
+  Assert.AreEqual('TPaginatedRequestParams', LParams[0].ParamType.Name);
+  Assert.IsNotNull(TRttiUtils.FindAttribute<JRPCParamsAttribute>(LParams[0]),
+    LMethodName + ' params should be marked [JRPCParams]');
+end;
+
+procedure TMCPRequestMetaTest.TestListEndpointsStillWorkWithoutParams;
+var
+  LParams: TPaginatedRequestParams;
+begin
+  // A request may omit "params" entirely; the invoker builds a default object
+  // rather than handing Neon a nil, which used to fault
+  LParams := TRttiUtils.CreateInstance(
+    TRttiUtils.Context.GetType(TPaginatedRequestParams)) as TPaginatedRequestParams;
+  try
+    Assert.IsNotNull(LParams.RequestMeta, 'A defaulted params object still has its _meta');
+    Assert.AreEqual('', LParams.RequestMeta.ProtocolVersion);
+    Assert.IsFalse(LParams.Cursor.HasValue);
   finally
     LParams.Free;
   end;

@@ -74,10 +74,10 @@ type
     [Context] MCPConfig: TMCPConfig;
 
     [JRPC('list')]
-    function ResourcesList: TListResourcesResult;
+    function ResourcesList([JRPCParams] AParams: TPaginatedRequestParams): TListResourcesResult;
 
     [JRPC('templates/list')]
-    function TemplatesList: TListResourceTemplatesResult;
+    function TemplatesList([JRPCParams] AParams: TPaginatedRequestParams): TListResourceTemplatesResult;
 
     [JRPC('read')]
     function ReadResource([JRPCParams] AParams: TReadResourceParams): TReadResourceResult;
@@ -90,7 +90,7 @@ type
     [Context] MCPConfig: TMCPConfig;
 
     [JRPC('list')]
-    function PromptList: TListPromptsResult;
+    function PromptList([JRPCParams] AParams: TPaginatedRequestParams): TListPromptsResult;
 
     [JRPC('get')]
     function ReadPrompt([JRPCParams] AParams: TGetPromptRequestParams): TGetPromptResult;
@@ -301,10 +301,13 @@ begin
   end;
 end;
 
-function TMCPResourcesApi.ResourcesList: TListResourcesResult;
+function TMCPResourcesApi.ResourcesList(AParams: TPaginatedRequestParams): TListResourcesResult;
 var
   LStopwatch: TStopwatch;
 begin
+  // AParams carries the required _meta - protocol version, client capabilities,
+  // log level - which is why this takes params at all. Cursor pagination is not
+  // implemented yet, here or on tools/list.
   LStopwatch := TStopwatch.StartNew;
   try
     Result := TListResourcesResult.Create;
@@ -319,8 +322,9 @@ begin
   end;
 end;
 
-function TMCPResourcesApi.TemplatesList: TListResourceTemplatesResult;
+function TMCPResourcesApi.TemplatesList(AParams: TPaginatedRequestParams): TListResourceTemplatesResult;
 begin
+  // See ResourcesList on why the params are taken but not yet read
   Result := TListResourceTemplatesResult.Create;
   try
     MCPConfig.Resources.TemplateList(Result);
@@ -332,10 +336,11 @@ end;
 
 { TMCPPromptsApi }
 
-function TMCPPromptsApi.PromptList: TListPromptsResult;
+function TMCPPromptsApi.PromptList(AParams: TPaginatedRequestParams): TListPromptsResult;
 var
   LStopwatch: TStopwatch;
 begin
+  // See ResourcesList on why the params are taken but not yet read
   LStopwatch := TStopwatch.StartNew;
   try
     Result := MCPConfig.Prompts.ListComplete;

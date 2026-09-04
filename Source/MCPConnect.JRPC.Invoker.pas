@@ -319,8 +319,13 @@ begin
 
   if (Length(LRttiParams) = 1) and (TRttiUtils.HasAttribute<JRPCParamsAttribute>(LRttiParams[0])) then
   begin
-    //Result := [TNeon.JSONToObject(LRttiParams[0].ParamType, ARequest.Params, TNeonConfiguration.Camel.SetMembers([TNeonMembers.Fields])) ];
-    Result := [TNeon.JSONToObject(LRttiParams[0].ParamType, FContext.Request.Params, FNeonConfig) ];
+    // A request may carry no "params" at all - resources/list and prompts/list
+    // are the obvious cases. The method still gets its object, with defaults,
+    // rather than the access violation Neon raises on a nil value.
+    if Assigned(FContext.Request.Params) then
+      Result := [TNeon.JSONToObject(LRttiParams[0].ParamType, FContext.Request.Params, FNeonConfig)]
+    else
+      Result := [TRttiUtils.CreateInstance(LRttiParams[0].ParamType)];
   end
   else
   begin

@@ -72,7 +72,10 @@ type
   public
     constructor Create(AInstance: TObject; AResource: TMCPResource);
 
-    function Invoke(AParams: TReadResourceParams): TReadResourceResult;
+    /// <summary>
+    ///   Returns a TReadResourceResult, or a TInputRequiredResult (MRTR).
+    /// </summary>
+    function Invoke(AParams: TReadResourceParams): TBaseResult;
   end;
 
   TMCPTemplateInvoker = class(TMCPInvoker)
@@ -84,7 +87,10 @@ type
   public
     constructor Create(AInstance: TObject; ATemplate: TMCPResourceTemplate);
 
-    function Invoke(AParams: TReadResourceParams): TReadResourceResult;
+    /// <summary>
+    ///   Returns a TReadResourceResult, or a TInputRequiredResult (MRTR).
+    /// </summary>
+    function Invoke(AParams: TReadResourceParams): TBaseResult;
   end;
 
   TMCPPromptInvoker = class(TMCPInvoker)
@@ -95,7 +101,10 @@ type
   public
     constructor Create(AInstance: TObject; APrompt: TMCPPrompt);
 
-    function Invoke(AParams: TGetPromptRequestParams): TGetPromptResult;
+    /// <summary>
+    ///   Returns a TGetPromptResult, or a TInputRequiredResult (MRTR).
+    /// </summary>
+    function Invoke(AParams: TGetPromptRequestParams): TBaseResult;
   end;
 
   /// <summary>
@@ -346,9 +355,10 @@ begin
   FResource := AResource;
 end;
 
-function TMCPResourceInvoker.Invoke(AParams: TReadResourceParams): TReadResourceResult;
+function TMCPResourceInvoker.Invoke(AParams: TReadResourceParams): TBaseResult;
 var
   LMethodResult: TValue;
+  LResourceResult: TReadResourceResult;
   LStopwatch: TStopwatch;
 begin
   LStopwatch := TStopwatch.StartNew;
@@ -363,11 +373,18 @@ begin
   if LMethodResult.IsType<TResourceContents> then
     Exit(TReadResourceResult.Create(LMethodResult.AsObject as TResourceContentsList));
 
+  // A resource that cannot be served without more input answers with the
+  // requests it needs filled (MRTR)
+  if LMethodResult.IsType<TInputRequiredResult> then
+    Exit(TInputRequiredResult(LMethodResult.AsObject));
+
   FGC.Add(LMethodResult);
-  Result := TReadResourceResult.Create;
+
+  LResourceResult := TReadResourceResult.Create;
+  Result := LResourceResult;
 
   LStopwatch := TStopwatch.StartNew;
-  ResultToResource(LMethodResult, Result);
+  ResultToResource(LMethodResult, LResourceResult);
   Logger.LogDebug('[PERF] Resource [%s] ResultToResource (result serialization): %d ms', [FResource.Uri, LStopwatch.ElapsedMilliseconds]);
 end;
 
@@ -525,10 +542,11 @@ begin
   FTemplate := ATemplate;
 end;
 
-function TMCPTemplateInvoker.Invoke(AParams: TReadResourceParams): TReadResourceResult;
+function TMCPTemplateInvoker.Invoke(AParams: TReadResourceParams): TBaseResult;
 var
   LArgs: TArray<TValue>;
   LResult: TValue;
+  LResourceResult: TReadResourceResult;
   LStopwatch: TStopwatch;
 begin
   LStopwatch := TStopwatch.StartNew;
@@ -548,11 +566,18 @@ begin
   if LResult.IsType<TResourceContentsList> then
     Exit(TReadResourceResult.Create(LResult.AsObject as TResourceContentsList));
 
+  // A template that cannot be served without more input answers with the
+  // requests it needs filled (MRTR)
+  if LResult.IsType<TInputRequiredResult> then
+    Exit(TInputRequiredResult(LResult.AsObject));
+
   FGC.Add(LResult);
-  Result := TReadResourceResult.Create;
+
+  LResourceResult := TReadResourceResult.Create;
+  Result := LResourceResult;
 
   LStopwatch := TStopwatch.StartNew;
-  ResultToResource(LResult, Result);
+  ResultToResource(LResult, LResourceResult);
   Logger.LogDebug('[PERF] Template [%s] ResultToResource (result serialization): %d ms', [FTemplate.UriTemplate.Value, LStopwatch.ElapsedMilliseconds]);
 end;
 
@@ -682,10 +707,11 @@ begin
     Result := AParam.Name;
 end;
 
-function TMCPPromptInvoker.Invoke(AParams: TGetPromptRequestParams): TGetPromptResult;
+function TMCPPromptInvoker.Invoke(AParams: TGetPromptRequestParams): TBaseResult;
 var
   LArgs: TArray<TValue>;
   LMethodResult: TValue;
+  LPromptResult: TGetPromptResult;
   LStopwatch: TStopwatch;
 begin
   LStopwatch := TStopwatch.StartNew;
@@ -705,11 +731,18 @@ begin
   if LMethodResult.IsType<TPromptMessages> then
     Exit(TGetPromptResult.Create(LMethodResult.AsObject as TPromptMessages));
 
+  // A prompt that cannot be built without more input answers with the
+  // requests it needs filled (MRTR)
+  if LMethodResult.IsType<TInputRequiredResult> then
+    Exit(TInputRequiredResult(LMethodResult.AsObject));
+
   FGC.Add(LMethodResult);
-  Result := TGetPromptResult.Create;
+
+  LPromptResult := TGetPromptResult.Create;
+  Result := LPromptResult;
 
   LStopwatch := TStopwatch.StartNew;
-  ResultToPrompt(LMethodResult, Result);
+  ResultToPrompt(LMethodResult, LPromptResult);
   Logger.LogDebug('[PERF] Prompt [%s] ResultToPrompt (result serialization): %d ms', [FPrompt.Name, LStopwatch.ElapsedMilliseconds]);
 end;
 

@@ -192,7 +192,7 @@ end;
 procedure TMCPReadPromptParamsTest.TestReadPromptTakesTheMrtrParams;
 var
   LParams: TGetPromptRequestParams;
-  LResult: TGetPromptResult;
+  LResult: TBaseResult;
 begin
   // prompts/get used to take the pre-MRTR TGetPromptParams, which had no _meta,
   // no inputResponses and no requestState
@@ -210,7 +210,9 @@ begin
 
     LResult := FApi.ReadPrompt(LParams);
     try
-      Assert.AreEqual(1, LResult.Messages.Count);
+      // prompts/get returns TBaseResult so it can also answer input_required
+      Assert.IsTrue(LResult is TGetPromptResult);
+      Assert.AreEqual(1, TGetPromptResult(LResult).Messages.Count);
       Assert.AreEqual(TResultType.Complete, LResult.ResultType);
     finally
       LResult.Free;

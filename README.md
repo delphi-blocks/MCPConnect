@@ -7,7 +7,7 @@
 **A powerful, attribute-driven framework for building Model Context Protocol (MCP) Servers in Delphi.**
 
 > [!NOTE]
-> Support for the MCP specification version **2026-07-28** is currently under development in the [`feature/mcp-2026-07-28`](https://github.com/delphi-blocks/MCPConnect/tree/feature/mcp-2026-07-28) branch.
+> Support for the MCP specification version **2026-07-28** is under development in the [`feature/mcp-2026-07-28`](https://github.com/delphi-blocks/MCPConnect/tree/feature/mcp-2026-07-28) branch. The protocol entity layer is complete there — discovery, completion, elicitation schemas, subscriptions, notifications, MRTR and the new error codes — with the transport still to follow. That revision is stateless, so the `initialize` handshake and `Mcp-Session-Id` sessions go away with it.
 
 ## Getting Started
 
@@ -33,7 +33,7 @@ MCPConnect handles the serialization, routing, and context management required f
 
 - 🛡️**Type safety** - Define your tool arguments as native delphi class or records, have mcp-connect handle the rest.
 - 🚛 **Transports** - Built-in HTTP (WebBroker, Indy) and STDIO transports for both stateless and persistent connections.
-- 🗂️ **Session Management** - Built-in stateful session support across requests with automatic cleanup and custom session data.
+- 🗂️ **Session Management** - Built-in stateful session support across requests with automatic cleanup and custom session data. *(Protocol-level sessions are removed in MCP 2026-07-28.)*
 - 🔐 **OAuth 2.1** — Built-in support for OAuth 2.1 bearer-token authentication following the MCP Authorization specification, with pluggable token validators, JWKS key management, and a metadata proxy for providers that don't fully advertise PKCE support.
 - ⚡ **Low boilerplate** - mcp-connect generates all the MCP endpoints for you apart from your tools, prompts and resources.
 

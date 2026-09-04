@@ -65,10 +65,8 @@ type
   [JRPC('resources')]
   TMCPResourcesApi = class
   private
-    function InternalReadResource(AParams: TReadResourceParams; AResource:
-        TMCPResource): TReadResourceResult;
-    function InternalReadTemplate(AParams: TReadResourceParams; ATemplate:
-        TMCPResourceTemplate): TReadResourceResult;
+    function InternalReadResource(AParams: TReadResourceParams; AResource: TMCPResource): TBaseResult;
+    function InternalReadTemplate(AParams: TReadResourceParams; ATemplate: TMCPResourceTemplate): TBaseResult;
   public
     [Context] RPCContext: TJRPCContext;
     [Context] MCPConfig: TMCPConfig;
@@ -80,7 +78,11 @@ type
     function TemplatesList([JRPCParams] AParams: TPaginatedRequestParams): TListResourceTemplatesResult;
 
     [JRPC('read')]
-    function ReadResource([JRPCParams] AParams: TReadResourceParams): TReadResourceResult;
+    /// <summary>
+    ///   Answers with a TReadResourceResult, or a TInputRequiredResult when the
+    ///   resource needs more input first.
+    /// </summary>
+    function ReadResource([JRPCParams] AParams: TReadResourceParams): TBaseResult;
   end;
 
   [JRPC('prompts')]
@@ -93,7 +95,11 @@ type
     function PromptList([JRPCParams] AParams: TPaginatedRequestParams): TListPromptsResult;
 
     [JRPC('get')]
-    function ReadPrompt([JRPCParams] AParams: TGetPromptRequestParams): TGetPromptResult;
+    /// <summary>
+    ///   Answers with a TGetPromptResult, or a TInputRequiredResult when the
+    ///   prompt needs more input first.
+    /// </summary>
+    function ReadPrompt([JRPCParams] AParams: TGetPromptRequestParams): TBaseResult;
   end;
 
   [JRPC('completion')]
@@ -214,17 +220,18 @@ end;
 
 { TMCPResourcesApi }
 
-function TMCPResourcesApi.InternalReadResource(AParams: TReadResourceParams;
-    AResource: TMCPResource): TReadResourceResult;
+function TMCPResourcesApi.InternalReadResource(AParams: TReadResourceParams; AResource: TMCPResource): TBaseResult;
 var
   LInvoker: TMCPResourceInvoker;
   LResObj: TObject;
+  LFileResult: TReadResourceResult;
 begin
   // If it's a static resource serve the file directly
   if AResource.FileName <> '' then
   begin
-    Result := TReadResourceResult.Create;
-    TMCPStaticResource.GetResource(MCPConfig, AResource, Result);
+    LFileResult := TReadResourceResult.Create;
+    Result := LFileResult;
+    TMCPStaticResource.GetResource(MCPConfig, AResource, LFileResult);
     Exit;
   end;
 
@@ -245,8 +252,7 @@ begin
   end;
 end;
 
-function TMCPResourcesApi.InternalReadTemplate(AParams: TReadResourceParams;
-    ATemplate: TMCPResourceTemplate): TReadResourceResult;
+function TMCPResourcesApi.InternalReadTemplate(AParams: TReadResourceParams; ATemplate: TMCPResourceTemplate): TBaseResult;
 var
   LInvoker: TMCPTemplateInvoker;
   LTplObj: TObject;
@@ -268,7 +274,7 @@ begin
   end;
 end;
 
-function TMCPResourcesApi.ReadResource([JRPCParams] AParams: TReadResourceParams): TReadResourceResult;
+function TMCPResourcesApi.ReadResource([JRPCParams] AParams: TReadResourceParams): TBaseResult;
 var
   LRes: TMCPResource;
   LTpl: TMCPResourceTemplate;
@@ -349,7 +355,7 @@ begin
   end;
 end;
 
-function TMCPPromptsApi.ReadPrompt(AParams: TGetPromptRequestParams): TGetPromptResult;
+function TMCPPromptsApi.ReadPrompt(AParams: TGetPromptRequestParams): TBaseResult;
 var
   LInvoker: TMCPPromptInvoker;
   LPrompt: TMCPPrompt;

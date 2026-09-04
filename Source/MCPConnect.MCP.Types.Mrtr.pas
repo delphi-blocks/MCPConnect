@@ -1,4 +1,4 @@
-{******************************************************************************}
+﻿{******************************************************************************}
 {                                                                              }
 {  Delphi MCP Connect Library                                                  }
 {                                                                              }
@@ -42,14 +42,6 @@ const
   MCP_INPUT_ROOTS = 'roots/list';
 
 type
-
-  /// <summary>
-  ///   The sender or recipient of messages and data in a conversation.
-  /// </summary>
-  TRole = (
-    Assistant,
-    User
-  );
 
   /// <summary>
   ///   Controls tool selection behavior for sampling requests.

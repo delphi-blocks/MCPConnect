@@ -113,7 +113,7 @@ end;
 
 procedure TMCPGraphicWriter.WritePrompt(const AValue: TValue; AContext: TMCPPromptContext);
 begin
-  AContext.Result.Messages.AddImage('user', 'image', ValueToBase64(AValue));
+  AContext.Result.Messages.AddImage(TRole.User, TMediaType.Image, ValueToBase64(AValue));
 end;
 
 procedure TMCPGraphicWriter.WriteResource(const AValue: TValue; AContext: TMCPresourceContext);

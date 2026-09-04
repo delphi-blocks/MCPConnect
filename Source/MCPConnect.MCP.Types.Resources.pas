@@ -54,42 +54,35 @@ type
   TResult = record
   end;
 
-  TMCPAnnotation = record
-  
-    // Describes who the intended customer of this object or data is.
-    //
-    // It can include multiple entries to indicate content useful for multiple
-    // audiences (e.g., `["user", "assistant"]`).
-    [NeonInclude(IncludeIf.NotEmpty)] Audience: TArray<string>;
-
-
-    /// <summary>
-    ///   The moment the resource was last modified, as an ISO 8601 formatted string <br />
-    /// </summary>
-    /// <example>
-    ///   Last activity timestamp in an open file, timestamp when the resource was attached, etc.
-    /// </example>
-    LastModified: NullDateTime;
-
-    // Describes how important this data is for operating the server.
-    //
-    // A value of 1 means "most important," and indicates that the data is
-    // effectively required, while 0 means "least important," and indicates that
-    // the data is entirely optional.
-    Priority: Nullable<Currency>;
-  end;
-
   /// <summary>
   /// Represents a known resource that the server is capable of reading.
   /// </summary>
   TMCPResourceBase = class(TMetaClass)
-    [NeonInclude(IncludeIf.NotEmpty)] Annotations: TMCPAnnotation;
+    /// <summary>Registration-time grouping, from the "category=" tag.</summary>
+    [NeonIgnore] Category: string;
+
+    /// <summary>Kept out of the listings, from the "disabled" tag.</summary>
+    [NeonIgnore] Disabled: Boolean;
+
+    [NeonInclude(IncludeIf.NotEmpty)] Annotations: TAnnotations;
 
     /// <summary>
     /// A human-readable name for this resource.
     /// </summary>
     /// <remarks>This can be used by clients to populate UI elements.</remarks>
     Name: string;
+
+    /// <summary>
+    ///   Intended for UI and end-user contexts, optimized to be human-readable
+    ///   and easily understood even by those unfamiliar with domain-specific
+    ///   terminology. Falls back to Name when absent.
+    /// </summary>
+    /// <remarks>
+    ///   Set it with the "title=" tag on [McpResource] / [McpTemplate] /
+    ///   [McpAppUI], or through the ATags argument of the programmatic
+    ///   registration methods.
+    /// </remarks>
+    Title: NullString;
 
     /// <summary>
     /// A description of what this resource represents.
@@ -106,6 +99,10 @@ type
     ///   Optional set of sized icons that the client can display in a user interface
     /// </summary>
     [NeonInclude(IncludeIf.NotEmpty)] Icons: TMCPIconList;
+
+  public
+    constructor Create;
+    destructor Destroy; override;
   end;
 
 
@@ -117,13 +114,23 @@ type
     [NeonIgnore] FileName: string;
     [NeonIgnore] ResourceClass: TClass;
     [NeonIgnore] Method: TRttiMethod;
-    [NeonIgnore] Category: string;
-    [NeonIgnore] Disabled: Boolean;
   public
     /// <summary>
     /// The URI of this resource.
     /// </summary>
     Uri: string;
+
+    /// <summary>
+    ///   The size of the raw resource content in bytes, before base64 encoding
+    ///   or any tokenization, when it is known. Hosts use it to display file
+    ///   sizes and to estimate context window usage.
+    /// </summary>
+    /// <remarks>
+    ///   Set automatically for the static files registered with RegisterFile.
+    ///   A resource template has no size, which is why this lives here rather
+    ///   than on TMCPResourceBase.
+    /// </remarks>
+    [NeonInclude(IncludeIf.NotDefault)] Size: Int64;
   end;
 
   TMCPResources = class(TObjectList<TMCPResource>);
@@ -153,8 +160,6 @@ type
   public
     [NeonIgnore] ResourceClass: TClass;
     [NeonIgnore] Method: TRttiMethod;
-    [NeonIgnore] Category: string;
-    [NeonIgnore] Disabled: Boolean;
     [NeonIgnore] MethodParams: TObjectList<TMCPResTemplateParam>;
   public
     /// <summary>
@@ -505,6 +510,20 @@ begin
   ResourceDomains := ResourceDomains + [ASite];
   FrameDomains := FrameDomains + [ASite];
   BaseUriDomains := BaseUriDomains + [ASite];
+end;
+
+{ TMCPResourceBase }
+
+constructor TMCPResourceBase.Create;
+begin
+  inherited;
+  Annotations := TAnnotations.Create;
+end;
+
+destructor TMCPResourceBase.Destroy;
+begin
+  Annotations.Free;
+  inherited;
 end;
 
 end.

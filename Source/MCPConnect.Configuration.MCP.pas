@@ -566,6 +566,18 @@ type
     function GetUriParams(const AUri: string): TArray<string>;
     function FileNameToUri(const AFileName: string): string;
 
+    /// <summary>
+    ///   The size in bytes of the file behind a static resource, or 0 when it
+    ///   cannot be read.
+    /// </summary>
+    function StaticResourceSize(AResource: TMCPResource): Int64;
+
+    /// <summary>
+    ///   Parses ATags onto AResource and applies the ones it understands:
+    ///   "title=", "category=" and "disabled".
+    /// </summary>
+    procedure ApplyResourceTags(AResource: TMCPResourceBase; const ATags: string);
+
     procedure RegisterUIMethod(AClass: TClass; AMethod: TRttiMethod; AAttr: MCPAppUIAttribute);
     procedure RegisterResMethod(AClass: TClass; AMethod: TRttiMethod; AAttr: MCPResourceAttribute);
     procedure RegisterTplMethod(AClass: TClass; AMethod: TRttiMethod; AAttr: MCPTemplateAttribute);
@@ -1276,11 +1288,49 @@ begin
   Result := Self;
 end;
 
+procedure TMCPResourcesConfig.ApplyResourceTags(AResource: TMCPResourceBase;
+  const ATags: string);
+begin
+  AResource.Tags.Parse(ATags);
+
+  // Assigned only when present: a NullString takes an empty string as a value,
+  // which would emit "title": "" rather than leaving the member out
+  if AResource.Tags.Exists('title') then
+    AResource.Title := AResource.Tags.GetValueAs<string>('title');
+
+  AResource.Category := AResource.Tags.GetValueAs<string>('category');
+  AResource.Disabled := AResource.Tags.GetBoolValue('disabled');
+end;
+
 procedure TMCPResourcesConfig.ResourceList(AList: TListResourcesResult);
 begin
   for var pair in Registry do
     if not pair.Value.Disabled then
+    begin
+      // A static file's size is known, and hosts use it to show file sizes and
+      // estimate context usage. It is filled here rather than in RegisterFile
+      // because BasePath may still be set after the file is registered.
+      if pair.Value.FileName <> '' then
+        pair.Value.Size := StaticResourceSize(pair.Value);
+
       AList.Resources.Add(pair.Value);
+    end;
+end;
+
+function TMCPResourcesConfig.StaticResourceSize(AResource: TMCPResource): Int64;
+var
+  LFileName: string;
+  LFile: TSearchRec;
+begin
+  Result := 0;
+
+  LFileName := TPath.Combine(BasePath, AResource.FileName);
+  if FindFirst(LFileName, faAnyFile, LFile) = 0 then
+  try
+    Result := LFile.Size;
+  finally
+    FindClose(LFile);
+  end;
 end;
 
 procedure TMCPResourcesConfig.TemplateList(AList: TListResourceTemplatesResult);
@@ -1379,6 +1429,7 @@ begin
     LRes.Description := AAttr.Description;
     LRes.ResourceClass := AClass;
     LRes.Method := AMethod;
+    ApplyResourceTags(LRes, AAttr.AdditionalTags);
 
     Registry.Add(LRes.Uri, LRes);
   except
@@ -1405,6 +1456,8 @@ begin
     LRes.Description := AAttr.Description;
     LRes.ResourceClass := AClass;
     LRes.Method := AMethod;
+    ApplyResourceTags(LRes, AAttr.AdditionalTags);
+
     Registry.Add(LRes.Uri, LRes);
   except
     LRes.Free;
@@ -1476,9 +1529,7 @@ begin
     LRes.Uri := AUri;
     LRes.MimeType := AMime;
     LRes.Description := ADescription;
-    LRes.Tags.Parse(ATags);
-    LRes.Category := LRes.Tags.GetValueAs<string>('category');
-    LRes.Disabled := LRes.Tags.GetBoolValue('disabled');
+    ApplyResourceTags(LRes, ATags);
 
     Registry.Add(AUri, LRes);
   except
@@ -1547,9 +1598,7 @@ begin
     LTpl.UriTemplate := AUriTemplate;
     LTpl.MimeType := AMime;
     LTpl.Description := ADescription;
-    LTpl.Tags.Parse(ATags);
-    LTpl.Category := LTpl.Tags.GetValueAs<string>('category');
-    LTpl.Disabled := LTpl.Tags.GetBoolValue('disabled');
+    ApplyResourceTags(LTpl, ATags);
 
     for I := 0 to High(LParams) do
     begin
@@ -1598,6 +1647,7 @@ begin
     LTpl.Description := AAttr.Description;
     LTpl.ResourceClass := AClass;
     LTpl.Method := AMethod;
+    ApplyResourceTags(LTpl, AAttr.AdditionalTags);
 
     for var par in AMethod.GetParameters do
     begin
@@ -1649,9 +1699,7 @@ begin
     LApp.Uri := AUri;
     LApp.MimeType := 'text/html;profile=mcp-app';
     LApp.Description := ADescription;
-    LApp.Tags.Parse(ATags);
-    LApp.Category := LApp.Tags.GetValueAs<string>('category');
-    LApp.Disabled := LApp.Tags.GetBoolValue('disabled');
+    ApplyResourceTags(LApp, ATags);
 
     if Assigned(AUIConfig) then
     begin

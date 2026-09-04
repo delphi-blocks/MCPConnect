@@ -239,7 +239,7 @@ begin
         if FTool.Tags.Exists('embedded') then
         begin
           LResText := TEmbeddedResourceText.Create;
-          LResText.Resource.MIMEType := 'application/json';
+          LResText.Resource.MIMEType := TMediaType.Json;
           LResText.Resource.URI := '';
           LResText.Resource.Text := LJSON.ToJSON;
         end
@@ -259,7 +259,7 @@ begin
       if AToolResult.TypeInfo = TypeInfo(TBytes) then
       begin
         LResBlob.Resource.Blob := TNetEncoding.Base64String.EncodeBytesToString(AToolResult.AsType<TBytes>);
-        LResBlob.Resource.MIMEType := 'application/octect-stream'
+        LResBlob.Resource.MIMEType := TMediaType.OctectStream;
       end
       else
       begin
@@ -272,7 +272,7 @@ begin
           if FTool.Tags.Exists('structured') then
             raise EMCPException.Create(SMCPStructuredContentMustBeObject);
 
-          LResBlob.Resource.MIMEType := 'application/json';
+          LResBlob.Resource.MIMEType := TMediaType.Json;
           LResBlob.Resource.Blob := LJSON.ToJSON;
         finally
           LJSON.Free;
@@ -395,7 +395,7 @@ begin
       begin
         LResText := TTextResourceContents.Create();
         LResText.Uri := FResource.Uri;
-        LResText.MimeType := IfThen(LMime.IsEmpty, 'text/plain', LMime);
+        LResText.MimeType := IfThen(LMime.IsEmpty, TMediaType.Text, LMime);
         LResText.Text := AMethodResult.ToString;
       end
       else
@@ -419,7 +419,7 @@ begin
       begin
         LResText := TTextResourceContents.Create();
         LResText.Uri := FResource.Uri;
-        LResText.MimeType := IfThen(LMime.IsEmpty, 'text/plain', LMime);
+        LResText.MimeType := IfThen(LMime.IsEmpty, TMediaType.Text, LMime);
         LResText.Text := AMethodResult.ToString;
       end
       else
@@ -443,7 +443,7 @@ begin
       begin
         LResText := TTextResourceContents.Create();
         LResText.Uri := FResource.Uri;
-        LResText.MimeType := IfThen(LMime.IsEmpty, 'application/json', LMime);
+        LResText.MimeType := IfThen(LMime.IsEmpty, TMediaType.Json, LMime);
         LResText.Text := LResult;
       end
       else
@@ -580,7 +580,7 @@ begin
       begin
         LResText := TTextResourceContents.Create();
         LResText.Uri := FTemplate.UriTemplate;
-        LResText.MimeType := IfThen(LMime.IsEmpty, 'text/plain', LMime);
+        LResText.MimeType := IfThen(LMime.IsEmpty, TMediaType.Text, LMime);
         LResText.Text := AMethodResult.ToString;
       end
       else
@@ -604,7 +604,7 @@ begin
       begin
         LResText := TTextResourceContents.Create();
         LResText.Uri := FTemplate.UriTemplate;
-        LResText.MimeType := IfThen(LMime.IsEmpty, 'text/plain', LMime);
+        LResText.MimeType := IfThen(LMime.IsEmpty, TMediaType.Text, LMime);
         LResText.Text := AMethodResult.ToString;
       end
       else
@@ -628,7 +628,7 @@ begin
       begin
         LResText := TTextResourceContents.Create();
         LResText.Uri := FTemplate.UriTemplate;
-        LResText.MimeType := IfThen(LMime.IsEmpty, 'application/json', LMime);
+        LResText.MimeType := IfThen(LMime.IsEmpty, TMediaType.Json, LMime);
         LResText.Text := LResult;
       end
       else
@@ -718,7 +718,7 @@ begin
     // As it is
     tkInt64,
     tkInteger,
-    tkFloat: AResult.Messages.AddText('user', APromptResult.ToString);
+    tkFloat: AResult.Messages.AddText(TRole.User, APromptResult.ToString);
 
     // Dequote
     tkEnumeration,
@@ -727,7 +727,7 @@ begin
     tkString,
     tkLString,
     tkWString,
-    tkUString: AResult.Messages.AddText('user', APromptResult.ToString);
+    tkUString: AResult.Messages.AddText(TRole.User, APromptResult.ToString);
 
     // JSON response
     tkSet,
@@ -739,9 +739,9 @@ begin
       var LResult := TNeon.ValueToJSONString(APromptResult, TNeonConfiguration.Default);
       var LMCPPrompt := TRttiUtils.FindAttribute<MCPToolAttribute>(FPrompt.Method);
       if Assigned(LMCPPrompt) and (LMCPPrompt.Tags.Exists('embedded')) then
-        AResult.Messages.AddBlob('user', 'application/json', LResult)
+        AResult.Messages.AddBlob(TRole.User, TMediaType.Json, LResult)
       else
-        AResult.Messages.AddText('user', LResult);
+        AResult.Messages.AddText(TRole.User, LResult);
     end;
 
 
@@ -751,14 +751,14 @@ begin
       if APromptResult.TypeInfo = TypeInfo(TBytes) then
       begin
         LBlob := TNetEncoding.Base64String.EncodeBytesToString(APromptResult.AsType<TBytes>);
-        LMime := 'application/octect-stream';
+        LMime := TMediaType.OctectStream;
       end
       else
       begin
         LBlob := TNeon.ValueToJSONString(APromptResult, TNeonConfiguration.Default);
-        LMime := 'application/json';
+        LMime := TMediaType.Json;
       end;
-      AResult.Messages.AddBlob('user', LMime, LBlob);
+      AResult.Messages.AddBlob(TRole.User, LMime, LBlob);
     end;
 
   else

@@ -191,7 +191,7 @@ type
     /// <remarks>
     ///   Valid values: `assistant`, `user`
     /// </remarks>
-    Role: string;
+    Role: TRole;
 
     //[NeonIgnore] ContentType: TResultContentType;
 
@@ -209,24 +209,24 @@ type
     Content: T;
 
     constructor Create; overload;
-    constructor Create(const ARole: string); overload;
+    constructor Create(const ARole: TRole); overload;
     destructor Destroy; override;
   end;
 
   TPromptMessages = class(TObjectList<TPromptMessageBase>)
   public
-    function AddText(const ARole, AText: string): TTextContent;
+    function AddText(ARole: TRole; const AText: string): TTextContent;
 
-    procedure AddImage(const ARole, AMime, ABase64: string); overload;
-    procedure AddImage(const ARole, AMime: string; AImage: TStream); overload;
+    procedure AddImage(ARole: TRole; const AMime, ABase64: string); overload;
+    procedure AddImage(ARole: TRole; const AMime: string; AImage: TStream); overload;
 
-    procedure AddAudio(const ARole, AMime, ABase64: string); overload;
-    procedure AddAudio(const ARole, AMime: string; AAudio: TStream); overload;
+    procedure AddAudio(ARole: TRole; const AMime, ABase64: string); overload;
+    procedure AddAudio(ARole: TRole; const AMime: string; AAudio: TStream); overload;
 
-    procedure AddLink(const ARole, AMime, AUri, ADescription: string);
+    procedure AddLink(ARole: TRole; const AMime, AUri, ADescription: string);
 
-    procedure AddBlob(const ARole, AMime, ABase64: string); overload;
-    procedure AddBlob(const ARole, AMime: string; ABlob: TStream); overload;
+    procedure AddBlob(ARole: TRole; const AMime, ABase64: string); overload;
+    procedure AddBlob(ARole: TRole; const AMime: string; ABlob: TStream); overload;
   end;
 
   /// <summary>
@@ -395,14 +395,12 @@ end;
 
 { TPromptMessage<T> }
 
-constructor TPromptMessage<T>.Create(const ARole: string);
+constructor TPromptMessage<T>.Create(const ARole: TRole);
 begin
   inherited Create;
 
   Content := T.Create;
-
-  if not ARole.IsEmpty then
-    Role := ARole;
+  Role := ARole;
 end;
 
 constructor TPromptMessage<T>.Create;
@@ -419,7 +417,7 @@ end;
 
 { TPromptMessages }
 
-procedure TPromptMessages.AddImage(const ARole, AMime, ABase64: string);
+procedure TPromptMessages.AddImage(ARole: TRole; const AMime, ABase64: string);
 begin
   var p := TPromptMessage<TImageContent>.Create(ARole);
 
@@ -428,7 +426,7 @@ begin
   Self.Add(p);
 end;
 
-procedure TPromptMessages.AddBlob(const ARole, AMime, ABase64: string);
+procedure TPromptMessages.AddBlob(ARole: TRole; const AMime, ABase64: string);
 begin
   var p := TPromptMessage<TEmbeddedResourceBlob>.Create(ARole);
 
@@ -437,7 +435,7 @@ begin
   Self.Add(p);
 end;
 
-procedure TPromptMessages.AddImage(const ARole, AMime: string; AImage: TStream);
+procedure TPromptMessages.AddImage(ARole: TRole; const AMime: string; AImage: TStream);
 begin
   var p := TPromptMessage<TImageContent>.Create(ARole);
 
@@ -446,7 +444,7 @@ begin
   Self.Add(p);
 end;
 
-procedure TPromptMessages.AddLink(const ARole, AMime, AUri, ADescription: string);
+procedure TPromptMessages.AddLink(ARole: TRole; const AMime, AUri, ADescription: string);
 begin
   var p := TPromptMessage<TResourceLink>.Create(ARole);
 
@@ -456,7 +454,7 @@ begin
   Self.Add(p);
 end;
 
-function TPromptMessages.AddText(const ARole, AText: string): TTextContent;
+function TPromptMessages.AddText(ARole: TRole; const AText: string): TTextContent;
 begin
   var p := TPromptMessage<TTextContent>.Create(ARole);
 
@@ -466,7 +464,7 @@ begin
   Result := p.Content;
 end;
 
-procedure TPromptMessages.AddAudio(const ARole, AMime: string; AAudio: TStream);
+procedure TPromptMessages.AddAudio(ARole: TRole; const AMime: string; AAudio: TStream);
 begin
   var p := TPromptMessage<TAudioContent>.Create(ARole);
 
@@ -475,7 +473,7 @@ begin
   Self.Add(p);
 end;
 
-procedure TPromptMessages.AddAudio(const ARole, AMime, ABase64: string);
+procedure TPromptMessages.AddAudio(ARole: TRole; const AMime, ABase64: string);
 begin
   var p := TPromptMessage<TAudioContent>.Create(ARole);
 
@@ -484,7 +482,7 @@ begin
   Self.Add(p);
 end;
 
-procedure TPromptMessages.AddBlob(const ARole, AMime: string; ABlob: TStream);
+procedure TPromptMessages.AddBlob(ARole: TRole; const AMime: string; ABlob: TStream);
 begin
   var p := TPromptMessage<TEmbeddedResourceBlob>.Create(ARole);
 
@@ -497,7 +495,7 @@ end;
 
 constructor TPromptMessageBase.Create;
 begin
-  Role := 'user';
+  Role := TRole.User;
 end;
 
 end.

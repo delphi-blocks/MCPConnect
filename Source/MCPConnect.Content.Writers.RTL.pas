@@ -72,7 +72,7 @@ end;
 
 procedure TMCPStringListWriter.WritePrompt(const AValue: TValue; AContext: TMCPPromptContext);
 begin
-  AContext.Result.Messages.AddText('user', ValueAsList(AValue).CommaText);
+  AContext.Result.Messages.AddText(TRole.User, ValueAsList(AValue).CommaText);
 end;
 
 procedure TMCPStringListWriter.WriteResource(const AValue: TValue; AContext: TMCPresourceContext);
@@ -117,7 +117,7 @@ end;
 
 procedure TMCPStreamWriter.WritePrompt(const AValue: TValue; AContext: TMCPPromptContext);
 begin
-  AContext.Result.Messages.AddBlob('user', 'application/octect-stream', StreamToBase64(AValue));
+  AContext.Result.Messages.AddBlob(TRole.User, TMediaType.OctectStream, StreamToBase64(AValue));
 end;
 
 procedure TMCPStreamWriter.WriteResource(const AValue: TValue; AContext: TMCPresourceContext);

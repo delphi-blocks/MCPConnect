@@ -195,8 +195,22 @@ type
     property NotBefore: TDateTime read GetNotBefore;
   end;
 
-  TTypedMeta = class
+  /// <summary>
+  ///   The sender or recipient of messages and data in a conversation.
+  /// </summary>
+  TRole = (
+    Assistant,
+    User
+  );
 
+  TMediaType = class
+  public const
+    Text = 'text/plain';
+    Json = 'application/json';
+    Image = 'image';
+    ImagePng = 'image/png';
+    ImageJpg = 'image/jpg';
+    OctectStream = 'application/octect-stream';
   end;
 
   TFlatMetaClass = class
@@ -566,8 +580,17 @@ type
     destructor Destroy; override;
   end;
 
+  /// <summary>
+  ///   Common params of any request: the "_meta" every 2026-07-28 request must
+  ///   carry, with the protocol version and the client's capabilities in it.
+  /// </summary>
   TRequestMetaParams = class
-    RequestMeta: TRequestMetaObject;
+    /// <remarks>
+    ///   The Neon name is not optional here: without it the member binds as
+    ///   "requestMeta" and the incoming "_meta" - protocol version, client
+    ///   capabilities, log level - is silently dropped on every request.
+    /// </remarks>
+    [NeonProperty('_meta')] RequestMeta: TRequestMetaObject;
 
     constructor Create;
     destructor Destroy; override;
@@ -638,6 +661,8 @@ type
     ///   analogous to HTTP Cache-Control max-age.
     /// </summary>
     TtlMs: UInt64;
+  public
+    constructor Create;
   end;
 
 
@@ -858,7 +883,7 @@ type
     /// <remarks>
     ///   This can be used by Hosts to display file sizes and estimate context window usage.
     /// </remarks>
-    [NeonInclude(IncludeIf.NotEmpty)] Size: Integer;
+    [NeonInclude(IncludeIf.NotDefault)] Size: Integer;
 
     /// <summary>
     ///   A description of what this resource represents. This can be used by clients to improve the
@@ -2044,6 +2069,14 @@ destructor TBaseResult.Destroy;
 begin
   ResultMeta.Free;
   inherited;
+end;
+
+{ TCachedResult }
+
+constructor TCachedResult.Create;
+begin
+  inherited;
+  CacheScope := TCacheScope.ScopePrivate;
 end;
 
 end.

@@ -21,9 +21,9 @@ uses
   System.SysUtils, System.Classes, System.Masks, System.DateUtils,
   System.Diagnostics, Web.HTTPApp,
 
-  MCPConnect.Transport.Base,
-  MCPConnect.JRPC.Core,
-  MCPConnect.JRPC.Server;
+  JRPC.Core,
+  MCPConnect.MCP.Server,
+  MCPConnect.Transport.Base;
 
 resourcestring
   SServerNotFound = 'Server not found';
@@ -34,9 +34,9 @@ type
   private
     FDispatchMask: TMask;
     FPathInfo: string;
-    FServer: TJRPCServer;
+    FServer: TMCPServer;
     procedure SetPathInfo(const Value: string);
-    procedure SetServer(const Value: TJRPCServer);
+    procedure SetServer(const Value: TMCPServer);
     procedure ConvertRequestHeaders(AWebRequest: TWebRequest; AMCPRequest: TMCPTransportRequest);
     procedure ConvertResponseHeaders(AWebResponse: TWebResponse; AMCPResponse: TMCPTransportResponse);
   public
@@ -47,7 +47,7 @@ type
     function DispatchMask: TMask;
 
     property PathInfo: string read FPathInfo write SetPathInfo;
-    property Server: TJRPCServer read FServer write SetServer;
+    property Server: TMCPServer read FServer write SetServer;
 
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -311,7 +311,7 @@ begin
   FPathInfo := Value;
 end;
 
-procedure TJRPCDispatcher.SetServer(const Value: TJRPCServer);
+procedure TJRPCDispatcher.SetServer(const Value: TMCPServer);
 begin
   FServer := Value;
 end;

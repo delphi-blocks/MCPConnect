@@ -61,7 +61,7 @@
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
         <Icon_MainIcon>MCPServerStdio.ico</Icon_MainIcon>
         <SanitizedProjectName>MCPServerStdio</SanitizedProjectName>
-        <DCC_UnitSearchPath>..\..\..\Source;..\..\..\Libs\Neon\Source;..\..\..\Libs\Logify\Source;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>..\..\..\Source;..\..\..\Libs\Neon\Source;..\..\..\Libs\Logify\Source;..\..\..\Libs\JRPC\Source;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base_Linux64)'!=''">
         <DCC_UsePackage>DataSnapServer;fmx;emshosting;DbxCommonDriver;bindengine;FireDACCommonODBC;emsclient;FireDACCommonDriver;IndyProtocols;dbxcds;emsedge;bindcompfmx;inetdb;FireDACSqliteDriver;DbxClientDriver;FireDACASADriver;soapmidas;fmxFireDAC;dbexpress;FireDACInfxDriver;inet;DataSnapCommon;SmartCoreAI;dbrtl;FireDACOracleDriver;CustomIPTransport;FireDACMSSQLDriver;DataSnapIndy10ServerTransport;DataSnapConnectors;FireDACMongoDBDriver;IndySystem;FireDACTDataDriver;bindcomp;FireDACCommon;DataSnapServerMidas;FireDACODBCDriver;emsserverresource;inetstn;IndyCore;RESTBackendComponents;rtl;FireDACMySQLDriver;FireDACADSDriver;RESTComponents;dsnapxml;DataSnapClient;DataSnapFireDAC;emsclientfiredac;FireDACPgDriver;FireDAC;xmlrtl;dsnap;CloudService;FireDACDb2Driver;DataSnapNativeClient;DatasnapConnectorsFreePascal;soaprtl;soapserver;FireDACIBDriver;$(DCC_UsePackage)</DCC_UsePackage>
@@ -104,6 +104,9 @@
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_1_Win32)'!=''">
         <DCC_RemoteDebug>false</DCC_RemoteDebug>
+        <VerInfo_Locale>1033</VerInfo_Locale>
+        <Manifest_File>(None)</Manifest_File>
+        <AppDPIAwarenessMode>none</AppDPIAwarenessMode>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_2)'!=''">
         <DCC_LocalDebugSymbols>false</DCC_LocalDebugSymbols>
@@ -119,18 +122,14 @@
         <DCCReference Include="..\..\..\Source\MCPConnect.Configuration.Core.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.Configuration.MCP.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.Configuration.Neon.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Core.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Server.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Invoker.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Config.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.Resources.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Server.Api.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.Tools.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Attributes.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.Prompts.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Invoker.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.Base.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Classes.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.Tools.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.Prompts.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.Resources.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Attributes.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Invoker.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.Content.Writers.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.Transport.Stdio.pas"/>
         <DCCReference Include="..\MCPServer.Tools.pas"/>
@@ -159,6 +158,14 @@
                 <Source>
                     <Source Name="MainSource">MCPServerStdio.dpr</Source>
                 </Source>
+                <Excluded_Packages>
+                    <Excluded_Packages Name="$(BDSBIN)\dcloffice2k370.bpl">Microsoft Office 2000 Sample Automation Server Wrapper Components</Excluded_Packages>
+                    <Excluded_Packages Name="$(BDSBIN)\dclofficexp370.bpl">Microsoft Office XP Sample Automation Server Wrapper Components</Excluded_Packages>
+                    <Excluded_Packages Name="$(BDSBIN)\bcboffice2k370.bpl">Embarcadero C++Builder Office 2000 Servers Package</Excluded_Packages>
+                    <Excluded_Packages Name="$(BDSBIN)\bcbofficexp370.bpl">Embarcadero C++Builder Office XP Servers Package</Excluded_Packages>
+                    <Excluded_Packages Name="C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl\Neon370.bpl">Neon Serialization Library</Excluded_Packages>
+                    <Excluded_Packages Name="C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl\WiRLDesign370.bpl">WiRL REST Components</Excluded_Packages>
+                </Excluded_Packages>
             </Delphi.Personality>
             <Deployment Version="5">
                 <DeployFile LocalName="$(BDS)\Redist\iossimulator\libcgunwind.1.0.dylib" Class="DependencyModule">

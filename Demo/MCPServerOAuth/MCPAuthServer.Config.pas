@@ -9,10 +9,10 @@ uses
   IdGlobal, IdContext, IdBaseComponent, IdComponent,
   IdCustomTCPServer, IdCustomHTTPServer, IdHTTPServer,
 
-  MCPConnect.JRPC.Core,
-  MCPConnect.JRPC.Classes,
-  MCPConnect.JRPC.Server,
+  JRPC.Core,
+  JRPC.Classes,
 
+  MCPConnect.MCP.Server,
   MCPConnect.MCP.Server.Api,
   MCPConnect.MCP.Types.Base,
 
@@ -27,7 +27,7 @@ uses
 
 type
   TServerConfigurator = class
-    class procedure ConfigureServer(AServer: TJRPCServer);
+    class procedure ConfigureServer(AServer: TMCPServer);
   end;
 
   TEnvironment = class
@@ -60,7 +60,7 @@ uses
 
 { TServerConfigurator }
 
-class procedure TServerConfigurator.ConfigureServer(AServer: TJRPCServer);
+class procedure TServerConfigurator.ConfigureServer(AServer: TMCPServer);
 var
   LDataPath: string;
 begin

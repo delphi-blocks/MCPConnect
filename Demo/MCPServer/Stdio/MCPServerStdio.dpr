@@ -47,18 +47,14 @@ uses
   MCPConnect.Configuration.Core in '..\..\..\Source\MCPConnect.Configuration.Core.pas',
   MCPConnect.Configuration.MCP in '..\..\..\Source\MCPConnect.Configuration.MCP.pas',
   MCPConnect.Configuration.Neon in '..\..\..\Source\MCPConnect.Configuration.Neon.pas',
-  MCPConnect.JRPC.Core in '..\..\..\Source\MCPConnect.JRPC.Core.pas',
-  MCPConnect.JRPC.Server in '..\..\..\Source\MCPConnect.JRPC.Server.pas',
-  MCPConnect.JRPC.Invoker in '..\..\..\Source\MCPConnect.JRPC.Invoker.pas',
   MCPConnect.MCP.Config in '..\..\..\Source\MCPConnect.MCP.Config.pas',
-  MCPConnect.MCP.Types.Resources in '..\..\..\Source\MCPConnect.MCP.Types.Resources.pas',
   MCPConnect.MCP.Server.Api in '..\..\..\Source\MCPConnect.MCP.Server.Api.pas',
-  MCPConnect.MCP.Types.Tools in '..\..\..\Source\MCPConnect.MCP.Types.Tools.pas',
-  MCPConnect.MCP.Attributes in '..\..\..\Source\MCPConnect.MCP.Attributes.pas',
-  MCPConnect.MCP.Types.Prompts in '..\..\..\Source\MCPConnect.MCP.Types.Prompts.pas',
-  MCPConnect.MCP.Invoker in '..\..\..\Source\MCPConnect.MCP.Invoker.pas',
   MCPConnect.MCP.Types.Base in '..\..\..\Source\MCPConnect.MCP.Types.Base.pas',
-  MCPConnect.JRPC.Classes in '..\..\..\Source\MCPConnect.JRPC.Classes.pas',
+  MCPConnect.MCP.Types.Tools in '..\..\..\Source\MCPConnect.MCP.Types.Tools.pas',
+  MCPConnect.MCP.Types.Prompts in '..\..\..\Source\MCPConnect.MCP.Types.Prompts.pas',
+  MCPConnect.MCP.Types.Resources in '..\..\..\Source\MCPConnect.MCP.Types.Resources.pas',
+  MCPConnect.MCP.Attributes in '..\..\..\Source\MCPConnect.MCP.Attributes.pas',
+  MCPConnect.MCP.Invoker in '..\..\..\Source\MCPConnect.MCP.Invoker.pas',
   MCPConnect.Content.Writers in '..\..\..\Source\MCPConnect.Content.Writers.pas',
   MCPConnect.Transport.Stdio in '..\..\..\Source\MCPConnect.Transport.Stdio.pas',
   MCPServer.Tools in '..\MCPServer.Tools.pas',
@@ -76,7 +72,7 @@ begin
   try
     // Exactly the same call the Indy, WebBroker and service hosts make: the
     // server definition knows nothing about the transport carrying it.
-    TServerConfigurator.ConfigureServer(LServer.JRPCServer);
+    TServerConfigurator.ConfigureServer(LServer.MCPServer);
 
     // Blocks until the client closes the pipes. If the host process needs to
     // do something else in the meantime (drive a UI, poll a queue), use

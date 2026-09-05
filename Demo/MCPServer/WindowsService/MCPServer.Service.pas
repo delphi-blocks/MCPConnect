@@ -39,7 +39,7 @@ uses
   System.IOUtils,
   Vcl.SvcMgr, System.Win.Registry,
 
-  MCPConnect.JRPC.Server,
+  MCPConnect.MCP.Server,
   MCPConnect.Transport.Indy;
 
 type

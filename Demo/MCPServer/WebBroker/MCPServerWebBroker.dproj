@@ -70,7 +70,7 @@
         <Icon_MainIcon>MCPServerWebBroker.ico</Icon_MainIcon>
         <Icns_MainIcns>$(BDS)\bin\delphi_PROJECTICNS.icns</Icns_MainIcns>
         <SanitizedProjectName>MCPServerWebBroker</SanitizedProjectName>
-        <DCC_UnitSearchPath>..\..\..\Source;..\..\..\Libs\Neon\Source;..\..\..\Libs\Logify\Source;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>..\..\..\Source;..\..\..\Libs\Neon\Source;..\..\..\Libs\Logify\Source;..\..\..\Libs\JRPC\Source;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <VerInfo_Locale>1040</VerInfo_Locale>
         <VerInfo_Keys>CompanyName=;FileDescription=$(MSBuildProjectName);FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProgramID=com.embarcadero.$(MSBuildProjectName);ProductName=$(MSBuildProjectName);ProductVersion=1.0.0.0;Comments=</VerInfo_Keys>
         <DCC_UNKNOWN_CUSTOM_ATTRIBUTE>error</DCC_UNKNOWN_CUSTOM_ATTRIBUTE>
@@ -135,10 +135,6 @@
         <DCCReference Include="..\..\..\Source\MCPConnect.Content.Writers.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.Content.Writers.RTL.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.Content.Writers.VCL.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Classes.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Core.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Invoker.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Server.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Attributes.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Invoker.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Server.Api.pas"/>
@@ -184,6 +180,10 @@
                 <Excluded_Packages>
                     <Excluded_Packages Name="$(BDSBIN)\dcloffice2k370.bpl">Microsoft Office 2000 Sample Automation Server Wrapper Components</Excluded_Packages>
                     <Excluded_Packages Name="$(BDSBIN)\dclofficexp370.bpl">Microsoft Office XP Sample Automation Server Wrapper Components</Excluded_Packages>
+                    <Excluded_Packages Name="$(BDSBIN)\bcboffice2k370.bpl">Embarcadero C++Builder Office 2000 Servers Package</Excluded_Packages>
+                    <Excluded_Packages Name="$(BDSBIN)\bcbofficexp370.bpl">Embarcadero C++Builder Office XP Servers Package</Excluded_Packages>
+                    <Excluded_Packages Name="C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl\Neon370.bpl">Neon Serialization Library</Excluded_Packages>
+                    <Excluded_Packages Name="C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl\WiRLDesign370.bpl">WiRL REST Components</Excluded_Packages>
                 </Excluded_Packages>
             </Delphi.Personality>
             <Deployment Version="5">

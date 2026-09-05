@@ -9,7 +9,7 @@ uses
   Logify,
   Logify.Adapter.Buffer,
 
-  MCPConnect.JRPC.Server,
+  MCPConnect.MCP.Server,
   MCPConnect.Transport.Indy;
 
 type

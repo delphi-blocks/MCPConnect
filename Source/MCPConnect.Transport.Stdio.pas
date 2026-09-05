@@ -19,9 +19,10 @@ uses
   System.SysUtils, System.Classes, System.IOUtils, System.JSON,
 
   Logify,
+  JRPC.Server,
+  MCPConnect.MCP.Server,
   MCPConnect.Transport.Base,
-  MCPConnect.Transport.MediaType,
-  MCPConnect.JRPC.Server;
+  MCPConnect.Transport.MediaType;
 
 resourcestring
   SServerNotFound = 'Server not found';
@@ -33,7 +34,7 @@ type
 
   TJRPCStdioServer = class(TComponent)
   private
-    FJRPCServer: TJRPCServer;
+    FMCPServer: TMCPServer;
     FActive: Boolean;
     FWorker: TWorkerThread;
     procedure SetActive(const Value: Boolean);
@@ -50,7 +51,7 @@ type
     property Active: Boolean read FActive write SetActive;
     property Terminated: Boolean read GetTerminated;
 
-    property JRPCServer: TJRPCServer read FJRPCServer;
+    property MCPServer: TMCPServer read FMCPServer;
   public
     class function CreateMCPServer(AOwner: TComponent): TJRPCStdioServer;
   end;
@@ -137,12 +138,12 @@ type
 
   TWorkerThread = class(TThread)
   private
-    FServer: TJRPCServer;
+    FServer: TMCPServer;
     procedure HandleRequest(const ARequestContent: string; out AResponseContent: string; AStdOutWriter: TStdOutWriter);
   protected
     procedure Execute; override;
   public
-    property Server: TJRPCServer read FServer write FServer;
+    property Server: TMCPServer read FServer write FServer;
   end;
 
   TMCPTransportWriterStdio = class(TInterfacedObject, IMCPTransportWriter)
@@ -164,12 +165,12 @@ uses
   {$IFDEF MSWINDOWS}
   Winapi.Windows,
   {$ENDIF}
+  JRPC.Core,
+  JRPC.Classes,
+  JRPC.Invoker,
   Neon.Core.Types,
   Neon.Core.Persistence,
-  Neon.Core.Persistence.JSON,
-  MCPConnect.JRPC.Classes,
-  MCPConnect.JRPC.Invoker,
-  MCPConnect.JRPC.Core;
+  Neon.Core.Persistence.JSON;
 
 function StdInHandle: THandle;
 begin
@@ -394,7 +395,7 @@ end;
 constructor TJRPCStdioServer.Create(AOwner: TComponent);
 begin
   inherited;
-  FJRPCServer := TJRPCServer.Create(nil);
+  FMCPServer := TMCPServer.Create(nil);
 end;
 
 class function TJRPCStdioServer.CreateMCPServer(AOwner: TComponent): TJRPCStdioServer;
@@ -404,7 +405,7 @@ end;
 
 destructor TJRPCStdioServer.Destroy;
 begin
-  FJRPCServer.Free;
+  FMCPServer.Free;
   inherited;
 end;
 
@@ -432,7 +433,7 @@ begin
   begin
     FActive := True;
     FWorker := TWorkerThread.Create(True);
-    FWorker.Server := FJRPCServer;
+    FWorker.Server := FMCPServer;
     FWorker.FreeOnTerminate := False;
     FWorker.Start;
   end;

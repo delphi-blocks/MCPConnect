@@ -46,7 +46,7 @@ uses
   MCPConnect.Content.Writers.VCL,
 
   MCPConnect.Transport.WebBroker,   // TJRPCDispatcher
-  MCPConnect.JRPC.Server;           // TJRPCServer
+  MCPConnect.MCP.Server;            // TMCPServer
 
 type
   TWebModule1 = class(TWebModule)
@@ -60,7 +60,7 @@ type
 
 var
   WebModuleClass: TComponentClass = TWebModule1;
-  JRPCServer: TJRPCServer;
+  JRPCServer: TMCPServer;
 
 implementation
 
@@ -89,7 +89,7 @@ begin
   // Singleton: WebBroker creates one web module per thread, but all share one server
   if not Assigned(JRPCServer) then
   begin
-    JRPCServer := TJRPCServer.Create(nil);
+    JRPCServer := TMCPServer.Create(nil);
     TServerConfigurator.ConfigureServer(JRPCServer);
   end;
 

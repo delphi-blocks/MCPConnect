@@ -18,8 +18,8 @@ interface
 uses
   System.SysUtils, System.Classes, System.JSON,
 
+  JRPC.Core,
   MCPConnect.Configuration.Auth,
-  MCPConnect.JRPC.Core,
   MCPConnect.MCP.Types.Base,
   MCPConnect.Security.Jwks;
 
@@ -308,7 +308,7 @@ uses
   System.NetEncoding, System.DateUtils, System.StrUtils,
 
   Logify,
-  MCPConnect.JRPC.Server;
+  JRPC.Server;
 
 function Base64UrlDecode(const AInput: string): string;
 var
@@ -399,8 +399,8 @@ begin
 
   // Same route the transport handler takes to read its own configurations.
   LServer := AContext.FindContextDataAs<TJRPCServer>;
-  if Assigned(LServer) then
-    Result := LServer.GetConfiguration<TOAuthConfig>;
+  //if Assigned(LServer) then
+    //Result := LServer.GetConfiguration<TOAuthConfig>;
 end;
 
 function TTokenValidatorBase.SplitToken(const AToken: string;

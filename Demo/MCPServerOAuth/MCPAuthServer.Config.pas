@@ -17,15 +17,13 @@ uses
   MCPConnect.MCP.Types.Base,
 
   MCPConnect.Configuration.MCP,
-  MCPConnect.Configuration.Session,
   MCPConnect.Configuration.Auth,
   MCPConnect.Configuration.Neon,
 
   MCPConnect.Content.Writers.RTL,
   MCPConnect.Content.Writers.VCL,
 
-  MCPConnect.Security.Token,
-  MCPConnect.Session.Core;
+  MCPConnect.Security.Token;
 
 type
   TServerConfigurator = class

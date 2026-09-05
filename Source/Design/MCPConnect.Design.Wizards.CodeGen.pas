@@ -148,9 +148,6 @@ begin
     end;
   end;
 
-  if AConfig.UseSession then
-    LUnits := LUnits + ['MCPConnect.Configuration.Session'];
-
   if AConfig.CreateSampleUnit and not AToolsUnit.IsEmpty then
     LUnits := LUnits + [AToolsUnit];
 
@@ -208,21 +205,6 @@ begin
       else
         Assert(False, 'Unhandled MCP authentication kind');
       end;
-    end;
-
-    if AConfig.UseSession then
-    begin
-      LCode.AppendLine('  .Plugin.Configure<ISessionConfig>');
-      if AConfig.SessionLocation = TMCPSessionLocation.Cookie then
-        LCode.AppendLine('    .SetLocation(TSessionIdLocation.Cookie)')
-      else
-      begin
-        LCode.AppendLine('    .SetLocation(TSessionIdLocation.Header)');
-        LCode.AppendLine('    .SetHeaderName(' + QuotedPascalString(AConfig.SessionHeaderName) + ')');
-      end;
-      LCode.AppendLine('    .SetTimeout(' + IntToStr(AConfig.SessionTimeout) + ')');
-      LCode.AppendLine('  .ApplyConfig');
-      LCode.AppendLine('');
     end;
 
     LCode.AppendLine('  .Plugin.Configure<IMCPConfig>');

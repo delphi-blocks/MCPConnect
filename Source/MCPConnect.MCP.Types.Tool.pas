@@ -1,4 +1,4 @@
-unit MCPConnect.MCP.Types.Tool;
+﻿unit MCPConnect.MCP.Types.Tool;
 
 interface
 
@@ -20,7 +20,6 @@ uses
   Neon.Core.Utils,
 
   MCPConnect.MCP.Types.Base,
-
   MCPConnect.MCP.Attributes;
 
 

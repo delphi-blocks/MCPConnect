@@ -81,9 +81,6 @@ type
 
 implementation
 
-uses
-  MCPConnect.Configuration.Session;
-
 const
   PingInterval = 15000;
 
@@ -156,9 +153,7 @@ begin
     AMCPRequest.Headers.Add(AWebRequest.AllHeaders.KeyNames[I],
       AWebRequest.AllHeaders.ValueFromIndex[I].TrimLeft);
   {$ELSE}
-  var LSessionConfig := FServer.GetConfiguration<TSessionConfig>;
-
-  if AWebRequest.CacheControl <> '' then  
+  if AWebRequest.CacheControl <> '' then
     AMCPRequest.SetHeader('Cache-Control', AWebRequest.CacheControl);
   if AWebRequest.Cookie <> '' then
     AMCPRequest.SetHeader('Cookie', AWebRequest.Cookie);
@@ -190,8 +185,6 @@ begin
     AMCPRequest.SetHeader('Expires', DateTimeToHTTPDate(AWebRequest.Expires));
   if AWebRequest.Title <> '' then
     AMCPRequest.SetHeader('Title', AWebRequest.Title);
-  if AWebRequest.GetFieldByName(LSessionConfig.GetHeaderName) <> '' then
-    AMCPRequest.SetHeader(LSessionConfig.GetHeaderName, AWebRequest.GetFieldByName(LSessionConfig.GetHeaderName));
   {$ENDIF}
 end;
 

@@ -27,8 +27,6 @@ uses
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
   Neon.Core.Serializers.RTL,
-  MCPConnect.JRPC.Core,
-  MCPConnect.JRPC.Classes,
   MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Tool;
 

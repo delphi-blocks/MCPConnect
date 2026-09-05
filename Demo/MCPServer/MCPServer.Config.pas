@@ -7,28 +7,26 @@ uses
   IdGlobal, IdContext, IdBaseComponent, IdComponent,
   IdCustomTCPServer, IdCustomHTTPServer, IdHTTPServer,
 
-  MCPConnect.JRPC.Core,
-  MCPConnect.JRPC.Classes,
-  MCPConnect.JRPC.Server,
+  JRPC.Core,
+  JRPC.Classes,
 
+  MCPConnect.MCP.Server,
   MCPConnect.MCP.Server.Api,
   MCPConnect.MCP.Types.Base,
 
   MCPConnect.Configuration.MCP,
-  MCPConnect.Configuration.Session,
   MCPConnect.Configuration.Auth,
 
-  MCPConnect.Content.Writers.RTL,
+  MCPConnect.Content.Writers.RTL
   {$IFDEF FRAMEWORK_VCL}
-  MCPConnect.Content.Writers.VCL,
+  , MCPConnect.Content.Writers.VCL
   {$ENDIF}
-
-  MCPConnect.Session.Core;
+  ;
 
 type
   TServerConfigurator = class
-    class procedure ConfigureServer(AServer: TJRPCServer);
-    class procedure UnregisterFeatures(AServer: TJRPCServer);
+    class procedure ConfigureServer(AServer: TMCPServer);
+    class procedure UnregisterFeatures(AServer: TMCPServer);
   end;
 
 implementation
@@ -45,7 +43,7 @@ uses
 
 { TServerConfigurator }
 
-class procedure TServerConfigurator.ConfigureServer(AServer: TJRPCServer);
+class procedure TServerConfigurator.ConfigureServer(AServer: TMCPServer);
 begin
   AServer
 
@@ -79,7 +77,7 @@ begin
   ;
 end;
 
-class procedure TServerConfigurator.UnregisterFeatures(AServer: TJRPCServer);
+class procedure TServerConfigurator.UnregisterFeatures(AServer: TMCPServer);
 begin
   AServer.Plugin.Configure<IMCPConfig>
 

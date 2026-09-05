@@ -283,8 +283,7 @@ type
 implementation
 
 uses
-  System.NetEncoding,
-  MCPConnect.JRPC.Core;
+  System.NetEncoding;
 
 { TReadResourceResult }
 

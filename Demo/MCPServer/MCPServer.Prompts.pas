@@ -5,11 +5,8 @@ interface
 uses
   System.Classes, System.SysUtils,
 
-  MCPConnect.JRPC.Core,
-  MCPConnect.JRPC.Classes,
   MCPConnect.MCP.Types.Base,
-  MCPConnect.MCP.Attributes,
-  MCPConnect.Session.Core;
+  MCPConnect.MCP.Attributes;
 
 type
   TTodoPrompts = class

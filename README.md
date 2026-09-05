@@ -7,7 +7,7 @@
 **A powerful, attribute-driven framework for building Model Context Protocol (MCP) Servers in Delphi.**
 
 > [!NOTE]
-> Support for the MCP specification version **2026-07-28** is under development in the [`feature/mcp-2026-07-28`](https://github.com/delphi-blocks/MCPConnect/tree/feature/mcp-2026-07-28) branch. The protocol entity layer is complete there — discovery, completion, elicitation schemas, subscriptions, notifications, MRTR and the new error codes — with the transport still to follow. That revision is stateless, so the `initialize` handshake and `Mcp-Session-Id` sessions go away with it.
+> Support for the MCP specification version **2026-07-28** is under development in the [`feature/mcp-2026-07-28`](https://github.com/delphi-blocks/MCPConnect/tree/feature/mcp-2026-07-28) branch. The protocol entity layer is complete there — discovery, completion, elicitation schemas, subscriptions, notifications, MRTR and the new error codes — with the transport still to follow. That revision is stateless: the `initialize` handshake and `Mcp-Session-Id` sessions have been removed from that branch, along with SSE resumption over HTTP GET.
 
 ## Getting Started
 
@@ -33,7 +33,6 @@ MCPConnect handles the serialization, routing, and context management required f
 
 - 🛡️**Type safety** - Define your tool arguments as native delphi class or records, have mcp-connect handle the rest.
 - 🚛 **Transports** - Built-in HTTP (WebBroker, Indy) and STDIO transports for both stateless and persistent connections.
-- 🗂️ **Session Management** - Built-in stateful session support across requests with automatic cleanup and custom session data. *(Protocol-level sessions are removed in MCP 2026-07-28.)*
 - 🔐 **OAuth 2.1** — Built-in support for OAuth 2.1 bearer-token authentication following the MCP Authorization specification, with pluggable token validators, JWKS key management, and a metadata proxy for providers that don't fully advertise PKCE support.
 - ⚡ **Low boilerplate** - mcp-connect generates all the MCP endpoints for you apart from your tools, prompts and resources.
 
@@ -72,7 +71,7 @@ type
 
 ## 🤖 Claude Code Plugin
 
-A [Claude Code](https://claude.com/claude-code) plugin for MCPConnect is available from the [delphi-blocks/claude-plugins](https://github.com/delphi-blocks/claude-plugins) marketplace. Installing it teaches Claude Code how MCPConnect actually works — transports, attributes, the fluent configuration, sessions, notifications and OAuth — so it can scaffold a new server or add tools, resources and prompts to an existing one without you pasting the API in every time.
+A [Claude Code](https://claude.com/claude-code) plugin for MCPConnect is available from the [delphi-blocks/claude-plugins](https://github.com/delphi-blocks/claude-plugins) marketplace. Installing it teaches Claude Code how MCPConnect actually works — transports, attributes, the fluent configuration, notifications and OAuth — so it can scaffold a new server or add tools, resources and prompts to an existing one without you pasting the API in every time.
 
 ```
 /plugin marketplace add delphi-blocks/claude-plugins

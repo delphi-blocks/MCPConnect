@@ -20,13 +20,13 @@ interface
 uses
   System.SysUtils, System.JSON,
 
+  JRPC.Core,
   Neon.Core.Types,
   Neon.Core.Attributes,
   Neon.Core.Nullables,
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
 
-  MCPConnect.JRPC.Core,
   MCPConnect.MCP.Types.Base;
 
 const

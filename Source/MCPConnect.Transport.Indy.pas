@@ -19,8 +19,8 @@ uses
   System.Classes, System.SysUtils, System.Generics.Collections,
   IdCustomHTTPServer, IdContext, IdGlobal, IdGlobalProtocols, IdTCPConnection,
 
-  MCPConnect.JRPC.Core,
-  MCPConnect.JRPC.Server,
+  JRPC.Core,
+  MCPConnect.MCP.Server,
   MCPConnect.Transport.Base,
   MCPConnect.Transport.MediaType;
 
@@ -30,7 +30,7 @@ resourcestring
 type
   TJRPCIndyBridge = class(TComponent)
   private
-    FJRPCServer: TJRPCServer;
+    FJRPCServer: TMCPServer;
     procedure LogRequest(const ARequest: TMCPTransportRequest);
     {$HINTS OFF}
     procedure LogResponse(const AResponse: TMCPTransportResponse);
@@ -43,19 +43,19 @@ type
   public
     procedure HandleRequest(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
 
-    property JRPCServer: TJRPCServer read FJRPCServer write FJRPCServer;
+    property JRPCServer: TMCPServer read FJRPCServer write FJRPCServer;
   end;
 
   TJRPCIndyServer = class(TIdCustomHTTPServer)
   private
-    FJRPCServer: TJRPCServer;
+    FJRPCServer: TMCPServer;
     FBridge: TJRPCIndyBridge;
     procedure ParseAuthentication(AContext: TIdContext; const AAuthType, AAuthData: string; var VUsername, VPassword: String; var VHandled: Boolean);
   public
     constructor Create(AOwner: TComponent);
     destructor Destroy; override;
 
-    property JRPCServer: TJRPCServer read FJRPCServer;
+    property JRPCServer: TMCPServer read FJRPCServer;
   public
     class function CreateMCPServer(AOwner: TComponent): TJRPCIndyServer;
   end;
@@ -137,7 +137,7 @@ constructor TJRPCIndyServer.Create(AOwner: TComponent);
 begin
   inherited;
   FBridge := TJRPCIndyBridge.Create(nil);
-  FJRPCServer := TJRPCServer.Create(nil);
+  FJRPCServer := TMCPServer.Create(nil);
   FBridge.JRPCServer := FJRPCServer;
 
   OnParseAuthentication := ParseAuthentication;

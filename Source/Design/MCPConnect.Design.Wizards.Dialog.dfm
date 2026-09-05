@@ -474,71 +474,13 @@ object FormMCPProjectWizard: TFormMCPProjectWizard
     object TabOptions: TTabSheet
       Caption = 'Options'
       ImageIndex = 4
-      object GroupSession: TGroupBox
+      object GroupSamples: TGroupBox
         Left = 16
         Top = 11
         Width = 385
-        Height = 177
-        Caption = ' Sessions '
-        TabOrder = 0
-        object LabelSessionHeader: TLabel
-          Left = 200
-          Top = 64
-          Width = 71
-          Height = 15
-          Caption = 'Header name'
-        end
-        object LabelSessionTimeout: TLabel
-          Left = 200
-          Top = 112
-          Width = 99
-          Height = 15
-          Caption = 'Timeout (minutes)'
-        end
-        object CheckSession: TCheckBox
-          Left = 16
-          Top = 37
-          Width = 353
-          Height = 17
-          Caption = 'Enable session tracking'
-          TabOrder = 0
-          OnClick = OptionChanged
-        end
-        object RadioGroupSessionLocation: TRadioGroup
-          Left = 16
-          Top = 64
-          Width = 169
-          Height = 89
-          Caption = ' Session id location '
-          ItemIndex = 0
-          Items.Strings = (
-            'HTTP header'
-            'Cookie')
-          TabOrder = 1
-          OnClick = OptionChanged
-        end
-        object EditSessionHeader: TEdit
-          Left = 200
-          Top = 83
-          Width = 169
-          Height = 23
-          TabOrder = 2
-        end
-        object EditSessionTimeout: TEdit
-          Left = 200
-          Top = 131
-          Width = 169
-          Height = 23
-          TabOrder = 3
-        end
-      end
-      object GroupSamples: TGroupBox
-        Left = 16
-        Top = 194
-        Width = 385
         Height = 90
         Caption = ' Sample code '
-        TabOrder = 1
+        TabOrder = 0
         object CheckSamples: TCheckBox
           Left = 16
           Top = 36

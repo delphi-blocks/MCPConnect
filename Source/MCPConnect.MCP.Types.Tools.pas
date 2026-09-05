@@ -36,7 +36,6 @@ uses
   MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Tool,
   MCPConnect.MCP.Types.Mrtr,
-
   MCPConnect.MCP.Attributes;
 
 type
@@ -120,9 +119,6 @@ type
   // what tools/call returns, and Neon writes an object by its runtime class.
 
 implementation
-
-uses
-  MCPConnect.JRPC.Core;
 
 { TListToolsResult }
 

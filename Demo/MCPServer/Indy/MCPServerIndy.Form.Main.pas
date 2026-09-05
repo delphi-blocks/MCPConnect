@@ -38,7 +38,7 @@ uses
   // TJRPCServer is the protocol engine: it owns the JSON-RPC dispatch, the
   // plugin/configuration chain and the session manager. It is transport
   // agnostic - the unit below is what plugs it into HTTP.
-  MCPConnect.JRPC.Server,
+  JRPC.Server,
 
   // TJRPCIndyServer = TIdCustomHTTPServer + an MCP request handler.
   MCPConnect.Transport.Indy;

@@ -19,8 +19,8 @@ uses
   System.Classes, System.SysUtils, System.TypInfo, System.Rtti, System.Generics.Collections,
   System.Generics.Defaults, System.JSON,
 
-  MCPConnect.JRPC.Classes,
-  MCPConnect.JRPC.Core;
+  JRPC.Core,
+  JRPC.Classes;
 
 resourcestring
   SImplementationClassNotFound = 'Implementation class not found';

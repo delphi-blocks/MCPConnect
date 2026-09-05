@@ -144,7 +144,6 @@
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.Core.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.MCP.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.Neon.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.Configuration.Session.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Content.Writers.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Content.Writers.RTL.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Content.Writers.VCL.pas"/>

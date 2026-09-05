@@ -17,8 +17,7 @@ uses
   MCPConnect.JRPC.Classes,
   MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Tools,
-  MCPConnect.MCP.Attributes,
-  MCPConnect.Session.Core;
+  MCPConnect.MCP.Attributes;
 
 type
   TUser = class

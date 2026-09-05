@@ -40,8 +40,6 @@ type
   /// </summary>
   TMCPTokenLocation = (Bearer, Cookie, Header);
 
-  TMCPSessionLocation = (Header, Cookie);
-
   /// <summary>
   ///   Options collected by the wizard and consumed by the creators.
   ///   The record is passed by value along the whole creator chain.
@@ -55,8 +53,6 @@ type
     DefaultServiceName = 'MCPServerService';
     DefaultCORSMethods = 'GET, POST, OPTIONS';
     DefaultTokenCustomHeader = 'X-API-Key';
-    DefaultSessionHeaderName = 'Mcp-Session-Id';
-    DefaultSessionTimeout = 30;
   public
     AppKind: TMCPAppKind;
     Transport: TMCPTransportKind;
@@ -87,18 +83,13 @@ type
     OAuthTrustedIssuer: string;
     OAuthScopes: string;
 
-    UseSession: Boolean;
-    SessionLocation: TMCPSessionLocation;
-    SessionHeaderName: string;
-    SessionTimeout: Integer;
-
     CreateSampleUnit: Boolean;
 
     class function CreateDefault: TMCPProjectConfig; static;
 
     /// <summary>
     ///   True when the selected transport speaks HTTP, hence supports CORS,
-    ///   authentication and header/cookie based sessions
+    ///   authentication
     /// </summary>
     function IsHttpTransport: Boolean;
 
@@ -138,11 +129,6 @@ begin
   Result.AuthKind := TMCPAuthKind.None;
   Result.TokenLocation := TMCPTokenLocation.Bearer;
   Result.TokenCustomHeader := DefaultTokenCustomHeader;
-
-  Result.UseSession := False;
-  Result.SessionLocation := TMCPSessionLocation.Header;
-  Result.SessionHeaderName := DefaultSessionHeaderName;
-  Result.SessionTimeout := DefaultSessionTimeout;
 
   Result.CreateSampleUnit := True;
 end;

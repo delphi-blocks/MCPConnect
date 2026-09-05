@@ -7,8 +7,7 @@ uses
   Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls,
 
   System.Generics.Collections,
-  MCPConnect.JRPC.Core,
-  MCPConnect.Session.Core;
+  MCPConnect.JRPC.Core;
 
 type
   TfrmMisc = class(TForm)

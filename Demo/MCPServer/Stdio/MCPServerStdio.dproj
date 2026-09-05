@@ -119,7 +119,6 @@
         <DCCReference Include="..\..\..\Source\MCPConnect.Configuration.Core.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.Configuration.MCP.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.Configuration.Neon.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.Configuration.Session.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Core.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Server.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Invoker.pas"/>
@@ -132,7 +131,6 @@
         <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Invoker.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.Base.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Classes.pas"/>
-        <DCCReference Include="..\..\..\Source\MCPConnect.Session.Core.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.Content.Writers.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.Transport.Stdio.pas"/>
         <DCCReference Include="..\MCPServer.Tools.pas"/>

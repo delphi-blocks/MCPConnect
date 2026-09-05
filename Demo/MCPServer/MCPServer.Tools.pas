@@ -7,8 +7,6 @@ uses
 
   Neon.Core.Persistence,
 
-  MCPConnect.JRPC.Core,
-  MCPConnect.JRPC.Classes,
   MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Attributes;
 

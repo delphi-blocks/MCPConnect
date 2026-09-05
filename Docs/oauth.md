@@ -178,7 +178,7 @@ AServer
 ```
 
 CORS headers, including `Access-Control-Expose-Headers` for `WWW-Authenticate` (needed by browser
-JavaScript to read the challenge on a 401 response) and the session header, are injected on every
+JavaScript to read the challenge on a 401 response), are injected on every
 response — including error responses and the OAuth well-known endpoints — so the browser-based
 OAuth discovery flow works correctly.
 

@@ -91,13 +91,6 @@ type
     EditOAuthScopes: TEdit;
 
     TabOptions: TTabSheet;
-    GroupSession: TGroupBox;
-    CheckSession: TCheckBox;
-    RadioGroupSessionLocation: TRadioGroup;
-    LabelSessionHeader: TLabel;
-    EditSessionHeader: TEdit;
-    LabelSessionTimeout: TLabel;
-    EditSessionTimeout: TEdit;
     GroupSamples: TGroupBox;
     CheckSamples: TCheckBox;
 
@@ -155,7 +148,7 @@ resourcestring
   STitleSecurity = 'Security';
   SHintSecurity = 'Cross origin policy and authentication of incoming requests.';
   STitleOptions = 'Options';
-  SHintOptions = 'Session tracking and sample code.';
+  SHintOptions = 'Sample code.';
   STitleSummary = 'Summary';
   SHintSummary = 'Review the choices, then press Finish to create the project.';
 
@@ -167,7 +160,6 @@ resourcestring
   STokenHeaderRequired = 'The header or cookie name cannot be empty for this token location.';
   SOAuthResourceRequired = 'The OAuth resource URL cannot be empty.';
   SOAuthAuthServerRequired = 'The OAuth authorization server cannot be empty.';
-  SInvalidTimeout = 'The session timeout must be a positive number of minutes.';
 
   SSummaryNone = '(none)';
 
@@ -271,11 +263,6 @@ begin
   EditOAuthIssuer.Text := FConfig.OAuthTrustedIssuer;
   EditOAuthScopes.Text := FConfig.OAuthScopes;
 
-  CheckSession.Checked := FConfig.UseSession;
-  RadioGroupSessionLocation.ItemIndex := Ord(FConfig.SessionLocation);
-  EditSessionHeader.Text := FConfig.SessionHeaderName;
-  EditSessionTimeout.Text := IntToStr(FConfig.SessionTimeout);
-
   CheckSamples.Checked := FConfig.CreateSampleUnit;
 
   UpdateControlsState;
@@ -310,15 +297,6 @@ begin
   FConfig.OAuthAuthServer := Trim(EditOAuthAuthServer.Text);
   FConfig.OAuthTrustedIssuer := Trim(EditOAuthIssuer.Text);
   FConfig.OAuthScopes := Trim(EditOAuthScopes.Text);
-
-  FConfig.UseSession := CheckSession.Checked;
-  if RadioGroupSessionLocation.ItemIndex = Ord(TMCPSessionLocation.Cookie) then
-    FConfig.SessionLocation := TMCPSessionLocation.Cookie
-  else
-    FConfig.SessionLocation := TMCPSessionLocation.Header;
-  FConfig.SessionHeaderName := Trim(EditSessionHeader.Text);
-  FConfig.SessionTimeout := StrToIntDef(EditSessionTimeout.Text,
-    TMCPProjectConfig.DefaultSessionTimeout);
 
   FConfig.CreateSampleUnit := CheckSamples.Checked;
 end;
@@ -526,13 +504,6 @@ begin
 
   LabelTokenHeader.Enabled := SelectedTokenLocation <> TMCPTokenLocation.Bearer;
   EditTokenHeader.Enabled := LabelTokenHeader.Enabled;
-
-  RadioGroupSessionLocation.Enabled := CheckSession.Checked and LIsHttp;
-  EditSessionHeader.Enabled := RadioGroupSessionLocation.Enabled and
-    (RadioGroupSessionLocation.ItemIndex = Ord(TMCPSessionLocation.Header));
-  LabelSessionHeader.Enabled := EditSessionHeader.Enabled;
-  EditSessionTimeout.Enabled := CheckSession.Checked;
-  LabelSessionTimeout.Enabled := EditSessionTimeout.Enabled;
 end;
 
 procedure TFormMCPProjectWizard.UpdateSummary;
@@ -622,10 +593,6 @@ begin
     end;
 
     LLines.Add('');
-    LLines.Add('Sessions  . . . : ' + OnOff(FConfig.UseSession));
-    if FConfig.UseSession then
-      LLines.Add('  timeout . . . : ' + IntToStr(FConfig.SessionTimeout) + ' minutes');
-
     LLines.Add('Sample unit . . : ' + OnOff(FConfig.CreateSampleUnit));
   finally
     LLines.EndUpdate;
@@ -647,7 +614,6 @@ end;
 function TFormMCPProjectWizard.ValidateCurrentPage: Boolean;
 var
   LPort: Integer;
-  LTimeout: Integer;
 begin
   Result := True;
 
@@ -690,15 +656,6 @@ begin
           if Trim(EditOAuthAuthServer.Text) = '' then
             Exit(FailPage(SOAuthAuthServerRequired, EditOAuthAuthServer));
         end;
-    end;
-  end
-  else if PageControl.ActivePage = TabOptions then
-  begin
-    if CheckSession.Checked then
-    begin
-      LTimeout := StrToIntDef(EditSessionTimeout.Text, -1);
-      if LTimeout <= 0 then
-        Exit(FailPage(SInvalidTimeout, EditSessionTimeout));
     end;
   end;
 end;

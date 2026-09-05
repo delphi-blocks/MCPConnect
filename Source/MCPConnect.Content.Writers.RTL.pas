@@ -117,7 +117,7 @@ end;
 
 procedure TMCPStreamWriter.WritePrompt(const AValue: TValue; AContext: TMCPPromptContext);
 begin
-  AContext.Result.Messages.AddBlob(TRole.User, TMediaType.OctectStream, StreamToBase64(AValue));
+  AContext.Result.Messages.AddBlob(TRole.User, TMime.OctectStream, StreamToBase64(AValue));
 end;
 
 procedure TMCPStreamWriter.WriteResource(const AValue: TValue; AContext: TMCPresourceContext);

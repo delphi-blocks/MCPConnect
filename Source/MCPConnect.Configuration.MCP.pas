@@ -26,8 +26,9 @@ uses
   Neon.Core.Nullables,
   Neon.Core.Persistence,
 
-  MCPConnect.JRPC.Classes,
-  MCPConnect.JRPC.Core,
+  JRPC.Core,
+  JRPC.Classes,
+
   MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Tool,
   MCPConnect.MCP.Types.Mrtr,
@@ -35,8 +36,8 @@ uses
   MCPConnect.MCP.Types.Prompts,
   MCPConnect.MCP.Types.Resources,
   MCPConnect.MCP.Types.Completion,
-
   MCPConnect.MCP.Attributes,
+
   MCPConnect.Content.Writers,
   MCPConnect.Configuration.Core;
 

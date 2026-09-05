@@ -1,4 +1,4 @@
-{******************************************************************************}
+﻿{******************************************************************************}
 {                                                                              }
 {  Delphi MCP Connect Library                                                  }
 {                                                                              }
@@ -413,7 +413,7 @@ implementation
 
 uses
   Logify,
-  MCPConnect.JRPC.Core,
+  JRPC.Core,
   // Only for the ITokenValidator type check in SetTokenValidatorClass. It lives in
   // the implementation on purpose: MCPConnect.Security.Token uses this unit in its
   // interface, and the dependency between the two must stay one-way up there.

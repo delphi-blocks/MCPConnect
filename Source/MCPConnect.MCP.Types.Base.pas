@@ -26,9 +26,7 @@ uses
   Neon.Core.Nullables,
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
-  Neon.Core.Serializers.RTL,
-  MCPConnect.JRPC.Core,
-  MCPConnect.JRPC.Classes;
+  Neon.Core.Serializers.RTL;
 
 const
   // Declared as TArray<string> rather than as an anonymous "array of string":
@@ -200,7 +198,7 @@ type
     User
   );
 
-  TMediaType = class
+  TMime = class
   public const
     Text = 'text/plain';
     Json = 'application/json';

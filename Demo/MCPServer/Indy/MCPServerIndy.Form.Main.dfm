@@ -69,8 +69,8 @@ object frmMain: TfrmMain
     Font.Style = []
     ParentFont = False
     ScrollBars = ssBoth
-    WordWrap = False
     TabOrder = 4
+    WordWrap = False
   end
   object ApplicationEvents1: TApplicationEvents
     OnIdle = ApplicationEvents1Idle

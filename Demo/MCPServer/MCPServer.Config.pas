@@ -41,13 +41,19 @@ uses
 
   MCPServer.Resources,
   MCPServer.Tools,
-  MCPServer.Prompts;
+  MCPServer.Prompts,
+  MCPServer.Middleware;
 
 { TServerConfigurator }
 
 class procedure TServerConfigurator.ConfigureServer(AServer: TJRPCServer);
 begin
   AServer
+
+    .Middleware
+      .Add(TMessageMiddleWare)
+      .Add(TCallToolMiddleware)
+    .BackToApp
 
     .Plugin.Configure<IMCPConfig>
 

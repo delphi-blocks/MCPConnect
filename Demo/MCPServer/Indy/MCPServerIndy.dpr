@@ -60,7 +60,10 @@ uses
   MCPServer.Prompts in '..\MCPServer.Prompts.pas',
   MCPServer.Notifications in '..\MCPServer.Notifications.pas',
   MCPConnect.MCP.Types.Mrtr in '..\..\..\Source\MCPConnect.MCP.Types.Mrtr.pas',
-  MCPConnect.MCP.Types.Tool in '..\..\..\Source\MCPConnect.MCP.Types.Tool.pas';
+  MCPConnect.MCP.Types.Tool in '..\..\..\Source\MCPConnect.MCP.Types.Tool.pas',
+  MCPConnect.JRPC.Middleware in '..\..\..\Source\MCPConnect.JRPC.Middleware.pas',
+  MCPServer.Middleware in '..\MCPServer.Middleware.pas',
+  MCPConnect.MCP.Middleware in '..\..\..\Source\MCPConnect.MCP.Middleware.pas';
 
 {$R *.res}
 

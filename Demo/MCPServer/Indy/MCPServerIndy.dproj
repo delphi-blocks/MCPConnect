@@ -164,6 +164,9 @@
         <DCCReference Include="..\MCPServer.Notifications.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.Mrtr.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.Tool.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Middleware.pas"/>
+        <DCCReference Include="..\MCPServer.Middleware.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Middleware.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

@@ -1,96 +1,98 @@
-{******************************************************************************}
-{                                                                              }
-{  Delphi MCP Connect Library                                                  }
-{                                                                              }
-{  Copyright (c) Paolo Rossi <dev@paolorossi.net>                              }
-{                Luca Minuti <code@lucaminuti.it>                              }
-{  All rights reserved.                                                        }
-{                                                                              }
-{  https://github.com/delphi-blocks/MCPConnect                                 }
-{                                                                              }
-{  Licensed under the MIT license                                              }
-{                                                                              }
-{******************************************************************************}
-package MCPConnect;
-
-{$R *.res}
-{$IFDEF IMPLICITBUILDING This IFDEF should not be used by users}
-{$ALIGN 8}
-{$ASSERTIONS ON}
-{$BOOLEVAL OFF}
-{$DEBUGINFO OFF}
-{$EXTENDEDSYNTAX ON}
-{$IMPORTEDDATA ON}
-{$IOCHECKS ON}
-{$LOCALSYMBOLS ON}
-{$LONGSTRINGS ON}
-{$OPENSTRINGS ON}
-{$OPTIMIZATION OFF}
-{$OVERFLOWCHECKS OFF}
-{$RANGECHECKS OFF}
-{$REFERENCEINFO ON}
-{$SAFEDIVIDE OFF}
-{$STACKFRAMES ON}
-{$TYPEDADDRESS OFF}
-{$VARSTRINGCHECKS ON}
-{$WRITEABLECONST OFF}
-{$MINENUMSIZE 1}
-{$IMAGEBASE $400000}
-{$DEFINE DEBUG}
-{$ENDIF IMPLICITBUILDING}
-{$DESCRIPTION 'MCP Library for Delphi'}
-{$LIBSUFFIX AUTO}
-{$RUNONLY}
-{$IMPLICITBUILD OFF}
-
-requires
-  rtl,
-  dbrtl,
-  inet,
-  IndySystem,
-  IndyProtocols,
-  IndyCore,
-  Neon,
-  Logify,
-  JOSE;
-
-contains
-  MCPConnect.Configuration.Auth in '..\..\Source\MCPConnect.Configuration.Auth.pas',
-  MCPConnect.Configuration.Core in '..\..\Source\MCPConnect.Configuration.Core.pas',
-  MCPConnect.Configuration.MCP in '..\..\Source\MCPConnect.Configuration.MCP.pas',
-  MCPConnect.Configuration.Neon in '..\..\Source\MCPConnect.Configuration.Neon.pas',
-  MCPConnect.Configuration.Session in '..\..\Source\MCPConnect.Configuration.Session.pas',
-  MCPConnect.Content.Writers in '..\..\Source\MCPConnect.Content.Writers.pas',
-  MCPConnect.Content.Writers.RTL in '..\..\Source\MCPConnect.Content.Writers.RTL.pas',
-  MCPConnect.JRPC.Classes in '..\..\Source\MCPConnect.JRPC.Classes.pas',
-  MCPConnect.JRPC.Core in '..\..\Source\MCPConnect.JRPC.Core.pas',
+{******************************************************************************}
+{                                                                              }
+{  Delphi MCP Connect Library                                                  }
+{                                                                              }
+{  Copyright (c) Paolo Rossi <dev@paolorossi.net>                              }
+{                Luca Minuti <code@lucaminuti.it>                              }
+{  All rights reserved.                                                        }
+{                                                                              }
+{  https://github.com/delphi-blocks/MCPConnect                                 }
+{                                                                              }
+{  Licensed under the MIT license                                              }
+{                                                                              }
+{******************************************************************************}
+package MCPConnect;
+
+{$R *.res}
+{$IFDEF IMPLICITBUILDING This IFDEF should not be used by users}
+{$ALIGN 8}
+{$ASSERTIONS ON}
+{$BOOLEVAL OFF}
+{$DEBUGINFO OFF}
+{$EXTENDEDSYNTAX ON}
+{$IMPORTEDDATA ON}
+{$IOCHECKS ON}
+{$LOCALSYMBOLS ON}
+{$LONGSTRINGS ON}
+{$OPENSTRINGS ON}
+{$OPTIMIZATION OFF}
+{$OVERFLOWCHECKS OFF}
+{$RANGECHECKS OFF}
+{$REFERENCEINFO ON}
+{$SAFEDIVIDE OFF}
+{$STACKFRAMES ON}
+{$TYPEDADDRESS OFF}
+{$VARSTRINGCHECKS ON}
+{$WRITEABLECONST OFF}
+{$MINENUMSIZE 1}
+{$IMAGEBASE $400000}
+{$DEFINE DEBUG}
+{$ENDIF IMPLICITBUILDING}
+{$DESCRIPTION 'MCP Library for Delphi'}
+{$LIBSUFFIX AUTO}
+{$RUNONLY}
+{$IMPLICITBUILD OFF}
+
+requires
+  rtl,
+  dbrtl,
+  inet,
+  IndySystem,
+  IndyProtocols,
+  IndyCore,
+  Neon,
+  Logify,
+  JOSE;
+
+contains
+  MCPConnect.Configuration.Auth in '..\..\Source\MCPConnect.Configuration.Auth.pas',
+  MCPConnect.Configuration.Core in '..\..\Source\MCPConnect.Configuration.Core.pas',
+  MCPConnect.Configuration.MCP in '..\..\Source\MCPConnect.Configuration.MCP.pas',
+  MCPConnect.Configuration.Neon in '..\..\Source\MCPConnect.Configuration.Neon.pas',
+  MCPConnect.Configuration.Session in '..\..\Source\MCPConnect.Configuration.Session.pas',
+  MCPConnect.Content.Writers in '..\..\Source\MCPConnect.Content.Writers.pas',
+  MCPConnect.Content.Writers.RTL in '..\..\Source\MCPConnect.Content.Writers.RTL.pas',
+  MCPConnect.JRPC.Classes in '..\..\Source\MCPConnect.JRPC.Classes.pas',
+  MCPConnect.JRPC.Core in '..\..\Source\MCPConnect.JRPC.Core.pas',
   MCPConnect.JRPC.Invoker in '..\..\Source\MCPConnect.JRPC.Invoker.pas',
-  MCPConnect.JRPC.Server in '..\..\Source\MCPConnect.JRPC.Server.pas',
-  MCPConnect.MCP.Attributes in '..\..\Source\MCPConnect.MCP.Attributes.pas',
-  MCPConnect.MCP.Config in '..\..\Source\MCPConnect.MCP.Config.pas',
-  MCPConnect.MCP.Invoker in '..\..\Source\MCPConnect.MCP.Invoker.pas',
-  MCPConnect.MCP.Server.Api in '..\..\Source\MCPConnect.MCP.Server.Api.pas',
-  MCPConnect.MCP.Types.Base in '..\..\Source\MCPConnect.MCP.Types.Base.pas',
-  MCPConnect.MCP.Types.Completion in '..\..\Source\MCPConnect.MCP.Types.Completion.pas',
-  MCPConnect.MCP.Types.Elicitation in '..\..\Source\MCPConnect.MCP.Types.Elicitation.pas',
-  MCPConnect.MCP.Types.Errors in '..\..\Source\MCPConnect.MCP.Types.Errors.pas',
-  MCPConnect.MCP.Types.Mrtr in '..\..\Source\MCPConnect.MCP.Types.Mrtr.pas',
-  MCPConnect.MCP.Types.Notifications in '..\..\Source\MCPConnect.MCP.Types.Notifications.pas',
-  MCPConnect.MCP.Types.Prompts in '..\..\Source\MCPConnect.MCP.Types.Prompts.pas',
-  MCPConnect.MCP.Types.Resources in '..\..\Source\MCPConnect.MCP.Types.Resources.pas',
-  MCPConnect.MCP.Types.Subscriptions in '..\..\Source\MCPConnect.MCP.Types.Subscriptions.pas',
-  MCPConnect.MCP.Types.Tool in '..\..\Source\MCPConnect.MCP.Types.Tool.pas',
-  MCPConnect.MCP.Types.Tools in '..\..\Source\MCPConnect.MCP.Types.Tools.pas',
-  MCPConnect.Security.Jwks in '..\..\Source\MCPConnect.Security.Jwks.pas',
-  MCPConnect.Security.Token in '..\..\Source\MCPConnect.Security.Token.pas',
-  MCPConnect.Security.Token.JOSE in '..\..\Source\MCPConnect.Security.Token.JOSE.pas',
-  MCPConnect.Session.Core in '..\..\Source\MCPConnect.Session.Core.pas',
-  MCPConnect.Transport.AcceptParser in '..\..\Source\MCPConnect.Transport.AcceptParser.pas',
-  MCPConnect.Transport.MediaType in '..\..\Source\MCPConnect.Transport.MediaType.pas',
-  MCPConnect.Transport.Base in '..\..\Source\MCPConnect.Transport.Base.pas',
-  MCPConnect.Transport.Indy in '..\..\Source\MCPConnect.Transport.Indy.pas',
-  MCPConnect.Transport.Stdio in '..\..\Source\MCPConnect.Transport.Stdio.pas',
-  MCPConnect.Transport.WebBroker in '..\..\Source\MCPConnect.Transport.WebBroker.pas';
-
-end.
-
+  MCPConnect.JRPC.Middleware in '..\..\Source\MCPConnect.JRPC.Middleware.pas',
+  MCPConnect.JRPC.Server in '..\..\Source\MCPConnect.JRPC.Server.pas',
+  MCPConnect.MCP.Attributes in '..\..\Source\MCPConnect.MCP.Attributes.pas',
+  MCPConnect.MCP.Config in '..\..\Source\MCPConnect.MCP.Config.pas',
+  MCPConnect.MCP.Middleware in '..\..\Source\MCPConnect.MCP.Middleware.pas',
+  MCPConnect.MCP.Invoker in '..\..\Source\MCPConnect.MCP.Invoker.pas',
+  MCPConnect.MCP.Server.Api in '..\..\Source\MCPConnect.MCP.Server.Api.pas',
+  MCPConnect.MCP.Types.Base in '..\..\Source\MCPConnect.MCP.Types.Base.pas',
+  MCPConnect.MCP.Types.Completion in '..\..\Source\MCPConnect.MCP.Types.Completion.pas',
+  MCPConnect.MCP.Types.Elicitation in '..\..\Source\MCPConnect.MCP.Types.Elicitation.pas',
+  MCPConnect.MCP.Types.Errors in '..\..\Source\MCPConnect.MCP.Types.Errors.pas',
+  MCPConnect.MCP.Types.Mrtr in '..\..\Source\MCPConnect.MCP.Types.Mrtr.pas',
+  MCPConnect.MCP.Types.Notifications in '..\..\Source\MCPConnect.MCP.Types.Notifications.pas',
+  MCPConnect.MCP.Types.Prompts in '..\..\Source\MCPConnect.MCP.Types.Prompts.pas',
+  MCPConnect.MCP.Types.Resources in '..\..\Source\MCPConnect.MCP.Types.Resources.pas',
+  MCPConnect.MCP.Types.Subscriptions in '..\..\Source\MCPConnect.MCP.Types.Subscriptions.pas',
+  MCPConnect.MCP.Types.Tool in '..\..\Source\MCPConnect.MCP.Types.Tool.pas',
+  MCPConnect.MCP.Types.Tools in '..\..\Source\MCPConnect.MCP.Types.Tools.pas',
+  MCPConnect.Security.Jwks in '..\..\Source\MCPConnect.Security.Jwks.pas',
+  MCPConnect.Security.Token in '..\..\Source\MCPConnect.Security.Token.pas',
+  MCPConnect.Security.Token.JOSE in '..\..\Source\MCPConnect.Security.Token.JOSE.pas',
+  MCPConnect.Session.Core in '..\..\Source\MCPConnect.Session.Core.pas',
+  MCPConnect.Transport.AcceptParser in '..\..\Source\MCPConnect.Transport.AcceptParser.pas',
+  MCPConnect.Transport.MediaType in '..\..\Source\MCPConnect.Transport.MediaType.pas',
+  MCPConnect.Transport.Base in '..\..\Source\MCPConnect.Transport.Base.pas',
+  MCPConnect.Transport.Indy in '..\..\Source\MCPConnect.Transport.Indy.pas',
+  MCPConnect.Transport.Stdio in '..\..\Source\MCPConnect.Transport.Stdio.pas',
+  MCPConnect.Transport.WebBroker in '..\..\Source\MCPConnect.Transport.WebBroker.pas';
+
+end.
+

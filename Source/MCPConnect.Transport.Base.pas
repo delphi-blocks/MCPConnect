@@ -244,6 +244,7 @@ type
     function IsProtectedResourceMetadataRequest: Boolean;
     function IsMetadataProxyRequest: Boolean;
     procedure HandleMetadataProxy;
+    function SelectNeonConfig(const AProxy: TJRPCConstructorProxy): INeonConfiguration;
     procedure HandleMessage(AMessage: TJRPCMessage; AResponseQueue: TMCPMessageQueue);
     procedure SendResponseHeaders(AResponse: TMCPTransportResponse);
     procedure WriteSSEResponse(const AValue: string; const AEventId: string = '');
@@ -271,6 +272,7 @@ uses
   JRPC.Invoker,
   Neon.Core.Utils,
   MCPConnect.Transport.MediaType,
+  MCPConnect.Configuration.Core,
   MCPConnect.Configuration.Neon;
 
 
@@ -769,6 +771,23 @@ begin
       FGarbage.Add(FContext);
       FContext.AddContent(FGarbage);
       FContext.AddContent(FServer);
+
+      // Adding the server is not enough: the context is keyed by exact class, so
+      // every configuration has to go in under its own class for [Context]
+      // injection and FindContextDataAs to see it. Missing one is not a nil
+      // field - TContextManager.Inject resolves through GetContextDataAs, which
+      // raises - so this is what makes TMCPConfig, TOAuthConfig, TAuthTokenConfig
+      // and TJRPCNeonConfig reachable from an API class or a token validator.
+      //
+      // The JRPC library leaves the expansion to its host: TJRPCContext ships an
+      // AddConfigurations hook, empty because a standalone JRPC server has no
+      // configuration system. Subclassing the context to fill it in is not an
+      // option here - the hook is not virtual, and a descendant would register
+      // *itself* under the descendant's class, which would break the
+      // [Context] TJRPCContext field every MCP API class declares.
+      for var LConfig in FServer.GetConfigurations do
+        FContext.AddContent(LConfig);
+
       FContext.AddContent(FAccessToken);
 
       if not CheckOAuth then
@@ -855,6 +874,28 @@ begin
   Result := LAsyncExecute;
 end;
 
+function TMCPTransportHandler.SelectNeonConfig(const AProxy: TJRPCConstructorProxy): INeonConfiguration;
+var
+  LJRPCNeonConfig: TJRPCNeonConfig;
+begin
+  // Precedence: the configuration the API class was registered with - for every
+  // built-in MCP namespace that is MCPNeonConfig, whose camelCase naming and
+  // SetMembers([Fields]) are what make an MCP entity serialize to anything at
+  // all - then the application-wide IJRPCNeonConfig, then Neon's default, which
+  // TJRPCInvokerContext.SelectConfig applies when this returns nil.
+  //
+  // The middle tier is why this lives here rather than being passed straight in:
+  // the JRPC library knows nothing of the plugin configuration system, so its
+  // SelectConfig takes the API-level configuration alone.
+  Result := AProxy.NeonConfig;
+  if Assigned(Result) then
+    Exit;
+
+  LJRPCNeonConfig := FContext.FindContextDataAs<TJRPCNeonConfig>;
+  if Assigned(LJRPCNeonConfig) then
+    Result := LJRPCNeonConfig.NeonConfig;
+end;
+
 procedure TMCPTransportHandler.HandleMessage(AMessage: TJRPCMessage; AResponseQueue: TMCPMessageQueue);
 var
   LConstructorProxy: TJRPCConstructorProxy;
@@ -923,15 +964,29 @@ begin
     // Injects the context inside the instance
     FContext.Inject(LInstance);
 
-    { TODO -opaolo -c : Responses?? 05/09/2026 09:36:30 }
-    LInvokerCtx.Garbage := FGarbage;
-    LInvokerCtx.Request := LRequest;
-    //LInvokerCtx.Responses := AResponseQueue;
-    LInvokerCtx.ApiInstance := LInstance;
-    //LInvokerCtx.Separator := TJRPCRegistry.Instance.Separator;
-    //LInvokerCtx.SelectConfig(LConstructorProxy.NeonConfig, FContext.FindContextDataAs<TJRPCNeonConfig>);
+    // The invoker appends what it produces to a TJRPCMessages, while this
+    // transport hands responses to a TMCPMessageQueue that the SSE writer drains
+    // while the worker thread is still running. The two are bridged here.
+    //
+    // The scratch list owns what the invoker builds, so an exception raised
+    // before the hand-over below still frees it; from then on ownership moves to
+    // the queue one message at a time, which is the only owner Process/Destroy
+    // knows about.
+    var LInvokerResponses := TJRPCMessages.Create(True);
+    try
+      LInvokerCtx.Garbage := FGarbage;
+      LInvokerCtx.Request := LRequest;
+      LInvokerCtx.Responses := LInvokerResponses;
+      LInvokerCtx.ApiInstance := LInstance;
+      LInvokerCtx.SelectConfig(SelectNeonConfig(LConstructorProxy));
 
-    TJRPCInvoker.Invoke(LInvokerCtx);
+      TJRPCInvoker.Invoke(LInvokerCtx);
+
+      while LInvokerResponses.Count > 0 do
+        AResponseQueue.Enqueue(LInvokerResponses.List.Extract(LInvokerResponses.List[0]));
+    finally
+      LInvokerResponses.Free;
+    end;
 
   except
     on E: Exception do

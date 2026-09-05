@@ -41,8 +41,8 @@ resourcestring
   STokenDecodeOnlyWarning = 'Access token accepted without any verification: ' +
     'TDecodeOnlyTokenValidator is for demo and development purposes only.';
 
-  STokenNoOAuthConfig = 'The request context carries no server: the OAuth configuration ' +
-    'cannot be read and no token can be validated';
+  STokenNoOAuthConfig = 'The request context carries no OAuth configuration: ' +
+    'no token can be validated';
   STokenNoTrustedIssuers = 'No trusted issuer is configured: no token can be validated';
   STokenNoAudience = 'No audience is configured: call IOAuthConfig.SetResource or SetAudience';
   STokenNoMetadataProvider = 'No metadata provider is available: signing keys cannot be checked';
@@ -102,9 +102,9 @@ type
     ///   Validates a token and reports the outcome.
     /// </summary>
     /// <param name="AContext">
-    ///   The context of the request, from which everything else is reachable: the
-    ///   TJRPCServer, and through it the TOAuthConfig carrying the trusted issuers,
-    ///   the audience, the required scopes, the clock skew and the metadata provider.
+    ///   The context of the request, from which everything else is reachable -
+    ///   notably the TOAuthConfig carrying the trusted issuers, the audience, the
+    ///   required scopes, the clock skew and the metadata provider.
     /// </param>
     /// <param name="AToken">
     ///   The raw token, with the "Bearer " prefix already removed and trimmed.
@@ -142,7 +142,7 @@ type
     /// <summary>
     ///   The OAuth configuration of the server serving this request: trusted issuers,
     ///   audience, required scopes, clock skew and metadata provider. Returns nil when
-    ///   the context does not carry a server, which a transport should never do.
+    ///   the context does not carry one, which a transport should never do.
     /// </summary>
     function GetOAuthConfig(AContext: TJRPCContext): TOAuthConfig;
   public
@@ -307,8 +307,7 @@ implementation
 uses
   System.NetEncoding, System.DateUtils, System.StrUtils,
 
-  Logify,
-  JRPC.Server;
+  Logify;
 
 function Base64UrlDecode(const AInput: string): string;
 var
@@ -390,17 +389,17 @@ end;
 { TTokenValidatorBase }
 
 function TTokenValidatorBase.GetOAuthConfig(AContext: TJRPCContext): TOAuthConfig;
-var
-  LServer: TJRPCServer;
 begin
   Result := nil;
   if not Assigned(AContext) then
     Exit;
 
-  // Same route the transport handler takes to read its own configurations.
-  LServer := AContext.FindContextDataAs<TJRPCServer>;
-  //if Assigned(LServer) then
-    //Result := LServer.GetConfiguration<TOAuthConfig>;
+  // The transport puts every one of the server's configurations into the context
+  // in its own right, so this one is a direct lookup. Going through the server -
+  // FindContextDataAs<TMCPServer> and then GetConfiguration<TOAuthConfig> - would
+  // reach the same object, but it would also tie the security layer to the
+  // concrete server class for no gain.
+  Result := AContext.FindContextDataAs<TOAuthConfig>;
 end;
 
 function TTokenValidatorBase.SplitToken(const AToken: string;

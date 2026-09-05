@@ -467,7 +467,6 @@ function TMCPSubscriptionsApi.Listen(AParams: TSubscriptionsListenRequestParams)
 var
   LAck: TSubscriptionsAcknowledgedNotificationParams;
 begin
-{
   // Acknowledge with the subset this server can actually serve: a type it has
   // nothing to report on is left out rather than silently never sent
   LAck := TSubscriptionsAcknowledgedNotificationParams.Create;
@@ -502,8 +501,6 @@ begin
     Result.Meta.SetSubscriptionId(Request.Id.AsString)
   else
     Result.Meta.SetSubscriptionId(Int64(Request.Id.AsInteger));
-
-}
 end;
 
 function TMCPSubscriptionsApi.KnownResourceUris(const AUris: TArray<string>): TArray<string>;

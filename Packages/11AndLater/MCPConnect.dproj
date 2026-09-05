@@ -48,7 +48,7 @@
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base)'!=''">
         <RuntimeOnlyPackage>true</RuntimeOnlyPackage>
-        <DCC_UnitSearchPath>..\..\Source;..\..\Libs\Neon\Source;..\..\Libs\Logify\Source;..\..\Libs\JWT\Source\JOSE;..\..\Libs\JWT\Source\Common;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>..\..\Source;..\..\Libs\JRPC\Source;..\..\Libs\Neon\Source;..\..\Libs\Logify\Source;..\..\Libs\JWT\Source\JOSE;..\..\Libs\JWT\Source\Common;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <SanitizedProjectName>MCPConnect</SanitizedProjectName>
         <VerInfo_Locale>1040</VerInfo_Locale>
         <DCC_Description>MCP Library for Delphi</DCC_Description>
@@ -114,24 +114,34 @@
         <DCCReference Include="Neon.dcp"/>
         <DCCReference Include="Logify.dcp"/>
         <DCCReference Include="JOSE.dcp"/>
+        <DCCReference Include="..\..\Libs\JRPC\Source\JRPC.Classes.pas"/>
+        <DCCReference Include="..\..\Libs\JRPC\Source\JRPC.Core.pas"/>
+        <DCCReference Include="..\..\Libs\JRPC\Source\JRPC.Invoker.pas"/>
+        <DCCReference Include="..\..\Libs\JRPC\Source\JRPC.Server.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.Auth.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.Core.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.MCP.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.Neon.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Content.Writers.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Content.Writers.RTL.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.JRPC.Classes.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.JRPC.Core.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.JRPC.Invoker.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.JRPC.Server.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.JRPC.Middleware.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Attributes.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Config.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Invoker.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Prompts.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Resources.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Middleware.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Server.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Server.Api.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Tools.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Base.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Completion.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Elicitation.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Errors.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Mrtr.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Notifications.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Prompts.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Resources.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Subscriptions.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Tool.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Tools.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Security.Jwks.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Security.Token.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Security.Token.JOSE.pas"/>

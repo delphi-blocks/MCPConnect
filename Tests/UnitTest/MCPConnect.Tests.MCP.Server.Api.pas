@@ -22,8 +22,8 @@ uses
 
   Neon.Core.Persistence.JSON,
 
-  MCPConnect.JRPC.Core,
-  MCPConnect.JRPC.Server,
+  JRPC.Core,
+  MCPConnect.MCP.Server,
   MCPConnect.Configuration.MCP,
   MCPConnect.MCP.Server.Api,
   MCPConnect.MCP.Types.Base;

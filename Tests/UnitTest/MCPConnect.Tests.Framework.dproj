@@ -63,7 +63,7 @@
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Vcl;Vcl.Imaging;Vcl.Touch;Vcl.Samples;Vcl.Shell;$(DCC_Namespace)</DCC_Namespace>
         <Icon_MainIcon>$(BDS)\bin\delphi_PROJECTICON.ico</Icon_MainIcon>
         <UsingDelphiRTL>true</UsingDelphiRTL>
-        <DCC_UnitSearchPath>..\..\Source;..\..\Libs\Neon\Source;..\..\Libs\Logify\Source;..\..\Libs\JWT\Source\JOSE;..\..\Libs\JWT\Source\Common;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>..\..\Source;..\..\Libs\JRPC\Source;..\..\Libs\Neon\Source;..\..\Libs\Logify\Source;..\..\Libs\JWT\Source\JOSE;..\..\Libs\JWT\Source\Common;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <SanitizedProjectName>MCPConnect_Tests_Framework</SanitizedProjectName>
         <VerInfo_Keys>CompanyName=;FileDescription=;FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProductName=;ProductVersion=1.0.0.0;Comments=</VerInfo_Keys>
         <DCC_DcuOutput>.\$(Platform)\$(Config)</DCC_DcuOutput>
@@ -137,21 +137,21 @@
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.Core.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.MCP.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.Neon.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.JRPC.Core.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.JRPC.Invoker.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.JRPC.Server.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.JRPC.Middleware.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Attributes.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Middleware.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Invoker.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Prompts.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Resources.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Subscriptions.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Tools.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Mrtr.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Base.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Completion.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Elicitation.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Mrtr.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Errors.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Notifications.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Subscriptions.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Errors.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Server.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Server.Api.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Security.Jwks.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Security.Token.pas"/>
@@ -161,6 +161,8 @@
         <DCCReference Include="..\..\Source\MCPConnect.Transport.MediaType.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Transport.Base.pas"/>
         <DCCReference Include="MCPConnect.Tests.JRPC.Core.pas"/>
+        <DCCReference Include="MCPConnect.Tests.JRPC.Middleware.pas"/>
+        <DCCReference Include="MCPConnect.Tests.Transport.Middleware.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Tools.pas"/>
         <DCCReference Include="MCPConnect.Tests.JRPC.Invoker.pas"/>
         <DCCReference Include="MCPConnect.Tests.Core.Utils.pas"/>
@@ -180,7 +182,6 @@
         <DCCReference Include="MCPConnect.Tests.MCP.RequestMeta.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Resources.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Capabilities.pas"/>
-        <DCCReference Include="MCPConnect.Tests.MCP.ToolNames.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

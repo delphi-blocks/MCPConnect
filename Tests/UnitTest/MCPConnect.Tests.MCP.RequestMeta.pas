@@ -22,7 +22,7 @@ uses
   Neon.Core.Utils,
   Neon.Core.Persistence.JSON,
 
-  MCPConnect.JRPC.Core,
+  JRPC.Core,
   MCPConnect.MCP.Server.Api,
   MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Notifications,

@@ -19,9 +19,9 @@ uses
   System.SysUtils, System.Classes, System.JSON,
   DUnitX.TestFramework,
 
-  MCPConnect.JRPC.Classes,
-  MCPConnect.JRPC.Core,
-  MCPConnect.JRPC.Server,
+  JRPC.Classes,
+  JRPC.Core,
+  MCPConnect.MCP.Server,
   MCPConnect.Configuration.MCP,
   MCPConnect.MCP.Attributes,
   MCPConnect.MCP.Types.Base,
@@ -86,7 +86,7 @@ type
   [TestFixture]
   TMCPCompletionsConfigTest = class(TObject)
   private
-    FServer: TJRPCServer;
+    FServer: TMCPServer;
     FConfig: IMCPConfig;
   public
     [Setup]
@@ -119,7 +119,7 @@ type
   [TestFixture]
   TMCPCompletionApiTest = class(TObject)
   private
-    FServer: TJRPCServer;
+    FServer: TMCPServer;
     FConfig: IMCPConfig;
     FApi: TMCPCompletionApi;
     FContext: TJRPCContext;
@@ -156,7 +156,7 @@ type
   [TestFixture]
   TMCPCompletionCapabilityTest = class(TObject)
   private
-    FServer: TJRPCServer;
+    FServer: TMCPServer;
     FConfig: IMCPConfig;
 
     function DiscoverCapabilities: TJSONObject;
@@ -368,7 +368,7 @@ end;
 
 procedure TMCPCompletionsConfigTest.Setup;
 begin
-  FServer := TJRPCServer.Create(nil);
+  FServer := TMCPServer.Create(nil);
   FConfig := FServer.Plugin.Configure<IMCPConfig>;
 end;
 
@@ -499,7 +499,7 @@ end;
 
 procedure TMCPCompletionApiTest.Setup;
 begin
-  FServer := TJRPCServer.Create(nil);
+  FServer := TMCPServer.Create(nil);
   FConfig := FServer.Plugin.Configure<IMCPConfig>;
   FConfig.Prompts.RegisterClass(TCompletionPrompts);
   FConfig.Resources.RegisterClass(TCompletionPrompts);
@@ -672,7 +672,7 @@ end;
 
 procedure TMCPCompletionCapabilityTest.Setup;
 begin
-  FServer := TJRPCServer.Create(nil);
+  FServer := TMCPServer.Create(nil);
   FConfig := FServer.Plugin.Configure<IMCPConfig>;
 end;
 

@@ -4,13 +4,27 @@ interface
 
 uses
   System.Classes, System.SysUtils, System.Generics.Collections, System.SyncObjs,
+  System.JSON,
 
   Neon.Core.Persistence,
+  Neon.Core.Persistence.JSON,
+  Neon.Core.Persistence.JSON.Schema,
+
+  MCPConnect.Transport.Base,
 
   MCPConnect.MCP.Types.Base,
+  MCPConnect.MCP.Types.Tools,
+  MCPConnect.MCP.Types.Mrtr,
   MCPConnect.MCP.Attributes;
 
 type
+  TConfirm = class
+  private
+    FValue: Boolean;
+  public
+    property Value: Boolean read FValue write FValue;
+  end;
+
   TTaskStatus = (Pending, Completed);
 
   TTaskItem = class
@@ -50,6 +64,9 @@ type
   end;
 
   TTodoTool = class
+  private
+//    [Context]
+//    AParams: TCallToolRequestParams;
   public
     [McpTool('add_task', 'Add a new task to the todo list')]
     function AddTask(
@@ -68,7 +85,7 @@ type
     [McpTool('delete_task', 'Delete a task from the todo list')]
     function DeleteTask(
       [McpParam('task_id', 'ID of the task to delete')] ATaskId: Integer
-    ): string;
+    ): TBaseResult;
   end;
 
 var
@@ -272,25 +289,43 @@ begin
   end;
 end;
 
-function TTodoTool.DeleteTask(ATaskId: Integer): string;
+function TTodoTool.DeleteTask(ATaskId: Integer): TBaseResult;
 var
   LTask: TTaskItem;
   LTitle: string;
 begin
+//  if AParams.RequestState <> 'TEST' then
+//  begin
+//    var LParams := TElicitRequestParams.Create;
+//    LParams.RequestedSchema := TNeonSchemaGenerator.ClassToJSONSchema(TConfirm);
+//    LParams.Message := 'Sei sicuro?';
+//
+//    var LRequiredResult := TInputRequiredResult.Create;
+//    LRequiredResult.RequestState := 'TEST';
+//    LRequiredResult.InputRequests.AddElicitation('123', LParams);
+//    Exit(LRequiredResult);
+//  end;
+//
+  var LResult := '';
+
   TodoStore.Lock();
   try
     LTask := TodoStore.FindById(ATaskId);
     if LTask = nil then
-      Exit(Format(STaskNotFound, [ATaskId]));
+      raise Exception.CreateFmt(STaskNotFound, [ATaskId]);
     LTitle := LTask.Title;
   finally
     TodoStore.Unlock();
   end;
 
   if TodoStore.Remove(ATaskId) then
-    Result := Format('Task #%d "%s" deleted', [ATaskId, LTitle])
+    LResult := Format('Task #%d "%s" deleted', [ATaskId, LTitle])
   else
-    Result := Format(STaskNotFound, [ATaskId]);
+    LResult := Format(STaskNotFound, [ATaskId]);
+
+  var LToolCallResult := TCallToolResult.Create;
+  LToolCallResult.Content.AddText(LResult);
+  Exit(LToolCallResult);
 end;
 
 initialization

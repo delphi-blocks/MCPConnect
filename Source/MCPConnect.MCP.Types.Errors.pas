@@ -26,7 +26,7 @@ uses
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
 
-  MCPConnect.JRPC.Core,
+  JRPC.Core,
   MCPConnect.MCP.Types.Base;
 
 const

@@ -21,9 +21,9 @@ uses
 
   Neon.Core.Persistence.JSON,
 
-  MCPConnect.JRPC.Classes,
-  MCPConnect.JRPC.Core,
-  MCPConnect.JRPC.Server,
+  JRPC.Classes,
+  JRPC.Core,
+  MCPConnect.MCP.Server,
   MCPConnect.Configuration.MCP,
   MCPConnect.MCP.Attributes,
   MCPConnect.MCP.Server.Api,
@@ -67,7 +67,7 @@ type
   [TestFixture]
   TMCPReadPromptParamsTest = class(TObject)
   private
-    FServer: TJRPCServer;
+    FServer: TMCPServer;
     FConfig: IMCPConfig;
     FApi: TMCPPromptsApi;
     FContext: TJRPCContext;
@@ -167,7 +167,7 @@ end;
 
 procedure TMCPReadPromptParamsTest.Setup;
 begin
-  FServer := TJRPCServer.Create(nil);
+  FServer := TMCPServer.Create(nil);
   FConfig := FServer.Plugin.Configure<IMCPConfig>;
   FConfig.Prompts.RegisterClass(TPromptWithArgs);
 

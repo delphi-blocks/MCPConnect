@@ -23,8 +23,8 @@ uses
   System.SysUtils, System.Classes,
   DUnitX.TestFramework,
 
-  MCPConnect.JRPC.Core,
-  MCPConnect.JRPC.Server,
+  JRPC.Core,
+  MCPConnect.MCP.Server,
   MCPConnect.Configuration.Auth,
   MCPConnect.MCP.Types.Base,
   MCPConnect.Security.Jwks,
@@ -52,7 +52,7 @@ type
     KeyId = 'key-1';
   private
     FFake: TFakeMetadataProvider;
-    FServer: TJRPCServer;
+    FServer: TMCPServer;
     FConfig: IOAuthConfig;
     FContext: TJRPCContext;
     FAccessToken: TMCPAccessToken;
@@ -103,7 +103,7 @@ begin
   FFake.SetDocument(Issuer + '/.well-known/openid-configuration',
     Format('{"issuer":"%s","jwks_uri":"%s/keys"}', [Issuer, Issuer]));
 
-  FServer := TJRPCServer.Create(nil);
+  FServer := TMCPServer.Create(nil);
   FConfig := FServer.Plugin.Configure<IOAuthConfig>
     .SetResource(Audience)
     .AddAuthorizationServer(Issuer)

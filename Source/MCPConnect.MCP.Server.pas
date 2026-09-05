@@ -22,7 +22,8 @@ uses
   JRPC.Core,
   JRPC.Classes,
   JRPC.Invoker,
-  MCPConnect.Configuration.Core;
+  MCPConnect.Configuration.Core,
+  MCPConnect.JRPC.Middleware;
 
 resourcestring
   SMCPInvalidConfig = 'Invalid config';
@@ -33,6 +34,7 @@ type
     FAppConfigurator: TAppConfigurator;
     FConfigRegistry: TJRPCConfigRegistry;
     FSessionManager: TObject;
+    FMiddleware: TMiddlewareList;
   public
     { IJRPCApplication }
     function GetConfigByClassRef(AClass: TJRPCConfigurationClass): TJRPCConfiguration;
@@ -45,6 +47,19 @@ type
 
     property Plugin: TAppConfigurator read GetAppConfigurator;
     property SessionManager: TObject read FSessionManager;
+
+    /// <summary>
+    ///   The middleware pipeline every message goes through.
+    /// </summary>
+    /// <remarks>
+    ///   Deliberately not a configuration plugin: the plugin registry mounts
+    ///   optional, interchangeable subsystems (MCP, sessions, auth), while the
+    ///   middleware chain is the pipeline those subsystems sit on. Registering
+    ///   here also keeps it usable by a plain JSON-RPC server, and lets the
+    ///   chain be changed while the server runs, which a fluent configuration
+    ///   closed by ApplyConfig does not.
+    /// </remarks>
+    property Middleware: TMiddlewareList read FMiddleware;
 
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -81,10 +96,12 @@ begin
   inherited;
   FAppConfigurator := TAppConfiguratorImpl.Create(Self);
   FConfigRegistry := TJRPCConfigRegistry.Create([doOwnsValues]);
+  FMiddleware := TMiddlewareList.Create(Self);
 end;
 
 destructor TMCPServer.Destroy;
 begin
+  FMiddleware.Free;
   FAppConfigurator.Free;
   FConfigRegistry.Free;
   inherited;

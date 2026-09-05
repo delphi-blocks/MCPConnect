@@ -19,7 +19,7 @@ uses
   System.SysUtils,
   DUnitX.TestFramework,
 
-  MCPConnect.JRPC.Server,
+  MCPConnect.MCP.Server,
   MCPConnect.Configuration.MCP,
   MCPConnect.MCP.Attributes,
   MCPConnect.MCP.Types.Base,
@@ -86,7 +86,7 @@ type
   [TestFixture]
   TMCPToolNameRegistrationTest = class(TObject)
   private
-    FServer: TJRPCServer;
+    FServer: TMCPServer;
     FConfig: IMCPConfig;
   public
     [Setup]
@@ -170,7 +170,7 @@ end;
 
 procedure TMCPToolNameRegistrationTest.Setup;
 begin
-  FServer := TJRPCServer.Create(nil);
+  FServer := TMCPServer.Create(nil);
   FConfig := FServer.Plugin.Configure<IMCPConfig>;
 end;
 

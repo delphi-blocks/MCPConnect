@@ -37,8 +37,8 @@ uses
   MCPConnect.Security.Token,
   MCPConnect.Transport.Base,
   MCPConnect.MCP.Types.Base,
-  MCPConnect.JRPC.Core,
-  MCPConnect.JRPC.Server;
+  JRPC.Core,
+  MCPConnect.MCP.Server;
 
 type
   /// <summary>
@@ -87,7 +87,7 @@ type
     Issuer = 'https://idp.example.com';
     MetadataPath = '/.well-known/oauth-protected-resource/api/mcp';
   private
-    FServer: TJRPCServer;
+    FServer: TMCPServer;
     function Execute(const AMethod, AUrl: string): TTransportOutcome; overload;
     function Execute(const AMethod, AUrl, AAuthorization: string;
       AProtocol: TTransportProtocol = TTransportProtocol.StreamableHTTP): TTransportOutcome; overload;
@@ -202,7 +202,7 @@ end;
 
 procedure TTransportOAuthTest.Setup;
 begin
-  FServer := TJRPCServer.Create(nil);
+  FServer := TMCPServer.Create(nil);
 
   // The handler reads its MCP configuration in the constructor and dereferences it
   // before any OAuth check, so a server without one cannot serve a request at all.

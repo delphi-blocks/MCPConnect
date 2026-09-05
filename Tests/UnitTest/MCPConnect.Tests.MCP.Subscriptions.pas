@@ -21,9 +21,9 @@ uses
 
   Neon.Core.Persistence.JSON,
 
-  MCPConnect.JRPC.Classes,
-  MCPConnect.JRPC.Core,
-  MCPConnect.JRPC.Server,
+  JRPC.Classes,
+  JRPC.Core,
+  MCPConnect.MCP.Server,
   MCPConnect.Configuration.MCP,
   MCPConnect.MCP.Attributes,
   MCPConnect.MCP.Types.Base,
@@ -89,7 +89,7 @@ type
   [TestFixture]
   TMCPSubscriptionsApiTest = class(TObject)
   private
-    FServer: TJRPCServer;
+    FServer: TMCPServer;
     FConfig: IMCPConfig;
     FApi: TMCPSubscriptionsApi;
     FContext: TJRPCContext;
@@ -312,7 +312,7 @@ end;
 
 procedure TMCPSubscriptionsApiTest.Setup;
 begin
-  FServer := TJRPCServer.Create(nil);
+  FServer := TMCPServer.Create(nil);
   FConfig := FServer.Plugin.Configure<IMCPConfig>;
   FConfig.Tools.RegisterClass(TSubscribedFeatures);
   FConfig.Resources.RegisterClass(TSubscribedFeatures);

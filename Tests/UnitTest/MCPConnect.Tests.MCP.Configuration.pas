@@ -19,8 +19,8 @@ uses
   System.SysUtils, System.JSON, System.Rtti,
   DUnitX.TestFramework,
 
-  MCPConnect.JRPC.Server,
-  MCPConnect.JRPC.Core,
+  MCPConnect.MCP.Server,
+  JRPC.Core,
   MCPConnect.Configuration.MCP,
   MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Tool,
@@ -62,7 +62,7 @@ type
   [TestFixture]
   TMCPToolsConfigRegisterToolTest = class(TObject)
   private
-    FServer: TJRPCServer;
+    FServer: TMCPServer;
     FConfig: IMCPConfig;
   public
     [Setup]
@@ -159,7 +159,7 @@ type
   [TestFixture]
   TMCPResourcesConfigRegisterResourceTest = class(TObject)
   private
-    FServer: TJRPCServer;
+    FServer: TMCPServer;
     FConfig: IMCPConfig;
   public
     [Setup]
@@ -252,7 +252,7 @@ type
   [TestFixture]
   TMCPPromptsConfigRegisterPromptTest = class(TObject)
   private
-    FServer: TJRPCServer;
+    FServer: TMCPServer;
     FConfig: IMCPConfig;
   public
     [Setup]
@@ -344,7 +344,7 @@ end;
 
 procedure TMCPToolsConfigRegisterToolTest.Setup;
 begin
-  FServer := TJRPCServer.Create(nil);
+  FServer := TMCPServer.Create(nil);
   FConfig := FServer.Plugin.Configure<IMCPConfig>;
 end;
 
@@ -580,15 +580,15 @@ end;
 
 procedure TMCPToolsConfigRegisterToolTest.TestRegisterClass_SameClassTwiceWithAppAttributeDoesNotRaise;
 var
-  LServer1, LServer2: TJRPCServer;
+  LServer1, LServer2: TMCPServer;
   LConfig1, LConfig2: IMCPConfig;
 begin
   // Regression test: MCPToolAttribute instances are cached by Delphi's RTTI
   // for the process lifetime, so RegisterClass must not mutate the shared
   // Tags.TagMap in a way that breaks a second, independent registration of
   // the same [McpApp]-tagged class.
-  LServer1 := TJRPCServer.Create(nil);
-  LServer2 := TJRPCServer.Create(nil);
+  LServer1 := TMCPServer.Create(nil);
+  LServer2 := TMCPServer.Create(nil);
   try
     LConfig1 := LServer1.Plugin.Configure<IMCPConfig>;
     LConfig2 := LServer2.Plugin.Configure<IMCPConfig>;
@@ -775,7 +775,7 @@ end;
 
 procedure TMCPResourcesConfigRegisterResourceTest.Setup;
 begin
-  FServer := TJRPCServer.Create(nil);
+  FServer := TMCPServer.Create(nil);
   FConfig := FServer.Plugin.Configure<IMCPConfig>;
 end;
 
@@ -1138,7 +1138,7 @@ end;
 
 procedure TMCPPromptsConfigRegisterPromptTest.Setup;
 begin
-  FServer := TJRPCServer.Create(nil);
+  FServer := TMCPServer.Create(nil);
   FConfig := FServer.Plugin.Configure<IMCPConfig>;
 end;
 

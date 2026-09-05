@@ -64,6 +64,7 @@ __recovery/
 libs/Neon
 libs/JWT
 libs/Logify
+libs/JRPC
 nul
 
 # VSCode

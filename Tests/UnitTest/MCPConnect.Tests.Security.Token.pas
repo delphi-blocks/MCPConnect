@@ -19,8 +19,8 @@ uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
   DUnitX.TestFramework,
 
-  MCPConnect.JRPC.Core,
-  MCPConnect.JRPC.Server,
+  JRPC.Core,
+  MCPConnect.MCP.Server,
   MCPConnect.Configuration.Auth,
   MCPConnect.MCP.Types.Base,
   MCPConnect.Security.Jwks,
@@ -161,7 +161,7 @@ type
     KeyId = 'key-1';
   private
     FFake: TFakeMetadataProvider;
-    FServer: TJRPCServer;
+    FServer: TMCPServer;
     FConfig: IOAuthConfig;
     FContext: TJRPCContext;
     FAccessToken: TMCPAccessToken;
@@ -248,7 +248,7 @@ type
   [TestFixture]
   TTokenValidatorContractTest = class(TObject)
   private
-    FServer: TJRPCServer;
+    FServer: TMCPServer;
     FConfig: IOAuthConfig;
   public
     [Setup]
@@ -271,7 +271,7 @@ type
   [TestFixture]
   TOAuthConfigValidationTest = class(TObject)
   private
-    FServer: TJRPCServer;
+    FServer: TMCPServer;
     FConfig: IOAuthConfig;
     function GetOAuthConfig: TOAuthConfig;
   public
@@ -724,7 +724,7 @@ begin
   FFake.SetDocument(Issuer + '/keys',
     Format('{"keys":[{"kid":"%s","kty":"RSA","use":"sig","n":"modulus","e":"AQAB"}]}', [KeyId]));
 
-  FServer := TJRPCServer.Create(nil);
+  FServer := TMCPServer.Create(nil);
   FConfig := FServer.Plugin.Configure<IOAuthConfig>
     .SetResource(Audience)
     .AddAuthorizationServer(Issuer)
@@ -755,11 +755,11 @@ end;
 function TClaimsTokenValidatorTest.ValidateWithBareServer(
   const AResource, AAuthorizationServer: string): TTokenValidationResult;
 var
-  LServer: TJRPCServer;
+  LServer: TMCPServer;
   LConfig: IOAuthConfig;
   LContext: TJRPCContext;
 begin
-  LServer := TJRPCServer.Create(nil);
+  LServer := TMCPServer.Create(nil);
   try
     LConfig := LServer.Plugin.Configure<IOAuthConfig>.SetMetadataProvider(FFake);
     if AResource <> '' then
@@ -1162,7 +1162,7 @@ end;
 
 procedure TTokenValidatorContractTest.Setup;
 begin
-  FServer := TJRPCServer.Create(nil);
+  FServer := TMCPServer.Create(nil);
   FConfig := FServer.Plugin.Configure<IOAuthConfig>;
 end;
 
@@ -1246,7 +1246,7 @@ end;
 
 procedure TOAuthConfigValidationTest.Setup;
 begin
-  FServer := TJRPCServer.Create(nil);
+  FServer := TMCPServer.Create(nil);
   FConfig := FServer.Plugin.Configure<IOAuthConfig>;
 end;
 

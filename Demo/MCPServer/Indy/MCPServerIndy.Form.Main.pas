@@ -92,7 +92,7 @@ begin
   // Route MCPConnect's internal logging to the memo: the buffer adapter
   // collects messages from background threads and flushes them to the
   // TStrings target (memoLog.Lines) on the main thread via a timer.
-  FLogifyAdapterFactory := TLogifyAdapterBufferFactory.CreateAdapterFactory(TLogLevel.Debug, memoLog.Lines);
+  FLogifyAdapterFactory := TLogifyAdapterBufferFactory.CreateAdapterFactory(TLogLevel.Trace, memoLog.Lines);
   TLoggerAdapterRegistry.Instance.RegisterFactory(FLogifyAdapterFactory);
 
   // 1) Build the transport.

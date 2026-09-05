@@ -19,7 +19,7 @@ uses
   System.SysUtils, System.JSON, System.Rtti, System.Generics.Collections,
   DUnitX.TestFramework,
 
-  MCPConnect.JRPC.Core,
+  JRPC.Core,
   MCPConnect.Core.Utils,
   MCPConnect.MCP.Invoker,
   MCPConnect.MCP.Tools,

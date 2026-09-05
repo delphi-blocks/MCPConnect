@@ -21,9 +21,9 @@ uses
 
   Neon.Core.Persistence.JSON,
 
-  MCPConnect.JRPC.Classes,
-  MCPConnect.JRPC.Core,
-  MCPConnect.JRPC.Server,
+  JRPC.Classes,
+  JRPC.Core,
+  MCPConnect.MCP.Server,
   MCPConnect.Configuration.MCP,
   MCPConnect.MCP.Attributes,
   MCPConnect.MCP.Server.Api,
@@ -116,7 +116,7 @@ type
   [TestFixture]
   TMCPToolCallResultUnionTest = class(TObject)
   private
-    FServer: TJRPCServer;
+    FServer: TMCPServer;
     FConfig: IMCPConfig;
     FApi: TMCPToolsApi;
     FContext: TJRPCContext;
@@ -414,7 +414,7 @@ end;
 
 procedure TMCPToolCallResultUnionTest.Setup;
 begin
-  FServer := TJRPCServer.Create(nil);
+  FServer := TMCPServer.Create(nil);
   FConfig := FServer.Plugin.Configure<IMCPConfig>;
   FConfig.Tools.RegisterClass(TMrtrTools);
 

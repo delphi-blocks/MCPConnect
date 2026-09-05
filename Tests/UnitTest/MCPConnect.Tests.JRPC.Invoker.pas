@@ -19,9 +19,9 @@ uses
   System.SysUtils, System.JSON, System.Rtti, System.Generics.Collections,
   DUnitX.TestFramework,
 
-  MCPConnect.JRPC.Classes,
-  MCPConnect.JRPC.Core,
-  MCPConnect.JRPC.Invoker;
+  JRPC.Classes,
+  JRPC.Core,
+  JRPC.Invoker;
 
 type
   // Test helper class with JRPC-annotated methods
@@ -66,8 +66,8 @@ type
   private
     FService: TTestService;
 
-    function BuildContext(ARequest: TJRPCRequest; AResponses: TMCPMessageQueue): TJRPCInvokerContext;
-    procedure InvokeWithErrorHandling(ARequest: TJRPCRequest; AResponses: TMCPMessageQueue);
+    function BuildContext(ARequest: TJRPCRequest; AResponses: TJRPCMessages): TJRPCInvokerContext;
+    procedure InvokeWithErrorHandling(ARequest: TJRPCRequest; AResponses: TJRPCMessages);
   public
     [Setup]
     procedure Setup;
@@ -148,18 +148,17 @@ end;
 { TJRPCInvokerTest }
 
 function TJRPCInvokerTest.BuildContext(ARequest: TJRPCRequest;
-  AResponses: TMCPMessageQueue): TJRPCInvokerContext;
+  AResponses: TJRPCMessages): TJRPCInvokerContext;
 begin
   Result.Garbage := TGarbageCollector.CreateInstance;
   Result.Request := ARequest;
   Result.Responses := AResponses;
   Result.ApiInstance := FService;
-  Result.Separator := '/';
   Result.NeonConfig := nil;
 end;
 
 procedure TJRPCInvokerTest.InvokeWithErrorHandling(ARequest: TJRPCRequest;
-  AResponses: TMCPMessageQueue);
+  AResponses: TJRPCMessages);
 var
   LCtx: TJRPCInvokerContext;
 begin
@@ -168,7 +167,7 @@ begin
     TJRPCInvoker.Invoke(LCtx);
   except
     on E: Exception do
-      AResponses.Enqueue(TJRPCInvoker.HandleError(E, ARequest.Id));
+      AResponses.AddMessage(TJRPCInvoker.HandleError(E, ARequest.Id));
   end;
 end;
 
@@ -187,12 +186,12 @@ end;
 procedure TJRPCInvokerTest.TestInvokeSimpleMethod;
 var
   LRequest: TJRPCRequest;
-  LResponses: TMCPMessageQueue;
+  LResponses: TJRPCMessages;
   LResponse: TJRPCResponse;
   LMessage: TJRPCMessage;
 begin
   LRequest := TJRPCRequest.Create;
-  LResponses := TMCPMessageQueue.Create;
+  LResponses := TJRPCMessages.Create(True);
   try
     LRequest.Method := 'TestService/echo';
     LRequest.Id := 1;
@@ -201,7 +200,7 @@ begin
     InvokeWithErrorHandling(LRequest, LResponses);
 
     Assert.AreEqual(NativeInt(1), LResponses.Count, 'Should have one response');
-    LMessage := LResponses.Peek;
+    LMessage := LResponses.List[0];
     Assert.IsNotNull(LMessage, 'Response should not be nil');
     Assert.IsTrue(LMessage is TJRPCResponse, 'Message should be a TJRPCResponse');
     LResponse := LMessage as TJRPCResponse;
@@ -216,12 +215,12 @@ end;
 procedure TJRPCInvokerTest.TestInvokeWithIntegerParams;
 var
   LRequest: TJRPCRequest;
-  LResponses: TMCPMessageQueue;
+  LResponses: TJRPCMessages;
   LResponse: TJRPCResponse;
   LMessage: TJRPCMessage;
 begin
   LRequest := TJRPCRequest.Create;
-  LResponses := TMCPMessageQueue.Create;
+  LResponses := TJRPCMessages.Create(True);
   try
     LRequest.Method := 'TestService/add';
     LRequest.Id := 2;
@@ -231,7 +230,7 @@ begin
     InvokeWithErrorHandling(LRequest, LResponses);
 
     Assert.AreEqual(NativeInt(1), LResponses.Count, 'Should have one response');
-    LMessage := LResponses.Peek;
+    LMessage := LResponses.List[0];
     Assert.IsNotNull(LMessage, 'Response should not be nil');
     Assert.IsTrue(LMessage is TJRPCResponse, 'Message should be a TJRPCResponse');
     LResponse := LMessage as TJRPCResponse;
@@ -246,12 +245,12 @@ end;
 procedure TJRPCInvokerTest.TestInvokeWithDoubleParams;
 var
   LRequest: TJRPCRequest;
-  LResponses: TMCPMessageQueue;
+  LResponses: TJRPCMessages;
   LResponse: TJRPCResponse;
   LMessage: TJRPCMessage;
 begin
   LRequest := TJRPCRequest.Create;
-  LResponses := TMCPMessageQueue.Create;
+  LResponses := TJRPCMessages.Create(True);
   try
     LRequest.Method := 'TestService/multiply';
     LRequest.Id := 3;
@@ -261,7 +260,7 @@ begin
     InvokeWithErrorHandling(LRequest, LResponses);
 
     Assert.AreEqual(NativeInt(1), LResponses.Count, 'Should have one response');
-    LMessage := LResponses.Peek;
+    LMessage := LResponses.List[0];
     Assert.IsNotNull(LMessage, 'Response should not be nil');
     Assert.IsTrue(LMessage is TJRPCResponse, 'Message should be a TJRPCResponse');
     LResponse := LMessage as TJRPCResponse;
@@ -276,12 +275,12 @@ end;
 procedure TJRPCInvokerTest.TestInvokeMethodWithoutParams;
 var
   LRequest: TJRPCRequest;
-  LResponses: TMCPMessageQueue;
+  LResponses: TJRPCMessages;
   LResponse: TJRPCResponse;
   LMessage: TJRPCMessage;
 begin
   LRequest := TJRPCRequest.Create;
-  LResponses := TMCPMessageQueue.Create;
+  LResponses := TJRPCMessages.Create(True);
   try
     LRequest.Method := 'TestService/get_info';
     LRequest.Id := 4;
@@ -289,7 +288,7 @@ begin
     InvokeWithErrorHandling(LRequest, LResponses);
 
     Assert.AreEqual(NativeInt(1), LResponses.Count, 'Should have one response');
-    LMessage := LResponses.Peek;
+    LMessage := LResponses.List[0];
     Assert.IsNotNull(LMessage, 'Response should not be nil');
     Assert.IsTrue(LMessage is TJRPCResponse, 'Message should be a TJRPCResponse');
     LResponse := LMessage as TJRPCResponse;
@@ -304,12 +303,12 @@ end;
 procedure TJRPCInvokerTest.TestInvokeNotification;
 var
   LRequest: TJRPCRequest;
-  LResponses: TMCPMessageQueue;
+  LResponses: TJRPCMessages;
   LResponse: TJRPCResponse;
   LMessage: TJRPCMessage;
 begin
   LRequest := TJRPCRequest.Create;
-  LResponses := TMCPMessageQueue.Create;
+  LResponses := TJRPCMessages.Create(True);
   try
     LRequest.Method := 'TestService/log';
     LRequest.Id := 5;
@@ -318,7 +317,7 @@ begin
     InvokeWithErrorHandling(LRequest, LResponses);
 
     Assert.AreEqual(NativeInt(1), LResponses.Count, 'Should have one response');
-    LMessage := LResponses.Peek;
+    LMessage := LResponses.List[0];
     Assert.IsNotNull(LMessage, 'Response should not be nil');
     Assert.IsTrue(LMessage is TJRPCResponse, 'Message should be a TJRPCResponse');
     LResponse := LMessage as TJRPCResponse;
@@ -335,12 +334,12 @@ end;
 procedure TJRPCInvokerTest.TestInvokeWithNamedParams;
 var
   LRequest: TJRPCRequest;
-  LResponses: TMCPMessageQueue;
+  LResponses: TJRPCMessages;
   LResponse: TJRPCResponse;
   LMessage: TJRPCMessage;
 begin
   LRequest := TJRPCRequest.Create;
-  LResponses := TMCPMessageQueue.Create;
+  LResponses := TJRPCMessages.Create(True);
   try
     LRequest.Method := 'TestService/add';
     LRequest.Id := 6;
@@ -352,7 +351,7 @@ begin
     InvokeWithErrorHandling(LRequest, LResponses);
 
     Assert.AreEqual(NativeInt(1), LResponses.Count, 'Should have one response');
-    LMessage := LResponses.Peek;
+    LMessage := LResponses.List[0];
     Assert.IsNotNull(LMessage, 'Response should not be nil');
     LResponse := LMessage as TJRPCResponse;
     Assert.AreEqual(12, LResponse.Result.GetValue<Integer>, 'Add should work with named params');
@@ -365,12 +364,12 @@ end;
 procedure TJRPCInvokerTest.TestInvokeWithPositionalParams;
 var
   LRequest: TJRPCRequest;
-  LResponses: TMCPMessageQueue;
+  LResponses: TJRPCMessages;
   LResponse: TJRPCResponse;
   LMessage: TJRPCMessage;
 begin
   LRequest := TJRPCRequest.Create;
-  LResponses := TMCPMessageQueue.Create;
+  LResponses := TJRPCMessages.Create(True);
   try
     LRequest.Method := 'TestService/add';
     LRequest.Id := 7;
@@ -382,7 +381,7 @@ begin
     InvokeWithErrorHandling(LRequest, LResponses);
 
     Assert.AreEqual(NativeInt(1), LResponses.Count, 'Should have one response');
-    LMessage := LResponses.Peek;
+    LMessage := LResponses.List[0];
     Assert.IsNotNull(LMessage, 'Response should not be nil');
     LResponse := LMessage as TJRPCResponse;
     Assert.AreEqual(17, LResponse.Result.GetValue<Integer>, 'Add should work with positional params');
@@ -397,12 +396,12 @@ end;
 procedure TJRPCInvokerTest.TestInvokeMethodNotFound;
 var
   LRequest: TJRPCRequest;
-  LResponses: TMCPMessageQueue;
+  LResponses: TJRPCMessages;
   LError: TJRPCError;
   LMessage: TJRPCMessage;
 begin
   LRequest := TJRPCRequest.Create;
-  LResponses := TMCPMessageQueue.Create;
+  LResponses := TJRPCMessages.Create(True);
   try
     LRequest.Method := 'TestService/nonexistent';
     LRequest.Id := 8;
@@ -410,7 +409,7 @@ begin
     InvokeWithErrorHandling(LRequest, LResponses);
 
     Assert.AreEqual(NativeInt(1), LResponses.Count, 'Should have one error response');
-    LMessage := LResponses.Peek;
+    LMessage := LResponses.List[0];
     Assert.IsNotNull(LMessage, 'Response should not be nil');
     Assert.IsTrue(LMessage is TJRPCError, 'Message should be a TJRPCError');
     LError := LMessage as TJRPCError;
@@ -424,11 +423,11 @@ end;
 procedure TJRPCInvokerTest.TestInvokeWithInvalidParamsByName;
 var
   LRequest: TJRPCRequest;
-  LResponses: TMCPMessageQueue;
+  LResponses: TJRPCMessages;
   LMessage: TJRPCMessage;
 begin
   LRequest := TJRPCRequest.Create;
-  LResponses := TMCPMessageQueue.Create;
+  LResponses := TJRPCMessages.Create(True);
   try
     LRequest.Method := 'TestService/add';
     LRequest.Id := 9;
@@ -438,7 +437,7 @@ begin
     InvokeWithErrorHandling(LRequest, LResponses);
 
     Assert.AreEqual(NativeInt(1), LResponses.Count, 'Should have one error response');
-    LMessage := LResponses.Peek;
+    LMessage := LResponses.List[0];
     Assert.IsNotNull(LMessage, 'Response should not be nil');
     Assert.IsTrue(LMessage is TJRPCError, 'Message should be a TJRPCError for invalid params');
   finally
@@ -450,11 +449,11 @@ end;
 procedure TJRPCInvokerTest.TestInvokeWithInvalidParamsByPos;
 var
   LRequest: TJRPCRequest;
-  LResponses: TMCPMessageQueue;
+  LResponses: TJRPCMessages;
   LMessage: TJRPCMessage;
 begin
   LRequest := TJRPCRequest.Create;
-  LResponses := TMCPMessageQueue.Create;
+  LResponses := TJRPCMessages.Create(True);
   try
     LRequest.Method := 'TestService/add';
     LRequest.Id := 9;
@@ -464,7 +463,7 @@ begin
     InvokeWithErrorHandling(LRequest, LResponses);
 
     Assert.AreEqual(NativeInt(1), LResponses.Count, 'Should have one error response');
-    LMessage := LResponses.Peek;
+    LMessage := LResponses.List[0];
     Assert.IsNotNull(LMessage, 'Response should not be nil');
     Assert.IsTrue(LMessage is TJRPCError, 'Message should be a TJRPCError for invalid params');
   finally
@@ -476,12 +475,12 @@ end;
 procedure TJRPCInvokerTest.TestHandleJRPCException;
 var
   LRequest: TJRPCRequest;
-  LResponses: TMCPMessageQueue;
+  LResponses: TJRPCMessages;
   LError: TJRPCError;
   LMessage: TJRPCMessage;
 begin
   LRequest := TJRPCRequest.Create;
-  LResponses := TMCPMessageQueue.Create;
+  LResponses := TJRPCMessages.Create(True);
   try
     LRequest.Method := 'TestService/divide';
     LRequest.Id := 10;
@@ -491,7 +490,7 @@ begin
     InvokeWithErrorHandling(LRequest, LResponses);
 
     Assert.AreEqual(NativeInt(1), LResponses.Count, 'Should have one error response');
-    LMessage := LResponses.Peek;
+    LMessage := LResponses.List[0];
     Assert.IsNotNull(LMessage, 'Response should not be nil');
     Assert.IsTrue(LMessage is TJRPCError, 'Message should be a TJRPCError');
     LError := LMessage as TJRPCError;
@@ -531,12 +530,12 @@ end;
 procedure TJRPCInvokerTest.TestMethodNameWithSeparator;
 var
   LRequest: TJRPCRequest;
-  LResponses: TMCPMessageQueue;
+  LResponses: TJRPCMessages;
   LResponse: TJRPCResponse;
   LMessage: TJRPCMessage;
 begin
   LRequest := TJRPCRequest.Create;
-  LResponses := TMCPMessageQueue.Create;
+  LResponses := TJRPCMessages.Create(True);
   try
     LRequest.Method := 'TestService/echo';
     LRequest.Id := 12;
@@ -545,7 +544,7 @@ begin
     InvokeWithErrorHandling(LRequest, LResponses);
 
     Assert.AreEqual(NativeInt(1), LResponses.Count, 'Should have one response');
-    LMessage := LResponses.Peek;
+    LMessage := LResponses.List[0];
     Assert.IsNotNull(LMessage, 'Response should not be nil');
     Assert.IsTrue(LMessage is TJRPCResponse, 'Message should be a TJRPCResponse');
     LResponse := LMessage as TJRPCResponse;

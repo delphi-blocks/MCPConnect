@@ -33,6 +33,7 @@ uses
   MCPConnect.Configuration.Auth,
   MCPConnect.Security.Token,
   MCPConnect.MCP.Types.Base,
+  MCPConnect.JRPC.Middleware,
   MCPConnect.MCP.Server;
 
 const
@@ -225,6 +226,21 @@ type
 
     FMCPConfig: TMCPConfig;
     FServer: TMCPServer;
+    /// <summary>
+    ///   The middleware of the message being handled. Lives only for the span
+    ///   of HandleMessage, which is what keeps a middleware's fields private to
+    ///   one message; the terminals read it to build the inner chains.
+    /// </summary>
+    FPipeline: TMiddlewarePipeline;
+    /// <summary>
+    ///   The queue the message being handled answers into. Like FPipeline it
+    ///   lives only for the span of HandleMessage, and it is kept here rather
+    ///   than on the middleware context on purpose: the queue is a pipe that
+    ///   the thread writing to the client drains as it fills, so handing it to
+    ///   a middleware would invite reads that steal the answer. Middleware get
+    ///   Emit and Produced instead.
+    /// </summary>
+    FResponseQueue: TMCPMessageQueue;
     FAuthTokenConfig: TAuthTokenConfig;
     FOAuthConfig: TOAuthConfig;
     FResponseWriter: IMCPTransportWriter;
@@ -246,6 +262,18 @@ type
     procedure HandleMetadataProxy;
     function SelectNeonConfig(const AProxy: TJRPCConstructorProxy): INeonConfiguration;
     procedure HandleMessage(AMessage: TJRPCMessage; AResponseQueue: TMCPMessageQueue);
+    /// <summary>
+    ///   Terminal of the message chain: sorts the message out by kind, and for
+    ///   a request runs the request chain on top of DispatchRequest.
+    /// </summary>
+    procedure DispatchMessage(AContext: TMiddlewareContext);
+    /// <summary>
+    ///   Terminal of the request chain: the real work, resolving the method and
+    ///   invoking it.
+    /// </summary>
+    procedure DispatchRequest(AContext: TMiddlewareContext);
+    class function MessageKindOf(AMessage: TJRPCMessage): TMiddlewareMessageKind; static;
+    class function MethodNameOf(AMessage: TJRPCMessage): string; static;
     procedure SendResponseHeaders(AResponse: TMCPTransportResponse);
     procedure WriteSSEResponse(const AValue: string; const AEventId: string = '');
 
@@ -790,6 +818,19 @@ begin
 
       FContext.AddContent(FAccessToken);
 
+      // The shared middleware objects have to be put in by hand: AddContent
+      // picks up the configurations of an IJRPCApplication on its own, and the
+      // middleware list deliberately is not one of them.
+      for var LShared in FServer.Middleware.SharedObjects do
+        FContext.AddContent(LShared);
+
+      // Built here, and not per message, so that it can live in the request
+      // context: it is where the api classes find it to run the hooks of their
+      // own operation. What is per message is BeginMessage/EndMessage.
+      FPipeline := TMiddlewarePipeline.Create(FServer.Middleware, FContext);
+      FGarbage.Add(FPipeline);
+      FContext.AddContent(FPipeline);
+
       if not CheckOAuth then
         Exit;
 
@@ -896,37 +937,101 @@ begin
     Result := LJRPCNeonConfig.NeonConfig;
 end;
 
+class function TMCPTransportHandler.MessageKindOf(AMessage: TJRPCMessage): TMiddlewareMessageKind;
+begin
+  if AMessage is TJRPCNotification then
+    Exit(TMiddlewareMessageKind.Notification);
+  if AMessage is TJRPCResponse then
+    Exit(TMiddlewareMessageKind.Response);
+  if AMessage is TJRPCError then
+    Exit(TMiddlewareMessageKind.Error);
+
+  Result := TMiddlewareMessageKind.Request;
+end;
+
+class function TMCPTransportHandler.MethodNameOf(AMessage: TJRPCMessage): string;
+begin
+  if AMessage is TJRPCMethod then
+    Exit(TJRPCMethod(AMessage).Method);
+
+  Result := '';
+end;
+
 procedure TMCPTransportHandler.HandleMessage(AMessage: TJRPCMessage; AResponseQueue: TMCPMessageQueue);
 var
-  LConstructorProxy: TJRPCConstructorProxy;
-  LInstance: TObject;
-  LInvokerCtx: TJRPCInvokerContext;
+  LContext: TMiddlewareContext;
+  LChain: TMessageChain;
+begin
+  LContext := TMiddlewareContext.Create(MethodNameOf(AMessage),
+    MessageKindOf(AMessage), AMessage, FContext, FGarbage, AResponseQueue,
+    not FPipeline.IsEmpty);
+  try
+    FResponseQueue := AResponseQueue;
+    FPipeline.BeginMessage(LContext);
+    try
+      // The whole chain sits inside the try, not just the handler, so that a
+      // middleware raising to refuse a call lands here the same way the api
+      // method does, and an error handling middleware upstream sees what the
+      // ones below it raised.
+      try
+        if FPipeline.IsEmpty then
+          DispatchMessage(LContext)
+        else
+        begin
+          LChain := TMessageChain.Create(
+            FPipeline.ChainFor<IMessageMiddleware>, DispatchMessage);
+          LChain.Next(LContext);
+        end;
+      except
+        on E: Exception do
+        begin
+          Logger.LogError(E, Format('TMCPTransportHandler.HandleMessage %s: %s', [E.ClassName, E.Message]));
+          // Only a request has somewhere to put an error: anything else keeps
+          // the behaviour it had before, which is to let the caller see it.
+          if not (AMessage is TJRPCRequest) then
+            raise;
+
+          AResponseQueue.Enqueue(TJRPCInvoker.HandleError(E, TJRPCRequest(AMessage).Id));
+        end;
+      end;
+    finally
+      FPipeline.EndMessage;
+      FResponseQueue := nil;
+    end;
+  finally
+    LContext.Free;
+  end;
+end;
+
+procedure TMCPTransportHandler.DispatchMessage(AContext: TMiddlewareContext);
+var
+  LChain: TRequestChain;
 begin
   // Every message that is not a Request is dealt with here and here only: the
-  // cast below is unguarded, so anything reaching it that is not a TJRPCRequest
-  // raises EInvalidCast outside the try, and the client is told 500.
+  // cast in DispatchRequest is unguarded, so anything reaching it that is not a
+  // TJRPCRequest raises EInvalidCast, and the client is told 500.
 
   // A notification is fire-and-forget, and the specification forbids answering
   // one at all. There is no longer an inbound session queue to route it to, so
   // it is accepted and dropped.
-  if AMessage is TJRPCNotification then
+  if AContext.Message is TJRPCNotification then
   begin
-    Logger.LogDebug('Discarding notification [%s]', [TJRPCNotification(AMessage).Method]);
+    Logger.LogDebug('Discarding notification [%s]', [TJRPCNotification(AContext.Message).Method]);
     Exit;
   end;
 
   // A Response is an answer to a request this server sent. Correlating one
   // needed the session that carried the original request, so there is nothing
   // left to match it against.
-  if AMessage is TJRPCResponse then
+  if AContext.Message is TJRPCResponse then
   begin
-    Logger.LogDebug('Discarding response id [%s]', [TJRPCResponse(AMessage).Id.AsString]);
+    Logger.LogDebug('Discarding response id [%s]', [TJRPCResponse(AContext.Message).Id.AsString]);
     Exit;
   end;
 
-  if AMessage is TJRPCError then
+  if AContext.Message is TJRPCError then
   begin
-    var LErr := AMessage as TJRPCError;
+    var LErr := AContext.Message as TJRPCError;
 
     // Request=True marks a message the server must not answer: an Error object
     // the client itself sent, or a notification that failed to parse. Anything
@@ -937,66 +1042,73 @@ begin
     else
     begin
       Logger.LogDebug('Error detected [%s]', [LErr.Error.Message.Value]);
-      AResponseQueue.Enqueue(LErr.Clone);
+      AContext.Emit(LErr.Clone);
     end;
 
     Exit;
   end;
 
-  var LRequest := AMessage as TJRPCRequest;
-  try
-    Logger.LogDebug('Processing request [%s: %s]', [LRequest.Id.AsString, LRequest.Method]);
-
-    FContext.AddContent(LRequest);
-
-    var LMCPConfig := FContext.FindContextDataAs(IMCPConfig) as IMCPConfig;
-    if Assigned(LMCPConfig) then
-    begin
-      if not LMCPConfig.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
-        raise EJRPCMethodNotFoundError.CreateFmt(STransportMethodNotFoundFmt, [LRequest.Method]);
-    end
-    else if not TJRPCRegistry.Instance.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
-      raise EJRPCMethodNotFoundError.CreateFmt(STransportMethodNotFoundFmt, [LRequest.Method]);
-
-    LInstance := LConstructorProxy.ConstructorFunc();
-    FGarbage.Add(LInstance);
-
-    // Injects the context inside the instance
-    FContext.Inject(LInstance);
-
-    // The invoker appends what it produces to a TJRPCMessages, while this
-    // transport hands responses to a TMCPMessageQueue that the SSE writer drains
-    // while the worker thread is still running. The two are bridged here.
-    //
-    // The scratch list owns what the invoker builds, so an exception raised
-    // before the hand-over below still frees it; from then on ownership moves to
-    // the queue one message at a time, which is the only owner Process/Destroy
-    // knows about.
-    var LInvokerResponses := TJRPCMessages.Create(True);
-    try
-      LInvokerCtx.Garbage := FGarbage;
-      LInvokerCtx.Request := LRequest;
-      LInvokerCtx.Responses := LInvokerResponses;
-      LInvokerCtx.ApiInstance := LInstance;
-      LInvokerCtx.SelectConfig(SelectNeonConfig(LConstructorProxy));
-
-      TJRPCInvoker.Invoke(LInvokerCtx);
-
-      while LInvokerResponses.Count > 0 do
-        AResponseQueue.Enqueue(LInvokerResponses.List.Extract(LInvokerResponses.List[0]));
-    finally
-      LInvokerResponses.Free;
-    end;
-
-  except
-    on E: Exception do
-    begin
-      Logger.LogError(E, Format('TMCPTransportHandler.HandleMessage %s: %s', [E.ClassName, E.Message]));
-      var err := TJRPCInvoker.HandleError(E, LRequest.Id);
-      AResponseQueue.Enqueue(err);
-    end;
+  if FPipeline.IsEmpty then
+  begin
+    DispatchRequest(AContext);
+    Exit;
   end;
 
+  LChain := TRequestChain.Create(
+    FPipeline.ChainFor<IRequestMiddleware>, DispatchRequest);
+  LChain.Next(AContext);
+end;
+
+procedure TMCPTransportHandler.DispatchRequest(AContext: TMiddlewareContext);
+var
+  LConstructorProxy: TJRPCConstructorProxy;
+  LInstance: TObject;
+  LInvokerCtx: TJRPCInvokerContext;
+begin
+  var LRequest := AContext.Message as TJRPCRequest;
+
+  Logger.LogDebug('Processing request [%s: %s]', [LRequest.Id.AsString, LRequest.Method]);
+
+  FContext.AddContent(LRequest);
+
+  var LMCPConfig := FContext.FindContextDataAs(IMCPConfig) as IMCPConfig;
+  if Assigned(LMCPConfig) then
+  begin
+    if not LMCPConfig.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
+      raise EJRPCMethodNotFoundError.CreateFmt(STransportMethodNotFoundFmt, [LRequest.Method]);
+  end
+  else if not TJRPCRegistry.Instance.GetConstructorProxy(LRequest.Method, LConstructorProxy) then
+    raise EJRPCMethodNotFoundError.CreateFmt(STransportMethodNotFoundFmt, [LRequest.Method]);
+
+  LInstance := LConstructorProxy.ConstructorFunc();
+  FGarbage.Add(LInstance);
+
+  // Injects the context inside the instance
+  FContext.Inject(LInstance);
+
+  // The invoker appends what it produces to a TJRPCMessages, while this
+  // transport hands responses to a TMCPMessageQueue that the SSE writer drains
+  // while the worker thread is still running. The two are bridged here.
+  //
+  // The scratch list owns what the invoker builds, so an exception raised
+  // before the hand-over below still frees it; from then on ownership moves to
+  // the queue one message at a time, which is the only owner Process/Destroy
+  // knows about.
+  var LInvokerResponses := TJRPCMessages.Create(True);
+  try
+    LInvokerCtx.Garbage := FGarbage;
+    LInvokerCtx.Request := LRequest;
+    LInvokerCtx.Responses := LInvokerResponses;
+    LInvokerCtx.ApiInstance := LInstance;
+    LInvokerCtx.SelectConfig(SelectNeonConfig(LConstructorProxy));
+
+    TJRPCInvoker.Invoke(LInvokerCtx);
+
+    while LInvokerResponses.Count > 0 do
+      FResponseQueue.Enqueue(LInvokerResponses.List.Extract(LInvokerResponses.List[0]));
+  finally
+    LInvokerResponses.Free;
+  end;
 end;
 
 procedure TMCPTransportHandler.HandleOPTIONS;

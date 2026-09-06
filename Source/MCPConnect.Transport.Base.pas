@@ -798,23 +798,10 @@ begin
 
       FGarbage.Add(FContext);
       FContext.AddContent(FGarbage);
-      FContext.AddContent(FServer);
 
-      // Adding the server is not enough: the context is keyed by exact class, so
-      // every configuration has to go in under its own class for [Context]
-      // injection and FindContextDataAs to see it. Missing one is not a nil
-      // field - TContextManager.Inject resolves through GetContextDataAs, which
-      // raises - so this is what makes TMCPConfig, TOAuthConfig, TAuthTokenConfig
-      // and TJRPCNeonConfig reachable from an API class or a token validator.
-      //
-      // The JRPC library leaves the expansion to its host: TJRPCContext ships an
-      // AddConfigurations hook, empty because a standalone JRPC server has no
-      // configuration system. Subclassing the context to fill it in is not an
-      // option here - the hook is not virtual, and a descendant would register
-      // *itself* under the descendant's class, which would break the
-      // [Context] TJRPCContext field every MCP API class declares.
-      for var LConfig in FServer.GetConfigurations do
-        FContext.AddContent(LConfig);
+      // The server *and* each of its configurations: see AddApplicationToContext
+      // for why adding the server alone is not enough.
+      AddApplicationToContext(FContext, FServer);
 
       FContext.AddContent(FAccessToken);
 

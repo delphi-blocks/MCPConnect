@@ -25,6 +25,7 @@ uses
 
   JRPC.Core,
   MCPConnect.MCP.Server,
+  MCPConnect.Configuration.Core,
   MCPConnect.Configuration.Auth,
   MCPConnect.MCP.Types.Base,
   MCPConnect.Security.Jwks,
@@ -110,7 +111,7 @@ begin
     .SetMetadataProvider(FFake);
 
   FContext := TJRPCContext.Create;
-  FContext.AddContent(FServer);
+  AddApplicationToContext(FContext, FServer);
 
   FAccessToken := TMCPAccessToken.Create;
 end;

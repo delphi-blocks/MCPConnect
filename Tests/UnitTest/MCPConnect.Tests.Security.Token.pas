@@ -21,6 +21,7 @@ uses
 
   JRPC.Core,
   MCPConnect.MCP.Server,
+  MCPConnect.Configuration.Core,
   MCPConnect.Configuration.Auth,
   MCPConnect.MCP.Types.Base,
   MCPConnect.Security.Jwks,
@@ -733,7 +734,7 @@ begin
   // The validator reads everything from the configuration, and reaches it exactly
   // the way it will at runtime: through the server carried by the context.
   FContext := TJRPCContext.Create;
-  FContext.AddContent(FServer);
+  AddApplicationToContext(FContext, FServer);
 
   FAccessToken := TMCPAccessToken.Create;
 end;
@@ -769,7 +770,7 @@ begin
 
     LContext := TJRPCContext.Create;
     try
-      LContext.AddContent(LServer);
+      AddApplicationToContext(LContext, LServer);
       Result := RunValidator(TClaimsTokenValidator, LContext, ValidToken, FAccessToken);
     finally
       LContext.Free;

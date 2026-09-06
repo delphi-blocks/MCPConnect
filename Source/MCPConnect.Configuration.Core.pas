@@ -194,6 +194,26 @@ type
     class destructor Destroy;
   end;
 
+/// <summary>
+///   Adds an application to a request context together with every configuration
+///   it holds.
+/// </summary>
+/// <remarks>
+///   The configurations have to go in individually: the context is keyed by
+///   exact class, and a [Context] field it cannot resolve is not left nil -
+///   TContextManager.Inject raises. This is what makes TMCPConfig, TOAuthConfig,
+///   TAuthTokenConfig and TJRPCNeonConfig reachable from an API class or a token
+///   validator.
+///
+///   The JRPC library leaves the expansion to its host: TJRPCContext ships an
+///   AddConfigurations hook, empty because a standalone JRPC server has no
+///   configuration system. Filling it in by subclassing the context is not an
+///   option - the hook is not virtual, and a descendant registers *itself* under
+///   the descendant's class, which breaks the [Context] TJRPCContext field every
+///   MCP API class declares.
+/// </remarks>
+procedure AddApplicationToContext(AContext: TJRPCContext; AApplication: TObject);
+
 implementation
 
 uses
@@ -343,6 +363,23 @@ begin
   finally
     TMonitor.Exit(Self);
   end;
+end;
+
+procedure AddApplicationToContext(AContext: TJRPCContext; AApplication: TObject);
+var
+  LApplication: IJRPCApplication;
+  LConfig: TJRPCConfiguration;
+begin
+  AContext.AddContent(AApplication);
+
+  if not Supports(AApplication, IJRPCApplication, LApplication) then
+    Exit;
+
+  // Both an application (a TComponent) and a configuration (a TNoRefCountObject)
+  // are non-reference-counted, so neither the Supports query above nor the
+  // interface local going out of scope can free what the context now points at.
+  for LConfig in LApplication.GetConfigurations do
+    AContext.AddContent(LConfig);
 end;
 
 end.

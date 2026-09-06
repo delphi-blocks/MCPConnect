@@ -28,7 +28,7 @@ type
     procedure ButtonStopClick(Sender: TObject);
     procedure ButtonOpenBrowserClick(Sender: TObject);
   private
-    FServer: TJRPCIndyServer;
+    FServer: TMCPIndyServer;
     FLogifyAdapterFactory: ILoggerAdapterFactory;
     procedure StartServer;
   public
@@ -81,8 +81,8 @@ begin
   FLogifyAdapterFactory := TLogifyAdapterBufferFactory.CreateAdapterFactory(TLogLevel.Debug, memoLog.Lines);
   TLoggerAdapterRegistry.Instance.RegisterFactory(FLogifyAdapterFactory);
 
-  FServer := TJRPCIndyServer.CreateMCPServer(Self);
-  TServerConfigurator.ConfigureServer(FServer.JRPCServer);
+  FServer := TMCPIndyServer.CreateMCPServer(Self);
+  TServerConfigurator.ConfigureServer(FServer.MCPServer);
 
   StartServer;
 end;

@@ -60,7 +60,7 @@ type
   end;
 
   /// <summary>
-  ///   Main form of an Indy hosted server: it owns the TJRPCIndyServer and
+  ///   Main form of an Indy hosted server: it owns the TMCPIndyServer and
   ///   carries the whole MCP configuration
   /// </summary>
   TMCPIndyFormCreator = class(TMCPModuleCreator)
@@ -94,7 +94,7 @@ type
   end;
 
   /// <summary>
-  ///   WebModule hosting the TJRPCServer and the TJRPCDispatcher
+  ///   WebModule hosting the TMCPServer and the TMCPDispatcher
   /// </summary>
   TMCPWebModuleCreator = class(TMCPModuleCreator)
   private
@@ -324,7 +324,7 @@ begin
     TSourceBuilder.FromResource(SIndyFormSrcResource)
       .Add('UNIT_NAME', GeneratedUnitName)
       .Add('EXTRA_UNITS', TMCPCodeGen.BuildUsesList(Config, FToolsUnit))
-      .Add('CONFIG_CODE', TMCPCodeGen.BuildConfigCode(Config, 'FServer.JRPCServer', ConfigIndentLevel))
+      .Add('CONFIG_CODE', TMCPCodeGen.BuildConfigCode(Config, 'FServer.MCPServer', ConfigIndentLevel))
       .Build
   );
 end;
@@ -426,7 +426,7 @@ begin
       .Add('MCP_PATH', Config.McpPath)
       .Add('CLASS_GROUP', ClassGroupForAppKind(Config.AppKind))
       .Add('EXTRA_UNITS', TMCPCodeGen.BuildUsesList(Config, FToolsUnit))
-      .Add('CONFIG_CODE', TMCPCodeGen.BuildConfigCode(Config, 'JRPCServer', ConfigIndentLevel))
+      .Add('CONFIG_CODE', TMCPCodeGen.BuildConfigCode(Config, 'ServerMCP', ConfigIndentLevel))
       .Build
   );
 end;
@@ -487,7 +487,7 @@ begin
   begin
     LBuilder := TSourceBuilder.FromResource(SServiceIndySrcResource)
       .Add('EXTRA_UNITS', TMCPCodeGen.BuildUsesList(Config, FToolsUnit))
-      .Add('CONFIG_CODE', TMCPCodeGen.BuildConfigCode(Config, 'FServer.JRPCServer',
+      .Add('CONFIG_CODE', TMCPCodeGen.BuildConfigCode(Config, 'FServer.MCPServer',
         ConfigIndentLevel));
   end;
 

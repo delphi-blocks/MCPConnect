@@ -60,7 +60,7 @@ type
 
 var
   WebModuleClass: TComponentClass = TWebModule1;
-  JRPCServer: TMCPServer;
+  ServerMCP: TMCPServer;
 
 implementation
 
@@ -84,27 +84,27 @@ end;
 
 procedure TWebModule1.WebModuleCreate(Sender: TObject);
 var
-  LJRPCDispatcher: TJRPCDispatcher;
+  LMCPDispatcher: TMCPDispatcher;
 begin
   // Singleton: WebBroker creates one web module per thread, but all share one server
-  if not Assigned(JRPCServer) then
+  if not Assigned(ServerMCP) then
   begin
-    JRPCServer := TMCPServer.Create(nil);
-    TServerConfigurator.ConfigureServer(JRPCServer);
+    ServerMCP := TMCPServer.Create(nil);
+    TServerConfigurator.ConfigureServer(ServerMCP);
   end;
 
   // The dispatcher hooks itself into the owning web module
-  LJRPCDispatcher := TJRPCDispatcher.Create(Self);
-  LJRPCDispatcher.PathInfo := '/mcp';
-  LJRPCDispatcher.Server := JRPCServer;
+  LMCPDispatcher := TMCPDispatcher.Create(Self);
+  LMCPDispatcher.PathInfo := '/mcp';
+  LMCPDispatcher.Server := ServerMCP;
 end;
 
 initialization
 
-  JRPCServer := nil;
+  ServerMCP := nil;
 
 finalization
 
-  JRPCServer.Free;
+  ServerMCP.Free;
 
 end.

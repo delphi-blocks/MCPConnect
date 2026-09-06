@@ -124,12 +124,12 @@ end;
 
 procedure TServiceModule.ServiceExecute(Sender: TService);
 var
-  FServer: TJRPCIndyServer;
+  FServer: TMCPIndyServer;
 begin
   // ServiceExecute *is* the service: everything happens inside it, and the
   // service stops when this method returns. So the server is created, run and
   // destroyed here rather than in OnStart/OnStop.
-  FServer := TJRPCIndyServer.CreateMCPServer(nil);
+  FServer := TMCPIndyServer.CreateMCPServer(nil);
   try
     // No form to read the port from - it is fixed here. A real service would
     // read it from the registry, an .ini or a command-line parameter captured
@@ -138,7 +138,7 @@ begin
     FServer.DefaultPort := 8080;
 
     // The one line shared with every other host in this demo.
-    TServerConfigurator.ConfigureServer(FServer.JRPCServer);
+    TServerConfigurator.ConfigureServer(FServer.MCPServer);
 
     Logger.LogInfo('Service starting...');
     FServer.Active := True;

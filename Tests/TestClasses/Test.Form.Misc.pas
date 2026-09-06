@@ -7,7 +7,7 @@ uses
   Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls,
 
   System.Generics.Collections,
-  MCPConnect.JRPC.Core;
+  JRPC.Core;
 
 type
   TfrmMisc = class(TForm)
@@ -41,7 +41,7 @@ implementation
 
 uses
   MCPConnect.MCP.Types.Base,
-  MCPConnect.JRPC.Classes,
+  JRPC.Classes,
 
   System.RegularExpressions;
 

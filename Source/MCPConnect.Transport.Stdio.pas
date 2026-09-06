@@ -32,7 +32,7 @@ type
 
   EJRPCStdioServerError = class(Exception);
 
-  TJRPCStdioServer = class(TComponent)
+  TMCPStdioServer = class(TComponent)
   private
     FMCPServer: TMCPServer;
     FActive: Boolean;
@@ -53,7 +53,7 @@ type
 
     property MCPServer: TMCPServer read FMCPServer;
   public
-    class function CreateMCPServer(AOwner: TComponent): TJRPCStdioServer;
+    class function CreateMCPServer(AOwner: TComponent): TMCPStdioServer;
   end;
 
   /// <summary>
@@ -166,8 +166,6 @@ uses
   Winapi.Windows,
   {$ENDIF}
   JRPC.Core,
-  JRPC.Classes,
-  JRPC.Invoker,
   Neon.Core.Types,
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON;
@@ -384,42 +382,42 @@ begin
   inherited Create(StdErrHandle);
 end;
 
-{ TJRPCStdioServer }
+{ TMCPStdioServer }
 
-procedure TJRPCStdioServer.BeforeDestruction;
+procedure TMCPStdioServer.BeforeDestruction;
 begin
   inherited;
   StopServer;
 end;
 
-constructor TJRPCStdioServer.Create(AOwner: TComponent);
+constructor TMCPStdioServer.Create(AOwner: TComponent);
 begin
   inherited;
   FMCPServer := TMCPServer.Create(nil);
 end;
 
-class function TJRPCStdioServer.CreateMCPServer(AOwner: TComponent): TJRPCStdioServer;
+class function TMCPStdioServer.CreateMCPServer(AOwner: TComponent): TMCPStdioServer;
 begin
-  Result := TJRPCStdioServer.Create(nil);
+  Result := TMCPStdioServer.Create(nil);
 end;
 
-destructor TJRPCStdioServer.Destroy;
+destructor TMCPStdioServer.Destroy;
 begin
   FMCPServer.Free;
   inherited;
 end;
 
-function TJRPCStdioServer.GetTerminated: Boolean;
+function TMCPStdioServer.GetTerminated: Boolean;
 begin
   Result := not Assigned(FWorker) or FWorker.Terminated;
 end;
 
-procedure TJRPCStdioServer.ProcessRequests;
+procedure TMCPStdioServer.ProcessRequests;
 begin
   // TODO: Implement synchronous request processing
 end;
 
-procedure TJRPCStdioServer.SetActive(const Value: Boolean);
+procedure TMCPStdioServer.SetActive(const Value: Boolean);
 begin
   if Value then
     StartServer
@@ -427,7 +425,7 @@ begin
     StopServer;
 end;
 
-procedure TJRPCStdioServer.StartServer;
+procedure TMCPStdioServer.StartServer;
 begin
   if not FActive then
   begin
@@ -439,14 +437,14 @@ begin
   end;
 end;
 
-procedure TJRPCStdioServer.StartServerAndWait;
+procedure TMCPStdioServer.StartServerAndWait;
 begin
   StartServer;
   if Assigned(FWorker) then
     FWorker.WaitFor;
 end;
 
-procedure TJRPCStdioServer.StopServer;
+procedure TMCPStdioServer.StopServer;
 begin
   if FActive then
   begin

@@ -131,9 +131,10 @@ var
   LUnits: TArray<string>;
   LUnitName: string;
 begin
-  // MCPConnect.MCP.Server.Api registers the standard MCP methods (initialize,
-  // tools/*, resources/*, prompts/*, ...) from its initialization section, so
-  // it has to be linked in even though nothing references it explicitly
+  // MCPConnect.MCP.Server.Api registers the standard MCP methods
+  // (server/discover, tools/*, resources/*, prompts/*, ...) from its
+  // initialization section, so it has to be linked in even though nothing
+  // references it explicitly
   LUnits := ['MCPConnect.MCP.Server.Api', 'MCPConnect.Configuration.MCP',
     'MCPConnect.Content.Writers.RTL'];
 

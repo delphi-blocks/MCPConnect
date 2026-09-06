@@ -9,16 +9,16 @@ uses
   System.ImageList, Vcl.ImgList, System.Actions, Vcl.ActnList,
   Vcl.CategoryButtons, Vcl.ComCtrls, Vcl.ToolWin,
 
-  MCPConnect.JRPC.Classes,
+  JRPC.Core,
+  JRPC.Invoker,
+  JRPC.Classes,
 
   MCPConnect.MCP.Attributes,
   MCPConnect.MCP.Types.Base,
+  MCPConnect.MCP.Types.Mrtr,
   MCPConnect.MCP.Types.Tools,
   MCPConnect.MCP.Types.Resources,
   MCPConnect.MCP.Types.Prompts,
-
-  MCPConnect.JRPC.Invoker,
-  MCPConnect.JRPC.Core,
 
   Neon.Core.Tags,
   Neon.Core.Types,
@@ -90,7 +90,6 @@ type
     procedure actMessagesExecute(Sender: TObject);
     procedure actJRPCIDExecute(Sender: TObject);
     procedure InitializeResultExecute(Sender: TObject);
-    procedure actInitializeRequestExecute(Sender: TObject);
     procedure actRttiCallExecute(Sender: TObject);
     procedure actToolSingleExecute(Sender: TObject);
     procedure actInvokeRequestExecute(Sender: TObject);
@@ -344,32 +343,6 @@ begin
   }
 end;
 
-procedure TfrmMain.actInitializeRequestExecute(Sender: TObject);
-begin
-  var pars := TRequestParams.Create;
-  pars.RequestMeta.ProtocolVersion := '2026-07-28';
-  pars.RequestMeta.ClientInfo.Name := 'Delphi MCPConnect';
-  pars.RequestMeta.ClientInfo.Version := '2.0';
-  pars.RequestMeta.Capabilities.Sampling.AddPair('test', 'Value');
-  pars.RequestMeta.Capabilities.EnableRoots;
-  pars.RequestMeta.ProgressToken := '2ueyt283gr632g362rg';
-
-  pars.RequestMeta.AdditionalData.addPair('custom', TNeon.ValueToJSON('Custom Value'));
-
-  var j := TNeon.ObjectToJSON(pars, GetMCPNeonConfig);
-  mmoLog.Lines.Add(TNeon.Print(j, True));
-
-  var req := TJRPCRequest.Create;
-  req.id := 1;
-  req.Method := 'request';
-  req.Params := j;
-
-  pars.Free;
-  mmoLog.Lines.Add(req.ToJson(True));
-
-  req.free;
-end;
-
 procedure TfrmMain.actInvokeRequestExecute(Sender: TObject);
 begin
 {
@@ -432,7 +405,7 @@ end;
 
 procedure TfrmMain.actCallToolParamsExecute(Sender: TObject);
 begin
-  var c := TCallToolParams.Create;
+  var c := TCallToolRequestParams.Create;
 
   c.Name := 'Somma';
   c.Arguments.AddPair('arg1', TNeon.ValueToJSON(12));
@@ -445,7 +418,7 @@ begin
 
   mmoLog.Lines.Add('------------------');
 
-  c :=  TNeon.JSONToObject<TCallToolParams>(s, GetMCPNeonConfig);
+  c :=  TNeon.JSONToObject<TCallToolRequestParams>(s, GetMCPNeonConfig);
   mmoLog.Lines.Add('Method: ' + c.Name);
   for var arg in c.Arguments do
   begin

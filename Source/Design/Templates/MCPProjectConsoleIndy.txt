@@ -6,7 +6,7 @@ program %PROJECT_NAME%;
 
 uses
   System.SysUtils,
-  MCPConnect.JRPC.Server,
+  MCPConnect.MCP.Server,
   MCPConnect.Transport.Indy,
 %EXTRA_UNITS%
 
@@ -15,9 +15,9 @@ const
 
 procedure RunServer;
 var
-  LServer: TJRPCIndyServer;
+  LServer: TMCPIndyServer;
 begin
-  LServer := TJRPCIndyServer.CreateMCPServer(nil);
+  LServer := TMCPIndyServer.CreateMCPServer(nil);
   try
 %CONFIG_CODE%
 

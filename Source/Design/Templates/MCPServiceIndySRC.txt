@@ -6,7 +6,7 @@ uses
   Winapi.Windows, System.SysUtils, System.Classes,
   Vcl.SvcMgr, System.Win.Registry,
 
-  MCPConnect.JRPC.Server,
+  MCPConnect.MCP.Server,
   MCPConnect.Transport.Indy;
 
 type
@@ -15,7 +15,7 @@ type
     procedure ServiceAfterInstall(Sender: TService);
     procedure ServiceExecute(Sender: TService);
   private
-    FServer: TJRPCIndyServer;
+    FServer: TMCPIndyServer;
 
     procedure ConfigureServer;
   public
@@ -79,7 +79,7 @@ end;
 
 procedure TServiceModule.ServiceExecute(Sender: TService);
 begin
-  FServer := TJRPCIndyServer.CreateMCPServer(nil);
+  FServer := TMCPIndyServer.CreateMCPServer(nil);
   try
     ConfigureServer;
 

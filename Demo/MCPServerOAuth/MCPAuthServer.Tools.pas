@@ -10,7 +10,6 @@ uses
 
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
-  JRPC.Core,
   JRPC.Classes,
 
   MCPConnect.Configuration.MCP,

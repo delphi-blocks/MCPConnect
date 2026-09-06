@@ -28,9 +28,9 @@ resourcestring
   SJRPCServerNotFound = 'JRPC JRPCServer not found';
 
 type
-  TJRPCIndyBridge = class(TComponent)
+  TMCPIndyBridge = class(TComponent)
   private
-    FJRPCServer: TMCPServer;
+    FMCPServer: TMCPServer;
     procedure LogRequest(const ARequest: TMCPTransportRequest);
     {$HINTS OFF}
     procedure LogResponse(const AResponse: TMCPTransportResponse);
@@ -43,21 +43,21 @@ type
   public
     procedure HandleRequest(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
 
-    property JRPCServer: TMCPServer read FJRPCServer write FJRPCServer;
+    property MCPServer: TMCPServer read FMCPServer write FMCPServer;
   end;
 
-  TJRPCIndyServer = class(TIdCustomHTTPServer)
+  TMCPIndyServer = class(TIdCustomHTTPServer)
   private
-    FJRPCServer: TMCPServer;
-    FBridge: TJRPCIndyBridge;
+    FMCPServer: TMCPServer;
+    FBridge: TMCPIndyBridge;
     procedure ParseAuthentication(AContext: TIdContext; const AAuthType, AAuthData: string; var VUsername, VPassword: String; var VHandled: Boolean);
   public
     constructor Create(AOwner: TComponent);
     destructor Destroy; override;
 
-    property JRPCServer: TMCPServer read FJRPCServer;
+    property MCPServer: TMCPServer read FMCPServer;
   public
-    class function CreateMCPServer(AOwner: TComponent): TJRPCIndyServer;
+    class function CreateMCPServer(AOwner: TComponent): TMCPIndyServer;
   end;
 
   TMCPTransportWriterIndy = class(TInterfacedObject, IMCPTransportWriter)
@@ -80,14 +80,14 @@ implementation
 uses
   System.IOUtils, Logify;
 
-procedure TJRPCIndyBridge.HandleRequest(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
+procedure TMCPIndyBridge.HandleRequest(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
 var
   LMcpHandler: IMCPTransportHandler;
 begin
-  if not Assigned(FJRPCServer) then
+  if not Assigned(FMCPServer) then
     raise EJRPCException.Create(SJRPCServerNotFound);
 
-  LMcpHandler := TMCPTransportHandler.Create(FJRPCServer, TMCPTransportWriterIndy.Create(AContext.Connection));
+  LMcpHandler := TMCPTransportHandler.Create(FMCPServer, TMCPTransportWriterIndy.Create(AContext.Connection));
 
   LMcpHandler.SendResponseHeadersProc :=
     procedure (AResponse: TMCPTransportResponse)
@@ -131,40 +131,40 @@ begin
   );
 end;
 
-{ TJRPCIndyServer }
+{ TMCPIndyServer }
 
-constructor TJRPCIndyServer.Create(AOwner: TComponent);
+constructor TMCPIndyServer.Create(AOwner: TComponent);
 begin
   inherited;
-  FBridge := TJRPCIndyBridge.Create(nil);
-  FJRPCServer := TMCPServer.Create(nil);
-  FBridge.JRPCServer := FJRPCServer;
+  FBridge := TMCPIndyBridge.Create(nil);
+  FMCPServer := TMCPServer.Create(nil);
+  FBridge.MCPServer := FMCPServer;
 
   OnParseAuthentication := ParseAuthentication;
   OnCommandGet := FBridge.HandleRequest;
   OnCommandOther := FBridge.HandleRequest;
 end;
 
-class function TJRPCIndyServer.CreateMCPServer(AOwner: TComponent): TJRPCIndyServer;
+class function TMCPIndyServer.CreateMCPServer(AOwner: TComponent): TMCPIndyServer;
 begin
-  Result := TJRPCIndyServer.Create(AOwner);
+  Result := TMCPIndyServer.Create(AOwner);
 end;
 
-destructor TJRPCIndyServer.Destroy;
+destructor TMCPIndyServer.Destroy;
 begin
   FBridge.Free;
-  FJRPCServer.Free;
+  FMCPServer.Free;
   inherited;
 end;
 
-procedure TJRPCIndyServer.ParseAuthentication(AContext: TIdContext;
+procedure TMCPIndyServer.ParseAuthentication(AContext: TIdContext;
   const AAuthType, AAuthData: string; var VUsername, VPassword: String;
   var VHandled: Boolean);
 begin
   VHandled := True;
 end;
 
-procedure TJRPCIndyBridge.LogHttpResponse(const AResponse: TIdHTTPResponseInfo);
+procedure TMCPIndyBridge.LogHttpResponse(const AResponse: TIdHTTPResponseInfo);
 begin
   Logger.Log('-->-->-->-->-->-->--> RESPONSE', TLogLevel.Trace);
   Logger.Log(Format('Http Code: [%d]', [AResponse.ResponseNo]), TLogLevel.Trace);
@@ -174,7 +174,7 @@ begin
   Logger.Log(Format('*** Content: %s', [AResponse.ContentText]), TLogLevel.Trace);
 end;
 
-procedure TJRPCIndyBridge.LogRequest(const ARequest: TMCPTransportRequest);
+procedure TMCPIndyBridge.LogRequest(const ARequest: TMCPTransportRequest);
 begin
   Logger.Log('<--<--<--<--<--<--<-- REQUEST', TLogLevel.Trace);
   Logger.Log(Format('Url: [%s] %s', [ARequest.Command, ARequest.Url]), TLogLevel.Trace);
@@ -184,7 +184,7 @@ begin
   Logger.Log('*** Content: ' + ARequest.Content, TLogLevel.Trace);
 end;
 
-procedure TJRPCIndyBridge.LogResponse(const AResponse: TMCPTransportResponse);
+procedure TMCPIndyBridge.LogResponse(const AResponse: TMCPTransportResponse);
 begin
   Logger.Log('-->-->-->-->-->-->--> RESPONSE', TLogLevel.Trace);
   Logger.Log(Format('Http Code: [%d]', [AResponse.Code]), TLogLevel.Trace);
@@ -194,7 +194,7 @@ begin
   Logger.Log(Format('*** Content: %s', [AResponse.Content]), TLogLevel.Trace);
 end;
 
-function TJRPCIndyBridge.IsIndyHeader(const Name: string): Boolean;
+function TMCPIndyBridge.IsIndyHeader(const Name: string): Boolean;
 const
   IndyHeaders: array [0..4] of string = ('Date', 'Content-Type', 'Content-Length', 'Connection', 'Transfer-Encoding');
 var
@@ -206,7 +206,7 @@ begin
       Exit(True);
 end;
 
-function TJRPCIndyBridge.ReadContentStream(ARequestInfo: TIdHTTPRequestInfo): string;
+function TMCPIndyBridge.ReadContentStream(ARequestInfo: TIdHTTPRequestInfo): string;
 var
   LEncoding: IIdTextEncoding;
 begin
@@ -225,7 +225,7 @@ begin
   Result := ReadStringFromStream(ARequestInfo.PostStream, -1, LEncoding);
 end;
 
-procedure TJRPCIndyBridge.SendHeaders(const AResponse: TMCPTransportResponse;
+procedure TMCPIndyBridge.SendHeaders(const AResponse: TMCPTransportResponse;
   AContext: TIdContext; AHttpResponse: TIdHTTPResponseInfo);
 var
   LHeaderPair: TPair<string, string>;

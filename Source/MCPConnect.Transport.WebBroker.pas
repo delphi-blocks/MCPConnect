@@ -30,7 +30,7 @@ resourcestring
   SWebBrokerSSENotSupported = 'SSE not supported';
 
 type
-  TJRPCDispatcher = class(TComponent, IWebDispatch)
+  TMCPDispatcher = class(TComponent, IWebDispatch)
   private
     FDispatchMask: TMask;
     FPathInfo: string;
@@ -144,7 +144,7 @@ begin
     Result := 0;
 end;
 
-procedure TJRPCDispatcher.ConvertRequestHeaders(AWebRequest: TWebRequest; AMCPRequest: TMCPTransportRequest);
+procedure TMCPDispatcher.ConvertRequestHeaders(AWebRequest: TWebRequest; AMCPRequest: TMCPTransportRequest);
 begin
   AMCPRequest.Headers.Clear();
   {$IFDEF HAS_WEBBROKER_REQUEST_HEADERS}
@@ -188,7 +188,7 @@ begin
   {$ENDIF}
 end;
 
-procedure TJRPCDispatcher.ConvertResponseHeaders(AWebResponse: TWebResponse;
+procedure TMCPDispatcher.ConvertResponseHeaders(AWebResponse: TWebResponse;
   AMCPResponse: TMCPTransportResponse);
 begin
   AWebResponse.CustomHeaders.Clear();
@@ -225,25 +225,25 @@ begin
   end;
 end;
 
-constructor TJRPCDispatcher.Create(AOwner: TComponent);
+constructor TMCPDispatcher.Create(AOwner: TComponent);
 begin
   inherited;
   FDispatchMask := nil;
   FPathInfo := 'jrpc';
 end;
 
-destructor TJRPCDispatcher.Destroy;
+destructor TMCPDispatcher.Destroy;
 begin
   FDispatchMask.Free;
   inherited;
 end;
 
-function TJRPCDispatcher.DispatchEnabled: Boolean;
+function TMCPDispatcher.DispatchEnabled: Boolean;
 begin
   Result := True;
 end;
 
-function TJRPCDispatcher.DispatchMask: TMask;
+function TMCPDispatcher.DispatchMask: TMask;
 begin
   if not Assigned(FDispatchMask) then
   begin
@@ -252,12 +252,12 @@ begin
   Result := FDispatchMask;
 end;
 
-function TJRPCDispatcher.DispatchMethodType: TMethodType;
+function TMCPDispatcher.DispatchMethodType: TMethodType;
 begin
   Result := mtAny;
 end;
 
-function TJRPCDispatcher.DispatchRequest(Sender: TObject; AWebRequest: TWebRequest; AWebResponse: TWebResponse): Boolean;
+function TMCPDispatcher.DispatchRequest(Sender: TObject; AWebRequest: TWebRequest; AWebResponse: TWebResponse): Boolean;
 var
   LMcpHandler: IMCPTransportHandler;
 begin
@@ -305,13 +305,13 @@ begin
   Result := True;
 end;
 
-procedure TJRPCDispatcher.SetPathInfo(const Value: string);
+procedure TMCPDispatcher.SetPathInfo(const Value: string);
 begin
   // If the mask is already created should I raise an exception?
   FPathInfo := Value;
 end;
 
-procedure TJRPCDispatcher.SetServer(const Value: TMCPServer);
+procedure TMCPDispatcher.SetServer(const Value: TMCPServer);
 begin
   FServer := Value;
 end;

@@ -62,13 +62,14 @@ uses
   MCPServer.Resources in '..\MCPServer.Resources.pas',
   MCPServer.Apps in '..\MCPServer.Apps.pas',
   MCPServer.Notifications in '..\MCPServer.Notifications.pas',
-  MCPServer.Prompts in '..\MCPServer.Prompts.pas';
+  MCPServer.Prompts in '..\MCPServer.Prompts.pas',
+  MCPServer.Middleware in '..\MCPServer.Middleware.pas';
 
 procedure StartServer;
 var
-  LServer: TJRPCStdioServer;
+  LServer: TMCPStdioServer;
 begin
-  LServer := TJRPCStdioServer.Create(nil);
+  LServer := TMCPStdioServer.Create(nil);
   try
     // Exactly the same call the Indy, WebBroker and service hosts make: the
     // server definition knows nothing about the transport carrying it.
@@ -77,7 +78,7 @@ begin
     // Blocks until the client closes the pipes. If the host process needs to
     // do something else in the meantime (drive a UI, poll a queue), use
     // StartServer and call ProcessRequests in your own loop instead - see
-    // TJRPCStdioServer in MCPConnect.Transport.Stdio.pas.
+    // TMCPStdioServer in MCPConnect.Transport.Stdio.pas.
     LServer.StartServerAndWait;
   finally
     LServer.Free;

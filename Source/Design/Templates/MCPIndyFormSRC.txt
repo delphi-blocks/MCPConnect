@@ -6,7 +6,7 @@ uses
   System.SysUtils, System.Classes,
   Vcl.Controls, Vcl.Forms, Vcl.StdCtrls, Vcl.AppEvnts,
 
-  MCPConnect.JRPC.Server,
+  MCPConnect.MCP.Server,
   MCPConnect.Transport.Indy;
 
 type
@@ -21,7 +21,7 @@ type
     procedure ButtonStopClick(Sender: TObject);
     procedure ApplicationEventsIdle(Sender: TObject; var Done: Boolean);
   private
-    FServer: TJRPCIndyServer;
+    FServer: TMCPIndyServer;
 
     procedure ConfigureServer;
     procedure StartServer;
@@ -41,7 +41,7 @@ uses
 
 procedure TfrmMain.FormCreate(Sender: TObject);
 begin
-  FServer := TJRPCIndyServer.CreateMCPServer(Self);
+  FServer := TMCPIndyServer.CreateMCPServer(Self);
   ConfigureServer;
   StartServer;
 end;

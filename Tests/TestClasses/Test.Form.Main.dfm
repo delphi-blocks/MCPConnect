@@ -216,7 +216,6 @@ object frmMain: TfrmMain
     object actInitializeRequest: TAction
       Category = 'MCP'
       Caption = 'Initialize Request'
-      OnExecute = actInitializeRequestExecute
     end
     object actInitializeResult: TAction
       Category = 'MCP'

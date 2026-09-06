@@ -6,15 +6,15 @@ program %PROJECT_NAME%;
 
 uses
   System.SysUtils,
-  MCPConnect.JRPC.Server,
+  MCPConnect.MCP.Server,
   MCPConnect.Transport.Stdio,
 %EXTRA_UNITS%
 
 procedure StartServer;
 var
-  LServer: TJRPCStdioServer;
+  LServer: TMCPStdioServer;
 begin
-  LServer := TJRPCStdioServer.Create(nil);
+  LServer := TMCPStdioServer.Create(nil);
   try
 %CONFIG_CODE%
     LServer.StartServerAndWait;

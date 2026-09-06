@@ -221,7 +221,7 @@ begin
     LBuilder
       .Add('EXTRA_UNITS', TMCPCodeGen.BuildUsesList(FConfig, ''))
       .Add('CONFIG_CODE', TMCPCodeGen.BuildConfigCode(FConfig,
-        'LServer.JRPCServer', ProjectSourceIndentLevel));
+        'LServer.MCPServer', ProjectSourceIndentLevel));
   end;
 
   Result := TMCPSourceFile.Create(LBuilder.Build);

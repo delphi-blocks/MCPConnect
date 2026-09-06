@@ -32,7 +32,8 @@ uses
   MCPServer.Notifications in '..\MCPServer.Notifications.pas',
   MCPServer.Apps in '..\MCPServer.Apps.pas',
   MCPServer.Prompts in '..\MCPServer.Prompts.pas',
-  MCPServer.Resources in '..\MCPServer.Resources.pas';
+  MCPServer.Resources in '..\MCPServer.Resources.pas',
+  MCPServer.Middleware in '..\MCPServer.Middleware.pas';
 
 {$R *.RES}
 

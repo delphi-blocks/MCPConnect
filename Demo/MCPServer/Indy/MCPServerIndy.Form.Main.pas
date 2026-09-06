@@ -35,12 +35,7 @@ uses
   Logify,
   Logify.Adapter.Buffer,
 
-  // TJRPCServer is the protocol engine: it owns the JSON-RPC dispatch, the
-  // plugin/configuration chain and the session manager. It is transport
-  // agnostic - the unit below is what plugs it into HTTP.
-  JRPC.Server,
-
-  // TJRPCIndyServer = TIdCustomHTTPServer + an MCP request handler.
+  MCPConnect.MCP.Server,
   MCPConnect.Transport.Indy;
 
 type
@@ -65,7 +60,7 @@ type
     ///   Scheduler, MaxConnections, ...) is available here as usual.
     ///   Its JRPCServer property exposes the protocol engine to configure.
     /// </summary>
-    FServer: TJRPCIndyServer;
+    FServer: TMCPIndyServer;
     FLogifyAdapterFactory: ILoggerAdapterFactory;
     procedure StartServer;
   public
@@ -100,12 +95,12 @@ begin
   //    creates and owns a TJRPCServer, and wires the MCP request handler
   //    (CORS, sessions, SSE, OAuth gate) into Indy's OnCommandGet/Other.
   //    Using the plain constructor instead would leave you to do that by hand.
-  FServer := TJRPCIndyServer.CreateMCPServer(Self);
+  FServer := TMCPIndyServer.CreateMCPServer(Self);
 
   // 2) Declare *what* the server exposes. Everything - name, version,
   //    capabilities, tools, resources, prompts, sessions, security - happens
   //    inside this single call. See MCPServer.Config.pas.
-  TServerConfigurator.ConfigureServer(FServer.JRPCServer);
+  TServerConfigurator.ConfigureServer(FServer.MCPServer);
 
   // 3) Open the socket.
   StartServer;
@@ -127,7 +122,7 @@ begin
   // Whenever you change the feature set at runtime, remember to tell the
   // client by enqueuing a TToolListChangedNotification (or the resource /
   // prompt equivalent) so it refreshes its cached list.
-  TServerConfigurator.UnregisterFeatures(FServer.JRPCServer);
+  TServerConfigurator.UnregisterFeatures(FServer.MCPServer);
 end;
 
 procedure TfrmMain.ApplicationEvents1Idle(Sender: TObject; var Done: Boolean);

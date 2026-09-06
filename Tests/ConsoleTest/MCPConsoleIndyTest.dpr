@@ -6,24 +6,29 @@ program MCPConsoleIndyTest;
 
 uses
   System.SysUtils,
+  JRPC.Classes in '..\..\Libs\JRPC\Source\JRPC.Classes.pas',
+  JRPC.Core in '..\..\Libs\JRPC\Source\JRPC.Core.pas',
+  JRPC.Invoker in '..\..\Libs\JRPC\Source\JRPC.Invoker.pas',
+  JRPC.Server in '..\..\Libs\JRPC\Source\JRPC.Server.pas',
   MCPConnect.Configuration.Auth in '..\..\Source\MCPConnect.Configuration.Auth.pas',
   MCPConnect.Configuration.Core in '..\..\Source\MCPConnect.Configuration.Core.pas',
   MCPConnect.Configuration.MCP in '..\..\Source\MCPConnect.Configuration.MCP.pas',
   MCPConnect.Configuration.Neon in '..\..\Source\MCPConnect.Configuration.Neon.pas',
   MCPConnect.Content.Writers in '..\..\Source\MCPConnect.Content.Writers.pas',
   MCPConnect.Content.Writers.RTL in '..\..\Source\MCPConnect.Content.Writers.RTL.pas',
-  MCPConnect.JRPC.Classes in '..\..\Source\MCPConnect.JRPC.Classes.pas',
-  MCPConnect.JRPC.Core in '..\..\Source\MCPConnect.JRPC.Core.pas',
-  MCPConnect.JRPC.Invoker in '..\..\Source\MCPConnect.JRPC.Invoker.pas',
-  MCPConnect.JRPC.Server in '..\..\Source\MCPConnect.JRPC.Server.pas',
+  MCPConnect.JRPC.Middleware in '..\..\Source\MCPConnect.JRPC.Middleware.pas',
   MCPConnect.MCP.Attributes in '..\..\Source\MCPConnect.MCP.Attributes.pas',
   MCPConnect.MCP.Config in '..\..\Source\MCPConnect.MCP.Config.pas',
   MCPConnect.MCP.Invoker in '..\..\Source\MCPConnect.MCP.Invoker.pas',
-  MCPConnect.MCP.Prompts in '..\..\Source\MCPConnect.MCP.Prompts.pas',
-  MCPConnect.MCP.Resources in '..\..\Source\MCPConnect.MCP.Resources.pas',
+  MCPConnect.MCP.Middleware in '..\..\Source\MCPConnect.MCP.Middleware.pas',
+  MCPConnect.MCP.Server in '..\..\Source\MCPConnect.MCP.Server.pas',
   MCPConnect.MCP.Server.Api in '..\..\Source\MCPConnect.MCP.Server.Api.pas',
-  MCPConnect.MCP.Tools in '..\..\Source\MCPConnect.MCP.Tools.pas',
-  MCPConnect.MCP.Types in '..\..\Source\MCPConnect.MCP.Types.pas',
+  MCPConnect.MCP.Types.Base in '..\..\Source\MCPConnect.MCP.Types.Base.pas',
+  MCPConnect.MCP.Types.Mrtr in '..\..\Source\MCPConnect.MCP.Types.Mrtr.pas',
+  MCPConnect.MCP.Types.Prompts in '..\..\Source\MCPConnect.MCP.Types.Prompts.pas',
+  MCPConnect.MCP.Types.Resources in '..\..\Source\MCPConnect.MCP.Types.Resources.pas',
+  MCPConnect.MCP.Types.Tool in '..\..\Source\MCPConnect.MCP.Types.Tool.pas',
+  MCPConnect.MCP.Types.Tools in '..\..\Source\MCPConnect.MCP.Types.Tools.pas',
   MCPConnect.Security.Jwks in '..\..\Source\MCPConnect.Security.Jwks.pas',
   MCPConnect.Security.Token.JOSE in '..\..\Source\MCPConnect.Security.Token.JOSE.pas',
   MCPConnect.Security.Token in '..\..\Source\MCPConnect.Security.Token.pas',
@@ -35,11 +40,11 @@ uses
 
 procedure StartServer;
 var
-  LServer: TJRPCIndyServer;
+  LServer: TMCPIndyServer;
 begin
-  LServer := TJRPCIndyServer.CreateMCPServer(nil);
+  LServer := TMCPIndyServer.CreateMCPServer(nil);
   try
-    LServer.JRPCServer
+    LServer.MCPServer
       .Plugin.Configure<IMCPConfig>
         .Server
           .SetName('mcp-console-test')

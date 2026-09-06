@@ -118,10 +118,10 @@ object frmMain: TfrmMain
             Action = actToolList
           end
           item
-            Action = actInitializeRequest
+            Action = actRequestMeta
           end
           item
-            Action = actInitializeResult
+            Action = actDiscoverResult
           end
           item
             Action = actCallToolParams
@@ -213,15 +213,15 @@ object frmMain: TfrmMain
       Caption = 'Tool List'
       OnExecute = actToolListExecute
     end
-    object actInitializeRequest: TAction
+    object actRequestMeta: TAction
       Category = 'MCP'
-      Caption = 'Initialize Request'
-      OnExecute = actInitializeRequestExecute
+      Caption = 'Request _meta'
+      OnExecute = actRequestMetaExecute
     end
-    object actInitializeResult: TAction
+    object actDiscoverResult: TAction
       Category = 'MCP'
-      Caption = 'Initialize Result'
-      OnExecute = InitializeResultExecute
+      Caption = 'Discover Result'
+      OnExecute = actDiscoverResultExecute
     end
     object actStructTags: TAction
       Category = 'Misc'

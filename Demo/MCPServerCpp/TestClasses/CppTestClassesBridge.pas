@@ -3,8 +3,8 @@ unit CppTestClassesBridge;
 interface
 
 uses
-  MCPConnect.JRPC.Core,
-  MCPConnect.MCP.Types;
+  JRPC.Core,
+  MCPConnect.MCP.Types.Base;
 
 type
   TIntegerQueueHandle = Pointer;
@@ -23,8 +23,8 @@ function MCPQueueCount(AQueue: TMCPQueueHandle): NativeInt;
 
 procedure SetJRPCErrorDetails(AError: TJRPCErrorDetails; ACode: Integer;
   const AMessage: string);
-procedure SetPromptsListChanged(AResult: TInitializeResult; AValue: Boolean);
-procedure SetRootsListChanged(AParams: TInitializeParams; AValue: Boolean);
+procedure SetPromptsListChanged(AResult: TDiscoverResult; AValue: Boolean);
+procedure EnableClientRoots(AMeta: TRequestMetaObject);
 
 implementation
 
@@ -106,18 +106,21 @@ begin
   AError.Message := AMessage;
 end;
 
-procedure SetPromptsListChanged(AResult: TInitializeResult; AValue: Boolean);
+procedure SetPromptsListChanged(AResult: TDiscoverResult; AValue: Boolean);
 begin
   if not Assigned(AResult) then
     raise EArgumentNilException.Create('AResult');
   AResult.Capabilities.Prompts.ListChanged := AValue;
 end;
 
-procedure SetRootsListChanged(AParams: TInitializeParams; AValue: Boolean);
+{ Roots lost its ListChanged flag in 2026-07-28: TRootsCapability is now a
+  Nullable record that is either absent or present, so the client declares it
+  by calling EnableRoots rather than by setting a sub-flag. }
+procedure EnableClientRoots(AMeta: TRequestMetaObject);
 begin
-  if not Assigned(AParams) then
-    raise EArgumentNilException.Create('AParams');
-  AParams.Capabilities.Roots.ListChanged := AValue;
+  if not Assigned(AMeta) then
+    raise EArgumentNilException.Create('AMeta');
+  AMeta.Capabilities.EnableRoots;
 end;
 
 end.

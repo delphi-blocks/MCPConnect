@@ -40,8 +40,8 @@ __published:	// IDE-managed Components
 	TAction *actResponseDes;
 	TAction *actToolSingle;
 	TAction *actToolList;
-	TAction *actInitializeRequest;
-	TAction *actInitializeResult;
+	TAction *actRequestMeta;
+	TAction *actDiscoverResult;
 	TAction *actStructTags;
 	TAction *actCallToolParams;
 	TAction *actRttiCall;
@@ -65,8 +65,8 @@ __published:	// IDE-managed Components
 	void __fastcall actResponseDesExecute(TObject *Sender);
 	void __fastcall actMessagesExecute(TObject *Sender);
 	void __fastcall actJRPCIDExecute(TObject *Sender);
-	void __fastcall InitializeResultExecute(TObject *Sender);
-	void __fastcall actInitializeRequestExecute(TObject *Sender);
+	void __fastcall actDiscoverResultExecute(TObject *Sender);
+	void __fastcall actRequestMetaExecute(TObject *Sender);
 	void __fastcall actRttiCallExecute(TObject *Sender);
 	void __fastcall actToolSingleExecute(TObject *Sender);
 	void __fastcall actInvokeRequestExecute(TObject *Sender);

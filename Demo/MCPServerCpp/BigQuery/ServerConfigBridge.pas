@@ -4,10 +4,10 @@ interface
 
 uses
   System.Classes,
-  MCPConnect.JRPC.Server;
+  MCPConnect.MCP.Server;
 
-procedure ConfigureBigQueryServer(AServer: TJRPCServer; AToolClass: TClass);
-procedure UnregisterBigQueryTools(AServer: TJRPCServer; AToolClass: TClass);
+procedure ConfigureBigQueryServer(AServer: TMCPServer; AToolClass: TClass);
+procedure UnregisterBigQueryTools(AServer: TMCPServer; AToolClass: TClass);
 
 implementation
 
@@ -17,7 +17,7 @@ uses
   MCPConnect.Configuration.MCP,
   MCPConnect.MCP.Server.Api;
 
-procedure ConfigureBigQueryServer(AServer: TJRPCServer; AToolClass: TClass);
+procedure ConfigureBigQueryServer(AServer: TMCPServer; AToolClass: TClass);
 var
   LConfig: IMCPConfig;
 begin
@@ -41,16 +41,16 @@ begin
 
   { Do not depend on package-global initialization in this mixed Delphi/C++
     host. Populate the server-local registry when the user clicks Start so
-    initialize, tools/*, ping, and the other standard MCP methods resolve
+    server/discover, tools/* and the other standard MCP methods resolve
     against the same IMCPConfig instance as the BigQuery tools. }
   LConfig.MessageHandling
-    .RegisterApi(TMCPInitializeApi)
+    .RegisterApi(TMCPServerApi)
     .RegisterApi(TMCPToolsApi)
     .RegisterApi(TMCPPromptsApi)
     .RegisterApi(TMCPResourcesApi)
+    .RegisterApi(TMCPCompletionApi)
     .RegisterApi(TMCPNotificationsApi)
-    .RegisterApi(TMCPLoggingApi)
-    .RegisterApi(TMCPPingApi);
+    .RegisterApi(TMCPSubscriptionsApi);
 
   LConfig.Tools
     .RegisterTool(AToolClass, 'ListDatasets', 'bq_list_datasets',
@@ -66,7 +66,7 @@ begin
   LConfig.ApplyConfig;
 end;
 
-procedure UnregisterBigQueryTools(AServer: TJRPCServer; AToolClass: TClass);
+procedure UnregisterBigQueryTools(AServer: TMCPServer; AToolClass: TClass);
 var
   LConfig: IMCPConfig;
 begin

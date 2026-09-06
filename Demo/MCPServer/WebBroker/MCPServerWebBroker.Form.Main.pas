@@ -14,7 +14,7 @@ unit MCPServerWebBroker.Form.Main;
   exists only so the thing can be run and debugged from the IDE.
 
   Endpoint with the default port:  http://localhost:8080/mcp
-  (the path comes from TJRPCDispatcher.PathInfo in the web module)
+  (the path comes from TMCPDispatcher.PathInfo in the web module)
 }
 
 interface
@@ -47,7 +47,7 @@ type
     /// <summary>
     ///   Indy-based WebBroker host. It instantiates the web module registered
     ///   in the .dpr (WebRequestHandler.WebModuleClass) once per request
-    ///   thread, which is what makes each request find its own TJRPCServer -
+    ///   thread, which is what makes each request find its own TMCPServer -
     ///   see the note in MCPServerWebBroker.WebModule.pas.
     /// </summary>
     FServer: TIdHTTPWebBrokerBridge;

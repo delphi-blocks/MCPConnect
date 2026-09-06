@@ -7,18 +7,18 @@
 
   This is where the MCP server is plugged into WebBroker. Two objects live here:
 
-    TJRPCServer      the protocol engine (transport agnostic)
-    TJRPCDispatcher  an IWebDispatch component that routes the requests
+    TMCPServer      the protocol engine (transport agnostic)
+    TMCPDispatcher  an IWebDispatch component that routes the requests
                      matching PathInfo to that engine
 
-  TJRPCDispatcher registers itself with its owning TWebModule in its
+  TMCPDispatcher registers itself with its owning TWebModule in its
   constructor, so there is no action to add to the Actions collection and no
   OnAction handler to write - setting PathInfo and Server is the whole wiring.
   Requests that do *not* match PathInfo fall through to the default handler
   below, which is why the endpoint and an ordinary web site can coexist in one
   module.
 
-  WebBroker creates one web module *per request thread*, so the TJRPCServer is
+  WebBroker creates one web module *per request thread*, so the TMCPServer is
   created as a global singleton (no owner) shared by every dispatcher instance.
   This ensures a single session manager and configuration across all threads.
   The server is freed in the finalization section.
@@ -45,7 +45,7 @@ uses
   MCPConnect.Content.Writers.RTL,
   MCPConnect.Content.Writers.VCL,
 
-  MCPConnect.Transport.WebBroker,   // TJRPCDispatcher
+  MCPConnect.Transport.WebBroker,   // TMCPDispatcher
   MCPConnect.MCP.Server;            // TMCPServer
 
 type

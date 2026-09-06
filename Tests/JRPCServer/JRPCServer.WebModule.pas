@@ -7,7 +7,7 @@ uses
   Neon.Core.Types,
   Neon.Core.Persistence,
 
-  MCPConnect.JRPC.Server,
+  MCPConnect.MCP.Server,
   MCPConnect.Transport.WebBroker;
 
 type
@@ -16,8 +16,8 @@ type
       Request: TWebRequest; Response: TWebResponse; var Handled: Boolean);
     procedure WebModuleCreate(Sender: TObject);
   private
-    FJRPCDispatcher: TJRPCDispatcher;
-    FJRPCServer: TJRPCServer;
+    FJRPCDispatcher: TMCPDispatcher;
+    FJRPCServer: TMCPServer;
   public
     { Public declarations }
   end;
@@ -43,9 +43,9 @@ end;
 
 procedure TWebModule1.WebModuleCreate(Sender: TObject);
 begin
-  FJRPCServer := TJRPCServer.Create(Self);
+  FJRPCServer := TMCPServer.Create(Self);
 
-  FJRPCDispatcher := TJRPCDispatcher.Create(Self);
+  FJRPCDispatcher := TMCPDispatcher.Create(Self);
   FJRPCDispatcher.PathInfo := '/jrpc';
   FJRPCDispatcher.Server := FJRPCServer;
 end;

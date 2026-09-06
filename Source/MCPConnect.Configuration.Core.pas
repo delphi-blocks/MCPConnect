@@ -158,7 +158,7 @@ type
   /// </summary>
   /// <remarks>
   ///   A single server instance is shared by every request thread (always on the
-  ///   Indy transport, and on WebBroker whenever the TJRPCServer is shared across
+  ///   Indy transport, and on WebBroker whenever the TMCPServer is shared across
   ///   the web-module pool), so this registry is written to concurrently: the
   ///   transport asks for four configurations per request and creates any that
   ///   configuration never touched. Both the get-or-create and the value snapshot

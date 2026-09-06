@@ -6,7 +6,7 @@
 #include <Vcl.Controls.hpp>
 #include <Vcl.StdCtrls.hpp>
 #include <Vcl.Forms.hpp>
-#include <MCPConnect.JRPC.Core.hpp>
+#include <JRPC.Core.hpp>
 //---------------------------------------------------------------------------
 class TfrmMisc : public TForm
 {

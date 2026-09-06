@@ -96,7 +96,7 @@
         <UWP_CppLogo44>$(BDS)\bin\Artwork\Windows\UWP\cppreg_UwpDefault_44.png</UWP_CppLogo44>
         <UWP_CppLogo150>$(BDS)\bin\Artwork\Windows\UWP\cppreg_UwpDefault_150.png</UWP_CppLogo150>
         <SanitizedProjectName>BQMcpSample</SanitizedProjectName>
-        <DCC_UnitSearchPath>..\..\..\Lib\$(Platform)\$(Config);..\..\..\Source;..\..\..\Libs\Neon\Source;..\..\..\Libs\Logify\Source;..\..\..\Libs\JWT\Source\JOSE;..\..\..\Libs\JWT\Source\Common;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>..\..\..\Lib\$(Platform)\$(Config);..\..\..\Source;..\..\..\Libs\JRPC\Source;..\..\..\Libs\Neon\Source;..\..\..\Libs\Logify\Source;..\..\..\Libs\JWT\Source\JOSE;..\..\..\Libs\JWT\Source\Common;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <IncludePath>$(BDSCOMMONDIR)\hpp\$(Platform);..\..\..\Lib\$(Platform)\$(Config);$(IncludePath)</IncludePath>
         <ILINK_LibraryPath>$(BDSCOMMONDIR)\Dcp\$(Platform);$(BDSCOMMONDIR)\Dcp;..\..\..\Lib\$(Platform)\$(Config);$(ILINK_LibraryPath)</ILINK_LibraryPath>
     </PropertyGroup>

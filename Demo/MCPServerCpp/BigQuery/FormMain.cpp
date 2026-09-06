@@ -48,12 +48,12 @@ void TFormMain::InitializeMcpServer()
 
     try
     {
-        FServer = Mcpconnect::Transport::Indy::TJRPCIndyServer::CreateMCPServer(this);
+        FServer = Mcpconnect::Transport::Indy::TMCPIndyServer::CreateMCPServer(this);
         AddLog(L"Step 1/3 complete: MCPConnect Indy server object created.");
 
         AddLog(L"Step 2/3: registering the C++Builder BigQuery tools.");
         Update();
-        Serverconfigbridge::ConfigureBigQueryServer(FServer->JRPCServer,
+        Serverconfigbridge::ConfigureBigQueryServer(FServer->MCPServer,
             __classid(TBigQueryTool));
         FConfigured = true;
         AddLog(L"Step 2/3 complete: MCPConnect accepted the C++ RTTI tool class.");
@@ -81,7 +81,7 @@ void __fastcall TFormMain::FormDestroy(TObject *)
             try
             {
                 Serverconfigbridge::UnregisterBigQueryTools(
-                    FServer->JRPCServer, __classid(TBigQueryTool));
+                    FServer->MCPServer, __classid(TBigQueryTool));
             }
             catch (...)
             {

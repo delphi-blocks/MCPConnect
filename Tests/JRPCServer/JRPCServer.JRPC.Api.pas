@@ -4,7 +4,7 @@ interface
 
 uses
   System.Classes, System.SysUtils, System.JSON,
-  MCPConnect.JRPC.Core;
+  JRPC.Core;
 
 type
   TPerson = class(TObject)

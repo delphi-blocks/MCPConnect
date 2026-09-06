@@ -36,10 +36,10 @@ uses
   Neon.Core.Persistence.JSON,
 
   MCPConnect.Configuration.MCP,
-  MCPConnect.JRPC.Core,
-  MCPConnect.JRPC.Classes,
-  MCPConnect.MCP.Types,
-  MCPConnect.MCP.Tools,
+  JRPC.Core,
+  JRPC.Classes,
+  MCPConnect.MCP.Types.Base,
+  MCPConnect.MCP.Types.Tools,
   MCPConnect.MCP.Attributes;
 
 type

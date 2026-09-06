@@ -8,11 +8,11 @@
 #include "PersonEntity.h"
 #include "CppTestClassesBridge.hpp"
 
-#include <MCPConnect.JRPC.Classes.hpp>
-#include <MCPConnect.MCP.Types.hpp>
-#include <MCPConnect.MCP.Tools.hpp>
-#include <MCPConnect.MCP.Resources.hpp>
-#include <MCPConnect.JRPC.Core.hpp>
+#include <JRPC.Classes.hpp>
+#include <MCPConnect.MCP.Types.Base.hpp>
+#include <MCPConnect.MCP.Types.Tools.hpp>
+#include <MCPConnect.MCP.Types.Resources.hpp>
+#include <JRPC.Core.hpp>
 
 #include <Neon.Core.Tags.hpp>
 #include <Neon.Core.Persistence.hpp>
@@ -101,17 +101,17 @@ Neon::Core::Persistence::_di_INeonConfiguration __fastcall TfrmMain::GetNeonConf
 {
 	return Neon::Core::Persistence::TNeonConfiguration::Default()
 		->RegisterSerializer(__classid(Neon::Core::Serializers::Rtl::TTValueSerializer))
-		->RegisterSerializer(__classid(Mcpconnect::Jrpc::Core::TJRequestSerializer));
+		->RegisterSerializer(__classid(Jrpc::Core::TJRequestSerializer));
 }
 //---------------------------------------------------------------------------
 Neon::Core::Persistence::_di_INeonConfiguration __fastcall TfrmMain::GetMCPNeonConfig()
 {
-	return Mcpconnect::Mcp::Types::MCPNeonConfig()->SetPrettyPrint(true);
+	return Mcpconnect::Mcp::Types::Base::MCPNeonConfig()->SetPrettyPrint(true);
 }
 //---------------------------------------------------------------------------
 void __fastcall TfrmMain::actRequestPosExecute(TObject *Sender)
 {
-	Mcpconnect::Jrpc::Core::TJRPCRequest *r = new Mcpconnect::Jrpc::Core::TJRPCRequest();
+	Jrpc::Core::TJRPCRequest *r = new Jrpc::Core::TJRPCRequest();
 	try
 	{
 		r->Id = 1;
@@ -129,7 +129,7 @@ void __fastcall TfrmMain::actRequestPosExecute(TObject *Sender)
 //---------------------------------------------------------------------------
 void __fastcall TfrmMain::actRequestDesExecute(TObject *Sender)
 {
-	Mcpconnect::Jrpc::Core::TJRPCRequest *r = Mcpconnect::Jrpc::Core::TJRPCRequest::CreateFromJson(mmoLog->Lines->Text);
+	Jrpc::Core::TJRPCRequest *r = Jrpc::Core::TJRPCRequest::CreateFromJson(mmoLog->Lines->Text);
 	try
 	{
 		mmoLog->Lines->Add(L"method name: " + r->Method);
@@ -143,7 +143,7 @@ void __fastcall TfrmMain::actRequestDesExecute(TObject *Sender)
 //---------------------------------------------------------------------------
 void __fastcall TfrmMain::actRequestNamedExecute(TObject *Sender)
 {
-	Mcpconnect::Jrpc::Core::TJRPCRequest *r = new Mcpconnect::Jrpc::Core::TJRPCRequest();
+	Jrpc::Core::TJRPCRequest *r = new Jrpc::Core::TJRPCRequest();
 	try
 	{
 		r->Id = 1;
@@ -161,7 +161,7 @@ void __fastcall TfrmMain::actRequestNamedExecute(TObject *Sender)
 //---------------------------------------------------------------------------
 void __fastcall TfrmMain::actResponseExecute(TObject *Sender)
 {
-	Mcpconnect::Jrpc::Core::TJRPCResponse *res = new Mcpconnect::Jrpc::Core::TJRPCResponse();
+	Jrpc::Core::TJRPCResponse *res = new Jrpc::Core::TJRPCResponse();
 	try
 	{
 		TStringList *list = new TStringList();
@@ -186,7 +186,7 @@ void __fastcall TfrmMain::actResponseExecute(TObject *Sender)
 //---------------------------------------------------------------------------
 void __fastcall TfrmMain::actResponseDesExecute(TObject *Sender)
 {
-	Mcpconnect::Jrpc::Core::TJRPCResponse *res = Mcpconnect::Jrpc::Core::TJRPCResponse::CreateFromJson(mmoLog->Lines->Text);
+	Jrpc::Core::TJRPCResponse *res = Jrpc::Core::TJRPCResponse::CreateFromJson(mmoLog->Lines->Text);
 	try
 	{
 		if (res->Result)
@@ -207,28 +207,28 @@ void __fastcall TfrmMain::actRttiCallExecute(TObject *Sender)
 //---------------------------------------------------------------------------
 void __fastcall TfrmMain::actMessagesExecute(TObject *Sender)
 {
-	Mcpconnect::Jrpc::Core::TJRPCMessages *msg = new Mcpconnect::Jrpc::Core::TJRPCMessages(true);
+	Jrpc::Core::TJRPCMessages *msg = new Jrpc::Core::TJRPCMessages(true);
 	try
 	{
-		Mcpconnect::Jrpc::Core::TJRPCNotification *nt = new Mcpconnect::Jrpc::Core::TJRPCNotification();
+		Jrpc::Core::TJRPCNotification *nt = new Jrpc::Core::TJRPCNotification();
 		nt->Method = L"hello-notification";
 		nt->AddNamedParam(L"max", IntegerValue(12));
 		msg->AddMessage(nt);
 
-		Mcpconnect::Jrpc::Core::TJRPCRequest *rq = new Mcpconnect::Jrpc::Core::TJRPCRequest();
+		Jrpc::Core::TJRPCRequest *rq = new Jrpc::Core::TJRPCRequest();
 		rq->Id = 11;
 		rq->Method = L"get-age";
 		rq->AddNamedParam(L"name", StringValue(L"Paolo"));
 		msg->AddMessage(rq);
 
-		Mcpconnect::Jrpc::Core::TJRPCResponse *rs = new Mcpconnect::Jrpc::Core::TJRPCResponse();
+		Jrpc::Core::TJRPCResponse *rs = new Jrpc::Core::TJRPCResponse();
 		rs->Id = 11;
 		TJSONObject *obj = new TJSONObject();
 		obj->AddPair(L"age", 55);
 		rs->Result = obj;
 		msg->AddMessage(rs);
 
-		Mcpconnect::Jrpc::Core::TJRPCError *er = new Mcpconnect::Jrpc::Core::TJRPCError();
+		Jrpc::Core::TJRPCError *er = new Jrpc::Core::TJRPCError();
 		Cpptestclassesbridge::SetJRPCErrorDetails(er->Error, 1233, L"Error");
 		msg->AddMessage(er);
 
@@ -242,7 +242,7 @@ void __fastcall TfrmMain::actMessagesExecute(TObject *Sender)
 //---------------------------------------------------------------------------
 void __fastcall TfrmMain::actMessagesReadExecute(TObject *Sender)
 {
-	Mcpconnect::Jrpc::Core::TJRPCMessages *msgs = new Mcpconnect::Jrpc::Core::TJRPCMessages(true);
+	Jrpc::Core::TJRPCMessages *msgs = new Jrpc::Core::TJRPCMessages(true);
 	try
 	{
 		msgs->FromJson(mmoLog->Lines->Text);
@@ -250,21 +250,21 @@ void __fastcall TfrmMain::actMessagesReadExecute(TObject *Sender)
 		mmoLog->Lines->Add(L"---------------");
 		for (int i = 0; i < msgs->List->Count; ++i)
 		{
-			Mcpconnect::Jrpc::Core::TJRPCMessage *m = msgs->List->Items[i];
+			Jrpc::Core::TJRPCMessage *m = msgs->List->Items[i];
 			mmoLog->Lines->Add(L"Message: " + m->ClassName());
-			if (m->GetType() == Mcpconnect::Jrpc::Core::TJRPCMessageType::Request)
+			if (m->GetType() == Jrpc::Core::TJRPCMessageType::Request)
 			{
-				Mcpconnect::Jrpc::Core::TJRPCRequest *req = static_cast<Mcpconnect::Jrpc::Core::TJRPCRequest*>(m);
+				Jrpc::Core::TJRPCRequest *req = static_cast<Jrpc::Core::TJRPCRequest*>(m);
 				mmoLog->Lines->Add(L"Request Method: " + req->Method);
 			}
-			else if (m->GetType() == Mcpconnect::Jrpc::Core::TJRPCMessageType::Notification)
+			else if (m->GetType() == Jrpc::Core::TJRPCMessageType::Notification)
 			{
-				Mcpconnect::Jrpc::Core::TJRPCNotification *notif = static_cast<Mcpconnect::Jrpc::Core::TJRPCNotification*>(m);
+				Jrpc::Core::TJRPCNotification *notif = static_cast<Jrpc::Core::TJRPCNotification*>(m);
 				mmoLog->Lines->Add(L"Notification Method: " + notif->Method);
 			}
-			else if (m->GetType() == Mcpconnect::Jrpc::Core::TJRPCMessageType::Response)
+			else if (m->GetType() == Jrpc::Core::TJRPCMessageType::Response)
 			{
-				Mcpconnect::Jrpc::Core::TJRPCResponse *resp = static_cast<Mcpconnect::Jrpc::Core::TJRPCResponse*>(m);
+				Jrpc::Core::TJRPCResponse *resp = static_cast<Jrpc::Core::TJRPCResponse*>(m);
 				if (resp->Result)
 					mmoLog->Lines->Add(L"Result: " + resp->Result->ToJSON());
 			}
@@ -279,15 +279,15 @@ void __fastcall TfrmMain::actMessagesReadExecute(TObject *Sender)
 //---------------------------------------------------------------------------
 void __fastcall TfrmMain::actJRPCIDExecute(TObject *Sender)
 {
-	Mcpconnect::Jrpc::Core::TJRPCError *tpl = new Mcpconnect::Jrpc::Core::TJRPCError();
+	Jrpc::Core::TJRPCError *tpl = new Jrpc::Core::TJRPCError();
 	try
 	{
 		Cpptestclassesbridge::SetJRPCErrorDetails(tpl->Error, 32334, L"Error");
 
-		Mcpconnect::Jrpc::Core::TJRPCError *err = static_cast<Mcpconnect::Jrpc::Core::TJRPCError*>(tpl->Clone());
+		Jrpc::Core::TJRPCError *err = static_cast<Jrpc::Core::TJRPCError*>(tpl->Clone());
 		try
 		{
-			System::UnicodeString s = Neon::Core::Persistence::Json::TNeon::ObjectToJSONString(err, Mcpconnect::Jrpc::Core::JRPCNeonConfig());
+			System::UnicodeString s = Neon::Core::Persistence::Json::TNeon::ObjectToJSONString(err, Jrpc::Core::JRPCNeonConfig());
 			mmoLog->Lines->Add(s);
 		}
 		__finally
@@ -301,17 +301,20 @@ void __fastcall TfrmMain::actJRPCIDExecute(TObject *Sender)
 	}
 }
 //---------------------------------------------------------------------------
-void __fastcall TfrmMain::InitializeResultExecute(TObject *Sender)
+// 2026-07-28 dropped the initialize handshake: the server advertises itself
+// through server/discover instead, and TDiscoverResult is what it answers with.
+void __fastcall TfrmMain::actDiscoverResultExecute(TObject *Sender)
 {
-	Mcpconnect::Mcp::Types::TInitializeResult *res = new Mcpconnect::Mcp::Types::TInitializeResult();
+	Mcpconnect::Mcp::Types::Base::TDiscoverResult *res = new Mcpconnect::Mcp::Types::Base::TDiscoverResult();
 	try
 	{
-		res->ProtocolVersion = L"1.0";
+		res->SupportedVersions = Mcpconnect::Mcp::Types::Base::MCP_PROTOCOL_SUPPORTED_VERSIONS;
 		Cpptestclassesbridge::SetPromptsListChanged(res, true);
-		res->ServerInfo->Name = L"Server MCP";
-		res->ServerInfo->Version = L"0.9";
+		res->ResultMeta->ServerInfo->Name = L"Server MCP";
+		res->ResultMeta->ServerInfo->Version = L"0.9";
 
-		mmoLog->Lines->Add(res->ToJSON(true));
+		mmoLog->Lines->Add(
+			Neon::Core::Persistence::Json::TNeon::ObjectToJSONString(res, GetMCPNeonConfig()));
 	}
 	__finally
 	{
@@ -319,23 +322,26 @@ void __fastcall TfrmMain::InitializeResultExecute(TObject *Sender)
 	}
 }
 //---------------------------------------------------------------------------
-void __fastcall TfrmMain::actInitializeRequestExecute(TObject *Sender)
+// The client no longer states its protocol version and capabilities once, at
+// initialize: every request carries them in its own params._meta, which is
+// what TRequestMetaParams - the base of every MCP params class - models.
+void __fastcall TfrmMain::actRequestMetaExecute(TObject *Sender)
 {
-	Mcpconnect::Mcp::Types::TInitializeParams *pars = new Mcpconnect::Mcp::Types::TInitializeParams();
+	Mcpconnect::Mcp::Types::Base::TRequestMetaParams *pars = new Mcpconnect::Mcp::Types::Base::TRequestMetaParams();
 	try
 	{
-		pars->ProtocolVersion = L"2025-06-18";
-		pars->ClientInfo->Name = L"Delphi MCPLib";
-		pars->ClientInfo->Version = L"0.8";
-		Cpptestclassesbridge::SetRootsListChanged(pars, true);
+		pars->RequestMeta->ProtocolVersion = MCP_LATEST_PROTOCOL_VERSION;
+		pars->RequestMeta->ClientInfo->Name = L"Delphi MCPLib";
+		pars->RequestMeta->ClientInfo->Version = L"0.8";
+		Cpptestclassesbridge::EnableClientRoots(pars->RequestMeta);
 
 		TJSONValue *j = Neon::Core::Persistence::Json::TNeon::ObjectToJSON(pars, GetMCPNeonConfig());
 		mmoLog->Lines->Add(j->ToJSON());
 
-		Mcpconnect::Jrpc::Core::TJRPCRequest *req = new Mcpconnect::Jrpc::Core::TJRPCRequest();
+		Jrpc::Core::TJRPCRequest *req = new Jrpc::Core::TJRPCRequest();
 		try
 		{
-			req->Method = L"initialize";
+			req->Method = L"server/discover";
 			req->Params = j;
 			mmoLog->Lines->Add(req->ToJson());
 		}
@@ -394,7 +400,7 @@ void __fastcall TfrmMain::actToolListExecute(TObject *Sender)
 //---------------------------------------------------------------------------
 void __fastcall TfrmMain::actCallToolParamsExecute(TObject *Sender)
 {
-	Mcpconnect::Mcp::Tools::TCallToolParams *c = new Mcpconnect::Mcp::Tools::TCallToolParams();
+	Mcpconnect::Mcp::Types::Tools::TCallToolRequestParams *c = new Mcpconnect::Mcp::Types::Tools::TCallToolRequestParams();
 	try
 	{
 		c->Name = L"Somma";
@@ -405,10 +411,10 @@ void __fastcall TfrmMain::actCallToolParamsExecute(TObject *Sender)
 		mmoLog->Lines->Add(s);
 		mmoLog->Lines->Add(L"------------------");
 
-		Mcpconnect::Mcp::Tools::TCallToolParams *c2 =
-			static_cast<Mcpconnect::Mcp::Tools::TCallToolParams*>(
+		Mcpconnect::Mcp::Types::Tools::TCallToolRequestParams *c2 =
+			static_cast<Mcpconnect::Mcp::Types::Tools::TCallToolRequestParams*>(
 				Neon::Core::Persistence::Json::TNeon::JSONToObject(
-					ctx.GetType(__classid(Mcpconnect::Mcp::Tools::TCallToolParams)), s, GetMCPNeonConfig()));
+					ctx.GetType(__classid(Mcpconnect::Mcp::Types::Tools::TCallToolRequestParams)), s, GetMCPNeonConfig()));
 		if (c2)
 		{
 			try
@@ -451,7 +457,7 @@ void __fastcall TfrmMain::actSnippetsExecute(TObject *Sender)
 //---------------------------------------------------------------------------
 void __fastcall TfrmMain::actResourceExecute(TObject *Sender)
 {
-	Mcpconnect::Mcp::Resources::TMCPResource *res = new Mcpconnect::Mcp::Resources::TMCPResource();
+	Mcpconnect::Mcp::Types::Resources::TMCPResource *res = new Mcpconnect::Mcp::Types::Resources::TMCPResource();
 	try
 	{
 		res->Name = L"Clients";
@@ -467,7 +473,7 @@ void __fastcall TfrmMain::actResourceExecute(TObject *Sender)
 //---------------------------------------------------------------------------
 void __fastcall TfrmMain::actResourceTemplateExecute(TObject *Sender)
 {
-	Mcpconnect::Mcp::Resources::TMCPResourceTemplate *tpl = new Mcpconnect::Mcp::Resources::TMCPResourceTemplate();
+	Mcpconnect::Mcp::Types::Resources::TMCPResourceTemplate *tpl = new Mcpconnect::Mcp::Types::Resources::TMCPResourceTemplate();
 	try
 	{
 		tpl->Name = L"Article Template";
@@ -483,7 +489,7 @@ void __fastcall TfrmMain::actResourceTemplateExecute(TObject *Sender)
 //---------------------------------------------------------------------------
 void __fastcall TfrmMain::actResourceListExecute(TObject *Sender)
 {
-	Mcpconnect::Mcp::Resources::TListResourcesResult *lst = new Mcpconnect::Mcp::Resources::TListResourcesResult();
+	Mcpconnect::Mcp::Types::Resources::TListResourcesResult *lst = new Mcpconnect::Mcp::Types::Resources::TListResourcesResult();
 	try
 	{
 		lst->AddResource(L"clients", L"/resources/clients", L"application/json");

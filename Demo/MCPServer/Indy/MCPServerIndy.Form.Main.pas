@@ -17,7 +17,7 @@ unit MCPServerIndy.Form.Main;
       Delphi version (the WebBroker transport can only stream on D13.1+);
     - a self-contained .exe with no web server to deploy in front of it.
 
-  Endpoint: TJRPCIndyServer answers on every path, so with the default port
+  Endpoint: TMCPIndyServer answers on every path, so with the default port
   the MCP endpoint is simply
 
       http://localhost:8080/
@@ -92,7 +92,7 @@ begin
 
   // 1) Build the transport.
   //    CreateMCPServer is a convenience factory: it creates the Indy server,
-  //    creates and owns a TJRPCServer, and wires the MCP request handler
+  //    creates and owns a TMCPServer, and wires the MCP request handler
   //    (CORS, sessions, SSE, OAuth gate) into Indy's OnCommandGet/Other.
   //    Using the plain constructor instead would leave you to do that by hand.
   FServer := TMCPIndyServer.CreateMCPServer(Self);

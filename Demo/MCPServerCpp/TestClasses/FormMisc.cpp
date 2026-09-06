@@ -4,8 +4,8 @@
 
 #include "FormMisc.h"
 #include "CppTestClassesBridge.hpp"
-#include <MCPConnect.MCP.Types.hpp>
-#include <MCPConnect.JRPC.Classes.hpp>
+#include <MCPConnect.MCP.Types.Base.hpp>
+#include <JRPC.Classes.hpp>
 #include <System.RegularExpressions.hpp>
 #include <System.SysUtils.hpp>
 
@@ -59,7 +59,7 @@ void __fastcall TfrmMisc::btnMCPQueueClick(TObject *Sender)
 {
 	memoLog->Lines->Add(Format(L"Enqueing %d", ARRAYOFCONST((FCount))));
 
-	Mcpconnect::Jrpc::Core::TJRPCNotification *n = new Mcpconnect::Jrpc::Core::TJRPCNotification();
+	Jrpc::Core::TJRPCNotification *n = new Jrpc::Core::TJRPCNotification();
 	n->InternalId = FCount;
 	n->Method = L"notification/log";
 	n->AddNamedParam(L"level", System::Rtti::TValue::_op_Implicit(System::UnicodeString(L"Debug")));
@@ -71,7 +71,7 @@ void __fastcall TfrmMisc::btnMCPQueueClick(TObject *Sender)
 //---------------------------------------------------------------------------
 void __fastcall TfrmMisc::btnPrintQueueClick(TObject *Sender)
 {
-	Mcpconnect::Jrpc::Core::TJRPCNotification *n = Cpptestclassesbridge::MCPQueueDequeue(FMCP);
+	Jrpc::Core::TJRPCNotification *n = Cpptestclassesbridge::MCPQueueDequeue(FMCP);
 	if (!n)
 	{
 		memoLog->Lines->Add(L"Nothing to deque");
@@ -92,12 +92,12 @@ void __fastcall TfrmMisc::Button2Click(TObject *Sender)
 	System::UnicodeString uri = edtURI->Text;
 	memoLog->Lines->Add(uri);
 
-	Mcpconnect::Jrpc::Classes::TRouteMatcher *router = new Mcpconnect::Jrpc::Classes::TRouteMatcher();
+	Jrpc::Classes::TRouteMatcher *router = new Jrpc::Classes::TRouteMatcher();
 	try
 	{
 		if (router->Match(tpl, uri))
 		{
-			Mcpconnect::Mcp::Types::TStringMap params = router->Params->ToArray();
+			Mcpconnect::Mcp::Types::Base::TStringMap params = router->Params->ToArray();
 			for (int i = 0; i < params.Length; ++i)
 			{
 				memoLog->Lines->Add(params[i].Key + L": " + params[i].Value);

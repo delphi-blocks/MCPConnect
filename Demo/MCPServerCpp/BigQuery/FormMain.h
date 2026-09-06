@@ -41,7 +41,7 @@ __published:
     void __fastcall BtnOpenOutputClick(TObject *Sender);
 
 private:
-    Mcpconnect::Transport::Indy::TJRPCIndyServer *FServer;
+    Mcpconnect::Transport::Indy::TMCPIndyServer *FServer;
     bool FConfigured;
     bool FBusy;
 

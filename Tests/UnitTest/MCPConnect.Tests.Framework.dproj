@@ -162,6 +162,7 @@
         <DCCReference Include="..\..\Source\MCPConnect.Transport.Base.pas"/>
         <DCCReference Include="MCPConnect.Tests.JRPC.Core.pas"/>
         <DCCReference Include="MCPConnect.Tests.JRPC.Middleware.pas"/>
+        <DCCReference Include="MCPConnect.Tests.MCP.Middleware.pas"/>
         <DCCReference Include="MCPConnect.Tests.Transport.Middleware.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Tools.pas"/>
         <DCCReference Include="MCPConnect.Tests.JRPC.Invoker.pas"/>

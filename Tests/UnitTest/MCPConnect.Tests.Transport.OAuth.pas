@@ -529,4 +529,7 @@ begin
   Assert.AreNotEqual(403, LOutcome.Code, 'Lowercase "authorization" header must be accepted for static tokens');
 end;
 
+initialization
+  TDUnitX.RegisterTestFixture(TTransportOAuthTest);
+
 end.

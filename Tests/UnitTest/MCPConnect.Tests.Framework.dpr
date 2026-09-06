@@ -59,6 +59,7 @@ uses
   MCPConnect.Transport.Base in '..\..\Source\MCPConnect.Transport.Base.pas',
   MCPConnect.Tests.JRPC.Core in 'MCPConnect.Tests.JRPC.Core.pas',
   MCPConnect.Tests.JRPC.Middleware in 'MCPConnect.Tests.JRPC.Middleware.pas',
+  MCPConnect.Tests.MCP.Middleware in 'MCPConnect.Tests.MCP.Middleware.pas',
   MCPConnect.Tests.Transport.Middleware in 'MCPConnect.Tests.Transport.Middleware.pas',
   MCPConnect.Tests.MCP.Tools in 'MCPConnect.Tests.MCP.Tools.pas',
   MCPConnect.Tests.JRPC.Invoker in 'MCPConnect.Tests.JRPC.Invoker.pas',

@@ -35,8 +35,6 @@ unit MCPConnect.MCP.Middleware;
   The hooks that return TBaseResult do so because the operation may answer with a
   TInputRequiredResult instead of its usual result: a middleware either handles
   that case or lets it through untouched.
-
-  See Docs/middleware-spec.md for the full specification.
 }
 
 interface

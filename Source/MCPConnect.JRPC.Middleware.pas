@@ -52,8 +52,6 @@ unit MCPConnect.JRPC.Middleware;
 
   This unit holds the transport- and protocol-agnostic part: the message level
   hooks usable by a plain JSON-RPC server.
-
-  See Docs/middleware-spec.md for the full specification.
 }
 
 interface

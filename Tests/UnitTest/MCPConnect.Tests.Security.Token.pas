@@ -1864,6 +1864,7 @@ end;
 
 initialization
   TDUnitX.RegisterTestFixture(TTokenValidationResultTest);
+  TDUnitX.RegisterTestFixture(TBearerChallengeTest);
   TDUnitX.RegisterTestFixture(TDecodeOnlyTokenValidatorTest);
   TDUnitX.RegisterTestFixture(TClaimsTokenValidatorTest);
   TDUnitX.RegisterTestFixture(TTokenValidatorContractTest);

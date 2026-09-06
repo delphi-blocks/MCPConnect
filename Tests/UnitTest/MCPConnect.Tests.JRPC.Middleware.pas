@@ -81,6 +81,13 @@ type
       const AChain: TMiddlewareChain);
   end;
 
+  /// <summary>Never calls Next: the rest of the chain is suppressed.</summary>
+  TDenyMiddleware = class(TMiddleware, IRequestMiddleware)
+  public
+    procedure Handle(AContext: TMiddlewareContext;
+      const AChain: TMiddlewareChain);
+  end;
+
   [TestFixture]
   TMiddlewareListTest = class(TObject)
   private
@@ -134,6 +141,14 @@ type
     procedure TestChainNestsInAndOut();
     [Test]
     procedure TestCursorIsReentrant();
+    [Test]
+    procedure TestNextTwiceWalksTheWholeTail();
+    [Test]
+    procedure TestNextTwiceFromTheMiddleOfTheChain();
+    [Test]
+    procedure TestCallersCursorIsNotMoved();
+    [Test]
+    procedure TestNotCallingNextSuppressesTheTail();
   end;
 
 implementation
@@ -213,6 +228,14 @@ procedure TRetryMiddleware.Handle(AContext: TMiddlewareContext;
 begin
   AChain.Next(AContext);
   AChain.Next(AContext);
+end;
+
+{ TDenyMiddleware }
+
+procedure TDenyMiddleware.Handle(AContext: TMiddlewareContext;
+  const AChain: TMiddlewareChain);
+begin
+  GTrace.Add('denied');
 end;
 
 { TMiddlewareListTest }
@@ -452,6 +475,94 @@ begin
   LMiddleware.Handle(nil, LChain);
 
   Assert.AreEqual('A> * <A A> * <A', FTrace.AsText);
+end;
+
+procedure TMiddlewareChainTest.TestNextTwiceWalksTheWholeTail;
+var
+  LServer: TMCPServer;
+  LChain: TMiddlewareChain;
+begin
+  // Not just the first element of the tail: every middleware below the one
+  // calling Next runs again, and so does the terminal.
+  LServer := TMCPServer.Create(nil);
+  try
+    LServer.Middleware
+      .Add(TRetryMiddleware)
+      .Add(TFirstMiddleware)
+      .Add(TSecondMiddleware);
+
+    LChain := BuildChain(LServer.Middleware.EntriesFor(IRequestMiddleware));
+    LChain.Next(nil);
+
+    Assert.AreEqual('A> B> * <B <A A> B> * <B <A', FTrace.AsText);
+  finally
+    LServer.Free;
+  end;
+end;
+
+procedure TMiddlewareChainTest.TestNextTwiceFromTheMiddleOfTheChain;
+var
+  LServer: TMCPServer;
+  LChain: TMiddlewareChain;
+begin
+  // What is above the retry is unaffected: A is entered and left once, while
+  // the tail below it is walked twice.
+  LServer := TMCPServer.Create(nil);
+  try
+    LServer.Middleware
+      .Add(TFirstMiddleware)
+      .Add(TRetryMiddleware)
+      .Add(TSecondMiddleware);
+
+    LChain := BuildChain(LServer.Middleware.EntriesFor(IRequestMiddleware));
+    LChain.Next(nil);
+
+    Assert.AreEqual('A> B> * <B B> * <B <A', FTrace.AsText);
+  finally
+    LServer.Free;
+  end;
+end;
+
+procedure TMiddlewareChainTest.TestCallersCursorIsNotMoved;
+var
+  LServer: TMCPServer;
+  LChain: TMiddlewareChain;
+begin
+  // Same guarantee seen from outside the chain: the caller's own cursor does
+  // not move either, so the whole chain can be walked again.
+  LServer := TMCPServer.Create(nil);
+  try
+    LServer.Middleware.Add(TFirstMiddleware);
+
+    LChain := BuildChain(LServer.Middleware.EntriesFor(IRequestMiddleware));
+    LChain.Next(nil);
+    LChain.Next(nil);
+
+    Assert.AreEqual('A> * <A A> * <A', FTrace.AsText);
+  finally
+    LServer.Free;
+  end;
+end;
+
+procedure TMiddlewareChainTest.TestNotCallingNextSuppressesTheTail;
+var
+  LServer: TMCPServer;
+  LChain: TMiddlewareChain;
+begin
+  LServer := TMCPServer.Create(nil);
+  try
+    LServer.Middleware
+      .Add(TDenyMiddleware)
+      .Add(TFirstMiddleware);
+
+    LChain := BuildChain(LServer.Middleware.EntriesFor(IRequestMiddleware));
+    LChain.Next(nil);
+
+    Assert.AreEqual('denied', FTrace.AsText,
+      'neither the tail nor the terminal may run');
+  finally
+    LServer.Free;
+  end;
 end;
 
 initialization

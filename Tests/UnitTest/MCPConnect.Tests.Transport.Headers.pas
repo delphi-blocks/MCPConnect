@@ -412,4 +412,9 @@ begin
   Assert.AreEqual('value', FResponse.Headers.Get('X-Custom'));
 end;
 
+initialization
+  TDUnitX.RegisterTestFixture(TTransportHeadersTest);
+  TDUnitX.RegisterTestFixture(TTransportRequestHeadersTest);
+  TDUnitX.RegisterTestFixture(TTransportResponseHeadersTest);
+
 end.

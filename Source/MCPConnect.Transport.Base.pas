@@ -947,7 +947,6 @@ end;
 procedure TMCPTransportHandler.HandleMessage(AMessage: TJRPCMessage; AResponseQueue: TMCPMessageQueue);
 var
   LContext: TMiddlewareContext;
-  LChain: TMessageChain;
 begin
   LContext := TMiddlewareContext.Create(MethodNameOf(AMessage),
     MessageKindOf(AMessage), AMessage, FContext, FGarbage, AResponseQueue,
@@ -961,14 +960,7 @@ begin
       // method does, and an error handling middleware upstream sees what the
       // ones below it raised.
       try
-        if FPipeline.IsEmpty then
-          DispatchMessage(LContext)
-        else
-        begin
-          LChain := TMessageChain.Create(
-            FPipeline.ChainFor<IMessageMiddleware>, DispatchMessage);
-          LChain.Next(LContext);
-        end;
+        TMiddlewareChain.Run<IMessageMiddleware>(FPipeline, LContext, DispatchMessage);
       except
         on E: Exception do
         begin
@@ -991,8 +983,6 @@ begin
 end;
 
 procedure TMCPTransportHandler.DispatchMessage(AContext: TMiddlewareContext);
-var
-  LChain: TRequestChain;
 begin
   // Every message that is not a Request is dealt with here and here only: the
   // cast in DispatchRequest is unguarded, so anything reaching it that is not a
@@ -1035,15 +1025,7 @@ begin
     Exit;
   end;
 
-  if FPipeline.IsEmpty then
-  begin
-    DispatchRequest(AContext);
-    Exit;
-  end;
-
-  LChain := TRequestChain.Create(
-    FPipeline.ChainFor<IRequestMiddleware>, DispatchRequest);
-  LChain.Next(AContext);
+  TMiddlewareChain.Run<IRequestMiddleware>(FPipeline, AContext, DispatchRequest);
 end;
 
 procedure TMCPTransportHandler.DispatchRequest(AContext: TMiddlewareContext);

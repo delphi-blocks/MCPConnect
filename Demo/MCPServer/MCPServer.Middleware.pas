@@ -17,12 +17,17 @@ uses
 type
   TMessageMiddleWare = class(TMiddleware, IMessageMiddleware)
   public
-    procedure OnMessage(AContext: TMiddlewareContext; const AChain: TMessageChain);
+    procedure Handle(AContext: TMiddlewareContext; const AChain: TMiddlewareChain);
   end;
 
   TCallToolMiddleware = class(TMiddleware, ICallToolMiddleware)
   public
-    function OnCallTool(AContext: TMiddlewareContext; AParams: TCallToolRequestParams; const AChain: TCallToolChain): TBaseResult;
+    function Handle(AContext: TMiddlewareContext; AParams: TCallToolRequestParams; const AChain: TCallToolChain): TBaseResult;
+  end;
+
+  TDiscoverMiddleware = class(TMiddleware, IDiscoverMiddleware)
+  public
+    function Handle(AContext: TMiddlewareContext; AParams: TRequestMetaParams; const AChain: TDiscoverChain): TDiscoverResult;
   end;
 
 implementation
@@ -41,8 +46,8 @@ begin
   end;
 end;
 
-procedure TMessageMiddleWare.OnMessage(AContext: TMiddlewareContext;
-  const AChain: TMessageChain);
+procedure TMessageMiddleWare.Handle(AContext: TMiddlewareContext;
+  const AChain: TMiddlewareChain);
 begin
   Logger.LogDebug('TMessageMiddleWare before: ' + AContext.Message.ToJson());
   try
@@ -54,11 +59,20 @@ end;
 
 { TCallToolMiddleware }
 
-function TCallToolMiddleware.OnCallTool(AContext: TMiddlewareContext;
+function TCallToolMiddleware.Handle(AContext: TMiddlewareContext;
   AParams: TCallToolRequestParams; const AChain: TCallToolChain): TBaseResult;
 begin
   Result := AChain.Next(AContext, AParams);
-  Result.ResultMeta.ServerInfo.Name := 'Middleware test';
+  Result.ResultMeta.ServerInfo.Name := 'Middleware test: call/tool';
+end;
+
+{ TDiscoverMiddleware }
+
+function TDiscoverMiddleware.Handle(AContext: TMiddlewareContext;
+  AParams: TRequestMetaParams; const AChain: TDiscoverChain): TDiscoverResult;
+begin
+  Result := AChain.Next(AContext, AParams);
+  Result.ResultMeta.ServerInfo.Name := 'Middleware test: server/discoveer';
 end;
 
 end.

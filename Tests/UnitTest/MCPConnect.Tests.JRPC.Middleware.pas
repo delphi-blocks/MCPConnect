@@ -44,8 +44,8 @@ type
   protected
     function Tag: string; virtual; abstract;
   public
-    procedure OnRequest(AContext: TMiddlewareContext;
-      const AChain: TRequestChain);
+    procedure Handle(AContext: TMiddlewareContext;
+      const AChain: TMiddlewareChain);
   end;
 
   TFirstMiddleware = class(TTraceMiddleware)
@@ -77,8 +77,8 @@ type
   /// <summary>Calls Next twice, to prove the cursor is re-entrant.</summary>
   TRetryMiddleware = class(TMiddleware, IRequestMiddleware)
   public
-    procedure OnRequest(AContext: TMiddlewareContext;
-      const AChain: TRequestChain);
+    procedure Handle(AContext: TMiddlewareContext;
+      const AChain: TMiddlewareChain);
   end;
 
   [TestFixture]
@@ -121,7 +121,7 @@ type
   private
     FTrace: TMiddlewareTrace;
     procedure Terminal(AContext: TMiddlewareContext);
-    function BuildChain(const AEntries: TMiddlewareEntries): TRequestChain;
+    function BuildChain(const AEntries: TMiddlewareEntries): TMiddlewareChain;
   public
     [Setup]
     procedure Setup;
@@ -170,8 +170,8 @@ end;
 
 { TTraceMiddleware }
 
-procedure TTraceMiddleware.OnRequest(AContext: TMiddlewareContext;
-  const AChain: TRequestChain);
+procedure TTraceMiddleware.Handle(AContext: TMiddlewareContext;
+  const AChain: TMiddlewareChain);
 begin
   GTrace.Add(Tag + '>');
   try
@@ -208,8 +208,8 @@ end;
 
 { TRetryMiddleware }
 
-procedure TRetryMiddleware.OnRequest(AContext: TMiddlewareContext;
-  const AChain: TRequestChain);
+procedure TRetryMiddleware.Handle(AContext: TMiddlewareContext;
+  const AChain: TMiddlewareChain);
 begin
   AChain.Next(AContext);
   AChain.Next(AContext);
@@ -392,23 +392,23 @@ begin
   FTrace.Add('*');
 end;
 
-function TMiddlewareChainTest.BuildChain(const AEntries: TMiddlewareEntries): TRequestChain;
+function TMiddlewareChainTest.BuildChain(const AEntries: TMiddlewareEntries): TMiddlewareChain;
 var
   LIndex: Integer;
-  LChain: TArray<IRequestMiddleware>;
+  LChain: TArray<IMessageHook>;
 begin
   SetLength(LChain, Length(AEntries));
   for LIndex := 0 to High(AEntries) do
     Supports(AEntries[LIndex].CreateInstance, IRequestMiddleware, LChain[LIndex]);
 
-  Result := TRequestChain.Create(LChain, Terminal);
+  Result := TMiddlewareChain.Create(LChain, Terminal);
 end;
 
 procedure TMiddlewareChainTest.TestEmptyChainCallsTerminal;
 var
-  LChain: TRequestChain;
+  LChain: TMiddlewareChain;
 begin
-  LChain := TRequestChain.Create(nil, Terminal);
+  LChain := TMiddlewareChain.Create(nil, Terminal);
   LChain.Next(nil);
 
   Assert.AreEqual('*', FTrace.AsText);
@@ -417,7 +417,7 @@ end;
 procedure TMiddlewareChainTest.TestChainNestsInAndOut;
 var
   LServer: TMCPServer;
-  LChain: TRequestChain;
+  LChain: TMiddlewareChain;
 begin
   LServer := TMCPServer.Create(nil);
   try
@@ -438,18 +438,18 @@ end;
 procedure TMiddlewareChainTest.TestCursorIsReentrant;
 var
   LMiddleware: IRequestMiddleware;
-  LChain: TRequestChain;
-  LTail: TArray<IRequestMiddleware>;
+  LChain: TMiddlewareChain;
+  LTail: TArray<IMessageHook>;
 begin
   // The cursor is a record passed by value, so calling Next twice must walk the
   // same tail of the chain both times instead of running off the end.
   SetLength(LTail, 1);
-  LTail[0] := TFirstMiddleware.Create;
+  LTail[0] := TFirstMiddleware.Create as IRequestMiddleware;
 
   LMiddleware := TRetryMiddleware.Create;
-  LChain := TRequestChain.Create(LTail, Terminal);
+  LChain := TMiddlewareChain.Create(LTail, Terminal);
 
-  LMiddleware.OnRequest(nil, LChain);
+  LMiddleware.Handle(nil, LChain);
 
   Assert.AreEqual('A> * <A A> * <A', FTrace.AsText);
 end;

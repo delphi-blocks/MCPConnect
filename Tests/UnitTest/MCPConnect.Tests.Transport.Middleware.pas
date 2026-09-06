@@ -51,8 +51,11 @@ type
   protected
     function Tag: string; virtual; abstract;
   public
-    procedure OnMessage(AContext: TMiddlewareContext; const AChain: TMessageChain);
-    procedure OnRequest(AContext: TMiddlewareContext; const AChain: TRequestChain);
+    procedure IMessageMiddleware.Handle = OnMessage;
+    procedure IRequestMiddleware.Handle = OnRequest;
+
+    procedure OnMessage(AContext: TMiddlewareContext; const AChain: TMiddlewareChain);
+    procedure OnRequest(AContext: TMiddlewareContext; const AChain: TMiddlewareChain);
   end;
 
   TAlphaMiddleware = class(TTraceMiddleware)
@@ -68,7 +71,7 @@ type
   /// <summary>Refuses the call before the dispatch ever runs.</summary>
   TDenyMiddleware = class(TMiddleware, IRequestMiddleware)
   public
-    procedure OnRequest(AContext: TMiddlewareContext; const AChain: TRequestChain);
+    procedure Handle(AContext: TMiddlewareContext; const AChain: TMiddlewareChain);
   end;
 
   /// <summary>
@@ -76,7 +79,7 @@ type
   /// </summary>
   TObserverMiddleware = class(TMiddleware, IMessageMiddleware)
   public
-    procedure OnMessage(AContext: TMiddlewareContext; const AChain: TMessageChain);
+    procedure Handle(AContext: TMiddlewareContext; const AChain: TMiddlewareChain);
   end;
 
   /// <summary>Refuses by raising, which is the documented way to answer an error.</summary>
@@ -84,7 +87,7 @@ type
   public const
     Reason = 'refused by the test middleware';
   public
-    procedure OnRequest(AContext: TMiddlewareContext; const AChain: TRequestChain);
+    procedure Handle(AContext: TMiddlewareContext; const AChain: TMiddlewareChain);
   end;
 
   /// <summary>
@@ -95,8 +98,11 @@ type
   private
     FSeenMethod: string;
   public
-    procedure OnMessage(AContext: TMiddlewareContext; const AChain: TMessageChain);
-    procedure OnRequest(AContext: TMiddlewareContext; const AChain: TRequestChain);
+    procedure IMessageMiddleware.Handle = OnMessage;
+    procedure IRequestMiddleware.Handle = OnRequest;
+
+    procedure OnMessage(AContext: TMiddlewareContext; const AChain: TMiddlewareChain);
+    procedure OnRequest(AContext: TMiddlewareContext; const AChain: TMiddlewareChain);
   end;
 
   /// <summary>
@@ -107,7 +113,10 @@ type
   private
     FMethod: string;
   public
-    procedure OnRequest(AContext: TMiddlewareContext; const AChain: TRequestChain);
+    procedure IRequestMiddleware.Handle = OnRequest;
+    function ICallToolMiddleware.Handle = OnCallTool;
+
+    procedure OnRequest(AContext: TMiddlewareContext; const AChain: TMiddlewareChain);
     function OnCallTool(AContext: TMiddlewareContext;
       AParams: TCallToolRequestParams; const AChain: TCallToolChain): TBaseResult;
   end;
@@ -117,14 +126,14 @@ type
   public const
     Forbidden = 'demo_forbidden';
   public
-    function OnCallTool(AContext: TMiddlewareContext;
+    function Handle(AContext: TMiddlewareContext;
       AParams: TCallToolRequestParams; const AChain: TCallToolChain): TBaseResult;
   end;
 
   /// <summary>Drops one tool from tools/list, per caller.</summary>
   TToolFilterMiddleware = class(TMiddleware, IListToolsMiddleware)
   public
-    function OnListTools(AContext: TMiddlewareContext;
+    function Handle(AContext: TMiddlewareContext;
       AParams: TPaginatedRequestParams; const AChain: TListToolsChain): TListToolsResult;
   end;
 
@@ -218,7 +227,7 @@ end;
 { TTraceMiddleware }
 
 procedure TTraceMiddleware.OnMessage(AContext: TMiddlewareContext;
-  const AChain: TMessageChain);
+  const AChain: TMiddlewareChain);
 begin
   GTrace.Add(Tag + 'msg>');
   try
@@ -229,7 +238,7 @@ begin
 end;
 
 procedure TTraceMiddleware.OnRequest(AContext: TMiddlewareContext;
-  const AChain: TRequestChain);
+  const AChain: TMiddlewareChain);
 begin
   GTrace.Add(Tag + 'req>');
   try
@@ -251,8 +260,8 @@ end;
 
 { TDenyMiddleware }
 
-procedure TDenyMiddleware.OnRequest(AContext: TMiddlewareContext;
-  const AChain: TRequestChain);
+procedure TDenyMiddleware.Handle(AContext: TMiddlewareContext;
+  const AChain: TMiddlewareChain);
 begin
   GTrace.Add('denied');
   // Next is never called: the operation is suppressed.
@@ -273,7 +282,7 @@ end;
 { TToolTraceMiddleware }
 
 procedure TToolTraceMiddleware.OnRequest(AContext: TMiddlewareContext;
-  const AChain: TRequestChain);
+  const AChain: TMiddlewareChain);
 begin
   FMethod := AContext.Method;
   AChain.Next(AContext);
@@ -293,7 +302,7 @@ end;
 
 { TToolAclMiddleware }
 
-function TToolAclMiddleware.OnCallTool(AContext: TMiddlewareContext;
+function TToolAclMiddleware.Handle(AContext: TMiddlewareContext;
   AParams: TCallToolRequestParams; const AChain: TCallToolChain): TBaseResult;
 begin
   if AParams.Name = Forbidden then
@@ -304,7 +313,7 @@ end;
 
 { TToolFilterMiddleware }
 
-function TToolFilterMiddleware.OnListTools(AContext: TMiddlewareContext;
+function TToolFilterMiddleware.Handle(AContext: TMiddlewareContext;
   AParams: TPaginatedRequestParams; const AChain: TListToolsChain): TListToolsResult;
 var
   LIndex: Integer;
@@ -320,8 +329,8 @@ end;
 
 { TObserverMiddleware }
 
-procedure TObserverMiddleware.OnMessage(AContext: TMiddlewareContext;
-  const AChain: TMessageChain);
+procedure TObserverMiddleware.Handle(AContext: TMiddlewareContext;
+  const AChain: TMiddlewareChain);
 var
   LMessage: TJRPCMessage;
 begin
@@ -333,8 +342,8 @@ end;
 
 { TRaisingMiddleware }
 
-procedure TRaisingMiddleware.OnRequest(AContext: TMiddlewareContext;
-  const AChain: TRequestChain);
+procedure TRaisingMiddleware.Handle(AContext: TMiddlewareContext;
+  const AChain: TMiddlewareChain);
 begin
   raise EJRPCException.Create(Reason);
 end;
@@ -342,14 +351,14 @@ end;
 { TCarryOverMiddleware }
 
 procedure TCarryOverMiddleware.OnMessage(AContext: TMiddlewareContext;
-  const AChain: TMessageChain);
+  const AChain: TMiddlewareChain);
 begin
   FSeenMethod := AContext.Method;
   AChain.Next(AContext);
 end;
 
 procedure TCarryOverMiddleware.OnRequest(AContext: TMiddlewareContext;
-  const AChain: TRequestChain);
+  const AChain: TMiddlewareChain);
 begin
   GTrace.Add('carried:' + FSeenMethod);
   AChain.Next(AContext);

@@ -39,34 +39,12 @@ type
   TApiCall<T> = procedure (AContext: TMiddlewareContext; AParams: T) of object;
 
   /// <summary>
-  ///   What an api class needs to run the hooks of its own operation: the
-  ///   pipeline of the request and the context of the message being handled.
-  /// </summary>
-  /// <remarks>
-  ///   Resolved from the request context rather than injected with [Context],
-  ///   because injection raises when the entry is missing, and it is missing on
-  ///   every path that has no transport behind it - the api classes are called
-  ///   directly by the tests and by the session inbound thread.
-  /// </remarks>
-  TMCPApiMiddleware = record
-    Pipeline: TMiddlewarePipeline;
-    Context: TMiddlewareContext;
-
-    /// <summary>True when there is a chain worth building.</summary>
-    function Active: Boolean;
-
-    class function From(ARPCContext: TJRPCContext): TMCPApiMiddleware; static;
-  end;
-
-  /// <summary>
   ///   Base of the api classes: what every one of them needs from the request.
   /// </summary>
   /// <remarks>
-  ///   The middleware wiring is not shared here on purpose: each operation
-  ///   names its own chain type, its own hook interface and its own terminal,
-  ///   and a record with no common ancestor is not something a generic method
-  ///   could build. What was left to share was a single call, which is not
-  ///   worth a method.
+  ///   The middleware wiring is not here: an operation runs its own hooks with
+  ///   TMiddlewareChain.Run, which takes the request context and needs nothing
+  ///   from a base class.
   /// </remarks>
   TMCPApi = class(TObject)
   public
@@ -559,120 +537,39 @@ begin
 end;
 
 
-{ TMCPApiMiddleware }
-
-class function TMCPApiMiddleware.From(ARPCContext: TJRPCContext): TMCPApiMiddleware;
-begin
-  Result := Default(TMCPApiMiddleware);
-  if not Assigned(ARPCContext) then
-    Exit;
-
-  Result.Pipeline := ARPCContext.FindContextDataAs<TMiddlewarePipeline>;
-  if Assigned(Result.Pipeline) then
-    Result.Context := Result.Pipeline.Context;
-end;
-
-function TMCPApiMiddleware.Active: Boolean;
-begin
-  Result := Assigned(Pipeline) and Assigned(Context) and not Pipeline.IsEmpty;
-end;
-
 function TMCPToolsApi.CallTool(AParams: TCallToolRequestParams): TBaseResult;
-var
-  LMiddleware: TMCPApiMiddleware;
-  LChain: TCallToolChain;
 begin
-  LMiddleware := TMCPApiMiddleware.From(RPCContext);
-  if not LMiddleware.Active then
-    Exit(DoCallTool(nil, AParams));
-
-  LChain := TCallToolChain.Create(
-    LMiddleware.Pipeline.ChainFor<ICallToolMiddleware>, DoCallTool);
-  Result := LChain.Next(LMiddleware.Context, AParams);
+  Result := TCallToolChain.Run<ICallToolMiddleware>(RPCContext, DoCallTool, AParams);
 end;
 
 function TMCPToolsApi.ToolsList(AParams: TPaginatedRequestParams): TListToolsResult;
-var
-  LMiddleware: TMCPApiMiddleware;
-  LChain: TListToolsChain;
 begin
-  LMiddleware := TMCPApiMiddleware.From(RPCContext);
-  if not LMiddleware.Active then
-    Exit(DoToolsList(nil, AParams));
-
-  LChain := TListToolsChain.Create(
-    LMiddleware.Pipeline.ChainFor<IListToolsMiddleware>, DoToolsList);
-  Result := LChain.Next(LMiddleware.Context, AParams);
+  Result := TListToolsChain.Run<IListToolsMiddleware>(RPCContext, DoToolsList, AParams);
 end;
 
 function TMCPResourcesApi.ReadResource(AParams: TReadResourceParams): TBaseResult;
-var
-  LMiddleware: TMCPApiMiddleware;
-  LChain: TReadResourceChain;
 begin
-  LMiddleware := TMCPApiMiddleware.From(RPCContext);
-  if not LMiddleware.Active then
-    Exit(DoReadResource(nil, AParams));
-
-  LChain := TReadResourceChain.Create(
-    LMiddleware.Pipeline.ChainFor<IReadResourceMiddleware>, DoReadResource);
-  Result := LChain.Next(LMiddleware.Context, AParams);
+  Result := TReadResourceChain.Run<IReadResourceMiddleware>(RPCContext, DoReadResource, AParams);
 end;
 
 function TMCPResourcesApi.ResourcesList(AParams: TPaginatedRequestParams): TListResourcesResult;
-var
-  LMiddleware: TMCPApiMiddleware;
-  LChain: TListResourcesChain;
 begin
-  LMiddleware := TMCPApiMiddleware.From(RPCContext);
-  if not LMiddleware.Active then
-    Exit(DoResourcesList(nil, AParams));
-
-  LChain := TListResourcesChain.Create(
-    LMiddleware.Pipeline.ChainFor<IListResourcesMiddleware>, DoResourcesList);
-  Result := LChain.Next(LMiddleware.Context, AParams);
+  Result := TListResourcesChain.Run<IListResourcesMiddleware>(RPCContext, DoResourcesList, AParams);
 end;
 
 function TMCPPromptsApi.PromptList(AParams: TPaginatedRequestParams): TListPromptsResult;
-var
-  LMiddleware: TMCPApiMiddleware;
-  LChain: TListPromptsChain;
 begin
-  LMiddleware := TMCPApiMiddleware.From(RPCContext);
-  if not LMiddleware.Active then
-    Exit(DoPromptList(nil, AParams));
-
-  LChain := TListPromptsChain.Create(
-    LMiddleware.Pipeline.ChainFor<IListPromptsMiddleware>, DoPromptList);
-  Result := LChain.Next(LMiddleware.Context, AParams);
+  Result := TListPromptsChain.Run<IListPromptsMiddleware>(RPCContext, DoPromptList, AParams);
 end;
 
 function TMCPPromptsApi.ReadPrompt(AParams: TGetPromptRequestParams): TBaseResult;
-var
-  LMiddleware: TMCPApiMiddleware;
-  LChain: TGetPromptChain;
 begin
-  LMiddleware := TMCPApiMiddleware.From(RPCContext);
-  if not LMiddleware.Active then
-    Exit(DoReadPrompt(nil, AParams));
-
-  LChain := TGetPromptChain.Create(
-    LMiddleware.Pipeline.ChainFor<IGetPromptMiddleware>, DoReadPrompt);
-  Result := LChain.Next(LMiddleware.Context, AParams);
+  Result := TGetPromptChain.Run<IGetPromptMiddleware>(RPCContext, DoReadPrompt, AParams);
 end;
 
 function TMCPServerApi.Discover(AParams: TRequestMetaParams): TDiscoverResult;
-var
-  LMiddleware: TMCPApiMiddleware;
-  LChain: TDiscoverChain;
 begin
-  LMiddleware := TMCPApiMiddleware.From(RPCContext);
-  if not LMiddleware.Active then
-    Exit(DoDiscover(nil, AParams));
-
-  LChain := TDiscoverChain.Create(
-    LMiddleware.Pipeline.ChainFor<IDiscoverMiddleware>, DoDiscover);
-  Result := LChain.Next(LMiddleware.Context, AParams);
+  Result := TDiscoverChain.Run<IDiscoverMiddleware>(RPCContext, DoDiscover, AParams);
 end;
 
 initialization

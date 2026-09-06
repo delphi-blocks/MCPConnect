@@ -28,11 +28,21 @@ unit MCPConnect.JRPC.Middleware;
 
     TAuditMiddleware = class(TMiddleware, IRequestMiddleware)
 
-  The pipeline asks Supports() which chains a class belongs to, and a hook whose
-  signature does not match is a compile error rather than a method that silently
-  never runs. New hooks are added by declaring new interfaces, which is how the
-  MCP operation hooks (OnCallTool, OnReadResource, ...) extend this from
+  The pipeline asks Supports() which chains a class belongs to. New hooks are
+  added by declaring new interfaces, which is how the MCP operation hooks
+  (ICallToolMiddleware, IReadResourceMiddleware, ...) extend this from
   MCPConnect.MCP.Middleware without this unit knowing about them.
+
+  Every hook is named Handle: what a middleware takes part in is said by the
+  interface, not by the name of the method. Mind that the three hooks of this
+  unit share one signature, so a class declaring two of them and writing a
+  single Handle compiles, and that one method then serves both chains. Two hooks
+  means two method resolution clauses, which is also where the operation gets
+  its name back:
+
+    TAuditMiddleware = class(TMiddleware, IMessageMiddleware, IRequestMiddleware)
+      procedure IMessageMiddleware.Handle = OnMessage;
+      procedure IRequestMiddleware.Handle = OnRequest;
 
   The continuation is deliberately NOT an anonymous method. It is a record
   cursor passed by value plus a method pointer for the terminal handler, so a
@@ -43,7 +53,7 @@ unit MCPConnect.JRPC.Middleware;
   This unit holds the transport- and protocol-agnostic part: the message level
   hooks usable by a plain JSON-RPC server.
 
-  See Docs/middleware.md for the full specification.
+  See Docs/middleware-spec.md for the full specification.
 }
 
 interface
@@ -180,62 +190,48 @@ type
     function Produced: TArray<TJRPCMessage>;
   end;
 
-  IMessageMiddleware = interface;
-  IRequestMiddleware = interface;
-  INotificationMiddleware = interface;
+  IMessageHook = interface;
+  TMiddlewarePipeline = class;
 
   /// <summary>
   ///   The real handler a chain ends on. A method pointer, not an anonymous
   ///   method: two pointers, no allocation, no capture.
   /// </summary>
-  TMessageTerminal = procedure (AContext: TMiddlewareContext) of object;
-  TRequestTerminal = procedure (AContext: TMiddlewareContext) of object;
-  TNotificationTerminal = procedure (AContext: TMiddlewareContext) of object;
+  TMiddlewareTerminal = procedure (AContext: TMiddlewareContext) of object;
 
   /// <summary>
-  ///   Cursor over the OnMessage chain. A record passed by value: calling Next
-  ///   does not move the caller's cursor, so a middleware may call it more than
-  ///   once and walk the same tail of the chain every time.
+  ///   Cursor over a chain. A record passed by value: calling Next does not
+  ///   move the caller's cursor, so a middleware may call it more than once and
+  ///   walk the same tail of the chain every time.
   /// </summary>
-  TMessageChain = record
+  /// <remarks>
+  ///   One record serves all three chains, because nothing varies between them:
+  ///   same terminal, same step. The array holds the hooks as the base
+  ///   interface, while the pipeline selects them by the GUID of the concrete
+  ///   one: see Run.
+  /// </remarks>
+  TMiddlewareChain = record
   private
-    FChain: TArray<IMessageMiddleware>;
+    FChain: TArray<IMessageHook>;
     FIndex: Integer;
-    FTerminal: TMessageTerminal;
+    FTerminal: TMiddlewareTerminal;
   public
-    class function Create(const AChain: TArray<IMessageMiddleware>;
-      const ATerminal: TMessageTerminal): TMessageChain; static;
+    class function Create(const AChain: TArray<IMessageHook>;
+      const ATerminal: TMiddlewareTerminal): TMiddlewareChain; static;
+
+    /// <summary>
+    ///   The whole of what a caller does with a chain: goes straight to the
+    ///   handler when there is nothing to run, and otherwise builds the chain of
+    ///   TIntf and walks it. TIntf is the hook interface carrying the GUID, e.g.
+    ///   IRequestMiddleware.
+    /// </summary>
+    class procedure Run<TIntf: IMessageHook>(APipeline: TMiddlewarePipeline;
+      AContext: TMiddlewareContext; const ATerminal: TMiddlewareTerminal); static;
 
     /// <summary>
     ///   Runs the rest of the chain, or the real handler when no middleware is
     ///   left. Not calling it suppresses the operation.
     /// </summary>
-    procedure Next(AContext: TMiddlewareContext);
-  end;
-
-  /// <summary>Cursor over the OnRequest chain. See TMessageChain.</summary>
-  TRequestChain = record
-  private
-    FChain: TArray<IRequestMiddleware>;
-    FIndex: Integer;
-    FTerminal: TRequestTerminal;
-  public
-    class function Create(const AChain: TArray<IRequestMiddleware>;
-      const ATerminal: TRequestTerminal): TRequestChain; static;
-
-    procedure Next(AContext: TMiddlewareContext);
-  end;
-
-  /// <summary>Cursor over the OnNotification chain. See TMessageChain.</summary>
-  TNotificationChain = record
-  private
-    FChain: TArray<INotificationMiddleware>;
-    FIndex: Integer;
-    FTerminal: TNotificationTerminal;
-  public
-    class function Create(const AChain: TArray<INotificationMiddleware>;
-      const ATerminal: TNotificationTerminal): TNotificationChain; static;
-
     procedure Next(AContext: TMiddlewareContext);
   end;
 
@@ -258,34 +254,37 @@ type
   end;
 
   /// <summary>
+  ///   Common shape of every hook of this unit. Never implemented directly: a
+  ///   middleware implements one of the interfaces below, which is what gives it
+  ///   the GUID the pipeline matches on.
+  /// </summary>
+  IMessageHook = interface(IMiddleware)
+    procedure Handle(AContext: TMiddlewareContext; const AChain: TMiddlewareChain);
+  end;
+
+  /// <summary>
   ///   Takes part in the message chain: every message, so requests,
   ///   notifications, responses coming back from the client, and malformed
   ///   messages too.
   /// </summary>
-  IMessageMiddleware = interface(IMiddleware)
+  IMessageMiddleware = interface(IMessageHook)
   ['{16ECF889-CAA9-46B7-B7DA-C8F9A35F253B}']
-    procedure OnMessage(AContext: TMiddlewareContext;
-      const AChain: TMessageChain);
   end;
 
   /// <summary>
   ///   Takes part in the request chain: messages carrying an id, which expect a
   ///   response.
   /// </summary>
-  IRequestMiddleware = interface(IMiddleware)
+  IRequestMiddleware = interface(IMessageHook)
   ['{5FF09347-AB19-46BD-A746-5C66DB034D34}']
-    procedure OnRequest(AContext: TMiddlewareContext;
-      const AChain: TRequestChain);
   end;
 
   /// <summary>
   ///   Takes part in the notification chain: fire-and-forget messages, so
   ///   nothing to return.
   /// </summary>
-  INotificationMiddleware = interface(IMiddleware)
+  INotificationMiddleware = interface(IMessageHook)
   ['{1A474F62-959B-495F-9A53-76D907522F70}']
-    procedure OnNotification(AContext: TMiddlewareContext;
-      const AChain: TNotificationChain);
   end;
 
   TMiddlewareClass = class of TMiddleware;
@@ -625,19 +624,45 @@ begin
     FGarbage.Add(AObject);
 end;
 
-{ TMessageChain }
+{ TMiddlewareChain }
 
-class function TMessageChain.Create(const AChain: TArray<IMessageMiddleware>;
-  const ATerminal: TMessageTerminal): TMessageChain;
+class function TMiddlewareChain.Create(const AChain: TArray<IMessageHook>;
+  const ATerminal: TMiddlewareTerminal): TMiddlewareChain;
 begin
   Result.FChain := AChain;
   Result.FIndex := 0;
   Result.FTerminal := ATerminal;
 end;
 
-procedure TMessageChain.Next(AContext: TMiddlewareContext);
+class procedure TMiddlewareChain.Run<TIntf>(APipeline: TMiddlewarePipeline;
+  AContext: TMiddlewareContext; const ATerminal: TMiddlewareTerminal);
 var
-  LNext: TMessageChain;
+  LHooks: TArray<TIntf>;
+  LArray: TArray<IMessageHook>;
+  LChain: TMiddlewareChain;
+  LIndex: Integer;
+begin
+  if not Assigned(APipeline) or APipeline.IsEmpty then
+  begin
+    ATerminal(AContext);
+    Exit;
+  end;
+
+  // ChainFor answers TArray<TIntf>, and an array of a descendant interface is
+  // not assignment compatible with an array of its ancestor, however compatible
+  // the elements are: hence the copy.
+  LHooks := APipeline.ChainFor<TIntf>;
+  SetLength(LArray, Length(LHooks));
+  for LIndex := 0 to High(LHooks) do
+    LArray[LIndex] := LHooks[LIndex];
+
+  LChain := Create(LArray, ATerminal);
+  LChain.Next(AContext);
+end;
+
+procedure TMiddlewareChain.Next(AContext: TMiddlewareContext);
+var
+  LNext: TMiddlewareChain;
 begin
   if FIndex >= Length(FChain) then
   begin
@@ -649,57 +674,7 @@ begin
   // repeatable: the caller's chain stays where it was.
   LNext := Self;
   Inc(LNext.FIndex);
-  FChain[FIndex].OnMessage(AContext, LNext);
-end;
-
-{ TRequestChain }
-
-class function TRequestChain.Create(const AChain: TArray<IRequestMiddleware>;
-  const ATerminal: TRequestTerminal): TRequestChain;
-begin
-  Result.FChain := AChain;
-  Result.FIndex := 0;
-  Result.FTerminal := ATerminal;
-end;
-
-procedure TRequestChain.Next(AContext: TMiddlewareContext);
-var
-  LNext: TRequestChain;
-begin
-  if FIndex >= Length(FChain) then
-  begin
-    FTerminal(AContext);
-    Exit;
-  end;
-
-  LNext := Self;
-  Inc(LNext.FIndex);
-  FChain[FIndex].OnRequest(AContext, LNext);
-end;
-
-{ TNotificationChain }
-
-class function TNotificationChain.Create(const AChain: TArray<INotificationMiddleware>;
-  const ATerminal: TNotificationTerminal): TNotificationChain;
-begin
-  Result.FChain := AChain;
-  Result.FIndex := 0;
-  Result.FTerminal := ATerminal;
-end;
-
-procedure TNotificationChain.Next(AContext: TMiddlewareContext);
-var
-  LNext: TNotificationChain;
-begin
-  if FIndex >= Length(FChain) then
-  begin
-    FTerminal(AContext);
-    Exit;
-  end;
-
-  LNext := Self;
-  Inc(LNext.FIndex);
-  FChain[FIndex].OnNotification(AContext, LNext);
+  FChain[FIndex].Handle(AContext, LNext);
 end;
 
 { TMiddleware }

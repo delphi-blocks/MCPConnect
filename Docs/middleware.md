@@ -124,7 +124,7 @@ Registering with an explicit priority still wins, which is how you move a third-
 .Add(TSomeoneElsesMiddleware, MW_PRIORITY_AUTHENTICATION + 100)
 ```
 
-Middleware sharing a priority keeps its registration order.
+Middleware sharing a priority keeps its registration order. Priorities order middleware **within a level, never across levels**: an `IMCPMiddleware` always wraps an `ICallToolMiddleware`, whatever priorities the two declare.
 
 ### Changing the Chain at Runtime
 
@@ -171,13 +171,55 @@ procedure Handle(AContext: TMiddlewareContext; const AChain: TMiddlewareChain);
 | `IGetPromptMiddleware` | `prompts/get` | `TGetPromptRequestParams` | `TBaseResult` |
 | `IListPromptsMiddleware` | `prompts/list` | `TPaginatedRequestParams` | `TListPromptsResult` |
 
-Each has a matching chain type named after the operation — `TCallToolChain`, `TListToolsChain`, `TReadResourceChain`, and so on.
+Each has a matching chain type named after the operation — `TCallToolChain`, `TListToolsChain`, `TReadResourceChain`, and so on. To take part in all of them at once, see [One Hook for Every Operation](#one-hook-for-every-operation).
 
 ::: info Why some hooks return TBaseResult
 `ICallToolMiddleware`, `IReadResourceMiddleware` and `IGetPromptMiddleware` return `TBaseResult` rather than the concrete result type, because the operation may answer with a `TInputRequiredResult` instead of its usual result. Handle that case or let it through untouched.
 :::
 
 The levels nest: for a `tools/call` request, every `IMessageMiddleware` runs, then every `IRequestMiddleware` inside it, then every `ICallToolMiddleware` inside that, and finally the tool itself.
+
+### One Hook for Every Operation
+
+Implementing seven interfaces to watch seven operations is a poor deal when the work is the same in all of them. `IMCPMiddleware` is a single hook that takes part in **every** operation that has a chain. It sees the params already deserialized and the result as a live object, exactly like the specific hooks, and `AContext.Method` says which operation is running:
+
+```pascal
+type
+  TStampMiddleware = class(TMiddleware, IMCPMiddleware)
+  public
+    function Handle(AContext: TMiddlewareContext; AParams: TRequestMetaParams;
+      const AChain: TMCPChain): TBaseResult;
+  end;
+
+function TStampMiddleware.Handle(AContext: TMiddlewareContext;
+  AParams: TRequestMetaParams; const AChain: TMCPChain): TBaseResult;
+begin
+  Logger.LogInfo('-> %s', [AContext.Method]);
+  Result := AChain.Next(AContext, AParams);
+  if Assigned(Result) then
+    Result.ResultMeta.ServerInfo.Name := 'my-server';   // whatever operation ran
+end;
+```
+
+It works because every MCP params type descends from `TRequestMetaParams` and every result from `TBaseResult`, so the universal hook is simply the most general shape of the same machinery. Registration is the usual `.Add(TStampMiddleware)`.
+
+A universal hook is **a level of its own**, sitting between the request hooks and the operation ones:
+
+```
+IMessageMiddleware
+  IRequestMiddleware
+    IMCPMiddleware          <-- here
+      ICallToolMiddleware
+        the tool
+```
+
+::: warning Three things to know
+**It does not cover everything.** Four operations have no chain at all — `resources/templates/list`, `completion/complete`, `subscriptions/listen` and the subscriptions acknowledgement — so a universal hook does not see them either. For messages that are not operations, use `IMessageMiddleware`.
+
+**Replacing means owning.** Only the object the operation finally returns reaches the garbage collector of the request. If you return something other than what `Next` gave you, hand the discarded one to `AContext.Own`, or it leaks.
+
+**The result must still fit the operation.** Returning a class the operation does not work on — a `TCallToolResult` from `tools/list`, say — raises `EMCPMiddlewareError`, which reaches the client as an internal error. Three operations (`tools/call`, `resources/read`, `prompts/get`) declare `TBaseResult`, so there any descendant is accepted.
+:::
 
 ## Taking Part in More Than One Chain
 
@@ -201,6 +243,8 @@ type
 
 The **same instance serves every level of one message**, so whatever `OnRequest` works out is still in `FMethod` when `OnCallTool` runs. That is why carrying state between levels needs nothing more than a plain field.
 
+The same applies to `IMCPMiddleware`: a class that takes part in every operation *and* in one specific chain binds both with resolution clauses, and its universal frame encloses its own specific one.
+
 ::: warning Two message-level hooks need two clauses
 `IMessageMiddleware`, `IRequestMiddleware` and `INotificationMiddleware` share one signature. A class that declares two of them and writes a single `Handle` compiles without a warning, and that one method then serves both chains. Always bind them with resolution clauses. Operation-level hooks are not affected: their signatures differ, so the compiler requires distinct methods.
 :::
@@ -220,6 +264,7 @@ The **same instance serves every level of one message**, so whatever `OnRequest`
 | `Produced` | Copies of what this message has produced so far, meant to be read after `Next` returns |
 | `Own(AObject)` | Hands an object to the garbage collector of the request |
 | `Find<T>` | Shorthand for `RPCContext.FindContextDataAs<T>`, `nil` when absent |
+| `TryFind<T>` | Returns `True` and the object in `out AValue` when present, `False` when absent |
 
 A logging middleware that wants to see both sides of the exchange reads `Produced` after the chain unwinds:
 

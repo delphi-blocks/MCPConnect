@@ -52,6 +52,8 @@ begin
       .Add(TMessageMiddleWare)
       .Add(TCallToolMiddleware)
       .Add(TDiscoverMiddleware)
+      .Add(TDiagnosticMiddleware)
+      .Add(TMCPMiddleware)
     .BackToApp
 
     .Plugin.Configure<IMCPConfig>

@@ -799,6 +799,9 @@ begin
       FGarbage.Add(FContext);
       FContext.AddContent(FGarbage);
 
+      FContext.AddContent(FRequest);
+      FContext.AddContent(FResponse);
+
       // The server *and* each of its configurations: see AddApplicationToContext
       // for why adding the server alone is not enough.
       AddApplicationToContext(FContext, FServer);

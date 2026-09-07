@@ -42,7 +42,7 @@ interface
 {$I MCPConnect.inc}
 
 uses
-  System.SysUtils,
+  System.SysUtils, System.TypInfo,
 
   JRPC.Core,
 
@@ -52,11 +52,23 @@ uses
   MCPConnect.MCP.Types.Prompts,
   MCPConnect.MCP.Types.Resources;
 
+resourcestring
+  SMCPMiddlewareWrongClass =
+    '%s: a universal middleware answered with a %s of class %s, but this ' +
+    'operation works on %s';
+
 type
+  /// <summary>
+  ///   Raised when an IMCPMiddleware hands back an object the operation cannot
+  ///   use. It is a server side programming error, so it travels to the client
+  ///   as an internal error.
+  /// </summary>
+  EMCPMiddlewareError = class(EMCPException);
+
   TMiddlewareTerminal<TParams, TResult> = function(
     AContext: TMiddlewareContext; AParams: TParams): TResult of object;
 
-  IOperationMiddleware<TParams, TResult> = interface;   // forward
+  IOperationMiddleware<TParams: class; TResult: class> = interface;   // forward
 
   /// <summary>
   ///   Cursor over the chain of one MCP operation. A record passed by value:
@@ -67,7 +79,7 @@ type
   ///   The array holds the hooks as the base generic interface, while the
   ///   pipeline selects them by the GUID of the concrete one: see Run.
   /// </remarks>
-  TMiddlewareChain<TParams, TResult> = record
+  TMiddlewareChain<TParams: class; TResult: class> = record
   private
     FChain: TArray<IOperationMiddleware<TParams, TResult>>;
     FIndex: Integer;
@@ -108,7 +120,7 @@ type
   ///   middleware implements one of the interfaces below, which is what gives it
   ///   the GUID the pipeline matches on.
   /// </summary>
-  IOperationMiddleware<TParams, TResult> = interface(IMiddleware)
+  IOperationMiddleware<TParams: class; TResult: class> = interface(IMiddleware)
     function Handle(AContext: TMiddlewareContext; AParams: TParams;
       const AChain: TMiddlewareChain<TParams, TResult>): TResult;
   end;
@@ -180,7 +192,116 @@ type
   TDiscoverTerminal = TMiddlewareTerminal<TRequestMetaParams, TDiscoverResult>;
   TDiscoverChain = TMiddlewareChain<TRequestMetaParams, TDiscoverResult>;
 
+  /// <summary>
+  ///   Takes part in every MCP operation that has a chain, whatever it is: one
+  ///   hook instead of the seven above. AParams arrives deserialised and the
+  ///   result is the live object, before it is serialised, so this is where a
+  ///   result is enriched, replaced, or the operation refused outright.
+  ///   AContext.Method says which operation is running.
+  /// </summary>
+  /// <remarks>
+  ///   It wraps the hook of the specific operation: what runs here is outside
+  ///   ICallToolMiddleware and the rest. Priorities order the middleware within
+  ///   a chain, never across two, so a universal hook always encloses a
+  ///   specific one however they are registered.
+  ///
+  ///   A middleware replacing the result, or the params, owns what it discards:
+  ///   only the object the operation finally returns reaches the garbage
+  ///   collector of the request. Hand the discarded one to AContext.Own.
+  ///
+  ///   The four operations with no chain of their own - resources/templates/list,
+  ///   completion/complete, subscriptions/listen and the subscriptions
+  ///   acknowledgement - are NOT covered.
+  /// </remarks>
+  IMCPMiddleware = interface(IOperationMiddleware<TRequestMetaParams, TBaseResult>)
+    ['{1287C269-EC63-4311-AF02-CDE5B7C2B2FD}']
+  end;
+  TMCPTerminal = TMiddlewareTerminal<TRequestMetaParams, TBaseResult>;
+  TMCPChain = TMiddlewareChain<TRequestMetaParams, TBaseResult>;
+
+  /// <summary>
+  ///   Checked narrowing towards a generic type parameter. Neither "is" nor
+  ///   "as" works on one, so the class is compared through its RTTI.
+  /// </summary>
+  /// <remarks>
+  ///   Internal to the chain machinery. It sits here, and not in the
+  ///   implementation section, because a method of a parameterized type
+  ///   declared in the interface may not reach for a local symbol (E2506).
+  /// </remarks>
+  TMCPCast = class
+    /// <summary>The operation being run, or blank outside a message.</summary>
+    class function MethodOf(AContext: TMiddlewareContext): string; static;
+
+    class function NarrowTo<T: class>(AObject: TObject;
+      const AWhat, AMethod: string): T; static;
+  end;
+
+  /// <summary>
+  ///   Where the universal chain hands over to the chain of the operation. A
+  ///   record on the stack of Run: a method pointer needs an owner, and this
+  ///   one costs no allocation.
+  /// </summary>
+  TMCPBridge<TParams: class; TResult: class> = record
+  private
+    FSpecific: TMiddlewareChain<TParams, TResult>;
+  public
+    class function Over(
+      const ASpecific: TMiddlewareChain<TParams, TResult>): TMCPBridge<TParams, TResult>; static;
+
+    /// <summary>Matches TMCPTerminal.</summary>
+    function Proceed(AContext: TMiddlewareContext;
+      AParams: TRequestMetaParams): TBaseResult;
+  end;
+
 implementation
+
+{ TMCPCast }
+
+class function TMCPCast.MethodOf(AContext: TMiddlewareContext): string;
+begin
+  if Assigned(AContext) then
+    Result := AContext.Method
+  else
+    Result := '';
+end;
+
+class function TMCPCast.NarrowTo<T>(AObject: TObject;
+  const AWhat, AMethod: string): T;
+var
+  LExpected: TClass;
+begin
+  // nil passes through: suppressing an operation without a result is allowed.
+  if not Assigned(AObject) then
+    Exit(nil);
+
+  LExpected := GetTypeData(TypeInfo(T)).ClassType;
+  if not AObject.InheritsFrom(LExpected) then
+    raise EMCPMiddlewareError.CreateFmt(SMCPMiddlewareWrongClass,
+      [AMethod, AWhat, AObject.ClassName, LExpected.ClassName]);
+
+  Result := T(AObject);
+end;
+
+{ TMCPBridge<TParams, TResult> }
+
+class function TMCPBridge<TParams, TResult>.Over(
+  const ASpecific: TMiddlewareChain<TParams, TResult>): TMCPBridge<TParams, TResult>;
+begin
+  Result.FSpecific := ASpecific;
+end;
+
+function TMCPBridge<TParams, TResult>.Proceed(AContext: TMiddlewareContext;
+  AParams: TRequestMetaParams): TBaseResult;
+begin
+  // Both conversions have to be spelled out: the compiler cannot know that
+  // TParams descends from TRequestMetaParams, nor TResult from TBaseResult.
+  // Narrowing the params and not merely ignoring them is what lets a universal
+  // middleware hand a different object down the chain.
+  Result := TMCPCast.NarrowTo<TBaseResult>(
+    TObject(FSpecific.Next(AContext,
+      TMCPCast.NarrowTo<TParams>(AParams, 'params', TMCPCast.MethodOf(AContext)))),
+    'result', TMCPCast.MethodOf(AContext));
+end;
 
 { TMiddlewareChain<TParams, TResult> }
 
@@ -202,6 +323,10 @@ var
   LHooks: TArray<TIntf>;
   LArray: TArray<IOperationMiddleware<TParams, TResult>>;
   LChain: TMiddlewareChain<TParams, TResult>;
+  LUniversal: TArray<IMCPMiddleware>;
+  LAnyArray: TArray<IOperationMiddleware<TRequestMetaParams, TBaseResult>>;
+  LAnyChain: TMCPChain;
+  LBridge: TMCPBridge<TParams, TResult>;
   LIndex: Integer;
 begin
   LPipeline := nil;
@@ -225,7 +350,27 @@ begin
     LArray[LIndex] := LHooks[LIndex];
 
   LChain := Create(LArray, ATerminal);
-  Result := LChain.Next(LPipeline.Context, AParams);
+
+  // The universal hooks wrap the ones of this operation. Asking for them costs
+  // a hit on the chain cache, and when nobody takes part the operation runs
+  // exactly as it did before: no bridge, no narrowing, nothing allocated.
+  LUniversal := LPipeline.ChainFor<IMCPMiddleware>;
+  if Length(LUniversal) = 0 then
+    Exit(LChain.Next(LPipeline.Context, AParams));
+
+  SetLength(LAnyArray, Length(LUniversal));
+  for LIndex := 0 to High(LUniversal) do
+    LAnyArray[LIndex] := LUniversal[LIndex];
+
+  // The bridge lives here, on the stack, for as long as the walk lasts.
+  LBridge := TMCPBridge<TParams, TResult>.Over(LChain);
+  LAnyChain := TMCPChain.Create(LAnyArray, LBridge.Proceed);
+
+  Result := TMCPCast.NarrowTo<TResult>(
+    TObject(LAnyChain.Next(LPipeline.Context,
+      TMCPCast.NarrowTo<TRequestMetaParams>(TObject(AParams), 'params',
+        TMCPCast.MethodOf(LPipeline.Context)))),
+    'result', TMCPCast.MethodOf(LPipeline.Context));
 end;
 
 function TMiddlewareChain<TParams, TResult>.Next(AContext: TMiddlewareContext;

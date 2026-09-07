@@ -140,6 +140,12 @@ type
     /// </summary>
     function Find<T: class>: T;
 
+    /// <summary>
+    ///   Attempts to resolve an object of type T from RPCContext.
+    ///   Returns True if found, placing the reference in AValue; False otherwise.
+    /// </summary>
+    function TryFind<T: class>(out AValue: T): Boolean;
+
     /// <summary>The JSON-RPC method name, e.g. "tools/call".</summary>
     property Method: string read FMethod;
 
@@ -613,7 +619,16 @@ end;
 
 function TMiddlewareContext.Find<T>: T;
 begin
-  Result := RPCContext.FindContextDataAs<T>;
+  if Assigned(FRPCContext) then
+    Result := FRPCContext.FindContextDataAs<T>
+  else
+    Result := nil;
+end;
+
+function TMiddlewareContext.TryFind<T>(out AValue: T): Boolean;
+begin
+  AValue := Find<T>;
+  Result := Assigned(AValue);
 end;
 
 procedure TMiddlewareContext.Own(AObject: TObject);

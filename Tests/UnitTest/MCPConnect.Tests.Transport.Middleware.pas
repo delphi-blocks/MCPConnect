@@ -121,6 +121,44 @@ type
       AParams: TCallToolRequestParams; const AChain: TCallToolChain): TBaseResult;
   end;
 
+  /// <summary>
+  ///   Takes part in every MCP operation with a single hook, and says which one
+  ///   it is reading AContext.Method.
+  /// </summary>
+  TEveryOperationMiddleware = class(TMiddleware, IMCPMiddleware)
+  public
+    function Handle(AContext: TMiddlewareContext; AParams: TRequestMetaParams;
+      const AChain: TMCPChain): TBaseResult;
+  end;
+
+  /// <summary>Universal, and it enriches the result of whatever ran.</summary>
+  TStampMiddleware = class(TMiddleware, IMCPMiddleware)
+  public const
+    Stamp = 'stamped-by-the-universal-hook';
+  public
+    function Handle(AContext: TMiddlewareContext; AParams: TRequestMetaParams;
+      const AChain: TMCPChain): TBaseResult;
+  end;
+
+  /// <summary>Universal, and it refuses before the operation runs.</summary>
+  TUniversalDenyMiddleware = class(TMiddleware, IMCPMiddleware)
+  public
+    function Handle(AContext: TMiddlewareContext; AParams: TRequestMetaParams;
+      const AChain: TMCPChain): TBaseResult;
+  end;
+
+  /// <summary>
+  ///   Universal, answering with a class the operation cannot use. It has to be
+  ///   tried on an operation with a concrete result type: the three that return
+  ///   TBaseResult accept any descendant by definition, so there is nothing to
+  ///   violate there.
+  /// </summary>
+  TUniversalWrongClassMiddleware = class(TMiddleware, IMCPMiddleware)
+  public
+    function Handle(AContext: TMiddlewareContext; AParams: TRequestMetaParams;
+      const AChain: TMCPChain): TBaseResult;
+  end;
+
   /// <summary>Refuses one tool by name, without ever reaching it.</summary>
   TToolAclMiddleware = class(TMiddleware, ICallToolMiddleware)
   public const
@@ -189,6 +227,18 @@ type
     procedure TestListToolsHookFiltersTheResult();
     [Test]
     procedure TestOneInstanceCarriesAcrossLevels();
+
+    // IMCPMiddleware: one hook for every operation
+    [Test]
+    procedure TestUniversalHookSeesEveryOperation();
+    [Test]
+    procedure TestUniversalHookWrapsTheSpecificOne();
+    [Test]
+    procedure TestUniversalHookEnrichesAnyResult();
+    [Test]
+    procedure TestUniversalHookCanRefuse();
+    [Test]
+    procedure TestUniversalHookAnsweringTheWrongClassIsAnError();
   end;
 
 implementation
@@ -298,6 +348,53 @@ begin
   finally
     GTrace.Add('<tool');
   end;
+end;
+
+{ TEveryOperationMiddleware }
+
+function TEveryOperationMiddleware.Handle(AContext: TMiddlewareContext;
+  AParams: TRequestMetaParams; const AChain: TMCPChain): TBaseResult;
+begin
+  GTrace.Add('any>' + AContext.Method);
+  try
+    Result := AChain.Next(AContext, AParams);
+  finally
+    GTrace.Add('<any');
+  end;
+end;
+
+{ TStampMiddleware }
+
+function TStampMiddleware.Handle(AContext: TMiddlewareContext;
+  AParams: TRequestMetaParams; const AChain: TMCPChain): TBaseResult;
+begin
+  // The result is the live object, whatever operation produced it.
+  Result := AChain.Next(AContext, AParams);
+  if Assigned(Result) then
+    Result.ResultMeta.ServerInfo.Name := Stamp;
+end;
+
+{ TUniversalDenyMiddleware }
+
+function TUniversalDenyMiddleware.Handle(AContext: TMiddlewareContext;
+  AParams: TRequestMetaParams; const AChain: TMCPChain): TBaseResult;
+begin
+  GTrace.Add('denied:' + AContext.Method);
+  Result := nil;
+end;
+
+{ TUniversalWrongClassMiddleware }
+
+function TUniversalWrongClassMiddleware.Handle(AContext: TMiddlewareContext;
+  AParams: TRequestMetaParams; const AChain: TMCPChain): TBaseResult;
+begin
+  // What we throw away is ours: only the object the operation finally returns
+  // reaches the garbage collector of the request.
+  AContext.Own(AChain.Next(AContext, AParams));
+
+  // tools/list works on TListToolsResult, so this one cannot stand in for it
+  Result := TCallToolResult.Create;
+  AContext.Own(Result);   // whatever happens next, the request frees it
 end;
 
 { TToolAclMiddleware }
@@ -585,6 +682,72 @@ begin
   // "@tools/call" is what OnRequest put in a field of the very same instance
   // that OnCallTool then ran on.
   Assert.Contains(Trace, '@tools/call');
+end;
+
+procedure TTransportMiddlewareTest.TestUniversalHookSeesEveryOperation;
+begin
+  FServer.Middleware.Add(TEveryOperationMiddleware);
+
+  // One class, one Handle, three different operations.
+  Post(DiscoverBody);
+  Post(ListToolsBody);
+  Post(CallToolBody('demo_allowed'));
+
+  Assert.AreEqual(
+    'any>server/discover <any any>tools/list <any any>tools/call <any', Trace);
+end;
+
+procedure TTransportMiddlewareTest.TestUniversalHookWrapsTheSpecificOne;
+begin
+  FServer.Middleware
+    .Add(TEveryOperationMiddleware)
+    .Add(TToolAclMiddleware);
+
+  Post(CallToolBody('demo_allowed'));
+
+  // The universal hook is a level of its own, outside the operation one.
+  Assert.StartsWith('any>tools/call', Trace);
+  Assert.EndsWith('<any', Trace);
+end;
+
+procedure TTransportMiddlewareTest.TestUniversalHookEnrichesAnyResult;
+var
+  LResponse: string;
+begin
+  FServer.Middleware.Add(TStampMiddleware);
+
+  // Same middleware, same line of code, two unrelated result classes.
+  LResponse := Post(ListToolsBody);
+  Assert.Contains(LResponse, TStampMiddleware.Stamp, 'tools/list');
+
+  LResponse := Post(DiscoverBody);
+  Assert.Contains(LResponse, TStampMiddleware.Stamp, 'server/discover');
+end;
+
+procedure TTransportMiddlewareTest.TestUniversalHookCanRefuse;
+begin
+  FServer.Middleware
+    .Add(TUniversalDenyMiddleware)
+    .Add(TToolAclMiddleware);
+
+  Post(CallToolBody('demo_allowed'));
+
+  // Neither the operation hook nor the tool ran.
+  Assert.AreEqual('denied:tools/call', Trace);
+end;
+
+procedure TTransportMiddlewareTest.TestUniversalHookAnsweringTheWrongClassIsAnError;
+var
+  LResponse: string;
+begin
+  FServer.Middleware.Add(TUniversalWrongClassMiddleware);
+
+  LResponse := Post(ListToolsBody);
+
+  // A universal middleware handing back a class the operation cannot use is a
+  // server side bug, and it must say so rather than corrupt the answer.
+  Assert.Contains(LResponse, '"error"');
+  Assert.DoesNotContain(LResponse, '"result"');
 end;
 
 initialization

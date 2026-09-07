@@ -74,6 +74,34 @@ type
       AParams: TCallToolRequestParams; const AChain: TCallToolChain): TBaseResult;
   end;
 
+  /// <summary>Universal: takes part in every operation, tracing what it sees.</summary>
+  TUniversalMiddleware = class(TMiddleware, IMCPMiddleware)
+  public
+    function Handle(AContext: TMiddlewareContext; AParams: TRequestMetaParams;
+      const AChain: TMCPChain): TBaseResult;
+  end;
+
+  /// <summary>Universal, calling Next twice: the bridge must be re-entrant.</summary>
+  TUniversalRetryMiddleware = class(TMiddleware, IMCPMiddleware)
+  public
+    function Handle(AContext: TMiddlewareContext; AParams: TRequestMetaParams;
+      const AChain: TMCPChain): TBaseResult;
+  end;
+
+  /// <summary>Universal, never calling Next.</summary>
+  TUniversalDenyMiddleware = class(TMiddleware, IMCPMiddleware)
+  public
+    function Handle(AContext: TMiddlewareContext; AParams: TRequestMetaParams;
+      const AChain: TMCPChain): TBaseResult;
+  end;
+
+  /// <summary>Universal, answering with a class the operation cannot use.</summary>
+  TUniversalWrongClassMiddleware = class(TMiddleware, IMCPMiddleware)
+  public
+    function Handle(AContext: TMiddlewareContext; AParams: TRequestMetaParams;
+      const AChain: TMCPChain): TBaseResult;
+  end;
+
   /// <summary>Takes part in tools/list only, to prove the chains do not mix.</summary>
   TListOnlyMiddleware = class(TMiddleware, IListToolsMiddleware)
   public
@@ -129,6 +157,8 @@ type
 
     [Test]
     procedure TestHooksAreIsolatedByGuid();
+    [Test]
+    procedure TestUniversalHookIsAChainOfItsOwn();
   end;
 
 implementation
@@ -338,6 +368,40 @@ begin
   Assert.AreEqual('A> * <A A> * <A', FTrace.AsText);
 end;
 
+{ universal middleware }
+
+function TUniversalMiddleware.Handle(AContext: TMiddlewareContext;
+  AParams: TRequestMetaParams; const AChain: TMCPChain): TBaseResult;
+begin
+  GTrace.Add('U>');
+  try
+    Result := AChain.Next(AContext, AParams);
+  finally
+    GTrace.Add('<U');
+  end;
+end;
+
+function TUniversalRetryMiddleware.Handle(AContext: TMiddlewareContext;
+  AParams: TRequestMetaParams; const AChain: TMCPChain): TBaseResult;
+begin
+  AChain.Next(AContext, AParams);
+  Result := AChain.Next(AContext, AParams);
+end;
+
+function TUniversalDenyMiddleware.Handle(AContext: TMiddlewareContext;
+  AParams: TRequestMetaParams; const AChain: TMCPChain): TBaseResult;
+begin
+  GTrace.Add('denied');
+  Result := nil;
+end;
+
+function TUniversalWrongClassMiddleware.Handle(AContext: TMiddlewareContext;
+  AParams: TRequestMetaParams; const AChain: TMCPChain): TBaseResult;
+begin
+  AChain.Next(AContext, AParams);
+  Result := TListToolsResult.Create;   // non e' cio' che tools/call restituisce
+end;
+
 { TMCPHookRegistrationTest }
 
 procedure TMCPHookRegistrationTest.Setup;
@@ -369,6 +433,20 @@ begin
   Assert.AreEqual(0, CountFor(IReadResourceMiddleware), 'resources/read chain');
   Assert.AreEqual(0, CountFor(IGetPromptMiddleware), 'prompts/get chain');
   Assert.AreEqual(0, CountFor(IDiscoverMiddleware), 'server/discover chain');
+  Assert.AreEqual(0, CountFor(IMCPMiddleware), 'universal chain');
+end;
+
+procedure TMCPHookRegistrationTest.TestUniversalHookIsAChainOfItsOwn;
+begin
+  FServer.Middleware
+    .Add(TAlphaMiddleware)          // tools/call only
+    .Add(TUniversalMiddleware);     // every operation
+
+  // The universal hook must not leak into the chain of a single operation, nor
+  // an operation hook into the universal one.
+  Assert.AreEqual(1, CountFor(ICallToolMiddleware), 'tools/call chain');
+  Assert.AreEqual(1, CountFor(IMCPMiddleware), 'universal chain');
+  Assert.AreEqual(0, CountFor(IListToolsMiddleware), 'tools/list chain');
 end;
 
 initialization

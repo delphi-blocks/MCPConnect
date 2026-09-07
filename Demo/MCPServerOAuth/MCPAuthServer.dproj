@@ -154,6 +154,10 @@
         <DCCReference Include="..\..\Source\MCPConnect.Transport.MediaType.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Security.Jwks.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Security.Token.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.JRPC.Middleware.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Middleware.Default.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Middleware.OAuth.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Middleware.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

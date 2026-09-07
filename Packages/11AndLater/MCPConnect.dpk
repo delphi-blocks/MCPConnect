@@ -70,6 +70,8 @@ contains
   MCPConnect.MCP.Config in '..\..\Source\MCPConnect.MCP.Config.pas',
   MCPConnect.MCP.Invoker in '..\..\Source\MCPConnect.MCP.Invoker.pas',
   MCPConnect.MCP.Middleware in '..\..\Source\MCPConnect.MCP.Middleware.pas',
+  MCPConnect.MCP.Middleware.Default in '..\..\Source\MCPConnect.MCP.Middleware.Default.pas',
+  MCPConnect.MCP.Middleware.OAuth in '..\..\Source\MCPConnect.MCP.Middleware.OAuth.pas',
   MCPConnect.MCP.Server in '..\..\Source\MCPConnect.MCP.Server.pas',
   MCPConnect.MCP.Server.Api in '..\..\Source\MCPConnect.MCP.Server.Api.pas',
   MCPConnect.MCP.Types.Base in '..\..\Source\MCPConnect.MCP.Types.Base.pas',

@@ -58,7 +58,8 @@ uses
   MCPConnect.JRPC.Middleware in '..\..\..\Source\MCPConnect.JRPC.Middleware.pas',
   MCPServer.Middleware in '..\MCPServer.Middleware.pas',
   MCPConnect.MCP.Middleware in '..\..\..\Source\MCPConnect.MCP.Middleware.pas',
-  MCPConnect.MCP.Server in '..\..\..\Source\MCPConnect.MCP.Server.pas';
+  MCPConnect.MCP.Server in '..\..\..\Source\MCPConnect.MCP.Server.pas',
+  MCPConnect.MCP.Middleware.Default in '..\..\..\Source\MCPConnect.MCP.Middleware.Default.pas';
 
 {$R *.res}
 

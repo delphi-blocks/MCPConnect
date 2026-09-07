@@ -83,6 +83,18 @@ type
     procedure ApplyConfig(AConfig: IJRPCConfiguration);
 
     /// <summary>
+    ///   The middleware chain of the application, for a configuration that has
+    ///   to register a middleware of its own: this is how enabling a feature
+    ///   also puts in the middleware that implements it.
+    /// </summary>
+    /// <returns>
+    ///   A TMiddlewareList, typed as TObject because the middleware unit sits
+    ///   above this one in the dependency order and cannot be named here. The
+    ///   caller casts it back with "as TMiddlewareList".
+    /// </returns>
+    function GetMiddlewareList: TObject;
+
+    /// <summary>
     ///   Provides fluent access to configuration interfaces. Use Configure&lt;T&gt;
     ///   to access specific configuration types (IMCPConfig, IAuthTokenConfig, etc.).
     /// </summary>

@@ -26,7 +26,11 @@ uses
   MCPConnect.Transport.AcceptParser in '..\..\Source\MCPConnect.Transport.AcceptParser.pas',
   MCPConnect.Transport.MediaType in '..\..\Source\MCPConnect.Transport.MediaType.pas',
   MCPConnect.Security.Jwks in '..\..\Source\MCPConnect.Security.Jwks.pas',
-  MCPConnect.Security.Token in '..\..\Source\MCPConnect.Security.Token.pas';
+  MCPConnect.Security.Token in '..\..\Source\MCPConnect.Security.Token.pas',
+  MCPConnect.JRPC.Middleware in '..\..\Source\MCPConnect.JRPC.Middleware.pas',
+  MCPConnect.MCP.Middleware.Default in '..\..\Source\MCPConnect.MCP.Middleware.Default.pas',
+  MCPConnect.MCP.Middleware.OAuth in '..\..\Source\MCPConnect.MCP.Middleware.OAuth.pas',
+  MCPConnect.MCP.Middleware in '..\..\Source\MCPConnect.MCP.Middleware.pas';
 
 {$R *.res}
 

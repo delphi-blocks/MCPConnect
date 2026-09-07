@@ -140,6 +140,8 @@
         <DCCReference Include="..\..\Source\MCPConnect.JRPC.Middleware.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Attributes.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Middleware.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Middleware.Default.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Middleware.OAuth.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Invoker.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Prompts.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Resources.pas"/>
@@ -164,6 +166,7 @@
         <DCCReference Include="MCPConnect.Tests.JRPC.Middleware.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Middleware.pas"/>
         <DCCReference Include="MCPConnect.Tests.Transport.Middleware.pas"/>
+        <DCCReference Include="MCPConnect.Tests.Transport.DefaultMiddleware.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Tools.pas"/>
         <DCCReference Include="MCPConnect.Tests.JRPC.Invoker.pas"/>
         <DCCReference Include="MCPConnect.Tests.Core.Utils.pas"/>

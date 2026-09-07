@@ -83,6 +83,11 @@ begin
       .Tools
         .RegisterClass(TTodoTool)
       .BackToMCP
+
+    .BackToApp
+
+    // .Plugin.Configure<IAuthTokenConfig>
+    //   .SetToken('my-secret-token')
   ;
 end;
 

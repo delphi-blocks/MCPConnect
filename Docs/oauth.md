@@ -33,9 +33,10 @@ When OAuth is enabled, MCPConnect's HTTP transport (`TMCPTransportHandler` in
 - Optionally proxies and patches the authorization server's discovery document (see
   [Section 4](#4-the-metadata-proxy)).
 
-All of this is wired into `CheckOAuth`, called from `ProcessRequest` before any JSON-RPC handling
-takes place. CORS headers (see [Section 3.3](#33-cors)) are injected **before** these checks, so
-that error responses (401, metadata documents) are readable by browser-based clients too.
+All of this lives in `TOAuthMiddleware` (`MCPConnect.MCP.Middleware.OAuth`), a transport middleware
+that runs before any JSON-RPC handling takes place and is registered by `AddAuthorizationServer`.
+`TCORSMiddleware` wraps it, so its headers (see [Section 3.3](#33-cors)) are on the answer whatever
+OAuth decides — 401s and metadata documents included — and stay readable by browser-based clients.
 
 ## 2. Basic Configuration
 
@@ -73,7 +74,7 @@ AServer
 | `SetClockSkew(ASeconds)` | Tolerance on `exp`/`nbf`, in seconds. Defaults to 60. |
 | `SetKeyCacheTTL(ASeconds)` | Lifetime of the cached JWKS, in seconds. Defaults to 3600. |
 
-If `AuthorizationServers` is empty, OAuth enforcement is fully disabled — `CheckOAuth` short-circuits
+If `AuthorizationServers` is empty, OAuth enforcement is fully disabled — `TOAuthMiddleware` steps aside
 and every request is allowed through, regardless of `Authorization` headers. This lets you enable
 OAuth only when at least one authorization server has been configured.
 
@@ -96,6 +97,11 @@ end;
 `IOAuthConfig` and `IAuthTokenConfig` (simple static-token / cookie authentication) are independent
 plugins and can coexist, but are generally alternatives for different deployment scenarios — most
 servers will use one or the other.
+
+Both are transport middleware: `IAuthTokenConfig.SetToken` registers `TAuthTokenMiddleware` and
+`IOAuthConfig.AddAuthorizationServer` registers `TOAuthMiddleware` (`MCPConnect.MCP.Middleware.OAuth`), which also serves
+the discovery endpoints described below. The static check runs first, OAuth inside it, both inside CORS. See
+[Middleware](./middleware#middleware-that-ships-with-mcpconnect).
 
 ## 3. Production Considerations
 
@@ -212,7 +218,7 @@ end;
 ```
 
 `PathInfo` is a `TMask`, so `*` covers every well-known path in one route. Only add this second
-dispatcher when OAuth is configured: without an authorization server, `CheckOAuth` lets requests
+dispatcher when OAuth is configured: without an authorization server, `TOAuthMiddleware` lets requests
 straight through and a `.well-known` request would fall into normal MCP request handling and fail.
 
 ## 4. The Metadata Proxy
@@ -434,8 +440,8 @@ tunnel to `https://mcp.example.com`.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Request stays "pending" in the browser-based client forever, breakpoints in your server code never hit, and it stays "pending" even with the server turned off | The client-side OAuth tool failed silently (blocked `fetch`, popup blocked, or a client-side bug) before ever reaching the network — check the browser DevTools Console/Network tabs directly instead of trusting the tool's status UI | Verify CORS headers are present on **every** response, including `401`s and well-known endpoints (fixed by injecting CORS before any auth check in `ProcessRequest`); check for a blocked-popup icon in the browser address bar; verify the exact server URL/port configured in the client |
-| `401` response (or the `.well-known/oauth-protected-resource` document) is unreadable by browser JavaScript / blocked by CORS | `Access-Control-Allow-Origin` (and, for reading `WWW-Authenticate`, `Access-Control-Expose-Headers`) missing on error/metadata responses | Already handled by MCPConnect (CORS is injected before any OAuth check) — make sure `SetCORS(True)` is called and your client's origin is allowed |
+| Request stays "pending" in the browser-based client forever, breakpoints in your server code never hit, and it stays "pending" even with the server turned off | The client-side OAuth tool failed silently (blocked `fetch`, popup blocked, or a client-side bug) before ever reaching the network — check the browser DevTools Console/Network tabs directly instead of trusting the tool's status UI | Verify CORS headers are present on **every** response, including `401`s and well-known endpoints (fixed by `TCORSMiddleware`, which is outermost on the transport chain, before any auth check); check for a blocked-popup icon in the browser address bar; verify the exact server URL/port configured in the client |
+| `401` response (or the `.well-known/oauth-protected-resource` document) is unreadable by browser JavaScript / blocked by CORS | `Access-Control-Allow-Origin` (and, for reading `WWW-Authenticate`, `Access-Control-Expose-Headers`) missing on error/metadata responses | Already handled by MCPConnect (`TCORSMiddleware` wraps `TOAuthMiddleware`, so the headers are written before any OAuth check) — make sure `SetCORS(True)` is called and your client's origin is allowed |
 | `PKCE is REQUIRED for 2025-11-25 protocol, but authorization server does not advertise code_challenge_methods_supported` | The authorization server's discovery document doesn't include `code_challenge_methods_supported`, even though it supports PKCE (common with Entra ID) | Use [`EnableMetadataProxy`](#4-the-metadata-proxy) |
 | Redirect goes to `http://<your-server>/authorize` (a path your MCP server doesn't implement) instead of the real authorization server | A "legacy" protocol version was selected (e.g. 2025-03-26) in the debugging client, which does not support delegating to an external authorization server — it assumes the MCP server itself is the authorization server | Select the current protocol version (e.g. 2025-11-25) in the client, not a legacy one |
 | Every authenticated request gets `401` with `error="invalid_token"`, and the server log says *"The token issuer is not trusted (expected: https://login.microsoftonline.com/&lt;tid&gt;/v2.0, found: https://sts.windows.net/&lt;tid&gt;/)"* | The exposed API issues **v1.0** access tokens (`"ver": "1.0"`), whose `iss` is the `sts.windows.net` form, while discovery runs against the v2.0 endpoint | Add the token's issuer with `AddTrustedIssuer`, or set `requestedAccessTokenVersion: 2` on the API and then also set `SetAudience` to its client ID — see [token-validation.md §3.3.1](token-validation.md#331-when-iss-is-not-the-discovery-url) |

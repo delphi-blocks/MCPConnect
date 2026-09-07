@@ -40,6 +40,7 @@ type
     function GetConfigByClassRef(AClass: TJRPCConfigurationClass): TJRPCConfiguration;
     function GetAppConfigurator: TAppConfigurator;
     function GetConfigurations: TArray<TJRPCConfiguration>;
+    function GetMiddlewareList: TObject;
 
     function GetConfiguration<T: TJRPCConfiguration>: T;
     function GetConfigByInterfaceRef(AInterfaceRef: TGUID): IInterface;
@@ -136,6 +137,11 @@ end;
 function TMCPServer.GetConfigurations: TArray<TJRPCConfiguration>;
 begin
   Result := FConfigRegistry.ValuesSnapshot;
+end;
+
+function TMCPServer.GetMiddlewareList: TObject;
+begin
+  Result := Middleware;
 end;
 
 { TAppConfiguratorImpl }

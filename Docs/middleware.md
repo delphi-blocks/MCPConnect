@@ -143,7 +143,29 @@ A change takes effect from the next message on. Messages already in flight finis
 
 ## Available Hooks
 
-Hooks come in two families. **Message-level** hooks live in `MCPConnect.JRPC.Middleware` and see every JSON-RPC message, MCP or not. **Operation-level** hooks live in `MCPConnect.MCP.Middleware` and see one MCP operation each, with its parameters already parsed.
+Hooks come in three families. The **transport-level** hook and the **message-level** ones live in `MCPConnect.JRPC.Middleware`: the first sees one whole request of the transport, the others every JSON-RPC message, MCP or not. **Operation-level** hooks live in `MCPConnect.MCP.Middleware` and see one MCP operation each, with its parameters already parsed.
+
+### The Transport-Level Hook
+
+| Interface | Runs for | Chain type |
+|---|---|---|
+| `ITransportMiddleware` | One whole request of the transport, before the payload is parsed | `TMiddlewareChain` |
+
+The outermost level there is, and the only one that sees a request carrying no JSON-RPC message at all — a CORS preflight, a metadata request. Same signature as the message hooks:
+
+```pascal
+procedure Handle(AContext: TMiddlewareContext; const AChain: TMiddlewareChain);
+```
+
+Its context is of kind `Transport`: there is no `Message` and nothing to `Emit` into, because at this point there is no message yet. What a hook of this level works on is the request and the response of the transport, both in the context:
+
+```pascal
+var LResponse: TMCPTransportResponse;
+if AContext.TryFind<TMCPTransportResponse>(LResponse) then
+  LResponse.SetHeader('X-Server', 'mine');
+```
+
+An instance is built once per transport request, and it is not the one the message levels of the same request get: a request may carry a whole batch of messages, so the two scopes are different. Refusing here means not calling `Next`, or raising — an `EMCPTransportException` is how the HTTP transports answer with a status code of their own.
 
 ### Message-Level Hooks
 
@@ -177,7 +199,7 @@ Each has a matching chain type named after the operation — `TCallToolChain`, `
 `ICallToolMiddleware`, `IReadResourceMiddleware` and `IGetPromptMiddleware` return `TBaseResult` rather than the concrete result type, because the operation may answer with a `TInputRequiredResult` instead of its usual result. Handle that case or let it through untouched.
 :::
 
-The levels nest: for a `tools/call` request, every `IMessageMiddleware` runs, then every `IRequestMiddleware` inside it, then every `ICallToolMiddleware` inside that, and finally the tool itself.
+The levels nest: for a `tools/call` request, every `ITransportMiddleware` runs, then every `IMessageMiddleware` inside it, then every `IRequestMiddleware`, then every `ICallToolMiddleware`, and finally the tool itself.
 
 ### One Hook for Every Operation
 
@@ -206,11 +228,12 @@ It works because every MCP params type descends from `TRequestMetaParams` and ev
 A universal hook is **a level of its own**, sitting between the request hooks and the operation ones:
 
 ```
-IMessageMiddleware
-  IRequestMiddleware
-    IMCPMiddleware          <-- here
-      ICallToolMiddleware
-        the tool
+ITransportMiddleware
+  IMessageMiddleware
+    IRequestMiddleware
+      IMCPMiddleware          <-- here
+        ICallToolMiddleware
+          the tool
 ```
 
 ::: warning Three things to know
@@ -251,14 +274,14 @@ The same applies to `IMCPMiddleware`: a class that takes part in every operation
 
 ## The Middleware Context
 
-`TMiddlewareContext` lives for the duration of a single message. It is not thread-safe and must not be kept past the call.
+`TMiddlewareContext` lives for the duration of a single message - or, at the transport level, of a single request of the transport. It is not thread-safe and must not be kept past the call.
 
 | Member | Purpose |
 |---|---|
-| `Method` | The JSON-RPC method name, e.g. `tools/call` |
-| `Kind` | `Request`, `Notification`, `Response` or `Error` |
+| `Method` | The JSON-RPC method name, e.g. `tools/call`. Empty at the transport level, where no message is parsed yet |
+| `Kind` | `Request`, `Notification`, `Response`, `Error`, or `Transport` for the transport level |
 | `Timestamp` | When the message entered the chain |
-| `Message` | The raw `TJRPCMessage`. Read it, change it if you mean to, never free it |
+| `Message` | The raw `TJRPCMessage`. Read it, change it if you mean to, never free it. `nil` at the transport level |
 | `RPCContext` | The request context: configurations, `[Context]` objects, anything published by other middleware |
 | `Emit(AMessage)` | Adds a message to the answer. Takes ownership |
 | `Produced` | Copies of what this message has produced so far, meant to be read after `Next` returns |
@@ -414,6 +437,63 @@ Removing an element is safe: the list does not own the tools. **Modifying one is
 
 A list filtered per caller must also stay `ScopePrivate`. That is what results start from, so leaving it alone is the safe move; promoting a filtered list to `ScopePublic` is enough for one caller's list to be served to another.
 :::
+
+## Middleware That Ships With MCPConnect
+
+`MCPConnect.MCP.Middleware.Default` holds the middleware the framework provides itself — plus `MCPConnect.MCP.Middleware.OAuth`, which is big enough to live on its own. It is behaviour of MCPConnect written as middleware rather than wired into the transport, so that it can be read, reordered, replaced or removed like any other.
+
+| Middleware | Level | Registered by | What it does |
+|---|---|---|---|
+| `TCORSMiddleware` | `ITransportMiddleware` | `IMCPConfig.Security` | Answers the CORS headers a browser client needs, and refuses a request whose `Origin` is not in the allowlist |
+| `TAuthTokenMiddleware` | `ITransportMiddleware` | `IAuthTokenConfig.SetToken` | Checks the static token every request has to carry, in the header, cookie or `Authorization` scheme the configuration names |
+| `TOAuthMiddleware` | `ITransportMiddleware` | `IOAuthConfig.AddAuthorizationServer` | Answers the OAuth discovery endpoints (`/.well-known/oauth-protected-resource`, and the authorization server document when the metadata proxy is on) and validates the bearer token of everything else |
+
+They are **not** registered by merely using the unit. Each is put in by the configuration that turns its feature on, so a server configures a feature and gets the middleware that implements it:
+
+```pascal
+FServer.Plugin.Configure<IMCPConfig>
+  .Security
+    .SetCORS(True)
+    .SetAllowedOrigins(['https://app.example.com', 'https://*.example.com'])
+    .SetRequireOrigin(True)
+  .BackToMCP
+.ApplyConfig;
+```
+
+Any of those three calls registers `TCORSMiddleware`, once. `SetCORS(False)` registers it too, and that is deliberate: the middleware is the `Origin` check as much as it is the headers, and the two are configured apart — a server that wants the allowlist enforced without writing CORS headers gets exactly that. A server that says nothing about origins pays nothing: the chain stays empty.
+
+The static token check works the same way — `SetToken` is what turns it on, so `SetToken` is what registers `TAuthTokenMiddleware`:
+
+```pascal
+FServer.Plugin.Configure<IAuthTokenConfig>
+  .SetToken('my-secret-token-12345')
+  .SetTokenLocation(TAuthTokenLocation.Bearer)
+.ApplyConfig;
+```
+
+Saying only *where* a token would be read from configures nothing, and registers nothing. OAuth is a different mechanism with a middleware of its own, and is unaffected; there the switch is `AddAuthorizationServer`, since a resource or a validator without one enforces nothing.
+
+`TOAuthMiddleware` is the one that does more than check: the discovery endpoints a client reads *before* it has a token are answered by it and never reach the dispatcher — it writes the response and does not call `Next`. That is the shape of a middleware that owns a URL, and the transport level is the only one where a URL is still a thing.
+
+The three run in a fixed order, whatever order you configure them in — CORS at `MW_PRIORITY_AUTHENTICATION - 100`, the static token at `MW_PRIORITY_AUTHENTICATION`, OAuth at `MW_PRIORITY_AUTHENTICATION + 100`:
+
+```
+TCORSMiddleware
+  TAuthTokenMiddleware
+    TOAuthMiddleware
+      the request
+```
+
+That CORS is outermost is not cosmetic — without the headers on a `401` or a `403`, a browser reports a CORS failure instead of the refusal your server actually sent, and an OAuth client cannot read the metadata URL out of the challenge.
+
+Being ordinary middleware, they can be taken out or moved like any other:
+
+```pascal
+FServer.Middleware.Remove(TCORSMiddleware);
+FServer.Middleware.Add(TMyOwnCORSMiddleware);
+```
+
+All three are transport hooks for the same reason: a preflight and a `/.well-known` request carry no JSON-RPC message at all, so no hook of the message levels would ever see them — and a request refused for its `Origin` or its token must not be parsed, let alone dispatched.
 
 ## What's Next
 

@@ -393,6 +393,15 @@ type
     CookieSecure: Boolean;
     ExposeHeaders: TArray<string>;
     RequireOrigin: Boolean;
+  private
+    /// <summary>
+    ///   Puts TCORSMiddleware in the chain of the server, once: it is what
+    ///   answers the CORS headers and refuses a request coming from an Origin
+    ///   that is not allowed, so configuring any of that here is what registers
+    ///   it. Removing it again, or moving it, is done on Server.Middleware like
+    ///   for any other middleware.
+    /// </summary>
+    procedure EnsureCORSMiddleware;
   public
     constructor Create(AConfig: IMCPConfig);
 
@@ -802,7 +811,10 @@ uses
   System.IOUtils,
   System.RegularExpressions,
   Neon.Core.Utils,
-  Neon.Core.Persistence.JSON.Schema;
+  Neon.Core.Persistence.JSON.Schema,
+
+  MCPConnect.JRPC.Middleware,
+  MCPConnect.MCP.Middleware.Default;
 
 constructor TMCPConfig.Create(AApp: IJRPCApplication);
 begin
@@ -2095,6 +2107,7 @@ end;
 function TMCPSecurityConfig.SetAllowedOrigins(const AOrigins: TArray<string>): TMCPSecurityConfig;
 begin
   AllowedOrigins := AOrigins;
+  EnsureCORSMiddleware();
   Result := Self;
 end;
 
@@ -2107,13 +2120,31 @@ end;
 function TMCPSecurityConfig.SetRequireOrigin(AEnable: Boolean): TMCPSecurityConfig;
 begin
   RequireOrigin := AEnable;
+  EnsureCORSMiddleware();
   Result := Self;
 end;
 
 function TMCPSecurityConfig.SetCORS(AEnable: Boolean): TMCPSecurityConfig;
 begin
   CORS := AEnable;
+  EnsureCORSMiddleware();
   Result := Self;
+end;
+
+procedure TMCPSecurityConfig.EnsureCORSMiddleware;
+var
+  LMiddleware: TMiddlewareList;
+begin
+  // Registered even by SetCORS(False): the middleware is the origin check as
+  // much as it is the headers, and the two are configured apart. What each of
+  // them does is read from this configuration at request time, so a server
+  // that turns CORS off keeps a middleware that only checks the Origin - which
+  // is exactly what the transport did before the check became one.
+  LMiddleware := FConfig.BackToApp.GetMiddlewareList as TMiddlewareList;
+  if not Assigned(LMiddleware) or LMiddleware.Contains(TCORSMiddleware) then
+    Exit;
+
+  LMiddleware.Add(TCORSMiddleware);
 end;
 
 { TMCPMessageHandlingConfig }

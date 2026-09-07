@@ -51,7 +51,8 @@ unit MCPConnect.JRPC.Middleware;
   twice (a retry) walks the same tail of the chain both times.
 
   This unit holds the transport- and protocol-agnostic part: the message level
-  hooks usable by a plain JSON-RPC server.
+  hooks usable by a plain JSON-RPC server, plus ITransportMiddleware, which
+  wraps one whole request of whatever transport is carrying them.
 }
 
 interface
@@ -92,9 +93,12 @@ const
 
 type
   /// <summary>
-  ///   Kind of the message the chain is processing.
+  ///   Kind of what the chain is processing. Transport is the odd one out: it
+  ///   is not a message at all but the whole transport request the messages
+  ///   arrive in, so a context of that kind carries no Message and nothing to
+  ///   Emit into.
   /// </summary>
-  TMiddlewareMessageKind = (Request, Notification, Response, Error);
+  TMiddlewareMessageKind = (Request, Notification, Response, Error, Transport);
 
   /// <summary>
   ///   Context handed to every middleware hook. It lives for the duration of a
@@ -289,6 +293,30 @@ type
   /// </summary>
   INotificationMiddleware = interface(IMessageHook)
   ['{1A474F62-959B-495F-9A53-76D907522F70}']
+  end;
+
+  /// <summary>
+  ///   Takes part in the transport chain: one whole request of the transport,
+  ///   the outermost level there is. It runs before the payload is parsed, so
+  ///   it sees requests that carry no JSON-RPC message at all - a CORS
+  ///   preflight, a metadata request - and it is the only place where the
+  ///   protocol level of the transport can be dealt with.
+  /// </summary>
+  /// <remarks>
+  ///   The context is of kind Transport: there is no Message and nothing to
+  ///   Emit into, because at this point there is no message yet. What the
+  ///   request and the response of the transport are is the transport's own
+  ///   business, so they are reached through the context, e.g.
+  ///   Find&lt;TMCPTransportResponse&gt;: this unit knows nothing of HTTP.
+  ///
+  ///   A middleware of this level is built once per transport request, and its
+  ///   instance is not the one the message levels of the same request get: a
+  ///   request may carry a batch of messages, so the two scopes are different.
+  ///   Refusing here means not calling Next, or raising - which for the HTTP
+  ///   transports is how an answer with a status code of its own is produced.
+  /// </remarks>
+  ITransportMiddleware = interface(IMessageHook)
+  ['{80E3D1CD-4B00-4F1A-A2B4-7B1A2E68E5B2}']
   end;
 
   TMiddlewareClass = class of TMiddleware;

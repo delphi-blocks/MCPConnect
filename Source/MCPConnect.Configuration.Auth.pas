@@ -71,7 +71,12 @@ type
   ///   Token authentication is checked before processing JSON-RPC requests.
   ///   If the token doesn't match, the request is rejected with an authentication error.
   ///   This is a simple token comparison - for more complex authentication schemes,
-  ///   implement custom authentication logic in your transport layer.
+  ///   write a middleware of your own.
+  ///
+  ///   SetToken is what turns the check on, and what registers the middleware
+  ///   performing it (TAuthTokenMiddleware, MCPConnect.MCP.Middleware.Default):
+  ///   the check can then be removed or moved on Server.Middleware like any
+  ///   other. OAuth is a separate mechanism, see IOAuthConfig.
   /// </remarks>
   /// <example>
   ///   <code>
@@ -286,6 +291,28 @@ type
     function ApplyConfig: IJRPCApplication; override;
 
     /// <summary>
+    ///   True when AUrl asks for this server's protected resource metadata.
+    /// </summary>
+    /// <remarks>
+    ///   The path-insertion form of RFC 9728 §3.1 is what this server advertises
+    ///   in its challenge, and what a client that builds the URL itself arrives
+    ///   at. The bare well-known path answers too: clients fall back to it, and
+    ///   it is the only form a resource that is just an origin has. Both are
+    ///   derived from the configured resource rather than assuming the endpoint
+    ///   is mounted at "/mcp".
+    ///
+    ///   The verb is not looked at here: only a GET asks for the document, and
+    ///   that is the caller's to check.
+    /// </remarks>
+    function IsProtectedResourceMetadataUrl(const AUrl: string): Boolean;
+
+    /// <summary>
+    ///   True when AUrl asks for the local authorization server metadata proxy,
+    ///   in any of the three forms a client may look for it under.
+    /// </summary>
+    function IsMetadataProxyUrl(const AUrl: string): Boolean;
+
+    /// <summary>
     ///   Compares two issuer identifiers. The trailing slash is not part of the
     ///   identity: authorization servers are inconsistent about it between their
     ///   discovery URL and the "iss" they mint.
@@ -414,18 +441,36 @@ implementation
 uses
   Logify,
   JRPC.Core,
+  MCPConnect.JRPC.Middleware,
   // Only for the ITokenValidator type check in SetTokenValidatorClass. It lives in
   // the implementation on purpose: MCPConnect.Security.Token uses this unit in its
   // interface, and the dependency between the two must stay one-way up there.
-  MCPConnect.Security.Token;
+  MCPConnect.Security.Token,
+  // Same reasoning: these reach the transport, which reaches this unit, so the
+  // dependency on them stays down here.
+  MCPConnect.MCP.Middleware.Default,
+  MCPConnect.MCP.Middleware.OAuth;
 
 { TAuthTokenConfig }
 
 function TAuthTokenConfig.SetToken(
   const AToken: string): IAuthTokenConfig;
+var
+  LMiddleware: TMiddlewareList;
 begin
   FToken := AToken;
   Result := Self;
+
+  // The token is what turns the check on, so setting one is what puts in the
+  // middleware that performs it - once. Where the token is read from is
+  // SetTokenLocation's business, and it is read at request time, so the order
+  // of the two calls does not matter. Taking the check out again, or moving it,
+  // is done on Server.Middleware like for any other middleware.
+  LMiddleware := Application.GetMiddlewareList as TMiddlewareList;
+  if not Assigned(LMiddleware) or LMiddleware.Contains(TAuthTokenMiddleware) then
+    Exit;
+
+  LMiddleware.Add(TAuthTokenMiddleware);
 end;
 
 function TAuthTokenConfig.SetTokenCustomHeader(
@@ -446,9 +491,21 @@ end;
 
 function TOAuthConfig.AddAuthorizationServer(
   const AAuthorizationServer: string): IOAuthConfig;
+var
+  LMiddleware: TMiddlewareList;
 begin
   FAuthorizationServers := FAuthorizationServers + [AAuthorizationServer];
   Result := Self;
+
+  // An authorization server is what turns OAuth on - everything else here
+  // (resource, validator, proxy) configures an enforcement that without one
+  // does not run at all, which is what ApplyConfig warns about - so this is
+  // where the middleware enforcing it is registered, once.
+  LMiddleware := Application.GetMiddlewareList as TMiddlewareList;
+  if not Assigned(LMiddleware) or LMiddleware.Contains(TOAuthMiddleware) then
+    Exit;
+
+  LMiddleware.Add(TOAuthMiddleware);
 end;
 
 function TOAuthConfig.AddScopesSupported(
@@ -644,6 +701,21 @@ begin
     FExtraTrustedIssuers := FExtraTrustedIssuers + [AIssuer.Trim];
 
   Result := Self;
+end;
+
+function TOAuthConfig.IsProtectedResourceMetadataUrl(const AUrl: string): Boolean;
+begin
+  Result :=
+    SameText(AUrl, ProtectedResourcePath + ResourcePath) or
+    SameText(AUrl, ProtectedResourcePath);
+end;
+
+function TOAuthConfig.IsMetadataProxyUrl(const AUrl: string): Boolean;
+begin
+  Result :=
+    SameText(AUrl, '/.well-known/oauth-authorization-server' + MetadataProxyPath) or
+    SameText(AUrl, '/.well-known/openid-configuration' + MetadataProxyPath) or
+    SameText(AUrl, MetadataProxyPath + '/.well-known/openid-configuration');
 end;
 
 class function TOAuthConfig.SameIssuer(const A, B: string): Boolean;

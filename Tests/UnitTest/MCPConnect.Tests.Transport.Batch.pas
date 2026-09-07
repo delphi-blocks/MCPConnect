@@ -35,7 +35,10 @@ uses
   MCPConnect.Configuration.MCP,
   MCPConnect.Transport.Base,
   JRPC.Core,
-  MCPConnect.MCP.Server;
+  JRPC.Classes,
+  MCPConnect.MCP.Server,
+  MCPConnect.MCP.Attributes,
+  MCPConnect.MCP.Types.Notifications;
 
 type
   /// <summary>A response writer that streams nothing: everything comes back
@@ -45,6 +48,18 @@ type
     procedure Write(const AValue: string; const AEventId: string = '');
     function Connected: Boolean;
     function SupportsStreaming: Boolean;
+  end;
+
+  /// <summary>
+  ///   Pushes a notification while it runs, the way a long-running tool reports
+  ///   progress. Without a stream to put it on there is nowhere for it to go.
+  /// </summary>
+  TNotifyingTool = class(TObject)
+  private
+    [Context] FResponses: TMCPMessageQueue;
+  public
+    [McpTool('notify_then_answer', 'Enqueues a notification, then answers')]
+    function NotifyThenAnswer: string;
   end;
 
   /// <summary>What a POST produced, copied out before the handler is destroyed.</summary>
@@ -84,6 +99,13 @@ type
     procedure TestMalformedJson_IsAnsweredWithAnObject;
     [Test]
     procedure TestEmptyBatch_IsAnsweredWithAnObject;
+
+    [Test]
+    procedure TestNotification_IsNotSplicedIntoASingleReply;
+    [Test]
+    procedure TestNotification_IsNotSplicedIntoABatchReply;
+    [Test]
+    procedure TestNotifications_DoNotInflateABatchReply;
   end;
 
 implementation
@@ -94,6 +116,18 @@ const
   Discover = '{"jsonrpc":"2.0","id":%d,"method":"server/discover","params":{}}';
   // No id: a Notification, which per the spec is never answered.
   DiscoverNotification = '{"jsonrpc":"2.0","method":"server/discover","params":{}}';
+  // Runs a tool that enqueues a server-to-client notification on its way to a result.
+  CallNotifyingTool =
+    '{"jsonrpc":"2.0","id":%d,"method":"tools/call",' +
+    '"params":{"name":"notify_then_answer","arguments":{}}}';
+
+{ TNotifyingTool }
+
+function TNotifyingTool.NotifyThenAnswer: string;
+begin
+  FResponses.Enqueue(TMCPNotification.Progress('a-progress-token', 1, 2, 'working'));
+  Result := 'done';
+end;
 
 { TNonStreamingWriter }
 
@@ -122,6 +156,9 @@ begin
     .Server
       .SetName('batch-test')
       .SetVersion('1.0.0')
+    .BackToMCP
+    .Tools
+      .RegisterClass(TNotifyingTool)
     .BackToMCP
   .ApplyConfig;
 end;
@@ -270,6 +307,54 @@ begin
   try
     Assert.IsTrue(LReply is TJSONObject, 'An empty batch is Invalid Request, as an object');
     Assert.IsNotNull(TJSONObject(LReply).GetValue('error'));
+  finally
+    LReply.Free;
+  end;
+end;
+
+procedure TTransportBatchTest.TestNotification_IsNotSplicedIntoASingleReply;
+var
+  LReply: TJSONValue;
+begin
+  // The client did not ask for a stream, so the notification the tool enqueued has
+  // nowhere to go. It used to be added to the response list regardless, which made
+  // a plain Request come back as a two-element array holding a notification and a
+  // response - and a notification is not a reply to anything.
+  LReply := ParseReply(Post(Format(CallNotifyingTool, [1])));
+  try
+    Assert.IsTrue(LReply is TJSONObject,
+      'A single Request is answered with a single Response, notifications or not');
+    Assert.IsNotNull(TJSONObject(LReply).GetValue('result'));
+    Assert.AreEqual(Int64(1), TJSONObject(LReply).GetValue<Int64>('id'));
+  finally
+    LReply.Free;
+  end;
+end;
+
+procedure TTransportBatchTest.TestNotification_IsNotSplicedIntoABatchReply;
+var
+  LReply: TJSONValue;
+begin
+  LReply := ParseReply(Post('[' + Format(CallNotifyingTool, [1]) + ']'));
+  try
+    Assert.IsTrue(LReply is TJSONArray, 'A batch is answered with an Array');
+    Assert.AreEqual(1, TJSONArray(LReply).Count,
+      'One Request in, one Response out: the notification is not an element of the batch reply');
+  finally
+    LReply.Free;
+  end;
+end;
+
+procedure TTransportBatchTest.TestNotifications_DoNotInflateABatchReply;
+var
+  LReply: TJSONValue;
+begin
+  LReply := ParseReply(Post('[' + Format(CallNotifyingTool, [1]) + ',' +
+    Format(CallNotifyingTool, [2]) + ']'));
+  try
+    Assert.IsTrue(LReply is TJSONArray, 'A batch is answered with an Array');
+    Assert.AreEqual(2, TJSONArray(LReply).Count,
+      'Two Requests in, two Responses out - not four');
   finally
     LReply.Free;
   end;

@@ -666,6 +666,18 @@ var
         begin
           WriteSSEResponse(AMessage.ToJson);
         end
+        else if AMessage is TJRPCNotification then
+        begin
+          // A server-to-client notification is not a reply to anything, so it has
+          // no place in the JSON-RPC payload that answers this POST: per JSON-RPC
+          // 2.0 a Request is answered with a Response, and a batch with an array
+          // of Responses. SSE is the only channel this transport has for one -
+          // there is no GET endpoint since sessions went away - and the client
+          // did not ask for it, so this one is dropped rather than spliced into
+          // the reply. Leaving ADispose True is what frees it.
+          Logger.LogDebug('[SSE] Notification dropped, the client did not ask for a stream [method=%s]',
+            [TJRPCNotification(AMessage).Method]);
+        end
         else
         begin
           ADispose := False;
@@ -751,7 +763,7 @@ begin
   finally
     LAsyncExecute.Free;
   end;
-  Logger.LogDebug('[PERF] CreateAsyncQueue total: %d ms', [LFragment.ElapsedMilliseconds]);
+  Logger.LogDebug('[PERF] CreateAsyncQueue total: {%d} ms', [LFragment.ElapsedMilliseconds]);
 
 end;
 

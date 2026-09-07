@@ -23,6 +23,11 @@ uses
 
 type
 
+  /// <summary>
+  ///   Client-side 'mcp.json' model: the list of MCP servers a client is
+  ///   configured to connect to. Not to be confused with
+  ///   MCPConnect.Configuration.MCP.TMCPConfig, which configures *this* server.
+  /// </summary>
   TMCPConfigServer = class
     &Type: string;
   end;
@@ -48,7 +53,10 @@ type
 
   end;
 
-  TMCPConfig = class
+  /// <summary>
+  ///   Root of an 'mcp.json' document.
+  /// </summary>
+  TMCPConfigClient = class
   public
     Servers: TMCPConfigServers;
   public
@@ -60,14 +68,14 @@ type
 
 implementation
 
-{ TMCPConfig }
+{ TMCPConfigClient }
 
-constructor TMCPConfig.Create;
+constructor TMCPConfigClient.Create;
 begin
   Servers := TMCPConfigServers.Create([doOwnsValues]);
 end;
 
-destructor TMCPConfig.Destroy;
+destructor TMCPConfigClient.Destroy;
 begin
   Servers.Free;
   inherited;

@@ -161,6 +161,7 @@
         <DCCReference Include="..\..\..\Source\MCPConnect.JRPC.Middleware.pas"/>
         <DCCReference Include="..\MCPServer.Middleware.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Middleware.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Server.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

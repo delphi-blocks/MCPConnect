@@ -1147,6 +1147,14 @@ begin
   LResponseList := TJRPCMessages.Create(True);
   FGarbage.Add(LResponseList);
 
+  // The reply must have the same shape as the payload: an object answers an
+  // object, an array answers an array - including a batch of exactly one
+  // Request, which JSON-RPC 2.0 still answers with a one-element array. Only
+  // Single says which one this is, and this path builds its response list by
+  // hand instead of going through TJRPCServer.ProcessMessages, which is where
+  // the carry-over normally happens (see TJRPCMessages.ToJson).
+  LResponseList.Single := LRequestList.Single;
+
   LFragment := TStopwatch.StartNew;
   var LAsyncExecute := CreateAsyncThread(LRequestList, LResponseQueue);
   try

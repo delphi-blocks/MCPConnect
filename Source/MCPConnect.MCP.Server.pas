@@ -22,6 +22,7 @@ uses
   JRPC.Core,
   JRPC.Classes,
   JRPC.Invoker,
+  JRPC.Server,
   MCPConnect.Configuration.Core,
   MCPConnect.JRPC.Middleware;
 
@@ -33,7 +34,6 @@ type
   private
     FAppConfigurator: TAppConfigurator;
     FConfigRegistry: TJRPCConfigRegistry;
-    FSessionManager: TObject;
     FMiddleware: TMiddlewareList;
   public
     { IJRPCApplication }
@@ -46,7 +46,6 @@ type
     procedure ApplyConfig(AConfig: IJRPCConfiguration);
 
     property Plugin: TAppConfigurator read GetAppConfigurator;
-    property SessionManager: TObject read FSessionManager;
 
     /// <summary>
     ///   The middleware pipeline every message goes through.

@@ -25,7 +25,7 @@ uses
   MCPConnect.Transport.MediaType;
 
 resourcestring
-  SJRPCServerNotFound = 'JRPC JRPCServer not found';
+  SMCPServerNotFound = 'MCP Server not found';
 
 type
   TMCPIndyBridge = class(TComponent)
@@ -85,7 +85,7 @@ var
   LMcpHandler: IMCPTransportHandler;
 begin
   if not Assigned(FMCPServer) then
-    raise EJRPCException.Create(SJRPCServerNotFound);
+    raise EJRPCException.Create(SMCPServerNotFound);
 
   LMcpHandler := TMCPTransportHandler.Create(FMCPServer, TMCPTransportWriterIndy.Create(AContext.Connection));
 
@@ -113,8 +113,6 @@ begin
       ARequest.Command := ARequestInfo.Command;
       ARequest.Content := ReadContentStream(ARequestInfo);
       ARequest.Protocol := TTransportProtocol.StreamableHTTP;
-
-      Logger.LogInfo('SessionID ' + ARequest.Command + ' - ' + ARequest.GetHeader('Mcp-Session-Id'));
 
       LogRequest(ARequest);
     end,

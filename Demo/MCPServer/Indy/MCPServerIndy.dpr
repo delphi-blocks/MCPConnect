@@ -57,7 +57,8 @@ uses
   MCPConnect.MCP.Types.Tool in '..\..\..\Source\MCPConnect.MCP.Types.Tool.pas',
   MCPConnect.JRPC.Middleware in '..\..\..\Source\MCPConnect.JRPC.Middleware.pas',
   MCPServer.Middleware in '..\MCPServer.Middleware.pas',
-  MCPConnect.MCP.Middleware in '..\..\..\Source\MCPConnect.MCP.Middleware.pas';
+  MCPConnect.MCP.Middleware in '..\..\..\Source\MCPConnect.MCP.Middleware.pas',
+  MCPConnect.MCP.Server in '..\..\..\Source\MCPConnect.MCP.Server.pas';
 
 {$R *.res}
 

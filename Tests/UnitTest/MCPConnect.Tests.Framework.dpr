@@ -70,6 +70,7 @@ uses
   MCPConnect.Tests.Security.Token.JOSE in 'MCPConnect.Tests.Security.Token.JOSE.pas',
   MCPConnect.Tests.Transport.OAuth in 'MCPConnect.Tests.Transport.OAuth.pas',
   MCPConnect.Tests.Transport.Headers in 'MCPConnect.Tests.Transport.Headers.pas',
+  MCPConnect.Tests.Transport.Batch in 'MCPConnect.Tests.Transport.Batch.pas',
   MCPConnect.Tests.MCP.Errors in 'MCPConnect.Tests.MCP.Errors.pas',
   MCPConnect.Tests.MCP.Completion in 'MCPConnect.Tests.MCP.Completion.pas',
   MCPConnect.Tests.MCP.Elicitation in 'MCPConnect.Tests.MCP.Elicitation.pas',

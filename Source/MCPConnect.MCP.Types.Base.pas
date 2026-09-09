@@ -118,6 +118,35 @@ type
   /// </remarks>
   TMCPValidationLevel = (Off, Lenient, Strict);
 
+  /// <summary>
+  ///   What happens to a request whose Origin no allowlist speaks for.
+  ///   Configured with IMCPConfig.Security.SetOriginPolicy and applied by
+  ///   TCORSMiddleware.
+  /// </summary>
+  /// <remarks>
+  ///   The Streamable HTTP transport requires a server to validate the Origin
+  ///   of every incoming connection, and to answer 403 when it is present and
+  ///   invalid: without it a page on any website can script requests to a local
+  ///   MCP server through DNS rebinding, and the server cannot tell that
+  ///   traffic from its own user's.
+  ///
+  ///   SameOrigin is the default. With no allowlist configured, a request is
+  ///   let through when it carries no Origin at all - which is every non-browser
+  ///   client, since only a browser sends one - or when the Origin is this
+  ///   server's own, or a loopback address. Anything else is refused. That is
+  ///   the rebinding case exactly: the attacker's page carries its own domain in
+  ///   the Origin, whatever address that domain resolves to.
+  ///
+  ///   Off restores what the library did before the check had a default: with
+  ///   no allowlist, nothing is looked at. For a deployment on a trusted network
+  ///   with no browser anywhere near it, or behind an intermediary that rewrites
+  ///   the header.
+  ///
+  ///   Neither value has any say once SetAllowedOrigins names something: an
+  ///   explicit allowlist is the policy, and only what it names is let through.
+  /// </remarks>
+  TMCPOriginPolicy = (Off, SameOrigin);
+
 
   TStringPair = TPair<string, string>;
   TStringMap = TArray<TStringPair>;

@@ -306,10 +306,11 @@ begin
       .SetVersion('1.0.0')
     .BackToMCP
     .Security
-      // These fixtures are about the body: the headers are checked by their own
-      // middleware, and these requests carry none.
+      // These fixtures are about the body: the headers and the origin have their
+      // own middleware, and these requests carry neither.
       .SetHeaderValidation(TMCPValidationLevel.Off)
       .SetMetaValidation(AMode)
+      .SetOriginPolicy(TMCPOriginPolicy.Off)
     .BackToMCP
     .Tools
       .RegisterClass(TMetaEchoTool)

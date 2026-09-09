@@ -405,6 +405,12 @@ type
     ///   Default: Strict, the revision as written.
     /// </summary>
     MetaValidation: TMCPValidationLevel;
+
+    /// <summary>
+    ///   What happens to a request whose Origin no allowlist speaks for.
+    ///   Default: SameOrigin. Has no say once SetAllowedOrigins names anything.
+    /// </summary>
+    OriginPolicy: TMCPOriginPolicy;
   private
     /// <summary>
     ///   Puts TCORSMiddleware in the chain of the server, once: it is what
@@ -463,6 +469,30 @@ type
     ///   rewrites the body. See TMCPRequestMetaMiddleware.
     /// </remarks>
     function SetMetaValidation(AMode: TMCPValidationLevel): TMCPSecurityConfig;
+
+    /// <summary>
+    ///   What to do with a request whose Origin no allowlist speaks for.
+    /// </summary>
+    /// <param name="APolicy">
+    ///   SameOrigin (the default) lets through a request with no Origin at all
+    ///   - every non-browser client - one carrying this server's own origin,
+    ///   and one carrying a loopback address; anything else is refused with
+    ///   403. Off looks at nothing, which is what the library did before the
+    ///   check had a default.
+    /// </param>
+    /// <returns>Self for fluent chaining</returns>
+    /// <remarks>
+    ///   Validating the Origin of every connection is required of a Streamable
+    ///   HTTP server, and it is the defence against DNS rebinding: without it a
+    ///   page on any website can drive a local MCP server through the browser
+    ///   of its user. Turn it off only for a deployment no browser can reach,
+    ///   or behind an intermediary that rewrites the header.
+    ///
+    ///   It says nothing about a server that calls SetAllowedOrigins: an
+    ///   explicit allowlist is the policy, and only what it names is let
+    ///   through - loopback included, if the deployment wants it.
+    /// </remarks>
+    function SetOriginPolicy(APolicy: TMCPOriginPolicy): TMCPSecurityConfig;
   end;
 
   TMCPToolConfig = class(TMCPTool)
@@ -924,6 +954,14 @@ begin
 
   EnsureOne(TMCPRequestHeadersMiddleware, FSecurity.HeaderValidation);
   EnsureOne(TMCPRequestMetaMiddleware, FSecurity.MetaValidation);
+
+  // TCORSMiddleware is also the Origin check, and that one is not opt-in
+  // either: a server that says nothing about origins still refuses a request
+  // from a page that has no business driving it. SetOriginPolicy(Off) is what
+  // keeps it out, and SetCORS/SetAllowedOrigins put it in on their own.
+  if FSecurity.OriginPolicy <> TMCPOriginPolicy.Off then
+    if not LMiddleware.Contains(TCORSMiddleware) then
+      LMiddleware.Add(TCORSMiddleware);
 end;
 
 function TMCPConfig.ApplyConfig: IJRPCApplication;
@@ -2194,11 +2232,12 @@ begin
   AllowedMethods := ['POST'];
   CookieSecure := True;
 
-  // Neither contract is opt-in: 2026-07-28 requires both of every server, so
-  // the defaults are the specification and the two Set... calls are there to
-  // relax them, not to turn them on.
+  // None of the three is opt-in: 2026-07-28 requires all of them of every
+  // server, so the defaults are the specification and the Set... calls are
+  // there to relax them, not to turn them on.
   HeaderValidation := TMCPValidationLevel.Strict;
   MetaValidation := TMCPValidationLevel.Strict;
+  OriginPolicy := TMCPOriginPolicy.SameOrigin;
 end;
 
 function TMCPSecurityConfig.SetHeaderValidation(AMode: TMCPValidationLevel): TMCPSecurityConfig;
@@ -2210,6 +2249,16 @@ end;
 function TMCPSecurityConfig.SetMetaValidation(AMode: TMCPValidationLevel): TMCPSecurityConfig;
 begin
   MetaValidation := AMode;
+  Result := Self;
+end;
+
+function TMCPSecurityConfig.SetOriginPolicy(APolicy: TMCPOriginPolicy): TMCPSecurityConfig;
+begin
+  // No EnsureCORSMiddleware here, deliberately: registering is ApplyConfig's
+  // job for this one, and it skips a policy of Off - so a server that turns the
+  // check off pays nothing for it, as long as it asked for no CORS headers
+  // either.
+  OriginPolicy := APolicy;
   Result := Self;
 end;
 

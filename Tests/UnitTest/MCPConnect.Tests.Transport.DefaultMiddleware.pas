@@ -32,6 +32,7 @@ uses
   MCPConnect.MCP.Middleware.Default,
   MCPConnect.MCP.Middleware.OAuth,
   MCPConnect.MCP.Server,
+  MCPConnect.MCP.Types.Base,
   MCPConnect.Transport.Base;
 
 type
@@ -109,7 +110,13 @@ type
     [Test]
     procedure TestWildcardOriginIsAllowed();
     [Test]
-    procedure TestNoAllowlistLetsAnyOriginThrough();
+    procedure TestNoAllowlistRefusesAForeignOrigin();
+    [Test]
+    procedure TestNoAllowlistAllowsALoopbackOrigin();
+    [Test]
+    procedure TestNoAllowlistAllowsTheServersOwnOrigin();
+    [Test]
+    procedure TestOriginPolicyOffLetsAnyOriginThrough();
     [Test]
     procedure TestMissingOriginIsRefusedWhenRequired();
     [Test]
@@ -313,9 +320,11 @@ end;
 
 procedure TCORSMiddlewareTest.TestSetCORSRegistersTheMiddleware;
 begin
+  // The middleware is the origin check as much as it is the headers, and that
+  // one is not opt-in: it is in the chain of any configured server. What
+  // SetCORS turns on is the header injection, and registering is idempotent.
   ConfigureServer();
-  Assert.IsFalse(FServer.Middleware.Contains(TCORSMiddleware),
-    'nothing registered before the security section is touched');
+  Assert.AreEqual(1, Registered(TCORSMiddleware));
 
   FServer.Plugin.Configure<IMCPConfig>
     .Security
@@ -323,7 +332,7 @@ begin
     .BackToMCP
   .ApplyConfig;
 
-  Assert.IsTrue(FServer.Middleware.Contains(TCORSMiddleware));
+  Assert.AreEqual(1, Registered(TCORSMiddleware));
 end;
 
 procedure TCORSMiddlewareTest.TestSetAllowedOriginsRegistersTheMiddleware;
@@ -360,10 +369,22 @@ procedure TCORSMiddlewareTest.TestNoSecurityConfigLeavesTheChainEmpty;
 begin
   ConfigureServer();
 
-  // A server that says nothing about origins pays nothing for it. The header
-  // check is in the chain regardless - it is not a feature a server opts into
-  // - so what this asserts is that CORS is not.
-  Assert.IsFalse(FServer.Middleware.Contains(TCORSMiddleware));
+  // A server that says nothing about origins still gets the origin check: it
+  // is what the Streamable HTTP transport requires of every server, and a
+  // request from a page that has no business driving it must not be answered.
+  // Turning it off is a deliberate SetOriginPolicy(Off).
+  Assert.AreEqual(1, Registered(TCORSMiddleware));
+
+  // And a server that turns it off pays nothing for it
+  FServer.Free;
+  FServer := TMCPServer.Create(nil);
+  FServer.Plugin.Configure<IMCPConfig>
+    .Security
+      .SetOriginPolicy(TMCPOriginPolicy.Off)
+    .BackToMCP
+  .ApplyConfig;
+
+  Assert.AreEqual(0, Registered(TCORSMiddleware));
 end;
 
 procedure TCORSMiddlewareTest.TestAllowedOriginIsEchoedBack;
@@ -444,7 +465,52 @@ begin
   Assert.AreEqual(HTTP_CODE_FORBIDDEN, LAnswer.Code);
 end;
 
-procedure TCORSMiddlewareTest.TestNoAllowlistLetsAnyOriginThrough;
+procedure TCORSMiddlewareTest.TestNoAllowlistRefusesAForeignOrigin;
+var
+  LAnswer: TTransportAnswer;
+begin
+  ConfigureServer();
+
+  // The DNS-rebinding case: a page on someone else's site, driving this server
+  // through the browser of its user. It carries its own domain in the Origin
+  // whatever that domain resolves to, and that is what gives it away.
+  LAnswer := SendWithOrigin('POST', ForeignOrigin);
+
+  Assert.AreEqual(HTTP_CODE_FORBIDDEN, LAnswer.Code, LAnswer.Content);
+end;
+
+procedure TCORSMiddlewareTest.TestNoAllowlistAllowsALoopbackOrigin;
+var
+  LAnswer: TTransportAnswer;
+begin
+  ConfigureServer();
+
+  // A local page - an inspector, a developer's own tooling - is not what the
+  // check defends against, and refusing it would make local work impossible
+  Assert.AreEqual(HTTP_CODE_OK, SendWithOrigin('POST', 'http://localhost:3000').Code);
+  Assert.AreEqual(HTTP_CODE_OK, SendWithOrigin('POST', 'http://127.0.0.1:5173').Code);
+
+  LAnswer := SendWithOrigin('POST', 'http://[::1]:8080');
+  Assert.AreEqual(HTTP_CODE_OK, LAnswer.Code, LAnswer.Content);
+end;
+
+procedure TCORSMiddlewareTest.TestNoAllowlistAllowsTheServersOwnOrigin;
+var
+  LAnswer: TTransportAnswer;
+begin
+  ConfigureServer();
+
+  LAnswer := Send(
+    procedure (ARequest: TMCPTransportRequest)
+    begin
+      ARequest.SetHeader('Origin', 'https://mcp.example.com');
+      ARequest.SetHeader('Host', 'mcp.example.com');
+    end);
+
+  Assert.AreEqual(HTTP_CODE_OK, LAnswer.Code, LAnswer.Content);
+end;
+
+procedure TCORSMiddlewareTest.TestOriginPolicyOffLetsAnyOriginThrough;
 var
   LAnswer: TTransportAnswer;
 begin
@@ -452,14 +518,15 @@ begin
   FServer.Plugin.Configure<IMCPConfig>
     .Security
       .SetCORS(True)
+      // What the library did before the check had a default: for a deployment
+      // no browser can reach, or behind something that rewrites the header.
+      .SetOriginPolicy(TMCPOriginPolicy.Off)
     .BackToMCP
   .ApplyConfig;
 
-  // With no allowlist nothing is checked: a server that is not meant for
-  // browsers still answers the headers it is asked for.
   LAnswer := SendWithOrigin('POST', ForeignOrigin);
 
-  Assert.AreEqual(HTTP_CODE_OK, LAnswer.Code);
+  Assert.AreEqual(HTTP_CODE_OK, LAnswer.Code, LAnswer.Content);
   Assert.AreEqual(ForeignOrigin, LAnswer.AllowOrigin);
 end;
 
@@ -698,6 +765,9 @@ begin
   FServer.Plugin.Configure<IMCPConfig>
     .Security
       .SetCORS(True)
+      // Named, so that the origin check lets it through and what this test
+      // observes is the challenge rather than a 403
+      .SetAllowedOrigins(['https://app.example.com'])
     .BackToMCP
   .ApplyConfig;
   EnableOAuth();

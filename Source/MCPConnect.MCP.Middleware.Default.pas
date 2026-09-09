@@ -63,6 +63,35 @@ type
     ///   never the bare 'https://example.com'.
     /// </summary>
     class function MatchesOriginPattern(const AOrigin, APattern: string): Boolean; static;
+
+    /// <summary>
+    ///   The authority of an origin - "host" or "host:port" - or '' when the
+    ///   value is not an origin at all.
+    /// </summary>
+    class function OriginAuthority(const AOrigin: string): string; static;
+
+    /// <summary>
+    ///   The same authority with a port the scheme implies removed, so that
+    ///   "example.com:443" and "example.com" compare equal for an https origin.
+    /// </summary>
+    class function WithoutDefaultPort(const AOrigin: string): string; static;
+
+    /// <summary>
+    ///   True when AOrigin names the host this very request was addressed to,
+    ///   which is what AHost - the "Host" header - says.
+    /// </summary>
+    class function IsSameOrigin(const AOrigin, AHost: string): Boolean; static;
+
+    /// <summary>
+    ///   True when the host of AOrigin is a loopback address or name.
+    /// </summary>
+    /// <remarks>
+    ///   The host of the *origin*, not the address the request arrived on: a
+    ///   DNS-rebinding page reaches a local server under its own domain name,
+    ///   so its Origin reads "http://evil.example" however that name resolves.
+    ///   Reading the origin is what tells the two apart.
+    /// </remarks>
+    class function IsLoopbackOrigin(const AOrigin: string): Boolean; static;
   public
     /// <summary>
     ///   Just outside authentication, so that it wraps it: a request from an
@@ -162,6 +191,86 @@ begin
   Result := False;
 end;
 
+class function TCORSMiddleware.OriginAuthority(const AOrigin: string): string;
+var
+  LSchemeEnd: Integer;
+begin
+  LSchemeEnd := AOrigin.IndexOf('://');
+  if LSchemeEnd < 0 then
+    Exit('');
+
+  Result := AOrigin.Substring(LSchemeEnd + 3);
+
+  // An origin has no path, but a client that sends one anyway must not be able
+  // to smuggle a foreign authority past the comparison
+  var LSlash := Result.IndexOf('/');
+  if LSlash >= 0 then
+    Result := Result.Substring(0, LSlash);
+end;
+
+class function TCORSMiddleware.WithoutDefaultPort(const AOrigin: string): string;
+begin
+  Result := OriginAuthority(AOrigin);
+
+  if AOrigin.StartsWith('http://', True) and Result.EndsWith(':80') then
+    Result := Result.Substring(0, Result.Length - 3)
+  else if AOrigin.StartsWith('https://', True) and Result.EndsWith(':443') then
+    Result := Result.Substring(0, Result.Length - 4);
+end;
+
+class function TCORSMiddleware.IsSameOrigin(const AOrigin, AHost: string): Boolean;
+var
+  LHost: string;
+begin
+  if AHost.IsEmpty then
+    Exit(False);
+
+  LHost := AHost.Trim;
+
+  // The Host header carries no scheme, so the two are compared as authorities:
+  // once with the port as each side wrote it, and once with a port the scheme
+  // implies dropped from both, since either side may spell it out.
+  if SameText(OriginAuthority(AOrigin), LHost) then
+    Exit(True);
+
+  if LHost.EndsWith(':80') then
+    LHost := LHost.Substring(0, LHost.Length - 3)
+  else if LHost.EndsWith(':443') then
+    LHost := LHost.Substring(0, LHost.Length - 4);
+
+  Result := not LHost.IsEmpty and SameText(WithoutDefaultPort(AOrigin), LHost);
+end;
+
+class function TCORSMiddleware.IsLoopbackOrigin(const AOrigin: string): Boolean;
+var
+  LHost: string;
+  LColon: Integer;
+begin
+  LHost := OriginAuthority(AOrigin);
+  if LHost.IsEmpty then
+    Exit(False);
+
+  // An IPv6 literal is bracketed, and the brackets are part of the authority
+  if LHost.StartsWith('[') then
+  begin
+    var LEnd := LHost.IndexOf(']');
+    if LEnd < 0 then
+      Exit(False);
+    LHost := LHost.Substring(1, LEnd - 1);
+  end
+  else
+  begin
+    LColon := LHost.IndexOf(':');
+    if LColon >= 0 then
+      LHost := LHost.Substring(0, LColon);
+  end;
+
+  Result := SameText(LHost, 'localhost') or
+            SameText(LHost, '::1') or
+            // The whole 127.0.0.0/8 block is loopback, not 127.0.0.1 alone
+            LHost.StartsWith('127.');
+end;
+
 procedure TCORSMiddleware.Handle(AContext: TMiddlewareContext;
   const AChain: TMiddlewareChain);
 var
@@ -205,14 +314,22 @@ var
   function CheckOrigin(const ASecurity: TMCPSecurityConfig): Boolean;
   var
     LOrigin, LHeader: string;
+    LHasAllowlist: Boolean;
   begin
-    if Length(ASecurity.AllowedOrigins) = 0 then
+    LHasAllowlist := Length(ASecurity.AllowedOrigins) > 0;
+
+    // Nothing configured and the policy turned off: the header is not looked at
+    if not LHasAllowlist and (ASecurity.OriginPolicy = TMCPOriginPolicy.Off) then
       Exit(True);
 
     LHeader := LRequest.Origin.Trim;
 
     if LHeader.IsEmpty then
     begin
+      // Only a browser sends an Origin, and a browser is what the check
+      // defends against: a client that sends none is not the threat, and
+      // refusing it would lock out every non-browser client there is.
+      // SetRequireOrigin(True) is for a deployment that serves browsers only.
       if ASecurity.RequireOrigin then
       begin
         Logger.LogWarning('CheckOrigin: request blocked, missing Origin header');
@@ -227,11 +344,27 @@ var
       Exit(False);
     end;
 
-    for LOrigin in ASecurity.AllowedOrigins do
-      if MatchesOriginPattern(LHeader, LOrigin) then
-        Exit(True);
+    // An explicit allowlist is the policy, whole: it neither gains the
+    // same-origin and loopback cases below nor loses what it names.
+    if LHasAllowlist then
+    begin
+      for LOrigin in ASecurity.AllowedOrigins do
+        if MatchesOriginPattern(LHeader, LOrigin) then
+          Exit(True);
 
-    Logger.LogWarning('CheckOrigin: request blocked, Origin "%s" not in allowlist', [LHeader]);
+      Logger.LogWarning('CheckOrigin: request blocked, Origin "%s" not in allowlist', [LHeader]);
+      Exit(False);
+    end;
+
+    // No allowlist, so the default policy decides. Two origins are this
+    // server's business without anyone having to say so: its own, and a
+    // loopback address - the local page of a developer or an inspector.
+    if IsSameOrigin(LHeader, LRequest.GetHeader('Host')) or IsLoopbackOrigin(LHeader) then
+      Exit(True);
+
+    Logger.LogWarning(
+      'CheckOrigin: request blocked, Origin "%s" is neither this server nor a loopback ' +
+      'address, and no allowed origin is configured', [LHeader]);
     Result := False;
   end;
 

@@ -339,9 +339,10 @@ begin
     .BackToMCP
     .Security
       .SetHeaderValidation(AMode)
-      // These fixtures are about the headers: the body contract is checked by
-      // its own middleware, and its own tests.
+      // These fixtures are about the headers: the body contract and the origin
+      // check have their own middleware, and their own tests.
       .SetMetaValidation(TMCPValidationLevel.Off)
+      .SetOriginPolicy(TMCPOriginPolicy.Off)
     .BackToMCP
     .Tools
       .RegisterClass(TEchoTool)

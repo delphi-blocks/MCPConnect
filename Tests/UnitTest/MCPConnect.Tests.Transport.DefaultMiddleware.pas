@@ -68,6 +68,13 @@ type
     /// </summary>
     procedure ConfigureServer;
     function Send(const AShape: TMCPTransportRequestConverter): TTransportAnswer;
+
+    /// <summary>
+    ///   How many times AClass sits in the transport chain. Counted rather than
+    ///   read off Middleware.Count: the chain of any configured server also
+    ///   carries the request-metadata header check, which is not opt-in.
+    /// </summary>
+    function Registered(AClass: TMiddlewareClass): Integer;
   public
     [Setup]
     procedure Setup();
@@ -224,6 +231,16 @@ begin
   .ApplyConfig;
 end;
 
+function TDefaultMiddlewareTest.Registered(AClass: TMiddlewareClass): Integer;
+var
+  LEntry: TMiddlewareEntry;
+begin
+  Result := 0;
+  for LEntry in FServer.Middleware.EntriesFor(ITransportMiddleware) do
+    if LEntry.MiddlewareClass = AClass then
+      Inc(Result);
+end;
+
 function TDefaultMiddlewareTest.Send(
   const AShape: TMCPTransportRequestConverter): TTransportAnswer;
 var
@@ -240,6 +257,12 @@ begin
         ARequest.Protocol := TTransportProtocol.StreamableHTTP;
         ARequest.Accept := 'application/json';
         ARequest.Content := DiscoverBody;
+
+        // The request-metadata headers every POST has to carry since
+        // 2026-07-28: these tests are about the other middleware, so they send
+        // what a conforming client sends and let that one pass them through.
+        ARequest.SetHeader('Mcp-Method', 'server/discover');
+        ARequest.SetHeader('MCP-Protocol-Version', '2026-07-28');
 
         AShape(ARequest);
       end,
@@ -323,15 +346,17 @@ begin
     .BackToMCP
   .ApplyConfig;
 
-  Assert.AreEqual(1, FServer.Middleware.Count);
+  Assert.AreEqual(1, Registered(TCORSMiddleware));
 end;
 
 procedure TCORSMiddlewareTest.TestNoSecurityConfigLeavesTheChainEmpty;
 begin
   ConfigureServer();
 
-  // A server that says nothing about origins pays nothing for it.
-  Assert.AreEqual(0, FServer.Middleware.Count);
+  // A server that says nothing about origins pays nothing for it. The header
+  // check is in the chain regardless - it is not a feature a server opts into
+  // - so what this asserts is that CORS is not.
+  Assert.IsFalse(FServer.Middleware.Contains(TCORSMiddleware));
 end;
 
 procedure TCORSMiddlewareTest.TestAllowedOriginIsEchoedBack;
@@ -507,7 +532,7 @@ begin
   EnableToken(TAuthTokenLocation.Bearer);
   EnableToken(TAuthTokenLocation.Bearer);
 
-  Assert.AreEqual(1, FServer.Middleware.Count);
+  Assert.AreEqual(1, Registered(TAuthTokenMiddleware));
 end;
 
 procedure TAuthTokenMiddlewareTest.TestNoTokenConfiguredLeavesTheChainEmpty;
@@ -520,7 +545,7 @@ begin
 
   // The token is what turns the check on: saying where it would be read from
   // is not configuring one.
-  Assert.AreEqual(0, FServer.Middleware.Count);
+  Assert.IsFalse(FServer.Middleware.Contains(TAuthTokenMiddleware));
 end;
 
 procedure TAuthTokenMiddlewareTest.TestMatchingBearerTokenIsAccepted;
@@ -655,7 +680,7 @@ begin
     .AddAuthorizationServer('https://login.other.example.com')
   .ApplyConfig;
 
-  Assert.AreEqual(1, FServer.Middleware.Count);
+  Assert.AreEqual(1, Registered(TOAuthMiddleware));
 end;
 
 procedure TOAuthMiddlewareTest.TestChallengeStillCarriesTheCORSHeaders;

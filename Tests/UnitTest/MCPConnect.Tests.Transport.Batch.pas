@@ -38,6 +38,7 @@ uses
   JRPC.Classes,
   MCPConnect.MCP.Server,
   MCPConnect.MCP.Attributes,
+  MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Notifications;
 
 type
@@ -156,6 +157,12 @@ begin
     .Server
       .SetName('batch-test')
       .SetVersion('1.0.0')
+    .BackToMCP
+    .Security
+      // A batch is outside 2026-07-28 - the body of a POST MUST be a single
+      // message - so there is nothing for one set of request-metadata headers
+      // to mirror, and these tests send none.
+      .SetHeaderValidation(TMCPHeaderValidation.Off)
     .BackToMCP
     .Tools
       .RegisterClass(TNotifyingTool)

@@ -49,6 +49,14 @@ const
     MCP_PROTOCOL_VERSION_2026_07_28
   );
 
+  /// <summary>
+  ///   The request _meta key carrying the protocol version of a single request.
+  ///   Mirrored into the "MCP-Protocol-Version" header by the Streamable HTTP
+  ///   transport, which is why it is a constant rather than a literal in the
+  ///   NeonProperty attribute alone.
+  /// </summary>
+  MCP_META_PROTOCOL_VERSION = 'io.modelcontextprotocol/protocolVersion';
+
 resourcestring
   // Localizable messages for the MCP layer (MCPConnect.MCP.Types/Invoker/Server.Api)
 
@@ -70,6 +78,26 @@ resourcestring
 
 type
   EMCPException = class(Exception);
+
+  /// <summary>
+  ///   How much of the Streamable HTTP request-metadata header contract
+  ///   (MCP-Protocol-Version, Mcp-Method, Mcp-Name, Mcp-Param-*) a server
+  ///   enforces. Configured with IMCPConfig.Security.SetHeaderValidation and
+  ///   read per request by TMCPRequestHeadersMiddleware.
+  /// </summary>
+  /// <remarks>
+  ///   Strict is the revision as written, and the default: the headers are
+  ///   REQUIRED for compliance, and a request missing one is refused with 400
+  ///   and HeaderMismatch (-32020).
+  ///
+  ///   Lenient keeps the half of the check that is a security property - a
+  ///   header that contradicts the body is still refused - while tolerating a
+  ///   client that sends no headers at all. It is the setting for a deployment
+  ///   still talking to clients written against an earlier revision.
+  ///
+  ///   Off keeps the middleware out of the chain entirely.
+  /// </remarks>
+  TMCPHeaderValidation = (Off, Lenient, Strict);
 
 
   TStringPair = TPair<string, string>;
@@ -578,7 +606,7 @@ type
     /// <summary>
     ///   REQUIRED: The latest version of the Model Context Protocol that the client supports.
     /// </summary>
-    [NeonProperty('io.modelcontextprotocol/protocolVersion')]
+    [NeonProperty(MCP_META_PROTOCOL_VERSION)]
     ProtocolVersion: string;
 
     /// <summary>

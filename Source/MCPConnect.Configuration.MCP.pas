@@ -393,6 +393,12 @@ type
     CookieSecure: Boolean;
     ExposeHeaders: TArray<string>;
     RequireOrigin: Boolean;
+
+    /// <summary>
+    ///   How much of the Streamable HTTP request-metadata header contract is
+    ///   enforced. Default: Strict, the revision as written.
+    /// </summary>
+    HeaderValidation: TMCPHeaderValidation;
   private
     /// <summary>
     ///   Puts TCORSMiddleware in the chain of the server, once: it is what
@@ -411,6 +417,26 @@ type
     function SetCookieSecure(AEnable: Boolean): TMCPSecurityConfig;
     function SetExposeHeaders(const AHeaders: TArray<string>): TMCPSecurityConfig;
     function SetRequireOrigin(AEnable: Boolean): TMCPSecurityConfig;
+
+    /// <summary>
+    ///   How much of the Streamable HTTP request-metadata header contract
+    ///   (MCP-Protocol-Version, Mcp-Method, Mcp-Name, Mcp-Param-*) the server
+    ///   enforces on every POST.
+    /// </summary>
+    /// <param name="AMode">
+    ///   Strict (the default) refuses a request that is missing a required
+    ///   header or whose headers contradict the body; Lenient checks only the
+    ///   headers a request actually carries; Off keeps the check out of the
+    ///   chain altogether.
+    /// </param>
+    /// <returns>Self for fluent chaining</returns>
+    /// <remarks>
+    ///   The headers are REQUIRED for compliance with MCP 2026-07-28, so this
+    ///   is a relaxation and not a feature switch: a client that predates the
+    ///   revision sends none of them and is refused by the default. See
+    ///   TMCPRequestHeadersMiddleware.
+    /// </remarks>
+    function SetHeaderValidation(AMode: TMCPHeaderValidation): TMCPSecurityConfig;
   end;
 
   TMCPToolConfig = class(TMCPTool)
@@ -788,9 +814,24 @@ type
     FPrompts: TMCPPromptsConfig;
     FResources: TMCPResourcesConfig;
     FCompletions: TMCPCompletionsConfig;
+
+    /// <summary>
+    ///   Puts TMCPRequestHeadersMiddleware in the chain of the server, once.
+    /// </summary>
+    /// <remarks>
+    ///   Unlike CORS or the static token, this one is not registered by the
+    ///   call that configures it: the request-metadata headers are what MCP
+    ///   2026-07-28 requires of every HTTP server, so the middleware goes in
+    ///   whenever a configuration is applied. Security.SetHeaderValidation(Off)
+    ///   is the one setting that keeps it out - a server that wants none of it
+    ///   pays nothing for it.
+    /// </remarks>
+    procedure EnsureHeaderMiddleware;
   public
     constructor Create(AApp: IJRPCApplication); override;
     destructor Destroy; override;
+
+    function ApplyConfig: IJRPCApplication; override;
 
     { IMCPConfig }
     function Server: TMCPServerConfig;
@@ -814,7 +855,8 @@ uses
   Neon.Core.Persistence.JSON.Schema,
 
   MCPConnect.JRPC.Middleware,
-  MCPConnect.MCP.Middleware.Default;
+  MCPConnect.MCP.Middleware.Default,
+  MCPConnect.MCP.Middleware.Headers;
 
 constructor TMCPConfig.Create(AApp: IJRPCApplication);
 begin
@@ -827,6 +869,29 @@ begin
   FPrompts := TMCPPromptsConfig.Create(Self);
   FResources := TMCPResourcesConfig.Create(Self);
   FCompletions := TMCPCompletionsConfig.Create(Self);
+end;
+
+procedure TMCPConfig.EnsureHeaderMiddleware;
+var
+  LMiddleware: TMiddlewareList;
+begin
+  if (FSecurity.HeaderValidation = TMCPHeaderValidation.Off) or
+     not Assigned(FApplication) then
+    Exit;
+
+  // FApplication, and not BackToApp: BackToApp is ApplyConfig, and this runs
+  // from inside it.
+  LMiddleware := FApplication.GetMiddlewareList as TMiddlewareList;
+  if not Assigned(LMiddleware) or LMiddleware.Contains(TMCPRequestHeadersMiddleware) then
+    Exit;
+
+  LMiddleware.Add(TMCPRequestHeadersMiddleware);
+end;
+
+function TMCPConfig.ApplyConfig: IJRPCApplication;
+begin
+  EnsureHeaderMiddleware;
+  Result := inherited;
 end;
 
 destructor TMCPConfig.Destroy;
@@ -2090,6 +2155,17 @@ begin
   inherited Create(AConfig);
   AllowedMethods := ['POST'];
   CookieSecure := True;
+
+  // The header contract is not opt-in: 2026-07-28 requires it of every HTTP
+  // server, so the default is the specification and SetHeaderValidation is
+  // there to relax it, not to turn it on.
+  HeaderValidation := TMCPHeaderValidation.Strict;
+end;
+
+function TMCPSecurityConfig.SetHeaderValidation(AMode: TMCPHeaderValidation): TMCPSecurityConfig;
+begin
+  HeaderValidation := AMode;
+  Result := Self;
 end;
 
 function TMCPSecurityConfig.SetCookieSecure(AEnable: Boolean): TMCPSecurityConfig;

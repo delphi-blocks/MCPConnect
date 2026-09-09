@@ -131,6 +131,7 @@
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Invoker.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Middleware.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Middleware.Default.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Middleware.Headers.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Middleware.OAuth.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Server.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Server.Api.pas"/>

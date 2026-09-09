@@ -473,6 +473,12 @@ begin
       .SetName('middleware-test')
       .SetVersion('1.0.0')
     .BackToMCP
+    .Security
+      // These tests are about the chain, and count what is in it: the
+      // request-metadata header check would be one more middleware, and one
+      // more set of headers on every body below.
+      .SetHeaderValidation(TMCPHeaderValidation.Off)
+    .BackToMCP
     .Tools
       .RegisterClass(TDemoTools)
     .BackToMCP

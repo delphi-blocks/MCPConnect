@@ -81,7 +81,6 @@ resourcestring
   SMCPDataUriFileNotFound = 'Building data uri: file [%s] not found';
 
   // MCPConnect.MCP.Invoker
-  SMCPStructuredContentMustBeObject = 'Structured content can only be a JSON object';
   SMCPTypeKindNotSupported = 'Type kind not supported';
   SMCPUriNotCompatibleWithTemplate = 'URI not compatible with the template';
   SMCPParamsCountMismatch = 'Parameters count from method and URI are different';

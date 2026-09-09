@@ -47,7 +47,6 @@ resourcestring
   SToolParamNotFoundFmt = 'Param [%s] for Tool [%s] not found';
   SMethodInClassNotFoundFmt = 'Method [%s] in class [%s] not found';
   SToolMustBeFunction = 'Tool must be a function';
-  SOutputSchemaMustBeObjectFmt = 'outputSchema can only be a JSON object. [%s]';
   SNonConfiguredParamsNotPermitted = 'Non-configured params are not permitted';
   SParamHasNoConfigurationFmt = 'The [%s] parameter has no configuration';
   SNonAnnotatedParamsNotPermitted = 'Non-annotated params are not permitted';
@@ -1402,7 +1401,6 @@ end;
 
 procedure TMCPToolsConfig.WriteOutputSchema(ATool: TMCPTool);
 var
-  LSchemaType: TJSONPair;
   LJSONObj: TJSONObject;
   LType: TRttiType;
 begin
@@ -1410,16 +1408,12 @@ begin
   if not Assigned(LType) then
     raise EMCPException.Create(SToolMustBeFunction);
 
+  // Any JSON Schema 2020-12 will do here since SEP-2106: an outputSchema
+  // describes whatever the tool answers with, and that is no longer required to
+  // be an object - a tool that returns a list of users describes a list. Only
+  // the *input* schema still has a root type it must have, tool arguments being
+  // JSON objects by definition (see WriteInputSchema).
   LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LType, NeonConfig);
-
-  // outputSchema and structuredContent are (for now) limited to a JSON Object
-  // See: https://github.com/modelcontextprotocol/php-sdk/issues/357
-  LSchemaType := LJSONObj.Get('type');
-  if not (LSchemaType.JsonValue.Value = 'object') then
-  begin
-    LJSONObj.Free;
-    raise EMCPException.CreateFmt(SOutputSchemaMustBeObjectFmt, [ATool.Name]);
-  end;
 
   ATool.ExchangeOutputSchema(LJSONObj);
 end;

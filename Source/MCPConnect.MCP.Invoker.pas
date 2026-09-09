@@ -55,7 +55,14 @@ type
   protected
     FTool: TMCPTool;
     function GetParamName(AParam: TRttiParameter): string; override;
-    procedure ResultToTool(const AToolResult: TValue; AResult: TCallToolResult);  public
+    procedure ResultToTool(const AToolResult: TValue; AResult: TCallToolResult);
+
+    /// <summary>
+    ///   Puts the tool's answer in "structuredContent" when the tool asked for
+    ///   it with the "structured" tag - whatever shape that answer has.
+    /// </summary>
+    procedure WriteStructured(const AToolResult: TValue; AResult: TCallToolResult);
+  public
     constructor Create(AInstance: TObject; ATool: TMCPTool);
 
     /// <summary>
@@ -246,10 +253,6 @@ begin
     begin
       var LJSON := TNeon.ValueToJSON(AToolResult, FConfig.Tools.NeonConfig);
       try
-        // Check if the tool is configured to return a structured content
-        if FTool.Tags.Exists('structured') then
-          AResult.StructuredContent := LJSON.Clone as TJSONObject;
-
         if FTool.Tags.Exists('embedded') then
         begin
           LResText := TEmbeddedResourceText.Create;
@@ -279,13 +282,6 @@ begin
       begin
         var LJSON := TNeon.ValueToJSON(AToolResult, FConfig.Tools.NeonConfig);
         try
-          // outputSchema and structuredContent are (for now) limited to a JSON Object
-          // See: https://github.com/modelcontextprotocol/php-sdk/issues/357
-
-          // Check if the tool is configured to return a structured content
-          if FTool.Tags.Exists('structured') then
-            raise EMCPException.Create(SMCPStructuredContentMustBeObject);
-
           LResBlob.Resource.MIMEType := TMime.Json;
           LResBlob.Resource.Blob := LJSON.ToJSON;
         finally
@@ -299,6 +295,31 @@ begin
   end;
 
   AResult.Content.Add(LContent);
+
+  WriteStructured(AToolResult, AResult);
+end;
+
+procedure TMCPToolInvoker.WriteStructured(const AToolResult: TValue;
+  AResult: TCallToolResult);
+begin
+  if not FTool.Tags.Exists('structured') then
+    Exit;
+
+  // Any JSON value, since SEP-2106: an object, and equally an array of rows, a
+  // string or a number. It used to be an object or an exception, which left a
+  // tool answering with a list - the example the specification itself gives -
+  // with no way to say so.
+  //
+  // TBytes is the one thing left out: it goes to the client as a base64 blob
+  // because it is binary, and a structured copy of it would be the same bytes
+  // spelled differently rather than anything a client could read.
+  if AToolResult.TypeInfo = TypeInfo(TBytes) then
+    Exit;
+
+  // Serialized again rather than shared with the content block above: the
+  // branches own their copy and free it, and a tool that asked for structured
+  // output has opted into the second pass.
+  AResult.StructuredContent := TNeon.ValueToJSON(AToolResult, FConfig.Tools.NeonConfig);
 end;
 
 function TMCPToolInvoker.Invoke(AParams: TCallToolRequestParams): TBaseResult;

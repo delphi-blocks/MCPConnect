@@ -81,6 +81,7 @@ uses
   MCPConnect.Tests.Transport.Headers in 'MCPConnect.Tests.Transport.Headers.pas',
   MCPConnect.Tests.Transport.RequestHeaders in 'MCPConnect.Tests.Transport.RequestHeaders.pas',
   MCPConnect.Tests.Transport.RequestMeta in 'MCPConnect.Tests.Transport.RequestMeta.pas',
+  MCPConnect.Tests.Transport.Status in 'MCPConnect.Tests.Transport.Status.pas',
   MCPConnect.Tests.Transport.Batch in 'MCPConnect.Tests.Transport.Batch.pas',
   MCPConnect.Tests.MCP.Errors in 'MCPConnect.Tests.MCP.Errors.pas',
   MCPConnect.Tests.MCP.Completion in 'MCPConnect.Tests.MCP.Completion.pas',

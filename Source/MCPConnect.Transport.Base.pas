@@ -231,15 +231,20 @@ type
     ///   zero when nothing asked for one.
     /// </summary>
     /// <remarks>
-    ///   The errors MCP 2026-07-28 defines for itself - a header that
-    ///   contradicts the body, a "_meta" missing a required field, an
-    ///   unsupported protocol version, a capability the client never declared -
-    ///   MUST be answered with 400 Bad Request, and the JSON-RPC error code
-    ///   alone does not say which those are: -32602 is a 400 when it reports a
-    ///   malformed "_meta" and an ordinary 200 when it reports an unknown tool
-    ///   name. What separates them is the exception, so it is recorded where
-    ///   the exception is seen (HandleMessage) and read where the status is
-    ///   decided (HandlePOST).
+    ///   Two statuses come from the message level. The errors MCP 2026-07-28
+    ///   defines for itself - a header that contradicts the body, a "_meta"
+    ///   missing a required field, an unsupported protocol version, a
+    ///   capability the client never declared - MUST be answered 400 Bad
+    ///   Request; a method the server does not implement MUST be answered 404
+    ///   Not Found, with the -32601 body that tells a client this is a modern
+    ///   server refusing a method rather than a legacy one that does not host
+    ///   the endpoint.
+    ///
+    ///   The JSON-RPC error code alone does not say which is which: -32602 is
+    ///   a 400 when it reports a malformed "_meta" and an ordinary 200 when it
+    ///   reports an unknown tool name. What separates them is the exception, so
+    ///   it is recorded where the exception is seen (HandleMessage) and read
+    ///   where the status is decided (HandlePOST).
     ///
     ///   Written on the worker thread and read after the response queue closes,
     ///   which is the happens-before that makes a plain field enough.
@@ -556,12 +561,26 @@ begin
         begin
           Logger.LogError(E, Format('TMCPTransportHandler.HandleMessage %s: %s', [E.ClassName, E.Message]));
 
-          // The whole family in one test, which is what the common ancestor is
-          // for: every protocol error of the revision is a 400, whatever
-          // JSON-RPC code it reports. First one wins - a batch that produced
-          // two of them is answered 200 anyway, see HandlePOST.
-          if (E is EMCPProtocolError) and (FProtocolStatus = 0) then
-            FProtocolStatus := HTTP_CODE_BADREQUEST;
+          // The status this error deserves, recorded in the one place where it
+          // is still an exception: the JSON-RPC code alone cannot say, since
+          // -32602 is a 400 when it reports a malformed "_meta" and an ordinary
+          // 200 when it reports an unknown tool name. First one wins - a batch
+          // that produced two is answered 200 anyway, see HandlePOST.
+          if FProtocolStatus = 0 then
+          begin
+            // The whole family in one test, which is what the common ancestor
+            // is for: every error the revision defines for itself is a 400.
+            if E is EMCPProtocolError then
+              FProtocolStatus := HTTP_CODE_BADREQUEST
+
+            // A method this server does not implement is a 404 carrying a
+            // -32601 body. Both halves matter: the status is what a dual-era
+            // client falls back on, and the body is what tells it this is a
+            // modern server answering an unknown method rather than a legacy
+            // HTTP+SSE one that does not host the endpoint at all.
+            else if E is EJRPCMethodNotFoundError then
+              FProtocolStatus := HTTP_CODE_NOTFOUND;
+          end;
 
           // Only a request has somewhere to put an error: anything else keeps
           // the behaviour it had before, which is to let the caller see it.

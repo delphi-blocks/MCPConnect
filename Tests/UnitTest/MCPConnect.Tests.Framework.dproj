@@ -166,7 +166,6 @@
         <DCCReference Include="..\..\Source\MCPConnect.Metrics.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Metrics.Exporters.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Metrics.Exporters.Files.pas"/>
-        <DCCReference Include="..\..\Source\MCPConnect.Metrics.Exporters.Logify.pas"/>
         <DCCReference Include="MCPConnect.Tests.JRPC.Core.pas"/>
         <DCCReference Include="MCPConnect.Tests.JRPC.Middleware.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Middleware.pas"/>

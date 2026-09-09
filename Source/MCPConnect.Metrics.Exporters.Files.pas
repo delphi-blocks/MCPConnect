@@ -31,8 +31,7 @@
 ///   end;
 ///   </code>
 ///   The file target is deliberately owned by the caller of this unit - a
-///   remote collector or a Logify sink have their own exporters, see
-///   MCPConnect.Metrics.Exporters.Logify.
+///   remote collector or a log sink needs its own exporter.
 /// </summary>
 unit MCPConnect.Metrics.Exporters.Files;
 

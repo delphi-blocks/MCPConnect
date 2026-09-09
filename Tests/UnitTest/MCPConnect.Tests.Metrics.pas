@@ -20,12 +20,9 @@ uses
   System.IOUtils,
   DUnitX.TestFramework,
 
-  Logify,
-  MCPConnect.Logging.Memory,
   MCPConnect.Metrics,
   MCPConnect.Metrics.Exporters,
-  MCPConnect.Metrics.Exporters.Files,
-  MCPConnect.Metrics.Exporters.Logify;
+  MCPConnect.Metrics.Exporters.Files;
 
 type
   /// <summary>Exporter that just counts Harvest calls and keeps the last batch.</summary>
@@ -185,27 +182,6 @@ type
     procedure TestJsonExport_AppendsOneLinePerHarvest();
     [Test]
     procedure TestTextExport_AppendsReadableBlocks();
-  end;
-
-  /// <summary>The TMetricLogifyExporter sink, captured through a memory adapter.</summary>
-  [TestFixture]
-  TMetricsLogifyExporterTest = class(TObject)
-  private
-    FStore: TMCPMemoryLog;
-    FFactory: ILoggerAdapterFactory;
-    FProvider: IMeterProvider;
-  public
-    [Setup]
-    procedure Setup();
-    [TearDown]
-    procedure TearDown();
-
-    [Test]
-    procedure TestExport_LogsOneEntryPerHarvestAsJson();
-    [Test]
-    procedure TestExport_AsTextLogsTheBlock();
-    [Test]
-    procedure TestExport_EveryHarvestIsALogEntry();
   end;
 
 implementation
@@ -950,78 +926,6 @@ begin
   Assert.Contains(LContent, 'tool=add_task');
 end;
 
-{ TMetricsLogifyExporterTest }
-
-procedure TMetricsLogifyExporterTest.Setup();
-begin
-  FStore := TMCPMemoryLog.Create(0, 32);
-  FFactory := TLogifyAdapterMemoryFactory.CreateAdapterFactory(
-    'MCPConnect.Tests.Metrics.Logify', TLogLevel.Trace, FStore);
-  TLoggerAdapterRegistry.Instance.RegisterFactory(FFactory);
-  FProvider := TMetrics.CreateProvider;
-end;
-
-procedure TMetricsLogifyExporterTest.TearDown();
-begin
-  FProvider := nil;
-  TLoggerAdapterRegistry.Instance.UnregisterFactory(FFactory);
-  FFactory := nil;
-  FStore.Free;
-end;
-
-procedure TMetricsLogifyExporterTest.TestExport_LogsOneEntryPerHarvestAsJson();
-var
-  LExporter: IMetricExporter;
-  LEntries: TArray<TMCPLogEntry>;
-begin
-  LExporter := TMetricLogifyExporter.Create();
-  FProvider.AddExporter(LExporter);
-
-  FProvider.GetMeter('app').Counter('calls').Add(2);
-  FProvider.Harvest;
-
-  LEntries := FStore.LogEntries;
-  Assert.AreEqual(1, Length(LEntries));
-  Assert.Contains(LEntries[0].Text, '"name":"calls"');
-  Assert.Contains(LEntries[0].Text, '"sum":2.0');
-end;
-
-procedure TMetricsLogifyExporterTest.TestExport_AsTextLogsTheBlock();
-var
-  LExporter: IMetricExporter;
-  LEntries: TArray<TMCPLogEntry>;
-begin
-  LExporter := TMetricLogifyExporter.Create(TLogLevel.Info, True);
-  FProvider.AddExporter(LExporter);
-
-  FProvider.GetMeter('app').Counter('calls', '', 'calls').Add(1, ['tool', 'add_task']);
-  FProvider.Harvest;
-
-  LEntries := FStore.LogEntries;
-  Assert.AreEqual(1, Length(LEntries));
-  Assert.Contains(LEntries[0].Text, '[metrics]');
-  Assert.Contains(LEntries[0].Text, 'app/calls');
-  Assert.Contains(LEntries[0].Text, 'tool=add_task');
-end;
-
-procedure TMetricsLogifyExporterTest.TestExport_EveryHarvestIsALogEntry();
-var
-  LExporter: IMetricExporter;
-  LEntries: TArray<TMCPLogEntry>;
-begin
-  LExporter := TMetricLogifyExporter.Create(TLogLevel.Info);
-  FProvider.AddExporter(LExporter);
-
-  FProvider.GetMeter('app').Counter('calls').Add(1);
-  FProvider.Harvest;
-  FProvider.Harvest;
-
-  LEntries := FStore.LogEntries;
-  Assert.AreEqual(2, Length(LEntries), 'one log entry per harvest');
-  Assert.Contains(LEntries[0].Text, 'calls');
-  Assert.Contains(LEntries[1].Text, 'calls');
-end;
-
 initialization
   TDUnitX.RegisterTestFixture(TMetricsInstrumentTest);
   TDUnitX.RegisterTestFixture(TMetricsLabelsTest);
@@ -1029,6 +933,5 @@ initialization
   TDUnitX.RegisterTestFixture(TMetricsConcurrencyTest);
   TDUnitX.RegisterTestFixture(TMetricsFacadeTest);
   TDUnitX.RegisterTestFixture(TMetricsFileExporterTest);
-  TDUnitX.RegisterTestFixture(TMetricsLogifyExporterTest);
 
 end.

@@ -63,7 +63,6 @@ uses
   MCPConnect.Metrics in '..\..\Source\MCPConnect.Metrics.pas',
   MCPConnect.Metrics.Exporters in '..\..\Source\MCPConnect.Metrics.Exporters.pas',
   MCPConnect.Metrics.Exporters.Files in '..\..\Source\MCPConnect.Metrics.Exporters.Files.pas',
-  MCPConnect.Metrics.Exporters.Logify in '..\..\Source\MCPConnect.Metrics.Exporters.Logify.pas',
   MCPConnect.Tests.JRPC.Core in 'MCPConnect.Tests.JRPC.Core.pas',
   MCPConnect.Tests.JRPC.Middleware in 'MCPConnect.Tests.JRPC.Middleware.pas',
   MCPConnect.Tests.MCP.Middleware in 'MCPConnect.Tests.MCP.Middleware.pas',

@@ -73,7 +73,9 @@ uses
   System.SyncObjs,
   System.Math,
   System.Generics.Collections,
-  System.Generics.Defaults;
+  System.Generics.Defaults,
+
+  Neon.Core.Attributes;
 
 type
   /// <summary>
@@ -88,6 +90,12 @@ type
   ///   worth having in process; UpDownCounter is deliberately absent - use a
   ///   Gauge when a value can go down as well as up).
   /// </summary>
+  /// <remarks>
+  ///   The NeonEnumNames are the JSON spelling of a kind, not decoration: Neon
+  ///   reads them off the type (not off a member), so they are what an exported
+  ///   point carries in "kind". Keep them in sync with MetricKindToStr.
+  /// </remarks>
+  [NeonEnumNames('counter,gauge,histogram')]
   TMetricKind = (Counter, Gauge, Histogram);
 
   /// <summary>One key/value label of a measurement (an OpenTelemetry attribute).</summary>
@@ -101,13 +109,21 @@ function MetricKindToStr(AKind: TMetricKind): string;
 
 type
   /// <summary>
-  ///   The aggregated state of one instrument label set (one "series"), as
-  ///   read by Collect / delivered to exporters. Fields are interpreted by
-  ///   Kind:
+  ///   <para>
+  ///     The aggregated state of one instrument label set (one "series"), as
+  ///     read by Collect / delivered to exporters. Fields are interpreted by
+  ///     Kind:
+  ///   </para>
   ///   <list type="bullet">
-  ///     <item>Counter: Sum is the running total, Count the number of adds.</item>
-  ///     <item>Gauge: Last is the current value.</item>
-  ///     <item>Histogram: Count, Sum, Min, Max describe the recorded samples.</item>
+  ///     <item>
+  ///       Counter: Sum is the running total, Count the number of adds.
+  ///     </item>
+  ///     <item>
+  ///       Gauge: Last is the current value.
+  ///     </item>
+  ///     <item>
+  ///       Histogram: Count, Sum, Min, Max describe the recorded samples.
+  ///     </item>
   ///   </list>
   ///   Count/Sum/Min/Max/Last are filled for every kind anyway, Min/Max/Last
   ///   just mean less on counters and gauges. A returned point must be treated
@@ -115,33 +131,76 @@ type
   /// </summary>
   TMetricPoint = record
   public
-    /// <summary>Name of the meter the instrument belongs to ('' for the default one).</summary>
+    /// <summary>
+    ///   Name of the meter the instrument belongs to ('' for the default one).
+    /// </summary>
     Meter: string;
-    /// <summary>Instrument name, unique within its meter.</summary>
+
+    /// <summary>
+    ///   Instrument name, unique within its meter.
+    /// </summary>
     Name: string;
+
+    /// <summary>
+    ///   Metric Kind: Counter, Gauge, Histogram.
+    /// </summary>
     Kind: TMetricKind;
-    /// <summary>Free text, as passed when the instrument was created.</summary>
+
+    /// <summary>
+    ///   Free text, as passed when the instrument was created.
+    /// </summary>
     Description: string;
-    /// <summary>Unit of measure, as passed when the instrument was created ('' when none).</summary>
-    UnitName: string;
-    /// <summary>Labels of this series, sorted by key. Empty when unlabeled.</summary>
+
+    /// <summary>
+    ///   Unit of measure, as passed when the instrument was created ('' when
+    ///   none).
+    /// </summary>
+    [NeonProperty('unit')] UnitName: string;
+
+    /// <summary>
+    ///   Labels of this series, sorted by key. Empty when unlabeled.
+    /// </summary>
     Labels: TArray<TMetricLabel>;
-    /// <summary>Number of recordings folded into this point.</summary>
+
+    /// <summary>
+    ///   Number of recordings folded into this point.
+    /// </summary>
     Count: Int64;
-    /// <summary>Sum of the recorded values (Counter: running total).</summary>
+
+    /// <summary>
+    ///   Sum of the recorded values (Counter: running total).
+    /// </summary>
     Sum: Double;
-    /// <summary>Smallest recorded value.</summary>
+
+    /// <summary>
+    ///   Smallest recorded value.
+    /// </summary>
     Min: Double;
-    /// <summary>Largest recorded value.</summary>
+
+    /// <summary>
+    ///   Largest recorded value.
+    /// </summary>
     Max: Double;
-    /// <summary>Most recent recorded value (Gauge: current value).</summary>
+
+    /// <summary>
+    ///   Most recent recorded value (Gauge: current value).
+    /// </summary>
     Last: Double;
-    /// <summary>When the first recording of this series happened.</summary>
+
+    /// <summary>
+    ///   When the first recording of this series happened.
+    /// </summary>
     FirstSeen: TDateTime;
-    /// <summary>When the most recent recording of this series happened.</summary>
+
+    /// <summary>
+    ///   When the most recent recording of this series happened.
+    /// </summary>
     LastSeen: TDateTime;
 
-    /// <summary>One human readable line, e.g. "counter tool.calls sum=6 count=6 {tool=get_weather}".</summary>
+    /// <summary>
+    ///   One human readable line, e.g. "counter tool.calls sum=6 count=6
+    ///   {tool=get_weather}".
+    /// </summary>
     function ToString: string;
   end;
 
@@ -170,15 +229,24 @@ type
     function GetUnitName: string;
     function GetSeriesCount: Integer;
     function GetDroppedSeries: Int64;
-    /// <summary>Snapshot of the instrument's current series.</summary>
+
+    /// <summary>
+    ///   Snapshot of the instrument's current series.
+    /// </summary>
     function Collect: TArray<TMetricPoint>;
-    /// <summary>Drops every series; the instrument can keep being recorded into.</summary>
+
+    /// <summary>
+    ///   Drops every series; the instrument can keep being recorded into.
+    /// </summary>
     procedure Clear;
+
     property Name: string read GetName;
     property Kind: TMetricKind read GetKind;
     property Description: string read GetDescription;
     property UnitName: string read GetUnitName;
-    /// <summary>Distinct label sets currently aggregated (1 when unlabeled).</summary>
+    /// <summary>
+    ///   Distinct label sets currently aggregated (1 when unlabeled).
+    /// </summary>
     property SeriesCount: Integer read GetSeriesCount;
     /// <summary>
     ///   Series refused since the last Clear because the per-instrument label
@@ -196,7 +264,9 @@ type
   ICounter = interface(IInstrument)
     ['{3D8E7B91-26A2-4DF5-86B7-1A6E889B27D4}']
     procedure Add(const AValue: Double = 1); overload;
-    /// <summary>Even number of strings: key, value, key, value...</summary>
+    /// <summary>
+    ///   Even number of strings: key, value, key, value...
+    /// </summary>
     procedure Add(const AValue: Double; const ALabels: array of string); overload;
   end;
 
@@ -207,7 +277,9 @@ type
   IGauge = interface(IInstrument)
     ['{E9C2C5B6-2B2A-4AF3-8B42-5583F0D47C29}']
     procedure SetValue(const AValue: Double); overload;
-    /// <summary>Even number of strings: key, value, key, value...</summary>
+    /// <summary>
+    ///   Even number of strings: key, value, key, value...
+    /// </summary>
     procedure SetValue(const AValue: Double; const ALabels: array of string); overload;
   end;
 
@@ -219,7 +291,9 @@ type
   IHistogram = interface(IInstrument)
     ['{6D938B7D-A9F1-45D9-9AE3-9E2D5A9434A5}']
     procedure Observe(const AValue: Double); overload;
-    /// <summary>Even number of strings: key, value, key, value...</summary>
+    /// <summary>
+    ///   Even number of strings: key, value, key, value...
+    /// </summary>
     procedure Observe(const AValue: Double; const ALabels: array of string); overload;
   end;
 
@@ -232,9 +306,13 @@ type
   IMeter = interface
     ['{B8A87344-C1F5-4CB1-95FA-42795D23D578}']
     function GetName: string;
-    /// <summary>Snapshot of every instrument of this meter.</summary>
+    /// <summary>
+    ///   Snapshot of every instrument of this meter.
+    /// </summary>
     function Collect: TArray<TMetricPoint>;
-    /// <summary>Clears every instrument of this meter.</summary>
+    /// <summary>
+    ///   Clears every instrument of this meter.
+    /// </summary>
     procedure Clear;
     property Name: string read GetName;
     function Counter(const AName: string; const ADescription: string = '';
@@ -253,7 +331,10 @@ type
   /// </summary>
   IMeterProvider = interface
     ['{1C0D6F6E-5423-4EE7-9E30-9CE5B6E23102}']
-    /// <summary>Returns the meter with the given name, creating it on first use ('' is the default meter).</summary>
+    /// <summary>
+    ///   Returns the meter with the given name, creating it on first use ('' is
+    ///   the default meter).
+    /// </summary>
     function GetMeter(const AName: string): IMeter;
     function GetMaxSeriesPerInstrument: Integer;
     procedure SetMaxSeriesPerInstrument(AValue: Integer);
@@ -270,7 +351,9 @@ type
     ///   afterwards, making the export a delta rather than a running total.
     /// </summary>
     procedure Harvest(const AReset: Boolean = False);
-    /// <summary>Clears every meter; instruments and exporters are kept.</summary>
+    /// <summary>
+    ///   Clears every meter; instruments and exporters are kept.
+    /// </summary>
     procedure Clear;
     /// <summary>
     ///   Upper bound on the distinct label sets one instrument may aggregate;
@@ -285,39 +368,85 @@ type
   /// <summary>
   ///   Static facade over the process wide default provider, for the one-line
   ///   usage shown in the unit comment. The default provider is created on
-  ///   first use and released in the unit finalization.
+  ///   first use and released in the class destructor.
   /// </summary>
   TMetrics = class
   public const
-    /// <summary>Default label-set budget per instrument (see MaxSeriesPerInstrument).</summary>
+    /// <summary>
+    ///   Default label-set budget per instrument (see MaxSeriesPerInstrument).
+    /// </summary>
     DEFAULT_MAX_SERIES = 128;
-  private class var
+  strict private class var
     FDefault: IMeterProvider;
     FDefaultLock: TCriticalSection;
+  private class var
+    /// <summary>
+    ///   Set at the beginning of the class destructor: from that moment on the
+    ///   default provider is gone, so instruments still held by other units
+    ///   must quietly stop recording instead of touching freed state. Not
+    ///   strict: TMeterInstrument.RecordSample reads it on every recording.
+    /// </summary>
+    FShutdown: Boolean;
   public
-    /// <summary>The process wide default provider.</summary>
+    /// <summary>
+    ///   Creates the lock guarding the default provider. Runs once, before the
+    ///   initialization section of any unit that uses this one.
+    /// </summary>
+    class constructor Create;
+
+    /// <summary>
+    ///   Releases the default provider and then its lock, and marks the
+    ///   subsystem as shut down. Runs once, after this unit's finalization.
+    /// </summary>
+    class destructor Destroy;
+
+    /// <summary>
+    ///   The process wide default provider.
+    /// </summary>
     class function Default: IMeterProvider;
-    /// <summary>A brand new provider, independent from the default one.</summary>
+
+    /// <summary>
+    ///   A brand new provider, independent from the default one.
+    /// </summary>
     class function CreateProvider: IMeterProvider;
 
-    /// <summary>Shorthand for Default.GetMeter(AName) ('' is the default meter).</summary>
+    /// <summary>
+    ///   Shorthand for Default.GetMeter(AName) ('' is the default meter).
+    /// </summary>
     class function Meter(const AName: string = ''): IMeter;
+
     class function Counter(const AName: string; const ADescription: string = '';
       const AUnitName: string = ''): ICounter;
+
     class function Gauge(const AName: string; const ADescription: string = '';
       const AUnitName: string = ''): IGauge;
+
     class function Histogram(const AName: string; const ADescription: string = '';
       const AUnitName: string = ''): IHistogram;
 
-    /// <summary>Shorthand for Default.Collect.</summary>
+    /// <summary>
+    ///   Shorthand for Default.Collect.
+    /// </summary>
     class function Collect: TArray<TMetricPoint>;
-    /// <summary>Shorthand for Default.Harvest(AReset).</summary>
+
+    /// <summary>
+    ///   Shorthand for Default.Harvest(AReset).
+    /// </summary>
     class procedure Harvest(const AReset: Boolean = False);
-    /// <summary>Shorthand for Default.Clear.</summary>
+
+    /// <summary>
+    ///   Shorthand for Default.Clear.
+    /// </summary>
     class procedure Clear;
-    /// <summary>Shorthand for Default.AddExporter.</summary>
+
+    /// <summary>
+    ///   Shorthand for Default.AddExporter.
+    /// </summary>
     class procedure AddExporter(const AExporter: IMetricExporter);
-    /// <summary>Shorthand for Default.RemoveExporter.</summary>
+
+    /// <summary>
+    ///   Shorthand for Default.RemoveExporter.
+    /// </summary>
     class procedure RemoveExporter(const AExporter: IMetricExporter);
   end;
 
@@ -325,14 +454,6 @@ implementation
 
 uses
   System.DateUtils;
-
-var
-  /// <summary>
-  ///   Set at the beginning of the unit finalization: from that moment on the
-  ///   default provider is gone, so instruments still held by other units
-  ///   must quietly stop recording instead of touching freed state.
-  /// </summary>
-  _Shutdown: Boolean;
 
 type
   /// <summary>The aggregated state of one label set, stored by an instrument.</summary>
@@ -347,7 +468,9 @@ type
     LastSeen: TDateTime;
   end;
 
-/// <summary>Formats a number without locale surprises, up to 10 significant decimals.</summary>
+/// <summary>
+///   Formats a number without locale surprises, up to 10 significant decimals.
+/// </summary>
 function FormatNumber(const AValue: Double): string;
 begin
   Result := FormatFloat('0.##########', AValue, TFormatSettings.Invariant);
@@ -360,8 +483,7 @@ end;
 ///   corrupting the aggregates.
 /// </summary>
 type
-  TMeterInstrument = class(TInterfacedObject, IInstrument, ICounter,
-    IGauge, IHistogram)
+  TMeterInstrument = class(TInterfacedObject, IInstrument, ICounter, IGauge, IHistogram)
   private
     FKind: TMetricKind;
     FMeterName: string;
@@ -405,7 +527,9 @@ type
     procedure Observe(const AValue: Double; const ALabels: array of string); overload;
   end;
 
-  /// <summary>Implementation of IMeter: a named registry of instruments.</summary>
+  /// <summary>
+  ///   Implementation of IMeter: a named registry of instruments.
+  /// </summary>
   TMeterImpl = class(TInterfacedObject, IMeter)
   private
     FName: string;
@@ -431,7 +555,9 @@ type
       const AUnitName: string = ''): IHistogram;
   end;
 
-  /// <summary>Implementation of IMeterProvider.</summary>
+  /// <summary>
+  ///   Implementation of IMeterProvider.
+  /// </summary>
   TMeterProviderImpl = class(TInterfacedObject, IMeterProvider)
   private
     FLock: TCriticalSection;
@@ -461,7 +587,7 @@ type
 ///   carrying the same pairs in different orders hit the same series. When a
 ///   key appears twice the last occurrence wins.
 /// </summary>
-function MCPNormalizeLabels(const ALabels: array of string): TArray<TMetricLabel>;
+function NormalizeLabels(const ALabels: array of string): TArray<TMetricLabel>;
 var
   LPairs: TArray<TMetricLabel>;
   LCount, I, J: Integer;
@@ -530,7 +656,7 @@ begin
 end;
 
 /// <summary>True when two label arrays hold the same pairs (order ignored).</summary>
-function MCPSameLabels(const ALeft, ARight: TArray<TMetricLabel>): Boolean;
+function SameLabels(const ALeft, ARight: TArray<TMetricLabel>): Boolean;
 var
   I, J: Integer;
   LFound: Boolean;
@@ -553,7 +679,7 @@ begin
 end;
 
 /// <summary>"k=v,k2=v2" used to order points deterministically.</summary>
-function MCPLabelsKey(const ALabels: TArray<TMetricLabel>): string;
+function LabelsKey(const ALabels: TArray<TMetricLabel>): string;
 var
   I: Integer;
 begin
@@ -567,18 +693,18 @@ begin
 end;
 
 /// <summary>Sort key making a Collect snapshot deterministic between runs.</summary>
-function MCPPointKey(const APoint: TMetricPoint): string;
+function PointKey(const APoint: TMetricPoint): string;
 begin
   Result := APoint.Meter + #0 + APoint.Name + #0 +
-    IntToStr(Ord(APoint.Kind)) + #0 + MCPLabelsKey(APoint.Labels);
+    IntToStr(Ord(APoint.Kind)) + #0 + LabelsKey(APoint.Labels);
 end;
 
-procedure MCPSortPoints(var APoints: TArray<TMetricPoint>);
+procedure SortPoints(var APoints: TArray<TMetricPoint>);
 begin
   TArray.Sort<TMetricPoint>(APoints, TComparer<TMetricPoint>.Construct(
     function(const ALeft, ARight: TMetricPoint): Integer
     begin
-      Result := CompareText(MCPPointKey(ALeft), MCPPointKey(ARight));
+      Result := CompareText(PointKey(ALeft), PointKey(ARight));
     end));
 end;
 
@@ -593,7 +719,7 @@ begin
   end;
 end;
 
-function MCPBuildPointRow(const APoint: TMetricPoint): string;
+function BuildPointRow(const APoint: TMetricPoint): string;
 var
   LWhere, LStats, LLabels: string;
   I: Integer;
@@ -635,14 +761,13 @@ end;
 
 function TMetricPoint.ToString: string;
 begin
-  Result := MCPBuildPointRow(Self);
+  Result := BuildPointRow(Self);
 end;
 
 { TMeterInstrument ------------------------------------------------------ }
 
-constructor TMeterInstrument.Create(AMeterName: string;
-  AKind: TMetricKind; const AName, ADescription, AUnitName: string;
-  AMaxSeries: Integer);
+constructor TMeterInstrument.Create(AMeterName: string; AKind: TMetricKind;
+  const AName, ADescription, AUnitName: string; AMaxSeries: Integer);
 begin
   inherited Create;
   FMeterName := AMeterName;
@@ -670,14 +795,13 @@ begin
       [FName, MetricKindToStr(FKind), MetricKindToStr(AKind)]);
 end;
 
-function TMeterInstrument.FindSeries(
-  const ALabels: TArray<TMetricLabel>): Integer;
+function TMeterInstrument.FindSeries(const ALabels: TArray<TMetricLabel>): Integer;
 var
-  I: Integer;
+  LIndex: Integer;
 begin
-  for I := 0 to FSeries.Count - 1 do
-    if MCPSameLabels(FSeries[I].Labels, ALabels) then
-      Exit(I);
+  for LIndex := 0 to FSeries.Count - 1 do
+    if SameLabels(FSeries[LIndex].Labels, ALabels) then
+      Exit(LIndex);
   Result := -1;
 end;
 
@@ -721,17 +845,16 @@ begin
   end;
 end;
 
-procedure TMeterInstrument.RecordSample(const ALabels: array of string;
-  const AValue: Double);
+procedure TMeterInstrument.RecordSample(const ALabels: array of string; const AValue: Double);
 var
   LLabels: TArray<TMetricLabel>;
   LIndex: Integer;
   LSeries: TMetricSeries;
 begin
-  if _Shutdown then
+  if TMetrics.FShutdown then
     Exit; // process is tearing the metrics subsystem down: drop quietly
 
-  LLabels := MCPNormalizeLabels(ALabels);
+  LLabels := NormalizeLabels(ALabels);
 
   FLock.Enter;
   try
@@ -1082,7 +1205,7 @@ begin
 
   // Sorted outside the lock, on a copy nobody else can see: harvests taken at
   // different moments line up point by point.
-  MCPSortPoints(Result);
+  SortPoints(Result);
 end;
 
 procedure TMeterProviderImpl.Harvest(const AReset: Boolean = False);
@@ -1125,9 +1248,23 @@ end;
 
 { TMetrics -------------------------------------------------------------- }
 
+class constructor TMetrics.Create;
+begin
+  FDefaultLock := TCriticalSection.Create;
+end;
+
+class destructor TMetrics.Destroy;
+begin
+  // The default provider must go away before the lock that guards it.
+  FShutdown := True;
+  FDefault := nil;
+  FDefaultLock.Free;
+  FDefaultLock := nil;
+end;
+
 class function TMetrics.Default: IMeterProvider;
 begin
-  if _Shutdown then
+  if FShutdown then
     raise EMetricsError.Create(
       'Metrics: the MCPConnect.Metrics subsystem has been shut down');
   FDefaultLock.Enter;
@@ -1192,16 +1329,5 @@ class procedure TMetrics.RemoveExporter(const AExporter: IMetricExporter);
 begin
   Default.RemoveExporter(AExporter);
 end;
-
-initialization
-  _Shutdown := False;
-  TMetrics.FDefaultLock := TCriticalSection.Create;
-
-finalization
-  // The default provider must go away before the lock that guards it.
-  _Shutdown := True;
-  TMetrics.FDefault := nil;
-  TMetrics.FDefaultLock.Free;
-  TMetrics.FDefaultLock := nil;
 
 end.

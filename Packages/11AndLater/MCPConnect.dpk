@@ -89,7 +89,6 @@ contains
   MCPConnect.Metrics in '..\..\Source\MCPConnect.Metrics.pas',
   MCPConnect.Metrics.Exporters in '..\..\Source\MCPConnect.Metrics.Exporters.pas',
   MCPConnect.Metrics.Exporters.Files in '..\..\Source\MCPConnect.Metrics.Exporters.Files.pas',
-  MCPConnect.Metrics.Exporters.Logify in '..\..\Source\MCPConnect.Metrics.Exporters.Logify.pas',
   MCPConnect.Security.Jwks in '..\..\Source\MCPConnect.Security.Jwks.pas',
   MCPConnect.Security.Token in '..\..\Source\MCPConnect.Security.Token.pas',
   MCPConnect.Security.Token.JOSE in '..\..\Source\MCPConnect.Security.Token.JOSE.pas',

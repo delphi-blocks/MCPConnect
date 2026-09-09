@@ -116,37 +116,80 @@ uses
   System.JSON,
   System.Rtti,
   System.SysUtils,
+  System.TypInfo,
   System.Generics.Collections,
 
-  Neon.Core.Attributes,
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
   Neon.Core.Types;
 
 type
   /// <summary>
-  ///   Wire shape of one metric point, mapped from TMetricPoint so that the
-  ///   JSON stays self contained: Kind is already the lowercase string a
-  ///   consumer expects ("counter", "gauge", "histogram"), UnitName is renamed
-  ///   to "unit", and labels are rendered as a JSON object with the label keys
-  ///   sorted.
+  ///   Renders TMetricPoint.Labels as a JSON object - {"tool": "add_task"} -
+  ///   instead of the array of {key, value} pairs the field's own shape would
+  ///   produce. That object is the documented wire format (see Docs/metrics.md
+  ///   6.2) and the one a collector expects of an OpenTelemetry attribute set;
+  ///   the pair array is an implementation detail of how a series stores them.
+  ///   Keys come out in the series' own order, which is sorted by key.
   /// </summary>
-  TMetricJsonPoint = record
-    Meter: string;
-    Name: string;
-    Kind: string;
-    Description: string;
-    [NeonProperty('unit')]
-    UnitName: string;
-    Labels: TDictionary<string, string>;
-    Count: Int64;
-    Sum: Double;
-    Min: Double;
-    Max: Double;
-    Last: Double;
-    FirstSeen: TDateTime;
-    LastSeen: TDateTime;
+  TMetricLabelsSerializer = class(TCustomSerializer)
+  protected
+    class function GetTargetInfo: PTypeInfo; override;
+    class function CanHandle(AType: PTypeInfo): Boolean; override;
+  public
+    function Serialize(const AValue: TValue; ANeonObject: TNeonRttiObject;
+      AContext: ISerializerContext): TJSONValue; override;
+    function Deserialize(AValue: TJSONValue; const AData: TValue;
+      ANeonObject: TNeonRttiObject; AContext: IDeserializerContext): TValue; override;
   end;
+
+{ TMetricLabelsSerializer }
+
+class function TMetricLabelsSerializer.GetTargetInfo: PTypeInfo;
+begin
+  Result := TypeInfo(TArray<TMetricLabel>);
+end;
+
+class function TMetricLabelsSerializer.CanHandle(AType: PTypeInfo): Boolean;
+begin
+  // Compared by type info, not by TypeInfoIs: that helper only ever matches
+  // class types, and the target here is a dynamic array.
+  Result := AType = GetTargetInfo;
+end;
+
+function TMetricLabelsSerializer.Serialize(const AValue: TValue;
+  ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue;
+var
+  LLabels: TArray<TMetricLabel>;
+  LLabel: TMetricLabel;
+  LResult: TJSONObject;
+begin
+  LLabels := AValue.AsType<TArray<TMetricLabel>>;
+
+  LResult := TJSONObject.Create;
+  for LLabel in LLabels do
+    LResult.AddPair(LLabel.Key, LLabel.Value);
+  Result := LResult;
+end;
+
+function TMetricLabelsSerializer.Deserialize(AValue: TJSONValue;
+  const AData: TValue; ANeonObject: TNeonRttiObject;
+  AContext: IDeserializerContext): TValue;
+var
+  LObject: TJSONObject;
+  LLabels: TArray<TMetricLabel>;
+  LIndex: Integer;
+begin
+  LObject := AValue as TJSONObject;
+
+  SetLength(LLabels, LObject.Count);
+  for LIndex := 0 to LObject.Count - 1 do
+  begin
+    LLabels[LIndex].Key := LObject.Pairs[LIndex].JsonString.Value;
+    LLabels[LIndex].Value := LObject.Pairs[LIndex].JsonValue.Value;
+  end;
+  Result := TValue.From<TArray<TMetricLabel>>(LLabels);
+end;
 
 function MetricsToText(const APoints: TArray<TMetricPoint>): string;
 var
@@ -173,41 +216,15 @@ var
   LConfig: INeonConfiguration;
   LArray: TJSONArray;
   LPoint: TMetricPoint;
-  LLabel: TMetricLabel;
-  LExport: TMetricJsonPoint;
 begin
   LConfig := TNeonConfiguration.Camel
-    .SetMapSort(TNeonSort.Alpha);
+    .RegisterSerializer(TMetricLabelsSerializer);
 
   LArray := TJSONArray.Create;
   try
     for LPoint in APoints do
-    begin
-      LExport := Default(TMetricJsonPoint);
-      LExport.Meter := LPoint.Meter;
-      LExport.Name := LPoint.Name;
-      LExport.Kind := MetricKindToStr(LPoint.Kind);
-      LExport.Description := LPoint.Description;
-      LExport.UnitName := LPoint.UnitName;
-      LExport.Count := LPoint.Count;
-      LExport.Sum := LPoint.Sum;
-      LExport.Min := LPoint.Min;
-      LExport.Max := LPoint.Max;
-      LExport.Last := LPoint.Last;
-      LExport.FirstSeen := LPoint.FirstSeen;
-      LExport.LastSeen := LPoint.LastSeen;
-
-      LExport.Labels := TDictionary<string, string>.Create;
-      try
-        for LLabel in LPoint.Labels do
-          LExport.Labels.Add(LLabel.Key, LLabel.Value);
-
-        LArray.AddElement(
-          TNeon.ValueToJSON(TValue.From<TMetricJsonPoint>(LExport), LConfig));
-      finally
-        LExport.Labels.Free;
-      end;
-    end;
+      LArray.AddElement(
+        TNeon.ValueToJSON(TValue.From<TMetricPoint>(LPoint), LConfig));
 
     // Single line, with the control/high characters escaped the way Neon's
     // printer escapes them (a plain ToString would leave some of them raw).

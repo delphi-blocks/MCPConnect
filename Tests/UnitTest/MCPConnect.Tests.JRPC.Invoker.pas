@@ -103,6 +103,8 @@ type
     procedure TestHandleJRPCException();
     [Test]
     procedure TestHandleGenericException();
+    [Test]
+    procedure TestHandleGenericExceptionExposed();
 
     // Separator tests
     [Test]
@@ -515,12 +517,47 @@ begin
     try
       Assert.IsNotNull(LError, 'Error response should not be nil');
       Assert.AreEqual(JRPC_INTERNAL_ERROR, LError.Error.Code.Value, 'Error code should be INTERNAL_ERROR for generic exceptions');
-      Assert.AreEqual('Generic error', LError.Error.Message.Value, 'Error message should match exception message');
-      Assert.AreEqual('Exception: Generic error', LError.Error.Data.AsType<string>, 'Error data should contain exception chain detail');
+
+      // An exception the server did not anticipate says nothing about itself on
+      // the wire by default: RTL messages routinely carry instance addresses,
+      // module names and code offsets, and the Delphi class name describes the
+      // server's internals rather than anything the caller can act on. The
+      // detail reaches the logger instead - see TJRPCError.SetUnexpectedDetails.
+      Assert.AreEqual(SJRPCUnexpectedError, LError.Error.Message.Value,
+        'an unanticipated exception must not put its message on the wire');
+      Assert.IsTrue(LError.Error.Data.IsEmpty,
+        'an unanticipated exception must not put its class name on the wire');
     finally
       LError.Free;
     end;
   finally
+    LException.Free;
+  end;
+end;
+
+procedure TJRPCInvokerTest.TestHandleGenericExceptionExposed;
+var
+  LError: TJRPCError;
+  LId: TJRPCID;
+  LException: Exception;
+begin
+  LId := 11;
+  LException := Exception.Create('Generic error');
+  TJRPCError.ExposeExceptionDetails := True;
+  try
+    LError := TJRPCInvoker.HandleError(LException, LId);
+    try
+      Assert.AreEqual(JRPC_INTERNAL_ERROR, LError.Error.Code.Value, 'Error code should be INTERNAL_ERROR for generic exceptions');
+      Assert.AreEqual('Generic error', LError.Error.Message.Value,
+        'the opt-in puts the exception message on the wire');
+      Assert.AreEqual('Exception', LError.Error.Data.AsType<string>,
+        'the opt-in puts the exception class name in "data"');
+    finally
+      LError.Free;
+    end;
+  finally
+    // A class property: left on, it would leak into every fixture after this one
+    TJRPCError.ExposeExceptionDetails := False;
     LException.Free;
   end;
 end;

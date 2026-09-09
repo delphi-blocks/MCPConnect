@@ -33,6 +33,7 @@ uses
   MCPConnect.Configuration.MCP,
   MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Errors,
+  MCPConnect.MCP.Types.Notifications,
   MCPConnect.JRPC.Middleware,
   MCPConnect.MCP.Server;
 
@@ -283,6 +284,23 @@ type
     class function MethodNameOf(AMessage: TJRPCMessage): string; static;
     procedure SendResponseHeaders(AResponse: TMCPTransportResponse);
     procedure WriteSSEResponse(const AValue: string; const AEventId: string = '');
+
+    /// <summary>
+    ///   Whether AMessage is a progress notification for a request that never
+    ///   asked for one.
+    /// </summary>
+    /// <remarks>
+    ///   A progress notification may reference only a token an active request
+    ///   provided, so one sent for a request that provided none references
+    ///   something a tool made up. True only once the request "_meta" has
+    ///   actually been read: with that check turned off nobody knows what the
+    ///   client asked for, and unverifiable is not the same as wrong.
+    ///
+    ///   A method rather than a local of HandlePOST, because the queue is
+    ///   drained through an anonymous method and one of those cannot capture a
+    ///   nested procedure.
+    /// </remarks>
+    function IsUnsolicitedProgress(AMessage: TJRPCMessage): Boolean;
 
     procedure HandlePOST;
     procedure HandleOPTIONS;
@@ -703,6 +721,18 @@ begin
   FResponse.Content := '';
 end;
 
+function TMCPTransportHandler.IsUnsolicitedProgress(AMessage: TJRPCMessage): Boolean;
+var
+  LProgress: TMCPProgress;
+begin
+  if not (AMessage is TJRPCNotification) or
+     (TJRPCNotification(AMessage).Method <> MCP_NOTIFY_PROGRESS) then
+    Exit(False);
+
+  LProgress := FContext.FindContextDataAs<TMCPProgress>;
+  Result := Assigned(LProgress) and LProgress.Known and not LProgress.Wanted;
+end;
+
 procedure TMCPTransportHandler.HandlePOST;
 const
   QueueReadTimeout = 500;
@@ -714,7 +744,11 @@ var
     AResponseList.Process(
       procedure (AMessage: TJRPCMessage; var ADispose: Boolean)
       begin
-        if FRequest.AcceptsEventStream and FResponseWriter.SupportsStreaming then
+        if IsUnsolicitedProgress(AMessage) then
+        begin
+          Logger.LogDebug('Progress notification dropped, the request asked for none');
+        end
+        else if FRequest.AcceptsEventStream and FResponseWriter.SupportsStreaming then
         begin
           WriteSSEResponse(AMessage.ToJson);
         end
@@ -768,6 +802,14 @@ begin
   var LResponseQueue := TMCPMessageQueue.Create;
   FGarbage.Add(LResponseQueue);
   FContext.AddContent(LResponseQueue);
+
+  // The progress channel of this request, in the context from here on so that
+  // a tool can be injected with one whatever the request turns out to carry.
+  // What it carries is told to it by TMCPRequestMetaMiddleware, which is the
+  // only thing that reads the token.
+  var LProgress := TMCPProgress.Create(LResponseQueue);
+  FGarbage.Add(LProgress);
+  FContext.AddContent(LProgress);
 
   // This list contains the responses in case SSE channel is not active
   LResponseList := TJRPCMessages.Create(True);

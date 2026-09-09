@@ -47,6 +47,10 @@ const
   /// </summary>
   MCP_META_SUBSCRIPTION_ID = 'io.modelcontextprotocol/subscriptionId';
 
+resourcestring
+  SMCPProgressNotIncreasingFmt =
+    'Progress report dropped: %g does not advance on the %g already reported';
+
 type
   /// <summary>
   ///   Extends MetaObject with the notification-specific fields. All key naming
@@ -249,7 +253,81 @@ type
     class function ResourceUpdated(const AUri: string): TJRPCNotification; static;
   end;
 
+  /// <summary>
+  ///   The progress channel of the request being served: what a long-running
+  ///   tool reports through, and the only thing that knows whether the client
+  ///   asked to hear about it.
+  /// </summary>
+  /// <remarks>
+  ///   Injected with [Context]:
+  ///
+  ///     [Context] FProgress: TMCPProgress;
+  ///     ...
+  ///     FProgress.Report(3, 10, 'Indexing');
+  ///
+  ///   Reporting on a request that carried no progressToken does nothing, which
+  ///   is the specification's rule and the reason to go through this rather than
+  ///   enqueue a notification by hand: a progress notification MUST only ever
+  ///   reference a token an active request provided, and a tool has no way to
+  ///   know whether it did.
+  ///
+  ///   The channel is put in the request context by the transport and told the
+  ///   token by TMCPRequestMetaMiddleware, so it is there whether or not the
+  ///   client asked for anything - a tool never needs to test it for nil. When
+  ///   the "_meta" check is turned off nobody reads the request's token, and
+  ///   the channel then reports nothing at all: without a token there is
+  ///   nothing to report on.
+  /// </remarks>
+  TMCPProgress = class
+  private
+    FToken: TJSONValue;
+    FQueue: TMCPMessageQueue;
+    FKnown: Boolean;
+    FLast: Double;
+    FStarted: Boolean;
+  public
+    constructor Create(AQueue: TMCPMessageQueue);
+    destructor Destroy; override;
+
+    /// <summary>
+    ///   Records what the request asked for: a copy of its progressToken, or
+    ///   nil when it carried none. Called by the middleware that reads the
+    ///   request "_meta", and by nothing else.
+    /// </summary>
+    procedure Declare(AToken: TJSONValue);
+
+    /// <summary>
+    ///   True when this request asked for progress. A tool that has something
+    ///   expensive to prepare *for* the reporting can skip it when this is
+    ///   False; a tool that just reports need not ask.
+    /// </summary>
+    function Wanted: Boolean;
+
+    /// <summary>
+    ///   True once the request's "_meta" has been read - which is what makes
+    ///   "no token" mean "the client asked for none" rather than "nobody
+    ///   looked". The transport uses it to decide whether an unsolicited
+    ///   progress notification is a violation or merely unverifiable.
+    /// </summary>
+    function Known: Boolean;
+
+    /// <summary>Reports progress with no known total.</summary>
+    procedure Report(AProgress: Double); overload;
+
+    /// <summary>Reports progress out of ATotal, with an optional message.</summary>
+    procedure Report(AProgress, ATotal: Double; const AMessage: string = ''); overload;
+  private
+    /// <summary>
+    ///   Whether AProgress may be reported: it has to be larger than the last
+    ///   one, which is what the specification requires of the sequence.
+    /// </summary>
+    function Advance(AProgress: Double): Boolean;
+  end;
+
 implementation
+
+uses
+  Logify;
 
 { TNotificationMetaObject }
 
@@ -550,6 +628,82 @@ begin
   LParams.Uri := AUri;
 
   Result := FromParams(MCP_NOTIFY_RESOURCES_UPDATED, LParams);
+end;
+
+{ TMCPProgress }
+
+constructor TMCPProgress.Create(AQueue: TMCPMessageQueue);
+begin
+  inherited Create;
+  FQueue := AQueue;
+end;
+
+destructor TMCPProgress.Destroy;
+begin
+  FToken.Free;
+  inherited;
+end;
+
+procedure TMCPProgress.Declare(AToken: TJSONValue);
+begin
+  FreeAndNil(FToken);
+
+  // Copied, not adopted: the token belongs to the request's "_meta", which is
+  // freed with the request and may well outlive nothing at all.
+  if Assigned(AToken) and not (AToken is TJSONNull) then
+    FToken := AToken.Clone as TJSONValue;
+
+  FKnown := True;
+end;
+
+function TMCPProgress.Wanted: Boolean;
+begin
+  Result := Assigned(FToken) and Assigned(FQueue);
+end;
+
+function TMCPProgress.Known: Boolean;
+begin
+  Result := FKnown;
+end;
+
+procedure TMCPProgress.Report(AProgress: Double);
+begin
+  if not Wanted then
+    Exit;
+
+  if not Advance(AProgress) then
+    Exit;
+
+  FQueue.Enqueue(TMCPNotification.Progress(FToken, AProgress));
+end;
+
+procedure TMCPProgress.Report(AProgress, ATotal: Double; const AMessage: string);
+begin
+  if not Wanted then
+    Exit;
+
+  if not Advance(AProgress) then
+    Exit;
+
+  FQueue.Enqueue(TMCPNotification.Progress(FToken, AProgress, ATotal, AMessage));
+end;
+
+function TMCPProgress.Advance(AProgress: Double): Boolean;
+begin
+  // "The progress value MUST increase with each notification, even if the total
+  // is unknown." A report that does not is dropped rather than sent: a client
+  // reading a value that went backwards has been told something false, and the
+  // caller almost certainly meant to pass a different number.
+  Result := not FStarted or (AProgress > FLast);
+
+  if not Result then
+  begin
+    Logger.LogWarning(SMCPProgressNotIncreasingFmt, [AProgress, FLast]);
+    Exit;
+  end;
+
+  FLast := AProgress;
+  FStarted := True;
 end;
 
 end.

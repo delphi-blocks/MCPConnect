@@ -84,6 +84,8 @@ uses
   MCPConnect.Tests.Transport.Status in 'MCPConnect.Tests.Transport.Status.pas',
   MCPConnect.Tests.Transport.ServerInfo in 'MCPConnect.Tests.Transport.ServerInfo.pas',
   MCPConnect.Tests.Transport.Caching in 'MCPConnect.Tests.Transport.Caching.pas',
+  MCPConnect.Tests.Transport.MrtrCapabilities in 'MCPConnect.Tests.Transport.MrtrCapabilities.pas',
+  MCPConnect.Tests.Transport.Progress in 'MCPConnect.Tests.Transport.Progress.pas',
   MCPConnect.Tests.Transport.Batch in 'MCPConnect.Tests.Transport.Batch.pas',
   MCPConnect.Tests.MCP.Errors in 'MCPConnect.Tests.MCP.Errors.pas',
   MCPConnect.Tests.MCP.Completion in 'MCPConnect.Tests.MCP.Completion.pas',

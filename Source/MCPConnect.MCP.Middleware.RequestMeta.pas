@@ -121,6 +121,7 @@ uses
   Neon.Core.Persistence.JSON,
 
   MCPConnect.MCP.Types.Errors,
+  MCPConnect.MCP.Types.Notifications,
   MCPConnect.Configuration.MCP;
 
 { TMCPRequestMetaMiddleware }
@@ -170,6 +171,7 @@ var
   LMetaJSON: TJSONValue;
   LMeta: TRequestMetaObject;
   LDeclared: TMCPDeclaredCapabilities;
+  LProgress: TMCPProgress;
 begin
   LConfig := AContext.Find<TMCPConfig>;
 
@@ -259,6 +261,14 @@ begin
       TJSONObject(LMetaJSON).GetValue(MCP_META_CLIENT_CAPABILITIES) as TJSONObject));
   AContext.Own(LDeclared);
   AContext.RPCContext.AddContent(LDeclared);
+
+  // And the progress token to the channel the transport put in the context.
+  // Told even when there is none: "the client asked for no progress" is a fact
+  // worth knowing, and it is what lets the transport tell an unsolicited
+  // progress notification from an unverifiable one.
+  LProgress := AContext.Find<TMCPProgress>;
+  if Assigned(LProgress) then
+    LProgress.Declare(LMeta.ProgressToken);
 
   AChain.Next(AContext);
 end;

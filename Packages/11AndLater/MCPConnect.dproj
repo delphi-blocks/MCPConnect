@@ -1,4 +1,4 @@
-﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <PropertyGroup>
         <ProjectGuid>{75F9AE11-84E6-446E-AEA1-A253010C6B2F}</ProjectGuid>
         <MainSource>MCPConnect.dpk</MainSource>
@@ -125,6 +125,7 @@
         <DCCReference Include="..\..\Source\MCPConnect.Content.Writers.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Content.Writers.RTL.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.JRPC.Middleware.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Logging.Memory.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Attributes.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Config.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Invoker.pas"/>
@@ -144,6 +145,10 @@
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Subscriptions.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Tool.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Tools.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Metrics.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Metrics.Exporters.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Metrics.Exporters.Files.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Metrics.Exporters.Logify.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Security.Jwks.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Security.Token.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Security.Token.JOSE.pas"/>

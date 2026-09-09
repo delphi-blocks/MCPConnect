@@ -58,6 +58,7 @@ type
     function Remove(AId: Integer): Boolean;
     function ToText(): string;
     function GetSummary(): string;
+    function CountTasks(): Integer;
 
     procedure Lock();
     procedure Unlock();
@@ -86,12 +87,21 @@ type
     function DeleteTask(
       [McpParam('task_id', 'ID of the task to delete')] ATaskId: Integer
     ): TBaseResult;
+
+    [McpTool('metrics_report', 'Harvests the metrics the demo collects on each todo tool call')]
+    function MetricsReport(): string;
   end;
 
 var
   TodoStore: TTodoStore;
 
 implementation
+
+uses
+  System.Diagnostics,
+
+  MCPConnect.Metrics,
+  MCPConnect.Metrics.Exporters;
 
 const
   STaskNotFound = 'Task with ID %d not found';
@@ -258,18 +268,57 @@ begin
   end;
 end;
 
+function TTodoStore.CountTasks(): Integer;
+begin
+  FLock.Enter();
+  try
+    Result := FTasks.Count;
+  finally
+    FLock.Leave();
+  end;
+end;
+
 { TTodoTool }
 
 function TTodoTool.AddTask(const ATitle: string; const ADescription: string): string;
 var
   LTask: TTaskItem;
+  LWatch: TStopwatch;
 begin
-  LTask := TodoStore.Add(ATitle, ADescription);
+  // One-liner measurements: a counter with a label, a duration histogram...
+  TMetrics
+    .Counter('todo.tool.calls', 'Todo tool invocations', 'calls')
+    .Add(1, ['tool', 'add_task']);
+
+  LWatch := TStopwatch.StartNew;
+  try
+    LTask := TodoStore.Add(ATitle, ADescription);
+  finally
+    LWatch.Stop;
+  end;
+
+  TMetrics
+    .Histogram('todo.tool.duration_ms', 'Todo tool duration', 'ms')
+    .Observe(LWatch.Elapsed.TotalMilliseconds, ['tool', 'add_task']);
+
+  // ...and a gauge keeping the current list size
+  TMetrics
+    .Gauge('todo.tasks.total', 'Tasks currently in the list', 'tasks')
+    .SetValue(TodoStore.CountTasks());
+
   Result := Format('Task #%d "%s" added successfully', [LTask.Id, LTask.Title]);
 end;
 
 function TTodoTool.ListTasks(): string;
 begin
+  TMetrics
+    .Counter('todo.tool.calls', 'Todo tool invocations', 'calls')
+    .Add(1, ['tool', 'list_tasks']);
+
+  TMetrics
+    .Gauge('todo.tasks.total', 'Tasks currently in the list', 'tasks')
+    .SetValue(TodoStore.CountTasks());
+
   Result := TodoStore.ToText();
 end;
 
@@ -277,6 +326,10 @@ function TTodoTool.CompleteTask(ATaskId: Integer): string;
 var
   LTask: TTaskItem;
 begin
+  TMetrics
+    .Counter('todo.tool.calls', 'Todo tool invocations', 'calls')
+    .Add(1, ['tool', 'complete_task']);
+
   TodoStore.Lock();
   try
     LTask := TodoStore.FindById(ATaskId);
@@ -294,6 +347,10 @@ var
   LTask: TTaskItem;
   LTitle: string;
 begin
+  TMetrics
+    .Counter('todo.tool.calls', 'Todo tool invocations', 'calls')
+    .Add(1, ['tool', 'delete_task']);
+
 //  if AParams.RequestState <> 'TEST' then
 //  begin
 //    var LParams := TElicitRequestParams.Create;
@@ -326,6 +383,24 @@ begin
   var LToolCallResult := TCallToolResult.Create;
   LToolCallResult.Content.AddText(LResult);
   Exit(LToolCallResult);
+end;
+
+function TTodoTool.MetricsReport(): string;
+var
+  LTarget: TStringList;
+  LExporter: IMetricExporter;
+begin
+  // Harvesting "later": everything the tools recorded since the server
+  // started is rendered through the sample text exporter and returned as a
+  // report any MCP client can ask for.
+  LTarget := TStringList.Create();
+  try
+    LExporter := TMetricTextExporter.Create(LTarget);
+    LExporter.Export(TMetrics.Collect);
+    Result := LTarget.Text;
+  finally
+    LTarget.Free();
+  end;
 end;
 
 initialization

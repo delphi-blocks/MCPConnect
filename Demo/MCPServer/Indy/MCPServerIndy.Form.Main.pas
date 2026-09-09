@@ -30,12 +30,14 @@ interface
 
 uses
   Winapi.Messages, System.SysUtils, System.Classes, Vcl.Graphics, Vcl.Controls,
-  Vcl.Forms, Vcl.Dialogs, Vcl.AppEvnts, Vcl.StdCtrls,
+  Vcl.Forms, Vcl.Dialogs, Vcl.AppEvnts, Vcl.StdCtrls, Vcl.ExtCtrls,
 
   Logify,
   Logify.Adapter.Buffer,
 
+  MCPConnect.Logging.Memory,
   MCPConnect.MCP.Server,
+  MCPConnect.Metrics,
   MCPConnect.Transport.Indy;
 
 type
@@ -62,6 +64,23 @@ type
     /// </summary>
     FServer: TMCPIndyServer;
     FLogifyAdapterFactory: ILoggerAdapterFactory;
+    /// <summary>
+    ///   Periodic harvester of the demo telemetry: every tick the collected
+    ///   counters are exported to metrics.jsonl (delta per tick) through the
+    ///   file sink, and the [PERF] measurements are written to perf.log.
+    /// </summary>
+    FTimer: TTimer;
+    /// <summary>The TMetricFileExporter writing metrics.jsonl next to the .exe.</summary>
+    FMetricsExporter: IMetricExporter;
+    /// <summary>
+    ///   Where the [PERF] lines end up. The memory adapter below parses each
+    ///   one into a measurement and aggregates it per key; the store survives
+    ///   the memo being cleared and is what SavePerfReport prints.
+    /// </summary>
+    FPerfLog: TMCPMemoryLog;
+    FPerfLogFactory: ILoggerAdapterFactory;
+    procedure HarvestTelemetry(Sender: TObject);
+    procedure SavePerfReport;
     procedure StartServer;
   public
     { Public declarations }
@@ -76,9 +95,20 @@ implementation
 
 uses
   WinApi.Windows, Winapi.ShellApi,
+  System.DateUtils, System.IOUtils,
 
   // The shared, transport-independent server definition.
-  MCPServer.Config;
+  MCPServer.Config,
+  MCPConnect.Metrics.Exporters.Files;
+
+/// <summary>
+///   The [PERF] report, next to the .exe. Rewritten in full on every tick and
+///   at shutdown, so it always holds the latest snapshot rather than a history.
+/// </summary>
+function PerfReportFileName: string;
+begin
+  Result := TPath.Combine(TPath.GetAppPath, 'perf.log');
+end;
 
 { TfrmMain }
 
@@ -89,6 +119,16 @@ begin
   // TStrings target (memoLog.Lines) on the main thread via a timer.
   FLogifyAdapterFactory := TLogifyAdapterBufferFactory.CreateAdapterFactory(TLogLevel.Trace, memoLog.Lines);
   TLoggerAdapterRegistry.Instance.RegisterFactory(FLogifyAdapterFactory);
+
+  // A second adapter on the same log, this one keeping it in memory. It is
+  // registered at Debug because that is the level the [PERF] lines are logged
+  // at - at Info or above nothing would be captured. The store is perf-only:
+  // every other line is counted and dropped, so the memo stays the place to
+  // read the log and this one only accumulates measurements.
+  FPerfLog := TMCPMemoryLog.Create;
+  FPerfLogFactory := TLogifyAdapterMemoryFactory.CreateAdapterFactory(
+    'Perf log', TLogLevel.Debug, FPerfLog);
+  TLoggerAdapterRegistry.Instance.RegisterFactory(FPerfLogFactory);
 
   // 1) Build the transport.
   //    CreateMCPServer is a convenience factory: it creates the Indy server,
@@ -104,10 +144,99 @@ begin
 
   // 3) Open the socket.
   StartServer;
+
+  // 4) Metrics: append the collected measurements to a JSON-lines file next
+  //    to the .exe and export them as deltas every 30 seconds. Recording
+  //    happens in the demo tools (MCPServer.Tools.pas), so nothing is written
+  //    until a tool is called; the same default provider backs the
+  //    metrics_report tool, which therefore reports what happened since the
+  //    last tick.
+  FMetricsExporter := TMetricFileExporter.Create(
+    TPath.Combine(TPath.GetAppPath, 'metrics.jsonl'));
+  TMetrics.AddExporter(FMetricsExporter);
+
+  FTimer := TTimer.Create(Self);
+  FTimer.Interval := 30000;
+  FTimer.OnTimer := HarvestTelemetry;
+  FTimer.Enabled := True;
+
+  Logger.Log(Format('Metrics: exporting a delta every %d ms to %s', [
+    FTimer.Interval, TPath.Combine(TPath.GetAppPath, 'metrics.jsonl')]), TLogLevel.Debug);
+  Logger.Log(Format('Perf: [PERF] measurements captured in memory, report written to %s', [
+    PerfReportFileName]), TLogLevel.Debug);
+end;
+
+procedure TfrmMain.HarvestTelemetry(Sender: TObject);
+begin
+  // A delta per tick would still write an empty "[]" line when nothing was
+  // recorded since the previous tick, so only harvest when there is data.
+  if Length(TMetrics.Collect) > 0 then
+    TMetrics.Harvest(True);
+
+  SavePerfReport;
+end;
+
+procedure TfrmMain.SavePerfReport;
+var
+  LReport: TStringBuilder;
+  LSample: TMCPPerfSample;
+begin
+  // Nothing measured yet (no request has been served): writing now would only
+  // overwrite a previous, useful snapshot with an empty one.
+  if FPerfLog.PerfCount = 0 then
+    Exit;
+
+  LReport := TStringBuilder.Create;
+  try
+    LReport.AppendLine('MCPConnect - Indy demo');
+    LReport.AppendLine('[PERF] snapshot of ' + DateToISO8601(Now, False));
+    LReport.AppendLine;
+
+    // The statistics cover every measurement since the server started: they
+    // are folded in as the lines arrive and survive the sample ring rolling
+    // over, which the raw list below does not.
+    LReport.AppendLine(FPerfLog.PerfReport);
+
+    LReport.AppendLine(Format('Last %d measurements, oldest first', [Length(FPerfLog.PerfSamples)]));
+    LReport.AppendLine(StringOfChar('-', 107));
+    for LSample in FPerfLog.PerfSamples do
+      LReport.AppendLine(Format('%s [%d] %s', [
+        DateToISO8601(LSample.Timestamp, False),
+        UInt64(LSample.ThreadId),
+        LSample.ToString]));
+
+    try
+      TFile.WriteAllText(PerfReportFileName, LReport.ToString, TEncoding.UTF8);
+    except
+      // This runs on a timer and again while the form is closing: a file held
+      // open by an editor must not take the demo down with it.
+      on E: Exception do
+        Logger.LogWarning(E, 'Could not write ' + PerfReportFileName);
+    end;
+  finally
+    LReport.Free;
+  end;
 end;
 
 procedure TfrmMain.FormDestroy(Sender: TObject);
 begin
+  // Stop the periodic harvest and close metrics.jsonl (releasing the exporter
+  // closes the file it opened).
+  FTimer.Enabled := False;
+  if Assigned(FMetricsExporter) then
+  begin
+    TMetrics.RemoveExporter(FMetricsExporter);
+    FMetricsExporter := nil;
+  end;
+
+  // Last snapshot, covering whatever happened since the final tick, then the
+  // adapter goes before the store it writes into: a background thread still
+  // logging would otherwise reach a freed TMCPMemoryLog.
+  SavePerfReport;
+  TLoggerAdapterRegistry.Instance.UnregisterFactory(FPerfLogFactory);
+  FPerfLogFactory := nil;
+  FreeAndNil(FPerfLog);
+
   // Unregister before the memo is destroyed, otherwise background threads
   // still logging would write to a freed TStrings and cause an AV.
   TLoggerAdapterRegistry.Instance.UnregisterFactory(FLogifyAdapterFactory);

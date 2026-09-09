@@ -1,4 +1,4 @@
-﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <PropertyGroup>
         <ProjectGuid>{D4D7C0B4-429F-49B7-ACAB-4E6BF3C4F304}</ProjectGuid>
         <ProjectVersion>20.4</ProjectVersion>
@@ -162,6 +162,11 @@
         <DCCReference Include="..\..\Source\MCPConnect.Transport.AcceptParser.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Transport.MediaType.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Transport.Base.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Logging.Memory.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Metrics.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Metrics.Exporters.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Metrics.Exporters.Files.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Metrics.Exporters.Logify.pas"/>
         <DCCReference Include="MCPConnect.Tests.JRPC.Core.pas"/>
         <DCCReference Include="MCPConnect.Tests.JRPC.Middleware.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Middleware.pas"/>
@@ -187,6 +192,8 @@
         <DCCReference Include="MCPConnect.Tests.MCP.RequestMeta.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Resources.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Capabilities.pas"/>
+        <DCCReference Include="MCPConnect.Tests.Logging.Memory.pas"/>
+        <DCCReference Include="MCPConnect.Tests.Metrics.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

@@ -344,7 +344,7 @@ begin
     HandleOPTIONS
   else
     raise EMCPTransportException.Create(HTTP_CODE_NOTALLOWED, SHttpMethodNotAllowed);
-  Logger.LogDebug('[PERF] HandleCOMMAND: %d ms', [LFragment.ElapsedMilliseconds]);
+  Logger.LogDebug('[PERF] Transport [%s] Dispatch: %d ms', [FRequest.Command, LFragment.ElapsedMilliseconds]);
 end;
 
 procedure TMCPTransportHandler.ProcessRequest(
@@ -360,7 +360,7 @@ begin
     {$IFDEF FULL_PAYLOAD_LOGGING}
     Logger.LogTrace('[REQ] %s', [FRequest.Content]);
     {$ENDIF}
-    Logger.LogDebug('[PERF] RequestConverter: %d ms', [LFragment.ElapsedMilliseconds]);
+    Logger.LogDebug('[PERF] Transport RequestConverter: %d ms', [LFragment.ElapsedMilliseconds]);
 
     try
       // Built first thing, before any check, because the transport chain runs
@@ -424,7 +424,7 @@ begin
     try
       AResponseConverter(FResponse);
     finally
-      Logger.LogDebug('[PERF] %s %s total: %d ms (HTTP: %d)', [FRequest.Command, FRequest.Url, LStopwatch.ElapsedMilliseconds, FResponse.Code]);
+      Logger.LogDebug('[PERF] Transport [%s %s] total: %d ms (HTTP: %d)', [FRequest.Command, FRequest.Url, LStopwatch.ElapsedMilliseconds, FResponse.Code]);
       {$IFDEF FULL_PAYLOAD_LOGGING}
       Logger.LogTrace('[RES] %s', [FResponse.Content]);
       {$ENDIF}
@@ -709,7 +709,7 @@ begin
       LRequestList.AddMessage(TJRPCError.CreateFromException(E, LErrorId));
     end;
   end;
-  Logger.LogDebug('[PERF] CreateFromJSON total: %d ms', [LFragment.ElapsedMilliseconds]);
+  Logger.LogDebug('[PERF] Transport CreateFromJSON: %d ms', [LFragment.ElapsedMilliseconds]);
 
   FGarbage.Add(LRequestList);
 
@@ -763,7 +763,7 @@ begin
   finally
     LAsyncExecute.Free;
   end;
-  Logger.LogDebug('[PERF] CreateAsyncQueue total: {%d} ms', [LFragment.ElapsedMilliseconds]);
+  Logger.LogDebug('[PERF] Transport CreateAsyncQueue: %d ms', [LFragment.ElapsedMilliseconds]);
 
 end;
 

@@ -59,6 +59,11 @@ uses
   MCPConnect.Transport.AcceptParser in '..\..\Source\MCPConnect.Transport.AcceptParser.pas',
   MCPConnect.Transport.MediaType in '..\..\Source\MCPConnect.Transport.MediaType.pas',
   MCPConnect.Transport.Base in '..\..\Source\MCPConnect.Transport.Base.pas',
+  MCPConnect.Logging.Memory in '..\..\Source\MCPConnect.Logging.Memory.pas',
+  MCPConnect.Metrics in '..\..\Source\MCPConnect.Metrics.pas',
+  MCPConnect.Metrics.Exporters in '..\..\Source\MCPConnect.Metrics.Exporters.pas',
+  MCPConnect.Metrics.Exporters.Files in '..\..\Source\MCPConnect.Metrics.Exporters.Files.pas',
+  MCPConnect.Metrics.Exporters.Logify in '..\..\Source\MCPConnect.Metrics.Exporters.Logify.pas',
   MCPConnect.Tests.JRPC.Core in 'MCPConnect.Tests.JRPC.Core.pas',
   MCPConnect.Tests.JRPC.Middleware in 'MCPConnect.Tests.JRPC.Middleware.pas',
   MCPConnect.Tests.MCP.Middleware in 'MCPConnect.Tests.MCP.Middleware.pas',
@@ -84,7 +89,9 @@ uses
   MCPConnect.Tests.MCP.RequestMeta in 'MCPConnect.Tests.MCP.RequestMeta.pas',
   MCPConnect.Tests.MCP.Resources in 'MCPConnect.Tests.MCP.Resources.pas',
   MCPConnect.Tests.MCP.Capabilities in 'MCPConnect.Tests.MCP.Capabilities.pas',
-  MCPConnect.Tests.MCP.ToolNames in 'MCPConnect.Tests.MCP.ToolNames.pas';
+  MCPConnect.Tests.MCP.ToolNames in 'MCPConnect.Tests.MCP.ToolNames.pas',
+  MCPConnect.Tests.Logging.Memory in 'MCPConnect.Tests.Logging.Memory.pas',
+  MCPConnect.Tests.Metrics in 'MCPConnect.Tests.Metrics.pas';
 
 var
   runner : ITestRunner;

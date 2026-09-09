@@ -11,7 +11,42 @@
 
 ## Getting Started
 
-Please follow the documentation at [mcpconnect.delphiblocks.dev](https://mcpconnect.delphiblocks.dev/)!
+MCPConnect requires **Delphi 11 Alexandria or newer** (tested on 11, 12 and 13) and four dependencies: [Delphi-JRPC](https://github.com/delphi-blocks/Delphi-JRPC) (JSON-RPC 2.0 layer), [Neon](https://github.com/paolo-rossi/delphi-neon) (serialization), [Logify](https://github.com/delphi-blocks/Logify) (logging) and [JOSE-JWT](https://github.com/paolo-rossi/delphi-jose-jwt) (JWT validation).
+
+### Manual installation
+
+The dependencies live in the `Libs` folder of the MCPConnect repository, each in its own subfolder:
+
+```
+MCPConnect
+└── Libs
+    ├── Logify	  (Logify)
+    ├── JRPC      (Delphi-JRPC)
+    ├── Neon	  (delphi-neon)
+    └── JWT       (delphi-jose-jwt)
+```
+
+Clone MCPConnect, then clone the dependencies into `Libs` using exactly these folder names:
+
+```bash
+git clone https://github.com/delphi-blocks/MCPConnect
+git clone https://github.com/delphi-blocks/Logify ./MCPConnect/Libs/Logify
+git clone https://github.com/delphi-blocks/Delphi-JRPC ./MCPConnect/Libs/JRPC
+git clone https://github.com/paolo-rossi/delphi-neon ./MCPConnect/Libs/Neon
+git clone https://github.com/paolo-rossi/delphi-jose-jwt ./MCPConnect/Libs/JWT
+```
+
+### Installation with Blocks
+
+MCPConnect is also available through [Blocks](https://blocks.delphiblocks.dev/), the Delphi package manager, which downloads and wires up the dependencies for you:
+
+```bash
+winget install DelphiBlocks.Blocks
+blocks init
+blocks install delphi-blocks.mcpconnect
+```
+
+For the detailed instructions (package installation, search paths, IDE setup) please follow the documentation at [mcpconnect.delphiblocks.dev](https://mcpconnect.delphiblocks.dev/)!
 
 -----
 

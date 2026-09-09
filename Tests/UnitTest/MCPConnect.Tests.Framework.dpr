@@ -87,6 +87,7 @@ uses
   MCPConnect.Tests.Transport.MrtrCapabilities in 'MCPConnect.Tests.Transport.MrtrCapabilities.pas',
   MCPConnect.Tests.Transport.Progress in 'MCPConnect.Tests.Transport.Progress.pas',
   MCPConnect.Tests.MCP.StructuredContent in 'MCPConnect.Tests.MCP.StructuredContent.pas',
+  MCPConnect.Tests.Transport.Discover in 'MCPConnect.Tests.Transport.Discover.pas',
   MCPConnect.Tests.Transport.Batch in 'MCPConnect.Tests.Transport.Batch.pas',
   MCPConnect.Tests.MCP.Errors in 'MCPConnect.Tests.MCP.Errors.pas',
   MCPConnect.Tests.MCP.Completion in 'MCPConnect.Tests.MCP.Completion.pas',

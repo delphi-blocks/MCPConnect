@@ -213,6 +213,12 @@ type
     Version: string;
 
     /// <summary>
+    ///   Natural-language guidance about this server, reported by
+    ///   server/discover. Empty by default, and then absent from the result.
+    /// </summary>
+    Instructions: string;
+
+    /// <summary>
     ///   Whether every result carries the server's name and version in its
     ///   "_meta". Default: True, which is what the specification asks for.
     ///   A server that was never named reports nothing either way.
@@ -347,6 +353,19 @@ type
     /// </remarks>
     function SetCacheHints(ATtlMs: UInt64;
       AScope: TCacheScope = TCacheScope.ScopePrivate): TMCPServerConfig;
+
+    /// <summary>
+    ///   Natural-language guidance for the model about this server and what it
+    ///   is for, reported by server/discover.
+    /// </summary>
+    /// <param name="AInstructions">
+    ///   What helps a model use this server well - which tool to reach for
+    ///   first, what the ids look like, what this server is not for. A client
+    ///   may put it in a system prompt, so it should say what the tool
+    ///   descriptions do not already say rather than repeat them.
+    /// </param>
+    /// <returns>Self for fluent chaining</returns>
+    function SetInstructions(const AInstructions: string): TMCPServerConfig;
 
     /// <summary>
     ///   Registers a custom content writer for handling complex return types.
@@ -1465,6 +1484,12 @@ function TMCPServerConfig.SetCacheHints(ATtlMs: UInt64;
   AScope: TCacheScope): TMCPServerConfig;
 begin
   CacheHints := TMCPCacheHints.Create(ATtlMs, AScope);
+  Result := Self;
+end;
+
+function TMCPServerConfig.SetInstructions(const AInstructions: string): TMCPServerConfig;
+begin
+  Instructions := AInstructions;
   Result := Self;
 end;
 

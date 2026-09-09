@@ -131,6 +131,12 @@ type
   private
     function DoDiscover(AContext: TMiddlewareContext;
       AParams: TRequestMetaParams): TDiscoverResult;
+
+    /// <summary>
+    ///   Fills in what the server can do from what it has registered, for a
+    ///   server that never said so itself.
+    /// </summary>
+    procedure InferCapabilities(ACapabilities: TServerCapabilities);
   public
     [JRPC('discover')]
     function Discover([JRPCParams] AParams: TRequestMetaParams): TDiscoverResult;
@@ -263,6 +269,12 @@ begin
 
   AResult.ResultMeta.ServerInfo.Name := MCPConfig.Server.Name;
   AResult.ResultMeta.ServerInfo.Version := MCPConfig.Server.Version;
+
+  // The identity's own description, which is not the same thing as the
+  // instructions a discovery result carries: this says what the server is, the
+  // instructions say how to use it well.
+  if not MCPConfig.Server.Description.IsEmpty then
+    AResult.ResultMeta.ServerInfo.Description := MCPConfig.Server.Description;
 end;
 
 procedure TMCPApi.Cache(AResult: TBaseResult; const ASection: TMCPCacheHints);
@@ -655,20 +667,52 @@ end;
 
 { TMCPServerApi }
 
-function TMCPServerApi.DoDiscover(AContext: TMiddlewareContext;
-  AParams: TRequestMetaParams): TDiscoverResult;
+function TMCPServerApi.DoDiscover(AContext: TMiddlewareContext; AParams: TRequestMetaParams): TDiscoverResult;
 begin
   Result := TDiscoverResult.Create;
   Result.SupportedVersions := MCP_PROTOCOL_SUPPORTED_VERSIONS;
   Result.ResultType := TResultType.Complete;
+
+  // A discovery result says nothing about the caller, so it is shareable. A
+  // server that disagrees says so with Server.SetCacheHints, which the Cache
+  // call in Discover applies over this.
   Result.CacheScope := TCacheScope.ScopePublic;
-  Result.Capabilities.Tools.ListChanged := True;
-  Result.Capabilities.Resources.ListChanged := True;
-  Result.Capabilities.Prompts.ListChanged := True;
+
+  if not MCPConfig.Server.Instructions.IsEmpty then
+    Result.Instructions := MCPConfig.Server.Instructions;
+
+  // What the server said it can do, or - having said nothing - what it turns
+  // out to have. Server.SetCapabilities is for the server that knows better
+  // than its registry: one that registers its tools late, or means to advertise
+  // less than it holds.
+  if Assigned(MCPConfig.Server.Capabilities) then
+    Result.Capabilities.Assign(MCPConfig.Server.Capabilities)
+  else
+    InferCapabilities(Result.Capabilities);
+end;
+
+procedure TMCPServerApi.InferCapabilities(ACapabilities: TServerCapabilities);
+begin
+  // Presence is the declaration: "tools" in the capabilities is what says this
+  // server has tools at all. The listChanged flag beside it is a second
+  // statement - that the server will say when they change - and this build
+  // cannot: the stream those notifications travel on is the one
+  // subscriptions/listen has yet to hold open. False rather than absent, since
+  // an empty capability object is dropped on the way out and would take the
+  // declaration with it.
+  if MCPConfig.Tools.Registry.Count > 0 then
+    ACapabilities.Tools.ListChanged := False;
+
+  if (MCPConfig.Resources.Registry.Count > 0) or
+     (MCPConfig.Resources.TemplateRegistry.Count > 0) then
+    ACapabilities.Resources.ListChanged := False;
+
+  if MCPConfig.Prompts.Registry.Count > 0 then
+    ACapabilities.Prompts.ListChanged := False;
 
   // Only advertised when something can actually answer completion/complete
   if MCPConfig.Completions.HasProviders then
-    Result.Capabilities.EnableCompletions;
+    ACapabilities.EnableCompletions;
 end;
 
 { TMCPSubscriptionsApi }

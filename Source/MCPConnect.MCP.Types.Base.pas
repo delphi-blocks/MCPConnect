@@ -646,6 +646,17 @@ type
     ///   Declares support for argument autocompletion (completion/complete).
     /// </summary>
     procedure EnableCompletions;
+
+    /// <summary>
+    ///   Copies what ASource declares into this one, JSON members included.
+    /// </summary>
+    /// <remarks>
+    ///   The capabilities a server is configured with belong to its
+    ///   configuration and outlive any one request, while the ones in a
+    ///   server/discover result are freed with the result: what travels between
+    ///   the two is a copy.
+    /// </remarks>
+    procedure Assign(ASource: TServerCapabilities);
   end;
 
   /// <summary>
@@ -1305,6 +1316,29 @@ procedure TServerCapabilities.EnableCompletions;
 begin
   if not Assigned(Completions) then
     Completions := TJSONObject.Create;
+end;
+
+procedure TServerCapabilities.Assign(ASource: TServerCapabilities);
+
+  procedure CopyObject(var ADest: TJSONObject; ASourceObj: TJSONObject);
+  begin
+    FreeAndNil(ADest);
+    if Assigned(ASourceObj) then
+      ADest := ASourceObj.Clone as TJSONObject;
+  end;
+
+begin
+  if not Assigned(ASource) then
+    Exit;
+
+  Prompts := ASource.Prompts;
+  Resources := ASource.Resources;
+  Tools := ASource.Tools;
+
+  CopyObject(Completions, ASource.Completions);
+  CopyObject(&Experimental, ASource.&Experimental);
+  CopyObject(Extensions, ASource.Extensions);
+  CopyObject(Logging, ASource.Logging);
 end;
 
 destructor TServerCapabilities.Destroy;

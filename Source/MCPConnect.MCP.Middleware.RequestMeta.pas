@@ -169,6 +169,7 @@ var
   LParams: TJSONValue;
   LMetaJSON: TJSONValue;
   LMeta: TRequestMetaObject;
+  LDeclared: TMCPDeclaredCapabilities;
 begin
   LConfig := AContext.Find<TMCPConfig>;
 
@@ -248,6 +249,16 @@ begin
   // framework itself for the log level, the progress token and the client
   // capabilities.
   AContext.RPCContext.AddContent(LMeta);
+
+  // The capabilities again, as a set read from the JSON rather than from the
+  // object: a declaration is made by the presence of a member, and
+  // TClientCapabilities holds its members whether the client sent them or not.
+  // TMCPApi.RequireInputCapabilities is what reads this.
+  LDeclared := TMCPDeclaredCapabilities.Create(
+    MCPClientCapabilitiesFromJSON(
+      TJSONObject(LMetaJSON).GetValue(MCP_META_CLIENT_CAPABILITIES) as TJSONObject));
+  AContext.Own(LDeclared);
+  AContext.RPCContext.AddContent(LDeclared);
 
   AChain.Next(AContext);
 end;

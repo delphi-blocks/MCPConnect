@@ -17,6 +17,7 @@ interface
 
 uses
   System.Classes, System.SysUtils, System.StrUtils, System.JSON,
+  System.Generics.Collections,
 
   JRPC.Core,
   JRPC.Classes,
@@ -33,6 +34,8 @@ uses
   MCPConnect.MCP.Types.Prompts,
   MCPConnect.MCP.Types.Completion,
   MCPConnect.MCP.Types.Notifications,
+  MCPConnect.MCP.Types.Elicitation,
+  MCPConnect.MCP.Types.Errors,
   MCPConnect.MCP.Types.Subscriptions;
 
 type
@@ -96,6 +99,30 @@ type
     ///   "do not store" of its own, and a zero TTL means immediately stale.
     /// </remarks>
     procedure NoCache(AResult: TBaseResult);
+
+    /// <summary>
+    ///   Refuses an interim result that asks the client for something it never
+    ///   said it could give: a server MUST NOT put an input request in
+    ///   "inputRequests" for a capability the client did not declare.
+    /// </summary>
+    /// <remarks>
+    ///   Refuses rather than quietly drops the request, because dropping it
+    ///   would answer with an "input_required" that asks for nothing - and
+    ///   because the specification says what this is: a
+    ///   MissingRequiredClientCapability (-32021) naming what was missing, which
+    ///   the transport answers with a 400. A client that reads it knows to
+    ///   declare the capability or to stop calling this tool, where a silent
+    ///   drop would leave it looping.
+    ///
+    ///   Skipped entirely when the request context holds no declared
+    ///   capabilities: that means nobody looked - meta validation off, or a
+    ///   request that carried no "_meta" under a lenient one - which is not the
+    ///   same as a client that declared none.
+    ///
+    ///   Refusing takes the result with it: nothing downstream will see it, so
+    ///   this is where it is freed.
+    /// </remarks>
+    procedure RequireInputCapabilities(AResult: TBaseResult);
   end;
 
 
@@ -256,6 +283,76 @@ begin
     TCachedResult(AResult).TtlMs := 0;
     TCachedResult(AResult).CacheScope := TCacheScope.ScopePrivate;
   end;
+end;
+
+procedure TMCPApi.RequireInputCapabilities(AResult: TBaseResult);
+var
+  LDeclared: TMCPDeclaredCapabilities;
+  LEntry: TPair<string, TInputRequest>;
+  LNeeded, LMissing: TMCPClientCapabilities;
+
+  // The mode is only worth checking when the client named modes at all: a
+  // client that declared "elicitation":{} declared it whole, and reading that
+  // as "neither form nor url" would refuse every elicitation there is.
+  procedure NeedElicitation(ARequest: TInputRequest);
+  const
+    Modes = [TMCPClientCapability.ElicitationForm, TMCPClientCapability.ElicitationUrl];
+  begin
+    Include(LNeeded, TMCPClientCapability.Elicitation);
+
+    if LDeclared.Declared * Modes = [] then
+      Exit;
+
+    if Assigned(ARequest.Elicitation) and ARequest.Elicitation.Mode.HasValue and
+       SameText(ARequest.Elicitation.Mode.Value, MCP_ELICIT_MODE_URL) then
+      Include(LNeeded, TMCPClientCapability.ElicitationUrl)
+    else
+      // An absent mode means "form"
+      Include(LNeeded, TMCPClientCapability.ElicitationForm);
+  end;
+
+  procedure NeedSampling(ARequest: TInputRequest);
+  begin
+    Include(LNeeded, TMCPClientCapability.Sampling);
+
+    if not Assigned(ARequest.Sampling) then
+      Exit;
+
+    // The two sub-capabilities are about what the request asks the client to
+    // do, not about sampling itself
+    if ARequest.Sampling.IncludeContext <> TIncludeContext.None then
+      Include(LNeeded, TMCPClientCapability.SamplingContext);
+
+    if Length(ARequest.Sampling.Tools) > 0 then
+      Include(LNeeded, TMCPClientCapability.SamplingTools);
+  end;
+
+begin
+  if not (AResult is TInputRequiredResult) then
+    Exit;
+
+  LDeclared := RPCContext.FindContextDataAs<TMCPDeclaredCapabilities>;
+  if not Assigned(LDeclared) then
+    Exit;
+
+  LNeeded := [];
+  for LEntry in TInputRequiredResult(AResult).InputRequests do
+  begin
+    if LEntry.Value.Method = MCP_INPUT_ELICITATION then
+      NeedElicitation(LEntry.Value)
+    else if LEntry.Value.Method = MCP_INPUT_SAMPLING then
+      NeedSampling(LEntry.Value)
+    else if LEntry.Value.Method = MCP_INPUT_ROOTS then
+      Include(LNeeded, TMCPClientCapability.Roots);
+  end;
+
+  LMissing := LDeclared.Missing(LNeeded);
+  if LMissing = [] then
+    Exit;
+
+  // Nothing downstream will see it now
+  AResult.Free;
+  raise EMCPMissingRequiredClientCapabilityError.CreateForCapabilities(LMissing);
 end;
 
 { TMCPToolApi }
@@ -633,6 +730,7 @@ end;
 function TMCPToolsApi.CallTool(AParams: TCallToolRequestParams): TBaseResult;
 begin
   Result := TCallToolChain.Run<ICallToolMiddleware>(RPCContext, DoCallTool, AParams);
+  RequireInputCapabilities(Result);
   Identify(Result);
 end;
 
@@ -646,6 +744,7 @@ end;
 function TMCPResourcesApi.ReadResource(AParams: TReadResourceParams): TBaseResult;
 begin
   Result := TReadResourceChain.Run<IReadResourceMiddleware>(RPCContext, DoReadResource, AParams);
+  RequireInputCapabilities(Result);
   Identify(Result);
   Cache(Result, MCPConfig.Resources.CacheHints);
 
@@ -673,6 +772,7 @@ end;
 function TMCPPromptsApi.ReadPrompt(AParams: TGetPromptRequestParams): TBaseResult;
 begin
   Result := TGetPromptChain.Run<IGetPromptMiddleware>(RPCContext, DoReadPrompt, AParams);
+  RequireInputCapabilities(Result);
   Identify(Result);
 end;
 

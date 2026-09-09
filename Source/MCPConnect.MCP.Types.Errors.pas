@@ -97,6 +97,34 @@ type
   TMCPClientCapabilities = set of TMCPClientCapability;
 
   /// <summary>
+  ///   What the client declared it can do, for the request being served. Put
+  ///   into the request context by TMCPRequestMetaMiddleware, which is the only
+  ///   place that still has the raw "_meta" to read it from.
+  /// </summary>
+  /// <remarks>
+  ///   A class, so that it can live in the context and be injected with
+  ///   [Context]; a set on its own could not. Absent from the context means the
+  ///   server never looked - meta validation turned off, or a request that
+  ///   carried no "_meta" under a lenient one - which is not the same as a
+  ///   client that declared nothing, and is why the MRTR check skips rather
+  ///   than refuses when it finds none.
+  /// </remarks>
+  TMCPDeclaredCapabilities = class
+  private
+    FDeclared: TMCPClientCapabilities;
+  public
+    constructor Create(ADeclared: TMCPClientCapabilities);
+
+    /// <summary>
+    ///   Whichever of ACapabilities the client did not declare. Empty when it
+    ///   declared them all, which is the only case a server may proceed in.
+    /// </summary>
+    function Missing(ACapabilities: TMCPClientCapabilities): TMCPClientCapabilities;
+
+    property Declared: TMCPClientCapabilities read FDeclared;
+  end;
+
+  /// <summary>
   ///   The "data" member of an UnsupportedProtocolVersionError (-32022).
   /// </summary>
   /// <remarks>
@@ -249,11 +277,84 @@ function MCPClientCapabilityName(ACapability: TMCPClientCapability): string;
 /// </remarks>
 function MCPClientCapabilitiesToJSON(ACapabilities: TMCPClientCapabilities): TJSONObject;
 
+/// <summary>
+///   Reads back what a client declared: the inverse of the above, over the
+///   "io.modelcontextprotocol/clientCapabilities" object of a request's _meta.
+/// </summary>
+/// <remarks>
+///   Read from the JSON and not from a deserialized TClientCapabilities, and
+///   for the same reason the required-field check of the request _meta is: the
+///   declaration is made by the *presence* of a member, and an object that is
+///   always allocated cannot tell an absent capability from an empty one.
+/// </remarks>
+function MCPClientCapabilitiesFromJSON(AJSON: TJSONObject): TMCPClientCapabilities;
+
 implementation
 
 function IsMCPProtocolErrorCode(ACode: Integer): Boolean;
 begin
   Result := (ACode >= MCP_ERROR_RESERVED_LOW) and (ACode <= MCP_ERROR_RESERVED_HIGH);
+end;
+
+function MCPClientCapabilitiesFromJSON(AJSON: TJSONObject): TMCPClientCapabilities;
+
+  // A capability is declared by the presence of its member, whatever it holds
+  function Declared(AParent: TJSONObject; const AName: string): TJSONObject;
+  var
+    LValue: TJSONValue;
+  begin
+    Result := nil;
+    if not Assigned(AParent) then
+      Exit;
+
+    LValue := AParent.GetValue(AName);
+    if LValue is TJSONObject then
+      Result := TJSONObject(LValue);
+  end;
+
+var
+  LChild: TJSONObject;
+begin
+  Result := [];
+  if not Assigned(AJSON) then
+    Exit;
+
+  LChild := Declared(AJSON, 'elicitation');
+  if Assigned(LChild) then
+  begin
+    Include(Result, TMCPClientCapability.Elicitation);
+    if Assigned(Declared(LChild, 'form')) then
+      Include(Result, TMCPClientCapability.ElicitationForm);
+    if Assigned(Declared(LChild, 'url')) then
+      Include(Result, TMCPClientCapability.ElicitationUrl);
+  end;
+
+  LChild := Declared(AJSON, 'sampling');
+  if Assigned(LChild) then
+  begin
+    Include(Result, TMCPClientCapability.Sampling);
+    if Assigned(Declared(LChild, 'context')) then
+      Include(Result, TMCPClientCapability.SamplingContext);
+    if Assigned(Declared(LChild, 'tools')) then
+      Include(Result, TMCPClientCapability.SamplingTools);
+  end;
+
+  if Assigned(Declared(AJSON, 'roots')) then
+    Include(Result, TMCPClientCapability.Roots);
+end;
+
+{ TMCPDeclaredCapabilities }
+
+constructor TMCPDeclaredCapabilities.Create(ADeclared: TMCPClientCapabilities);
+begin
+  inherited Create;
+  FDeclared := ADeclared;
+end;
+
+function TMCPDeclaredCapabilities.Missing(
+  ACapabilities: TMCPClientCapabilities): TMCPClientCapabilities;
+begin
+  Result := ACapabilities - FDeclared;
 end;
 
 function MCPClientCapabilityName(ACapability: TMCPClientCapability): string;

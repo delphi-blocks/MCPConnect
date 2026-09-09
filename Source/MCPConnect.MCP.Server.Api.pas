@@ -39,17 +39,15 @@ type
   TApiCall<T> = procedure (AContext: TMiddlewareContext; AParams: T) of object;
 
   /// <summary>
-  ///   Base of the api classes: what every one of them needs from the request.
+  ///   Base of the api classes: what every one of them needs from the request,
+  ///   and what every result of theirs carries out of it - the server's
+  ///   identity and the caching hints.
   /// </summary>
   /// <remarks>
   ///   The middleware wiring is not here: an operation runs its own hooks with
   ///   TMiddlewareChain.Run, which takes the request context and needs nothing
   ///   from a base class.
   /// </remarks>
-  /// <summary>
-  ///   Common ground of the api classes: what every one of them is injected
-  ///   with, and the identity every result of theirs carries.
-  /// </summary>
   TMCPApi = class(TObject)
   public
     [Context] RPCContext: TJRPCContext;
@@ -73,6 +71,31 @@ type
     ///   TResultMetaObject.ShouldInclude.
     /// </remarks>
     procedure Identify(AResult: TBaseResult);
+
+    /// <summary>
+    ///   Writes the caching hints a cacheable result must carry: the section's
+    ///   own if it has any, the server's otherwise, and nothing at all when
+    ///   neither was configured - which leaves the conservative pair the result
+    ///   was born with, immediately stale and private to the caller.
+    /// </summary>
+    /// <remarks>
+    ///   A result that is not a TCachedResult is left alone, which is how an
+    ///   interim "input_required" answer to resources/read ends up carrying no
+    ///   hints: it is not a cacheable result, and the specification says so.
+    /// </remarks>
+    procedure Cache(AResult: TBaseResult; const ASection: TMCPCacheHints);
+
+    /// <summary>
+    ///   Marks a result as one a client must not cache: a result produced by
+    ///   retrying a request through MRTR depends on inputs - the responses, the
+    ///   request state - that are not part of the cache key, so serving it
+    ///   again for the same method and params would serve the wrong answer.
+    /// </summary>
+    /// <remarks>
+    ///   Zero and private is the strongest thing the model can say: it has no
+    ///   "do not store" of its own, and a zero TTL means immediately stale.
+    /// </remarks>
+    procedure NoCache(AResult: TBaseResult);
   end;
 
 
@@ -213,6 +236,26 @@ begin
 
   AResult.ResultMeta.ServerInfo.Name := MCPConfig.Server.Name;
   AResult.ResultMeta.ServerInfo.Version := MCPConfig.Server.Version;
+end;
+
+procedure TMCPApi.Cache(AResult: TBaseResult; const ASection: TMCPCacheHints);
+begin
+  if not Assigned(AResult) or not Assigned(MCPConfig) then
+    Exit;
+
+  if ASection.IsAssigned then
+    ASection.ApplyTo(AResult)
+  else
+    MCPConfig.Server.CacheHints.ApplyTo(AResult);
+end;
+
+procedure TMCPApi.NoCache(AResult: TBaseResult);
+begin
+  if AResult is TCachedResult then
+  begin
+    TCachedResult(AResult).TtlMs := 0;
+    TCachedResult(AResult).CacheScope := TCacheScope.ScopePrivate;
+  end;
 end;
 
 { TMCPToolApi }
@@ -396,6 +439,7 @@ begin
   try
     MCPConfig.Resources.TemplateList(Result);
     Identify(Result);
+    Cache(Result, MCPConfig.Resources.CacheHints);
   except
     Result.Free;
     raise;
@@ -596,24 +640,34 @@ function TMCPToolsApi.ToolsList(AParams: TPaginatedRequestParams): TListToolsRes
 begin
   Result := TListToolsChain.Run<IListToolsMiddleware>(RPCContext, DoToolsList, AParams);
   Identify(Result);
+  Cache(Result, MCPConfig.Tools.CacheHints);
 end;
 
 function TMCPResourcesApi.ReadResource(AParams: TReadResourceParams): TBaseResult;
 begin
   Result := TReadResourceChain.Run<IReadResourceMiddleware>(RPCContext, DoReadResource, AParams);
   Identify(Result);
+  Cache(Result, MCPConfig.Resources.CacheHints);
+
+  // The one cacheable operation that can also be an MRTR retry: what it
+  // answered depends on the input the client sent back, and none of that is in
+  // the cache key, so this reply speaks for this request alone.
+  if (AParams.InputResponses.Count > 0) or AParams.RequestState.HasValue then
+    NoCache(Result);
 end;
 
 function TMCPResourcesApi.ResourcesList(AParams: TPaginatedRequestParams): TListResourcesResult;
 begin
   Result := TListResourcesChain.Run<IListResourcesMiddleware>(RPCContext, DoResourcesList, AParams);
   Identify(Result);
+  Cache(Result, MCPConfig.Resources.CacheHints);
 end;
 
 function TMCPPromptsApi.PromptList(AParams: TPaginatedRequestParams): TListPromptsResult;
 begin
   Result := TListPromptsChain.Run<IListPromptsMiddleware>(RPCContext, DoPromptList, AParams);
   Identify(Result);
+  Cache(Result, MCPConfig.Prompts.CacheHints);
 end;
 
 function TMCPPromptsApi.ReadPrompt(AParams: TGetPromptRequestParams): TBaseResult;
@@ -626,6 +680,7 @@ function TMCPServerApi.Discover(AParams: TRequestMetaParams): TDiscoverResult;
 begin
   Result := TDiscoverChain.Run<IDiscoverMiddleware>(RPCContext, DoDiscover, AParams);
   Identify(Result);
+  Cache(Result, MCPConfig.Server.CacheHints);
 end;
 
 initialization

@@ -186,6 +186,7 @@
         <DCCReference Include="MCPConnect.Tests.Transport.RequestMeta.pas"/>
         <DCCReference Include="MCPConnect.Tests.Transport.Status.pas"/>
         <DCCReference Include="MCPConnect.Tests.Transport.ServerInfo.pas"/>
+        <DCCReference Include="MCPConnect.Tests.Transport.Caching.pas"/>
         <DCCReference Include="MCPConnect.Tests.Transport.Batch.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Errors.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Completion.pas"/>

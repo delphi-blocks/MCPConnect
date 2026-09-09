@@ -810,6 +810,56 @@ type
     constructor Create;
   end;
 
+  /// <summary>
+  ///   How long a client may consider a result fresh, and who may share the
+  ///   cached copy: the two hints every cacheable result carries. Configured
+  ///   with SetCacheHints, on IMCPConfig.Server for the whole server and on the
+  ///   Tools, Resources and Prompts sections for what each of them answers.
+  /// </summary>
+  /// <remarks>
+  ///   A server that configures none keeps the conservative pair the results
+  ///   are born with - immediately stale, and private to the caller - which is
+  ///   what a library must default to: it cannot know whether a list is the
+  ///   same for every user, and a wrong "public" is a cache shared across
+  ///   authorization contexts.
+  ///
+  ///   The hints are a freshness *hint* and nothing more. They say how long a
+  ///   client may reasonably avoid re-fetching, not how long the data is
+  ///   guaranteed to stand; a list_changed notification invalidates a cached
+  ///   response whatever its TTL says, and access control is never the
+  ///   cacheScope's job.
+  /// </remarks>
+  TMCPCacheHints = record
+  private
+    FAssigned: Boolean;
+  public
+    /// <summary>Freshness in milliseconds. Zero means immediately stale.</summary>
+    TtlMs: UInt64;
+
+    /// <summary>
+    ///   Public for a result that is the same for every caller, private for
+    ///   one that is not. A cache is never shared across authorization
+    ///   contexts when this is private.
+    /// </summary>
+    Scope: TCacheScope;
+
+    class function Create(ATtlMs: UInt64; AScope: TCacheScope): TMCPCacheHints; static;
+
+    /// <summary>
+    ///   Writes the hints into a result. A result that is not cacheable - an
+    ///   interim "input_required" one, which carries no hints at all - is left
+    ///   alone.
+    /// </summary>
+    procedure ApplyTo(AResult: TBaseResult);
+
+    /// <summary>
+    ///   Whether these hints were configured. An unset record says nothing and
+    ///   changes no result, which is how a section defers to the server and the
+    ///   server to the defaults.
+    /// </summary>
+    property IsAssigned: Boolean read FAssigned;
+  end;
+
 
   /// <summary>
   ///   The result returned by the server for a server/discover request.
@@ -2281,6 +2331,24 @@ constructor TCachedResult.Create;
 begin
   inherited;
   CacheScope := TCacheScope.ScopePrivate;
+end;
+
+{ TMCPCacheHints }
+
+class function TMCPCacheHints.Create(ATtlMs: UInt64; AScope: TCacheScope): TMCPCacheHints;
+begin
+  Result.TtlMs := ATtlMs;
+  Result.Scope := AScope;
+  Result.FAssigned := True;
+end;
+
+procedure TMCPCacheHints.ApplyTo(AResult: TBaseResult);
+begin
+  if not FAssigned or not (AResult is TCachedResult) then
+    Exit;
+
+  TCachedResult(AResult).TtlMs := TtlMs;
+  TCachedResult(AResult).CacheScope := Scope;
 end;
 
 end.

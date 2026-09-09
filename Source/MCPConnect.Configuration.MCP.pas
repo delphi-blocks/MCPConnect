@@ -219,6 +219,12 @@ type
     ///   A server that was never named reports nothing either way.
     /// </summary>
     SendServerInfo: Boolean;
+
+    /// <summary>
+    ///   The caching hints every cacheable result carries, unless the section
+    ///   that answered has hints of its own. Unset by default.
+    /// </summary>
+    CacheHints: TMCPCacheHints;
     Capabilities: TServerCapabilities;
     WriterRegistry: TMCPWriterRegistry;
   public
@@ -310,6 +316,38 @@ type
     ///   which build is running.
     /// </remarks>
     function SetSendServerInfo(AEnable: Boolean): TMCPServerConfig;
+
+    /// <summary>
+    ///   How long a client may consider this server's results fresh, and
+    ///   whether a cached copy may be shared between callers.
+    /// </summary>
+    /// <param name="ATtlMs">
+    ///   Freshness in milliseconds, zero for "re-fetch every time". It is a
+    ///   hint: a list_changed notification invalidates a cached response
+    ///   whatever the TTL said, so a server that sends those can afford a
+    ///   generous one.
+    /// </param>
+    /// <param name="AScope">
+    ///   ScopePublic for results that are the same for every caller,
+    ///   ScopePrivate for anything that depends on who is asking. Public is
+    ///   shareable even from an authenticated endpoint - one caller's cached
+    ///   tools/list may be served to another - so it belongs only on results
+    ///   that carry nothing user-specific.
+    /// </param>
+    /// <returns>Self for fluent chaining</returns>
+    /// <remarks>
+    ///   Applies to every cacheable result - server/discover, the four list
+    ///   endpoints and resources/read - except where the answering section
+    ///   overrides it with SetCacheHints of its own. Configuring nothing leaves
+    ///   results immediately stale and private, which is the conservative pair
+    ///   a library has to default to.
+    ///
+    ///   An interim "input_required" result carries no hints, and neither does
+    ///   a resources/read answered from an MRTR retry: it depends on inputs
+    ///   that are not part of the cache key.
+    /// </remarks>
+    function SetCacheHints(ATtlMs: UInt64;
+      AScope: TCacheScope = TCacheScope.ScopePrivate): TMCPServerConfig;
 
     /// <summary>
     ///   Registers a custom content writer for handling complex return types.
@@ -549,11 +587,27 @@ type
   public
     Registry: TMCPToolRegistry;
     NeonConfig: INeonConfiguration;
+
+    /// <summary>
+    ///   The caching hints tools/list answers with. Unset by default, which
+    ///   defers to IMCPConfig.Server.SetCacheHints.
+    /// </summary>
+    CacheHints: TMCPCacheHints;
   public
     constructor Create(AConfig: IMCPConfig);
     destructor Destroy; override;
 
     function RegisterClass(AClass: TClass): TMCPToolsConfig;
+
+    /// <summary>
+    ///   What tools/list answers with, overriding the server-wide hints. A tool
+    ///   list is often the same for every caller and rarely changes, which is
+    ///   what ScopePublic and a generous TTL were written for - but only the
+    ///   server knows whether its own list is filtered per caller.
+    /// </summary>
+    /// <returns>Self for fluent chaining</returns>
+    function SetCacheHints(ATtlMs: UInt64;
+      AScope: TCacheScope = TCacheScope.ScopePrivate): TMCPToolsConfig;
     function RegisterTool(AClass: TClass; const AMethodName, AName, ADescription: string; const ATags: string = ''): TMCPToolConfig;
 
     /// <summary>
@@ -614,11 +668,24 @@ type
     procedure WritePrompt(APrompt: TMCPPrompt);
   public
     Registry: TMCPPromptRegistry;
+
+    /// <summary>
+    ///   The caching hints prompts/list answers with. Unset by default, which
+    ///   defers to IMCPConfig.Server.SetCacheHints.
+    /// </summary>
+    CacheHints: TMCPCacheHints;
   public
     constructor Create(AConfig: IMCPConfig);
     destructor Destroy; override;
 
     function RegisterClass(AClass: TClass): TMCPPromptsConfig;
+
+    /// <summary>
+    ///   What prompts/list answers with, overriding the server-wide hints.
+    /// </summary>
+    /// <returns>Self for fluent chaining</returns>
+    function SetCacheHints(ATtlMs: UInt64;
+      AScope: TCacheScope = TCacheScope.ScopePrivate): TMCPPromptsConfig;
 
     /// <summary>
     ///   Registers a single prompt-serving method directly, without needing [McpPrompt]/
@@ -682,6 +749,13 @@ type
     MimeTypes: TMCPMimeTypes;
     Schemes: TDictionary<string, string>;
     BasePath: string;
+
+    /// <summary>
+    ///   The caching hints resources/list, resources/templates/list and
+    ///   resources/read answer with. Unset by default, which defers to
+    ///   IMCPConfig.Server.SetCacheHints.
+    /// </summary>
+    CacheHints: TMCPCacheHints;
   private
     function ParamIsType(AParam: TRttiParameter; ATypes: TypeKindSet): Boolean;
     function ValidUriResource(const AUri: string): Boolean;
@@ -712,6 +786,16 @@ type
     function RegisterScheme(const AScheme, APath: string): TMCPResourcesConfig;
 
     function RegisterClass(AClass: TClass): TMCPResourcesConfig;
+
+    /// <summary>
+    ///   What resources/list, resources/templates/list and resources/read
+    ///   answer with, overriding the server-wide hints. The read is the one to
+    ///   think about twice: it returns whatever the resource says today, and
+    ///   often what it says depends on who asked.
+    /// </summary>
+    /// <returns>Self for fluent chaining</returns>
+    function SetCacheHints(ATtlMs: UInt64;
+      AScope: TCacheScope = TCacheScope.ScopePrivate): TMCPResourcesConfig;
     function RegisterFile(const AFileName, ADescription: string; const AMime: string = ''): TMCPResourcesConfig;
 
     /// <summary>
@@ -1107,6 +1191,13 @@ begin
       Result.Tools.Add(pair.Value);
 end;
 
+function TMCPToolsConfig.SetCacheHints(ATtlMs: UInt64;
+  AScope: TCacheScope): TMCPToolsConfig;
+begin
+  CacheHints := TMCPCacheHints.Create(ATtlMs, AScope);
+  Result := Self;
+end;
+
 function TMCPToolsConfig.RegisterClass(AClass: TClass): TMCPToolsConfig;
 var
   LScope: string;
@@ -1373,6 +1464,13 @@ end;
 function TMCPServerConfig.SetSendServerInfo(AEnable: Boolean): TMCPServerConfig;
 begin
   SendServerInfo := AEnable;
+  Result := Self;
+end;
+
+function TMCPServerConfig.SetCacheHints(ATtlMs: UInt64;
+  AScope: TCacheScope): TMCPServerConfig;
+begin
+  CacheHints := TMCPCacheHints.Create(ATtlMs, AScope);
   Result := Self;
 end;
 
@@ -1664,6 +1762,13 @@ begin
     raise;
   end;
 
+end;
+
+function TMCPResourcesConfig.SetCacheHints(ATtlMs: UInt64;
+  AScope: TCacheScope): TMCPResourcesConfig;
+begin
+  CacheHints := TMCPCacheHints.Create(ATtlMs, AScope);
+  Result := Self;
 end;
 
 function TMCPResourcesConfig.RegisterClass(AClass: TClass): TMCPResourcesConfig;
@@ -2090,6 +2195,13 @@ begin
   Result := TListPromptsResult.Create;
   for var pair in Registry do
     Result.Prompts.Add(pair.Value);
+end;
+
+function TMCPPromptsConfig.SetCacheHints(ATtlMs: UInt64;
+  AScope: TCacheScope): TMCPPromptsConfig;
+begin
+  CacheHints := TMCPCacheHints.Create(ATtlMs, AScope);
+  Result := Self;
 end;
 
 function TMCPPromptsConfig.RegisterClass(AClass: TClass): TMCPPromptsConfig;

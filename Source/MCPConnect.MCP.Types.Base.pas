@@ -66,6 +66,13 @@ const
   /// </summary>
   MCP_META_CLIENT_CAPABILITIES = 'io.modelcontextprotocol/clientCapabilities';
 
+  /// <summary>
+  ///   The result _meta key carrying the server's own name and version. A
+  ///   server SHOULD put it in every result, so that a client can tell what
+  ///   answered it without a handshake to have asked.
+  /// </summary>
+  MCP_META_SERVER_INFO = 'io.modelcontextprotocol/serverInfo';
+
 resourcestring
   // Localizable messages for the MCP layer (MCPConnect.MCP.Types/Invoker/Server.Api)
 
@@ -732,11 +739,29 @@ type
   /// </summary>
   TResultMetaObject = class(TFlatMetaClass)
   public
-    [NeonProperty('io.modelcontextprotocol/serverInfo')]
+    /// <summary>
+    ///   Who answered: the server's name and version, which a server SHOULD
+    ///   report in every result. Filled from IMCPConfig.Server by the api layer
+    ///   (TMCPApi.Identify), so a tool has nothing to do about it.
+    /// </summary>
+    /// <remarks>
+    ///   Written out only when it says something. The object is always there -
+    ///   code that fills it in needs no nil check - but an unnamed server would
+    ///   otherwise put {"name":"","version":""} in every reply, which is worse
+    ///   than the absent member the specification allows: a client reading it
+    ///   would believe the server had told it something.
+    /// </remarks>
+    [NeonProperty(MCP_META_SERVER_INFO), NeonInclude(IncludeIf.CustomFunction)]
     ServerInfo: TImplementation;
   public
     constructor Create;
     destructor Destroy; override;
+
+    /// <summary>
+    ///   Neon include hook for ServerInfo (see the NeonInclude attribute
+    ///   above): a server that has not been named has nothing to report.
+    /// </summary>
+    function ShouldInclude(const AContext: TNeonIgnoreIfContext): Boolean;
   end;
 
   [NeonEnumNames('complete,input_required')]
@@ -2229,6 +2254,11 @@ destructor TResultMetaObject.Destroy;
 begin
   ServerInfo.Free;
   inherited;
+end;
+
+function TResultMetaObject.ShouldInclude(const AContext: TNeonIgnoreIfContext): Boolean;
+begin
+  Result := Assigned(ServerInfo) and not ServerInfo.Name.IsEmpty;
 end;
 
 { TBaseResult }

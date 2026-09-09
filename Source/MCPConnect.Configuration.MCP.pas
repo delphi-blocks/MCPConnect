@@ -212,6 +212,13 @@ type
     Name: string;
     Description: string;
     Version: string;
+
+    /// <summary>
+    ///   Whether every result carries the server's name and version in its
+    ///   "_meta". Default: True, which is what the specification asks for.
+    ///   A server that was never named reports nothing either way.
+    /// </summary>
+    SendServerInfo: Boolean;
     Capabilities: TServerCapabilities;
     WriterRegistry: TMCPWriterRegistry;
   public
@@ -283,6 +290,26 @@ type
     /// </summary>
     /// <returns>Self for fluent chaining</returns>
     function SetCapabilities(AProc: TProc<TServerCapabilities>): TMCPServerConfig; overload;
+
+    /// <summary>
+    ///   Whether every result reports the server's identity in its "_meta",
+    ///   under "io.modelcontextprotocol/serverInfo".
+    /// </summary>
+    /// <param name="AEnable">
+    ///   True (the default) puts the name and version set here into every
+    ///   result; False leaves the member out, which the specification allows a
+    ///   server that is "specifically configured not to" report it.
+    /// </param>
+    /// <returns>Self for fluent chaining</returns>
+    /// <remarks>
+    ///   The member is written only when there is something to write: a server
+    ///   that never called SetName reports nothing rather than an empty name.
+    ///   The value is self-reported and unverified by the protocol - for
+    ///   display, logs and debugging - so a client must not make a decision on
+    ///   it, and there is no reason to withhold it beyond preferring not to say
+    ///   which build is running.
+    /// </remarks>
+    function SetSendServerInfo(AEnable: Boolean): TMCPServerConfig;
 
     /// <summary>
     ///   Registers a custom content writer for handling complex return types.
@@ -1338,6 +1365,15 @@ begin
   IconFolder := '';
   ScopeSeparator := '_';  // Default separator
   Capabilities := nil;
+
+  // A server SHOULD say who it is in every result, so saying so is the default
+  SendServerInfo := True;
+end;
+
+function TMCPServerConfig.SetSendServerInfo(AEnable: Boolean): TMCPServerConfig;
+begin
+  SendServerInfo := AEnable;
+  Result := Self;
 end;
 
 destructor TMCPServerConfig.Destroy;

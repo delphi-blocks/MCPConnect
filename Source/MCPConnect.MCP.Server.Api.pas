@@ -46,10 +46,33 @@ type
   ///   TMiddlewareChain.Run, which takes the request context and needs nothing
   ///   from a base class.
   /// </remarks>
+  /// <summary>
+  ///   Common ground of the api classes: what every one of them is injected
+  ///   with, and the identity every result of theirs carries.
+  /// </summary>
   TMCPApi = class(TObject)
   public
     [Context] RPCContext: TJRPCContext;
     [Context] MCPConfig: TMCPConfig;
+
+    /// <summary>
+    ///   Puts the server's name and version into the result's "_meta", where
+    ///   the specification asks every result to report who answered it.
+    /// </summary>
+    /// <remarks>
+    ///   Called on the way out of each api method rather than from a
+    ///   middleware, and that is the point: three of the operations - the
+    ///   template list, completion and the subscription result - have no
+    ///   chain of their own, so a middleware would leave exactly those
+    ///   unsigned. Here every result of this layer passes through, whether a
+    ///   middleware produced it or the method did.
+    ///
+    ///   A name already set is left alone: a middleware that signs a result
+    ///   itself means it, and Server.SetSendServerInfo(False) turns the whole
+    ///   thing off. A server that was never named reports nothing - see
+    ///   TResultMetaObject.ShouldInclude.
+    /// </remarks>
+    procedure Identify(AResult: TBaseResult);
   end;
 
 
@@ -173,6 +196,24 @@ uses
   Logify,
   Neon.Core.Utils,
   MCPConnect.MCP.Invoker;
+
+{ TMCPApi }
+
+procedure TMCPApi.Identify(AResult: TBaseResult);
+begin
+  if not Assigned(AResult) or not Assigned(MCPConfig) then
+    Exit;
+
+  if not MCPConfig.Server.SendServerInfo then
+    Exit;
+
+  // Whoever got there first keeps it
+  if not AResult.ResultMeta.ServerInfo.Name.IsEmpty then
+    Exit;
+
+  AResult.ResultMeta.ServerInfo.Name := MCPConfig.Server.Name;
+  AResult.ResultMeta.ServerInfo.Version := MCPConfig.Server.Version;
+end;
 
 { TMCPToolApi }
 
@@ -354,6 +395,7 @@ begin
   Result := TListResourceTemplatesResult.Create;
   try
     MCPConfig.Resources.TemplateList(Result);
+    Identify(Result);
   except
     Result.Free;
     raise;
@@ -443,7 +485,11 @@ begin
     // A known prompt or template whose argument simply has no provider is not
     // an error: the server just has nothing to suggest for it
     if not Assigned(LProvider) then
-      Exit(TCompleteResult.Create);
+    begin
+      Result := TCompleteResult.Create;
+      Identify(Result);
+      Exit;
+    end;
 
     LProviderObj := TRttiUtils.CreateInstance(LProvider.ProviderClass);
     try
@@ -453,6 +499,7 @@ begin
       try
         RPCContext.Inject(LInvoker);
         Result := LInvoker.Invoke(AParams);
+        Identify(Result);
       finally
         LInvoker.Free;
       end;
@@ -518,6 +565,8 @@ begin
   // open, the subscription is torn down as soon as it is acknowledged, which is
   // the graceful teardown this result reports.
   Result := TSubscriptionsListenResult.Create;
+  Identify(Result);
+
   // The stream id is the id of this very request, keeping its JSON type
   if Request.Id.IsString then
     Result.Meta.SetSubscriptionId(Request.Id.AsString)
@@ -540,36 +589,43 @@ end;
 function TMCPToolsApi.CallTool(AParams: TCallToolRequestParams): TBaseResult;
 begin
   Result := TCallToolChain.Run<ICallToolMiddleware>(RPCContext, DoCallTool, AParams);
+  Identify(Result);
 end;
 
 function TMCPToolsApi.ToolsList(AParams: TPaginatedRequestParams): TListToolsResult;
 begin
   Result := TListToolsChain.Run<IListToolsMiddleware>(RPCContext, DoToolsList, AParams);
+  Identify(Result);
 end;
 
 function TMCPResourcesApi.ReadResource(AParams: TReadResourceParams): TBaseResult;
 begin
   Result := TReadResourceChain.Run<IReadResourceMiddleware>(RPCContext, DoReadResource, AParams);
+  Identify(Result);
 end;
 
 function TMCPResourcesApi.ResourcesList(AParams: TPaginatedRequestParams): TListResourcesResult;
 begin
   Result := TListResourcesChain.Run<IListResourcesMiddleware>(RPCContext, DoResourcesList, AParams);
+  Identify(Result);
 end;
 
 function TMCPPromptsApi.PromptList(AParams: TPaginatedRequestParams): TListPromptsResult;
 begin
   Result := TListPromptsChain.Run<IListPromptsMiddleware>(RPCContext, DoPromptList, AParams);
+  Identify(Result);
 end;
 
 function TMCPPromptsApi.ReadPrompt(AParams: TGetPromptRequestParams): TBaseResult;
 begin
   Result := TGetPromptChain.Run<IGetPromptMiddleware>(RPCContext, DoReadPrompt, AParams);
+  Identify(Result);
 end;
 
 function TMCPServerApi.Discover(AParams: TRequestMetaParams): TDiscoverResult;
 begin
   Result := TDiscoverChain.Run<IDiscoverMiddleware>(RPCContext, DoDiscover, AParams);
+  Identify(Result);
 end;
 
 initialization

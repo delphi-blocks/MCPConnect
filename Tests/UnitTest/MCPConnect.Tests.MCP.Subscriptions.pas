@@ -293,6 +293,11 @@ begin
   try
     LResult.Meta.SetSubscriptionId(Int64(1));
 
+    // Filled here the way the api layer fills it (TMCPApi.Identify): an
+    // unnamed server writes no serverInfo at all, so there would otherwise be
+    // nothing to look for below.
+    LResult.ResultMeta.ServerInfo.Name := 'a-server';
+
     LJson := TNeon.ObjectToJSON(LResult, MCPNeonConfig) as TJSONObject;
     try
       Assert.AreEqual('complete', LJson.GetValue<string>('resultType'));

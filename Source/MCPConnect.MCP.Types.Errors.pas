@@ -79,6 +79,7 @@ resourcestring
   SMCPHeaderMismatch = 'Request headers do not match the request body';
   SMCPHeaderMismatchFmt = 'Header [%s] does not match the request body';
   SMCPHeaderMissingFmt = 'Required header [%s] is missing or malformed';
+  SMCPRequestMetaMissingFmt = 'The request "_meta" is missing the required [%s] member';
   SMCPMissingClientCapability = 'The request requires a client capability that was not declared';
   SMCPMissingClientCapabilityFmt = 'The request requires the [%s] client capability, not declared by the client';
   SMCPUnsupportedProtocolVersionFmt = 'Protocol version [%s] is not supported by this server';
@@ -120,15 +121,33 @@ type
   end;
 
   /// <summary>
-  ///   Base class for the errors the MCP specification defines in the code
-  ///   range it reserves for itself (-32099..-32020).
+  ///   Base class for the errors of the MCP specification that an HTTP
+  ///   transport MUST answer with a 400 Bad Request.
   /// </summary>
   /// <remarks>
-  ///   Over HTTP all of them MUST be answered with a 400 Bad Request, which is
-  ///   what makes the common ancestor worth having: a transport can map the
-  ///   whole family with a single "is" test.
+  ///   The single "is" test is the whole point of the ancestor: the transport
+  ///   maps the family in one place rather than keeping a list of codes. Most
+  ///   of them live in the code range the specification reserves for itself
+  ///   (-32099..-32020), but not all - a request whose per-request "_meta" is
+  ///   missing a required field is a plain Invalid Params (-32602) that must
+  ///   still be answered 400, and -32602 on its own says nothing about the
+  ///   status (an unknown tool name is one too, and that is an ordinary 200).
   /// </remarks>
   EMCPProtocolError = class(EJRPCException);
+
+  /// <summary>
+  ///   Raised when the per-request "_meta" is absent or is missing one of the
+  ///   fields every 2026-07-28 request MUST carry - the protocol version and
+  ///   the client capabilities. Reported as Invalid Params (-32602), which is
+  ///   what the specification assigns to a malformed request.
+  /// </summary>
+  EMCPInvalidRequestMetaError = class(EMCPProtocolError)
+  public
+    procedure AfterConstruction; override;
+
+    /// <summary>Names the "_meta" member that is missing.</summary>
+    constructor CreateForField(const AFieldName: string);
+  end;
 
   /// <summary>
   ///   Raised when the values in the request's HTTP headers do not match the
@@ -310,6 +329,19 @@ end;
 constructor EMCPHeaderMismatchError.CreateForMissingHeader(const AHeaderName: string);
 begin
   CreateFmt(SMCPHeaderMissingFmt, [AHeaderName]);
+end;
+
+{ EMCPInvalidRequestMetaError }
+
+procedure EMCPInvalidRequestMetaError.AfterConstruction;
+begin
+  inherited;
+  FCode := JRPC_INVALID_PARAMS;
+end;
+
+constructor EMCPInvalidRequestMetaError.CreateForField(const AFieldName: string);
+begin
+  CreateFmt(SMCPRequestMetaMissingFmt, [AFieldName]);
 end;
 
 { EMCPMissingRequiredClientCapabilityError }

@@ -398,7 +398,13 @@ type
     ///   How much of the Streamable HTTP request-metadata header contract is
     ///   enforced. Default: Strict, the revision as written.
     /// </summary>
-    HeaderValidation: TMCPHeaderValidation;
+    HeaderValidation: TMCPValidationLevel;
+
+    /// <summary>
+    ///   How much of the per-request "_meta" contract is enforced.
+    ///   Default: Strict, the revision as written.
+    /// </summary>
+    MetaValidation: TMCPValidationLevel;
   private
     /// <summary>
     ///   Puts TCORSMiddleware in the chain of the server, once: it is what
@@ -436,7 +442,27 @@ type
     ///   revision sends none of them and is refused by the default. See
     ///   TMCPRequestHeadersMiddleware.
     /// </remarks>
-    function SetHeaderValidation(AMode: TMCPHeaderValidation): TMCPSecurityConfig;
+    function SetHeaderValidation(AMode: TMCPValidationLevel): TMCPSecurityConfig;
+
+    /// <summary>
+    ///   How much of the per-request "_meta" contract - the protocol version
+    ///   and the client capabilities every 2026-07-28 request MUST carry - the
+    ///   server enforces.
+    /// </summary>
+    /// <param name="AMode">
+    ///   Strict (the default) refuses a request whose "_meta" is absent or
+    ///   incomplete with Invalid Params (-32602); Lenient requires nothing but
+    ///   still refuses a protocol version the server does not speak with
+    ///   UnsupportedProtocolVersion (-32022); Off keeps the check out of the
+    ///   chain altogether.
+    /// </param>
+    /// <returns>Self for fluent chaining</returns>
+    /// <remarks>
+    ///   Configured apart from SetHeaderValidation, and for a reason: an
+    ///   intermediary may strip the headers a client sent, while nothing
+    ///   rewrites the body. See TMCPRequestMetaMiddleware.
+    /// </remarks>
+    function SetMetaValidation(AMode: TMCPValidationLevel): TMCPSecurityConfig;
   end;
 
   TMCPToolConfig = class(TMCPTool)
@@ -816,17 +842,19 @@ type
     FCompletions: TMCPCompletionsConfig;
 
     /// <summary>
-    ///   Puts TMCPRequestHeadersMiddleware in the chain of the server, once.
+    ///   Puts the two middleware that enforce the per-request contracts of the
+    ///   specification - TMCPRequestHeadersMiddleware and
+    ///   TMCPRequestMetaMiddleware - in the chain of the server, once each.
     /// </summary>
     /// <remarks>
-    ///   Unlike CORS or the static token, this one is not registered by the
-    ///   call that configures it: the request-metadata headers are what MCP
-    ///   2026-07-28 requires of every HTTP server, so the middleware goes in
-    ///   whenever a configuration is applied. Security.SetHeaderValidation(Off)
-    ///   is the one setting that keeps it out - a server that wants none of it
-    ///   pays nothing for it.
+    ///   Unlike CORS or the static token, these are not registered by the call
+    ///   that configures them: the request-metadata headers and the per-request
+    ///   "_meta" are what MCP 2026-07-28 requires of every server, so they go in
+    ///   whenever a configuration is applied. SetHeaderValidation(Off) and
+    ///   SetMetaValidation(Off) are what keep them out - a server that wants
+    ///   none of one pays nothing for it.
     /// </remarks>
-    procedure EnsureHeaderMiddleware;
+    procedure EnsureProtocolMiddleware;
   public
     constructor Create(AApp: IJRPCApplication); override;
     destructor Destroy; override;
@@ -856,7 +884,8 @@ uses
 
   MCPConnect.JRPC.Middleware,
   MCPConnect.MCP.Middleware.Default,
-  MCPConnect.MCP.Middleware.Headers;
+  MCPConnect.MCP.Middleware.Headers,
+  MCPConnect.MCP.Middleware.RequestMeta;
 
 constructor TMCPConfig.Create(AApp: IJRPCApplication);
 begin
@@ -871,26 +900,35 @@ begin
   FCompletions := TMCPCompletionsConfig.Create(Self);
 end;
 
-procedure TMCPConfig.EnsureHeaderMiddleware;
+procedure TMCPConfig.EnsureProtocolMiddleware;
 var
   LMiddleware: TMiddlewareList;
+
+  procedure EnsureOne(AClass: TMiddlewareClass; ALevel: TMCPValidationLevel);
+  begin
+    if (ALevel = TMCPValidationLevel.Off) or LMiddleware.Contains(AClass) then
+      Exit;
+
+    LMiddleware.Add(AClass);
+  end;
+
 begin
-  if (FSecurity.HeaderValidation = TMCPHeaderValidation.Off) or
-     not Assigned(FApplication) then
+  if not Assigned(FApplication) then
     Exit;
 
   // FApplication, and not BackToApp: BackToApp is ApplyConfig, and this runs
   // from inside it.
   LMiddleware := FApplication.GetMiddlewareList as TMiddlewareList;
-  if not Assigned(LMiddleware) or LMiddleware.Contains(TMCPRequestHeadersMiddleware) then
+  if not Assigned(LMiddleware) then
     Exit;
 
-  LMiddleware.Add(TMCPRequestHeadersMiddleware);
+  EnsureOne(TMCPRequestHeadersMiddleware, FSecurity.HeaderValidation);
+  EnsureOne(TMCPRequestMetaMiddleware, FSecurity.MetaValidation);
 end;
 
 function TMCPConfig.ApplyConfig: IJRPCApplication;
 begin
-  EnsureHeaderMiddleware;
+  EnsureProtocolMiddleware;
   Result := inherited;
 end;
 
@@ -2156,15 +2194,22 @@ begin
   AllowedMethods := ['POST'];
   CookieSecure := True;
 
-  // The header contract is not opt-in: 2026-07-28 requires it of every HTTP
-  // server, so the default is the specification and SetHeaderValidation is
-  // there to relax it, not to turn it on.
-  HeaderValidation := TMCPHeaderValidation.Strict;
+  // Neither contract is opt-in: 2026-07-28 requires both of every server, so
+  // the defaults are the specification and the two Set... calls are there to
+  // relax them, not to turn them on.
+  HeaderValidation := TMCPValidationLevel.Strict;
+  MetaValidation := TMCPValidationLevel.Strict;
 end;
 
-function TMCPSecurityConfig.SetHeaderValidation(AMode: TMCPHeaderValidation): TMCPSecurityConfig;
+function TMCPSecurityConfig.SetHeaderValidation(AMode: TMCPValidationLevel): TMCPSecurityConfig;
 begin
   HeaderValidation := AMode;
+  Result := Self;
+end;
+
+function TMCPSecurityConfig.SetMetaValidation(AMode: TMCPValidationLevel): TMCPSecurityConfig;
+begin
+  MetaValidation := AMode;
   Result := Self;
 end;
 

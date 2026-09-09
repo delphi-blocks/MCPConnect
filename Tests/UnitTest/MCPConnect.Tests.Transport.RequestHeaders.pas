@@ -89,9 +89,9 @@ type
     ///   methods of the same name in one hierarchy is asking for the wrong one
     ///   to run.
     /// </summary>
-    function Mode: TMCPHeaderValidation; virtual;
+    function Mode: TMCPValidationLevel; virtual;
 
-    procedure ConfigureServer(AMode: TMCPHeaderValidation);
+    procedure ConfigureServer(AMode: TMCPValidationLevel);
     function Send(const ABody: string;
       const AShape: TMCPTransportRequestConverter = nil): THeaderAnswer;
 
@@ -191,7 +191,7 @@ type
   [TestFixture]
   TLenientHeadersTest = class(TRequestHeadersTest)
   protected
-    function Mode: TMCPHeaderValidation; override;
+    function Mode: TMCPValidationLevel; override;
   public
     [Test]
     procedure TestMissingHeadersAreTolerated();
@@ -204,7 +204,7 @@ type
   [TestFixture]
   TOffHeadersTest = class(TRequestHeadersTest)
   protected
-    function Mode: TMCPHeaderValidation; override;
+    function Mode: TMCPValidationLevel; override;
   public
     [Test]
     procedure TestOffKeepsTheMiddlewareOutOfTheChain();
@@ -314,9 +314,9 @@ end;
 
 { TRequestHeadersTest }
 
-function TRequestHeadersTest.Mode: TMCPHeaderValidation;
+function TRequestHeadersTest.Mode: TMCPValidationLevel;
 begin
-  Result := TMCPHeaderValidation.Strict;
+  Result := TMCPValidationLevel.Strict;
 end;
 
 procedure TRequestHeadersTest.Setup;
@@ -330,7 +330,7 @@ begin
   FServer.Free;
 end;
 
-procedure TRequestHeadersTest.ConfigureServer(AMode: TMCPHeaderValidation);
+procedure TRequestHeadersTest.ConfigureServer(AMode: TMCPValidationLevel);
 begin
   FServer.Plugin.Configure<IMCPConfig>
     .Server
@@ -339,6 +339,9 @@ begin
     .BackToMCP
     .Security
       .SetHeaderValidation(AMode)
+      // These fixtures are about the headers: the body contract is checked by
+      // its own middleware, and its own tests.
+      .SetMetaValidation(TMCPValidationLevel.Off)
     .BackToMCP
     .Tools
       .RegisterClass(TEchoTool)
@@ -863,9 +866,9 @@ end;
 
 { TLenientHeadersTest }
 
-function TLenientHeadersTest.Mode: TMCPHeaderValidation;
+function TLenientHeadersTest.Mode: TMCPValidationLevel;
 begin
-  Result := TMCPHeaderValidation.Lenient;
+  Result := TMCPValidationLevel.Lenient;
 end;
 
 procedure TLenientHeadersTest.TestMissingHeadersAreTolerated;
@@ -906,9 +909,9 @@ end;
 
 { TOffHeadersTest }
 
-function TOffHeadersTest.Mode: TMCPHeaderValidation;
+function TOffHeadersTest.Mode: TMCPValidationLevel;
 begin
-  Result := TMCPHeaderValidation.Off;
+  Result := TMCPValidationLevel.Off;
 end;
 
 procedure TOffHeadersTest.TestOffKeepsTheMiddlewareOutOfTheChain;

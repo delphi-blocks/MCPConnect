@@ -162,7 +162,8 @@ begin
       // A batch is outside 2026-07-28 - the body of a POST MUST be a single
       // message - so there is nothing for one set of request-metadata headers
       // to mirror, and these tests send none.
-      .SetHeaderValidation(TMCPHeaderValidation.Off)
+      .SetHeaderValidation(TMCPValidationLevel.Off)
+      .SetMetaValidation(TMCPValidationLevel.Off)
     .BackToMCP
     .Tools
       .RegisterClass(TNotifyingTool)

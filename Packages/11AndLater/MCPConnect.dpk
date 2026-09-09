@@ -73,6 +73,7 @@ contains
   MCPConnect.MCP.Middleware in '..\..\Source\MCPConnect.MCP.Middleware.pas',
   MCPConnect.MCP.Middleware.Default in '..\..\Source\MCPConnect.MCP.Middleware.Default.pas',
   MCPConnect.MCP.Middleware.Headers in '..\..\Source\MCPConnect.MCP.Middleware.Headers.pas',
+  MCPConnect.MCP.Middleware.RequestMeta in '..\..\Source\MCPConnect.MCP.Middleware.RequestMeta.pas',
   MCPConnect.MCP.Middleware.OAuth in '..\..\Source\MCPConnect.MCP.Middleware.OAuth.pas',
   MCPConnect.MCP.Server in '..\..\Source\MCPConnect.MCP.Server.pas',
   MCPConnect.MCP.Server.Api in '..\..\Source\MCPConnect.MCP.Server.Api.pas',

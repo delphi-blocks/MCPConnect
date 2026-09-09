@@ -187,7 +187,14 @@ begin
 end;
 
 const
-  DiscoverBody = '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{}}';
+  // What a conforming 2026-07-28 client sends: the per-request _meta with the
+  // protocol version and the capabilities it declares. These tests are about
+  // the other middleware, so the request is complete and passes the two that
+  // check the protocol contract.
+  DiscoverBody =
+    '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{' +
+    '"io.modelcontextprotocol/protocolVersion":"2026-07-28",' +
+    '"io.modelcontextprotocol/clientCapabilities":{}}}}';
 
 { TSilentDefaultWriter }
 

@@ -57,6 +57,15 @@ const
   /// </summary>
   MCP_META_PROTOCOL_VERSION = 'io.modelcontextprotocol/protocolVersion';
 
+  /// <summary>
+  ///   The request _meta key carrying the capabilities the client declares for
+  ///   a single request. Required on every request like the version above, and
+  ///   a constant for the same reason: TMCPRequestMetaMiddleware has to look
+  ///   the key up in the raw JSON, since an absent object and an empty one
+  ///   deserialize alike.
+  /// </summary>
+  MCP_META_CLIENT_CAPABILITIES = 'io.modelcontextprotocol/clientCapabilities';
+
 resourcestring
   // Localizable messages for the MCP layer (MCPConnect.MCP.Types/Invoker/Server.Api)
 
@@ -80,24 +89,34 @@ type
   EMCPException = class(Exception);
 
   /// <summary>
-  ///   How much of the Streamable HTTP request-metadata header contract
-  ///   (MCP-Protocol-Version, Mcp-Method, Mcp-Name, Mcp-Param-*) a server
-  ///   enforces. Configured with IMCPConfig.Security.SetHeaderValidation and
-  ///   read per request by TMCPRequestHeadersMiddleware.
+  ///   How much of a per-request contract of the specification a server
+  ///   enforces. One level type for the two checks that carry the same three
+  ///   facts on different channels: the request-metadata headers of the
+  ///   Streamable HTTP transport (Security.SetHeaderValidation,
+  ///   TMCPRequestHeadersMiddleware) and the per-request "_meta" of the body
+  ///   (Security.SetMetaValidation, TMCPRequestMetaMiddleware).
   /// </summary>
   /// <remarks>
-  ///   Strict is the revision as written, and the default: the headers are
-  ///   REQUIRED for compliance, and a request missing one is refused with 400
-  ///   and HeaderMismatch (-32020).
+  ///   Strict is the revision as written, and the default for both: the headers
+  ///   and the "_meta" fields alike are REQUIRED, and a request missing one is
+  ///   refused - HeaderMismatch (-32020) for a header, Invalid Params (-32602)
+  ///   for a "_meta" field, both answered with HTTP 400.
   ///
-  ///   Lenient keeps the half of the check that is a security property - a
-  ///   header that contradicts the body is still refused - while tolerating a
-  ///   client that sends no headers at all. It is the setting for a deployment
-  ///   still talking to clients written against an earlier revision.
+  ///   Lenient keeps what is a property of the request rather than of its
+  ///   completeness: a header that contradicts the body is still refused, and a
+  ///   protocol version the server does not speak is still an
+  ///   UnsupportedProtocolVersion (-32022). What it tolerates is absence. It is
+  ///   the setting for a deployment still talking to clients written against an
+  ///   earlier revision, or sitting behind an intermediary that strips headers
+  ///   it does not recognize.
   ///
   ///   Off keeps the middleware out of the chain entirely.
+  ///
+  ///   The two are configured apart on purpose: intermediaries rewrite headers
+  ///   and nothing rewrites the body, so a server may well have to relax the
+  ///   first while holding the second.
   /// </remarks>
-  TMCPHeaderValidation = (Off, Lenient, Strict);
+  TMCPValidationLevel = (Off, Lenient, Strict);
 
 
   TStringPair = TPair<string, string>;
@@ -612,7 +631,7 @@ type
     /// <summary>
     ///   REQUIRED: Client capabilities.
     /// </summary>
-    [NeonProperty('io.modelcontextprotocol/clientCapabilities')]
+    [NeonProperty(MCP_META_CLIENT_CAPABILITIES)]
     Capabilities: TClientCapabilities;
 
     /// <summary>

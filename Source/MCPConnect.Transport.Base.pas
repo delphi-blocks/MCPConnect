@@ -32,6 +32,7 @@ uses
   MCPConnect.Transport.AcceptParser,
   MCPConnect.Configuration.MCP,
   MCPConnect.MCP.Types.Base,
+  MCPConnect.MCP.Types.Errors,
   MCPConnect.JRPC.Middleware,
   MCPConnect.MCP.Server;
 
@@ -225,6 +226,30 @@ type
     /// </summary>
     FResponseWriter: IMCPTransportWriter;
     FSendResponseHeadersProc: TProc<TMCPTransportResponse>;
+    /// <summary>
+    ///   The HTTP status the reply must carry because of a protocol error, or
+    ///   zero when nothing asked for one.
+    /// </summary>
+    /// <remarks>
+    ///   The errors MCP 2026-07-28 defines for itself - a header that
+    ///   contradicts the body, a "_meta" missing a required field, an
+    ///   unsupported protocol version, a capability the client never declared -
+    ///   MUST be answered with 400 Bad Request, and the JSON-RPC error code
+    ///   alone does not say which those are: -32602 is a 400 when it reports a
+    ///   malformed "_meta" and an ordinary 200 when it reports an unknown tool
+    ///   name. What separates them is the exception, so it is recorded where
+    ///   the exception is seen (HandleMessage) and read where the status is
+    ///   decided (HandlePOST).
+    ///
+    ///   Written on the worker thread and read after the response queue closes,
+    ///   which is the happens-before that makes a plain field enough.
+    ///
+    ///   It cannot help a request answered with a stream: an SSE reply sends
+    ///   its headers before the handler runs, so by the time the error exists
+    ///   the status is already on the wire. That is inherent to streaming, not
+    ///   to this.
+    /// </remarks>
+    FProtocolStatus: Integer;
   private
     function SelectNeonConfig(const AProxy: TJRPCConstructorProxy): INeonConfiguration;
     procedure HandleMessage(AMessage: TJRPCMessage; AResponseQueue: TMCPMessageQueue);
@@ -530,6 +555,14 @@ begin
         on E: Exception do
         begin
           Logger.LogError(E, Format('TMCPTransportHandler.HandleMessage %s: %s', [E.ClassName, E.Message]));
+
+          // The whole family in one test, which is what the common ancestor is
+          // for: every protocol error of the revision is a 400, whatever
+          // JSON-RPC code it reports. First one wins - a batch that produced
+          // two of them is answered 200 anyway, see HandlePOST.
+          if (E is EMCPProtocolError) and (FProtocolStatus = 0) then
+            FProtocolStatus := HTTP_CODE_BADREQUEST;
+
           // Only a request has somewhere to put an error: anything else keeps
           // the behaviour it had before, which is to let the caller see it.
           if not (AMessage is TJRPCRequest) then
@@ -755,6 +788,10 @@ begin
     begin
       if LResponseList.Count = 0 then
         FResponse.Code := HTTP_CODE_ACCEPTED
+      // Only for a reply that is one message: a batch answers with an array of
+      // outcomes, and a status can only describe one of them.
+      else if (FProtocolStatus <> 0) and LResponseList.Single then
+        FResponse.Code := FProtocolStatus
       else
         FResponse.Code := HTTP_CODE_OK;
       FResponse.ContentType := TMediaType.APPLICATION_JSON;

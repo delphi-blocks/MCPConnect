@@ -43,7 +43,7 @@ unit MCPConnect.MCP.Middleware.Headers;
   It is registered by IMCPConfig itself rather than by a Set... call, because
   unlike CORS or the static token this is not a feature a server opts into: it
   is what the revision requires of every HTTP server. Security.SetHeaderValidation
-  chooses how much of it is enforced, TMCPHeaderValidation.Off included, and
+  chooses how much of it is enforced, TMCPValidationLevel.Off included, and
   Off is the one value that keeps the middleware out of the chain entirely.
 }
 
@@ -444,13 +444,12 @@ begin
   Result := False;
 end;
 
-procedure TMCPRequestHeadersMiddleware.Handle(AContext: TMiddlewareContext;
-  const AChain: TMiddlewareChain);
+procedure TMCPRequestHeadersMiddleware.Handle(AContext: TMiddlewareContext; const AChain: TMiddlewareChain);
 var
   LRequest: TMCPTransportRequest;
   LResponse: TMCPTransportResponse;
   LConfig: TMCPConfig;
-  LMode: TMCPHeaderValidation;
+  LMode: TMCPValidationLevel;
   LBody: TJSONObject;
   LParams: TJSONObject;
   LMethod: string;
@@ -500,7 +499,7 @@ var
 
     if LHeader.IsEmpty then
     begin
-      if ARequired and (LMode = TMCPHeaderValidation.Strict) then
+      if ARequired and (LMode = TMCPValidationLevel.Strict) then
         FailMissing(AHeaderName);
       Exit;
     end;
@@ -574,7 +573,7 @@ var
         begin
           // The argument is there and the header is not: a non-conforming
           // client, which Strict refuses and Lenient lets through.
-          if LHasValue and (LMode = TMCPHeaderValidation.Strict) then
+          if LHasValue and (LMode = TMCPValidationLevel.Strict) then
             FailMissing(LHeaderName);
           Continue;
         end;
@@ -631,7 +630,7 @@ begin
     raise EMCPException.Create(SErrorRetrievingMCPConfig);
 
   LMode := LConfig.Security.HeaderValidation;
-  if LMode = TMCPHeaderValidation.Off then
+  if LMode = TMCPValidationLevel.Off then
   begin
     AChain.Next(AContext);
     Exit;

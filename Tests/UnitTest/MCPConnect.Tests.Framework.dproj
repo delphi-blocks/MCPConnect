@@ -142,6 +142,7 @@
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Middleware.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Middleware.Default.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Middleware.Headers.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Middleware.RequestMeta.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Middleware.OAuth.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Invoker.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Prompts.pas"/>
@@ -182,6 +183,7 @@
         <DCCReference Include="MCPConnect.Tests.Transport.OAuth.pas"/>
         <DCCReference Include="MCPConnect.Tests.Transport.Headers.pas"/>
         <DCCReference Include="MCPConnect.Tests.Transport.RequestHeaders.pas"/>
+        <DCCReference Include="MCPConnect.Tests.Transport.RequestMeta.pas"/>
         <DCCReference Include="MCPConnect.Tests.Transport.Batch.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Errors.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Completion.pas"/>

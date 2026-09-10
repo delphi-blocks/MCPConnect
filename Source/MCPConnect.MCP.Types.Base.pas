@@ -90,6 +90,8 @@ resourcestring
   SMCPResourceNotFound = 'Resource [%s] not found';
   SMCPPromptNotFound = 'Prompt [%s] not found';
   SMCPToolCallError = 'Tool call Error class: "%s" - message: "%s"';
+  SMCPCursorInvalid = 'The cursor is not one this server issued for [%s]';
+  SMCPCursorUnpaged = 'This server does not page [%s], so it issues no cursor';
 
 type
   EMCPException = class(Exception);
@@ -741,6 +743,80 @@ type
     ///   should return results starting after this cursor.
     /// </summary>
     Cursor: NullString;
+  end;
+
+  /// <summary>
+  ///   The four lists the specification allows a server to page, and what a
+  ///   cursor is scoped to: one minted for tools/list means nothing to
+  ///   prompts/list, and saying so is how a client's mistake is caught.
+  /// </summary>
+  TMCPPageKind = (Tools, Resources, Templates, Prompts);
+
+  /// <summary>
+  ///   The cursor MCPConnect mints and reads back: the list it belongs to and
+  ///   the sort key of the last item already sent, Base64-encoded.
+  /// </summary>
+  /// <remarks>
+  ///   Opaque is a promise made to the *client* - "don't parse it, don't
+  ///   modify it, don't read anything into its value" - not an obligation on
+  ///   the server to make it unreadable. It is not signed: a cursor selects a
+  ///   position in a list the caller may already read whole, so there is
+  ///   nothing in it to protect. Contrast MRTR's requestState, which can
+  ///   influence authorization and therefore has to be signed by the
+  ///   application (see the compliance report §4.4).
+  ///
+  ///   The position is a key and not an index, which is what makes it *stable*
+  ///   in the sense the specification asks for: registering or unregistering a
+  ///   feature between two pages shifts every index after it, while "everything
+  ///   after this name" still means what it meant.
+  /// </remarks>
+  TMCPCursor = record
+  private
+    const Separator = '|';
+  public
+    /// <summary>
+    ///   The list's name, as it appears inside a cursor and in the message of
+    ///   the error that refuses a wrong one.
+    /// </summary>
+    class function KindNameOf(AKind: TMCPPageKind): string; static;
+
+    /// <summary>
+    ///   The cursor that resumes AKind's list after the item whose sort key is
+    ///   AKey.
+    /// </summary>
+    class function Encode(AKind: TMCPPageKind; const AKey: string): string; static;
+
+    /// <summary>
+    ///   The key ACursor resumes after, or False when ACursor is not one of
+    ///   this server's cursors for AKind - not Base64, or minted for another
+    ///   list. An unknown key is *not* a failure: it names a position, and
+    ///   "everything after it" is well defined even for an item that has since
+    ///   been unregistered.
+    /// </summary>
+    class function TryDecode(AKind: TMCPPageKind; const ACursor: string; out AKey: string): Boolean; static;
+  end;
+
+  /// <summary>
+  ///   How large a page the server answers a list request with.
+  /// </summary>
+  /// <remarks>
+  ///   Unset means no paging at all: the whole list, and no nextCursor - which
+  ///   is the only safe default, since paging is a MAY and a client that never
+  ///   follows a cursor would otherwise silently see a truncated list. An
+  ///   unset record is also how a section defers to the server, and the server
+  ///   to that default, exactly as TMCPCacheHints does.
+  /// </remarks>
+  TMCPPaging = record
+  private
+    FAssigned: Boolean;
+  public
+    /// <summary>Items per page. Zero or less means no paging.</summary>
+    PageSize: Integer;
+
+    class function Create(APageSize: Integer): TMCPPaging; static;
+
+    /// <summary>Whether paging was configured at this level at all.</summary>
+    property IsAssigned: Boolean read FAssigned;
   end;
 
   /// <summary>
@@ -2442,6 +2518,66 @@ begin
   Result.TtlMs := ATtlMs;
   Result.Scope := AScope;
   Result.FAssigned := True;
+end;
+
+{ TMCPPaging }
+
+class function TMCPPaging.Create(APageSize: Integer): TMCPPaging;
+begin
+  Result.PageSize := APageSize;
+  Result.FAssigned := True;
+end;
+
+{ TMCPCursor }
+
+class function TMCPCursor.KindNameOf(AKind: TMCPPageKind): string;
+begin
+  case AKind of
+    TMCPPageKind.Tools:     Result := 'tools';
+    TMCPPageKind.Resources: Result := 'resources';
+    TMCPPageKind.Templates: Result := 'templates';
+  else
+    Result := 'prompts';
+  end;
+end;
+
+class function TMCPCursor.Encode(AKind: TMCPPageKind; const AKey: string): string;
+begin
+  // Base64String and not Base64: the MIME variant breaks its output into lines
+  // every 76 characters, and a cursor is one JSON string
+  Result := TNetEncoding.Base64String.EncodeBytesToString(
+    TEncoding.UTF8.GetBytes(KindNameOf(AKind) + Separator + AKey));
+end;
+
+class function TMCPCursor.TryDecode(AKind: TMCPPageKind; const ACursor: string; out AKey: string): Boolean;
+var
+  LPlain: string;
+  LSeparator: Integer;
+begin
+  AKey := '';
+  if ACursor.IsEmpty then
+    Exit(False);
+
+  try
+    LPlain := TEncoding.UTF8.GetString(
+      TNetEncoding.Base64String.DecodeStringToBytes(ACursor));
+  except
+    // Whatever the decoder makes of it, a cursor this server did not mint is
+    // the caller's error and not this server's crash
+    on E: Exception do
+      Exit(False);
+  end;
+
+  LSeparator := LPlain.IndexOf(Separator);
+  if LSeparator < 0 then
+    Exit(False);
+
+  // The key may contain the separator; only the first one counts
+  if LPlain.Substring(0, LSeparator) <> KindNameOf(AKind) then
+    Exit(False);
+
+  AKey := LPlain.Substring(LSeparator + 1);
+  Result := True;
 end;
 
 procedure TMCPCacheHints.ApplyTo(AResult: TBaseResult);

@@ -17,7 +17,9 @@ interface
 
 uses
   System.Classes, System.SysUtils, System.StrUtils, System.JSON,
-  System.Generics.Collections,
+  System.Generics.Collections, System.Generics.Defaults,
+
+  Neon.Core.Nullables,
 
   JRPC.Core,
   JRPC.Classes,
@@ -40,6 +42,17 @@ uses
 
 type
   TApiCall<T> = procedure (AContext: TMiddlewareContext; AParams: T) of object;
+
+  /// <summary>
+  ///   Reads the sort key - the identity - of one item of a pageable list.
+  /// </summary>
+  /// <remarks>
+  ///   A method pointer and not a TFunc: this compiler refuses an anonymous
+  ///   function assigned to a TFunc inside a function whose own Result is of
+  ///   another type, which is what all four call sites are. Named key methods
+  ///   read better next to the endpoint anyway.
+  /// </remarks>
+  TMCPKeyOf<T: class> = function (AItem: T): string of object;
 
   /// <summary>
   ///   Base of the api classes: what every one of them needs from the request,
@@ -123,6 +136,55 @@ type
     ///   this is where it is freed.
     /// </remarks>
     procedure RequireInputCapabilities(AResult: TBaseResult);
+  protected
+    /// <summary>
+    ///   The page size the answering section asks for, its own if it has one
+    ///   and the server's otherwise.
+    /// </summary>
+    function PageSizeFor(const ASection: TMCPPaging): Integer;
+
+    /// <summary>
+    ///   Refuses a cursor this server cannot have issued: one minted for
+    ///   another list, one that is not a cursor at all, or any cursor when the
+    ///   answering section is unpaged and therefore issues none.
+    /// </summary>
+    /// <remarks>
+    ///   The specification asks for Invalid Params (-32602), and silently
+    ///   ignoring a cursor is the one thing a server may not do: a client would
+    ///   be handed the first page again and page for ever.
+    ///
+    ///   Separate from Paginate, and called *before* the list is built, for an
+    ///   ownership reason: refusing after the chain has produced a result would
+    ///   orphan it - the exception leaves by way of the function's own Result,
+    ///   so no caller ever sees the object to free it.
+    /// </remarks>
+    procedure CheckCursor(AKind: TMCPPageKind; const ACursor: NullString; APageSize: Integer);
+
+    /// <summary>
+    ///   Sorts AList by AKeyOf, drops what an incoming cursor says has already
+    ///   been sent, trims the rest to one page, and answers with the cursor
+    ///   that fetches the page after it - empty when this was the last one.
+    /// </summary>
+    /// <remarks>
+    ///   Sorting happens whether or not the list is paged: the revision asks a
+    ///   list to come back in a deterministic order, and the registries are
+    ///   dictionaries whose enumeration order is an implementation detail
+    ///   (insertion-ordered on Delphi 13, unspecified before it). A cursor that
+    ///   names a position also needs the positions to hold still.
+    ///
+    ///   Raises nothing: CheckCursor has already refused anything this server
+    ///   could not have issued, which is why it runs first and this one runs
+    ///   on a result that exists.
+    /// </remarks>
+    function Paginate<T: class>(AList: TObjectList<T>; AKeyOf: TMCPKeyOf<T>;
+      AKind: TMCPPageKind; const ACursor: NullString; APageSize: Integer): NullString;
+  private
+    /// <summary>
+    ///   Orders AList by its items' keys. A procedure and not a step of
+    ///   Paginate: the comparer is an anonymous function, and this compiler
+    ///   only accepts one inside a routine with no Result of its own.
+    /// </summary>
+    procedure SortByKey<T: class>(AList: TObjectList<T>; AKeyOf: TMCPKeyOf<T>);
   end;
 
 
@@ -146,6 +208,9 @@ type
   [JRPC('tools')]
   TMCPToolsApi = class(TMCPApi)
   private
+    /// <summary>A tool's identity, which is what tools/list is ordered and paged by.</summary>
+    function ToolKey(AItem: TMCPTool): string;
+
     function DoToolsList(AContext: TMiddlewareContext;
       AParams: TPaginatedRequestParams): TListToolsResult;
     function DoCallTool(AContext: TMiddlewareContext;
@@ -165,6 +230,15 @@ type
   [JRPC('resources')]
   TMCPResourcesApi = class(TMCPApi)
   private
+    /// <summary>
+    ///   A resource's identity: the uri, not the name. The uri is what
+    ///   resources/read is keyed by, and two resources may share a display name.
+    /// </summary>
+    function ResourceKey(AItem: TMCPResource): string;
+
+    /// <summary>A template's identity, the uri template it answers for.</summary>
+    function TemplateKey(AItem: TMCPResourceTemplate): string;
+
     function InternalReadResource(AParams: TReadResourceParams; AResource: TMCPResource): TBaseResult;
     function InternalReadTemplate(AParams: TReadResourceParams; ATemplate: TMCPResourceTemplate): TBaseResult;
     function DoResourcesList(AContext: TMiddlewareContext;
@@ -189,6 +263,9 @@ type
   [JRPC('prompts')]
   TMCPPromptsApi = class(TMCPApi)
   private
+    /// <summary>A prompt's identity, which prompts/list is ordered and paged by.</summary>
+    function PromptKey(AItem: TMCPPrompt): string;
+
     function DoPromptList(AContext: TMiddlewareContext;
       AParams: TPaginatedRequestParams): TListPromptsResult;
     function DoReadPrompt(AContext: TMiddlewareContext;
@@ -286,6 +363,84 @@ begin
     ASection.ApplyTo(AResult)
   else
     MCPConfig.Server.CacheHints.ApplyTo(AResult);
+end;
+
+function TMCPApi.PageSizeFor(const ASection: TMCPPaging): Integer;
+begin
+  if not Assigned(MCPConfig) then
+    Exit(0);
+
+  if ASection.IsAssigned then
+    Result := ASection.PageSize
+  else
+    Result := MCPConfig.Server.Paging.PageSize;
+end;
+
+procedure TMCPApi.CheckCursor(AKind: TMCPPageKind; const ACursor: NullString; APageSize: Integer);
+var
+  LAfter: string;
+begin
+  if not ACursor.HasValue then
+    Exit;
+
+  if APageSize <= 0 then
+    raise EJRPCInvalidParamsError.CreateFmt(SMCPCursorUnpaged,
+      [TMCPCursor.KindNameOf(AKind)]);
+
+  if not TMCPCursor.TryDecode(AKind, ACursor.Value, LAfter) then
+    raise EJRPCInvalidParamsError.CreateFmt(SMCPCursorInvalid,
+      [TMCPCursor.KindNameOf(AKind)]);
+end;
+
+procedure TMCPApi.SortByKey<T>(AList: TObjectList<T>; AKeyOf: TMCPKeyOf<T>);
+begin
+  // CompareStr and not CompareText: the identities these lists are keyed by
+  // are case-sensitive, so a case-insensitive sort would leave two that differ
+  // only in case in an arbitrary order relative to each other - which is the
+  // thing being fixed.
+  AList.Sort(TComparer<T>.Construct(
+    function (const ALeft, ARight: T): Integer
+    begin
+      Result := CompareStr(AKeyOf(ALeft), AKeyOf(ARight));
+    end));
+end;
+
+function TMCPApi.Paginate<T>(AList: TObjectList<T>; AKeyOf: TMCPKeyOf<T>;
+  AKind: TMCPPageKind; const ACursor: NullString; APageSize: Integer): NullString;
+var
+  LAfter: string;
+  LIndex: Integer;
+begin
+  // Unset, not empty: an empty string is a *valid* cursor a client would
+  // follow, so "no next page" has to be an absent member
+  Result := nil;
+  if not Assigned(AList) then
+    Exit;
+
+  // Deterministic before anything else looks at the order
+  SortByKey<T>(AList, AKeyOf);
+
+  if ACursor.HasValue and TMCPCursor.TryDecode(AKind, ACursor.Value, LAfter) then
+  begin
+    // Everything up to and including the key already sent. Extract and not
+    // Delete: these lists do not own their items - the registries do - but
+    // saying so at the call site is cheaper than trusting it.
+    for LIndex := AList.Count - 1 downto 0 do
+      if CompareStr(AKeyOf(AList[LIndex]), LAfter) <= 0 then
+        AList.Extract(AList[LIndex]);
+  end;
+
+  if APageSize <= 0 then
+    Exit;
+
+  if AList.Count <= APageSize then
+    Exit;
+
+  // One page, and the cursor that resumes after its last item
+  Result := TMCPCursor.Encode(AKind, AKeyOf(AList[APageSize - 1]));
+
+  for LIndex := AList.Count - 1 downto APageSize do
+    AList.Extract(AList[LIndex]);
 end;
 
 procedure TMCPApi.NoCache(AResult: TBaseResult);
@@ -414,7 +569,6 @@ function TMCPToolsApi.DoToolsList(AContext: TMiddlewareContext;
 var
   LStopwatch: TStopwatch;
 begin
-  { TODO -opaolo -c : Read the params 29/08/2026 09:25:00 }
   LStopwatch := TStopwatch.StartNew;
   try
     Result := MCPConfig.Tools.ListEnabled;
@@ -524,9 +678,8 @@ function TMCPResourcesApi.DoResourcesList(AContext: TMiddlewareContext;
 var
   LStopwatch: TStopwatch;
 begin
-  // AParams carries the required _meta - protocol version, client capabilities,
-  // log level - which is why this takes params at all. Cursor pagination is not
-  // implemented yet, here or on tools/list.
+  // The cursor is read by the caller, after the chain: this builds the whole
+  // list, and ResourcesList pages what comes back out of it
   LStopwatch := TStopwatch.StartNew;
   try
     Result := TListResourcesResult.Create;
@@ -542,11 +695,21 @@ begin
 end;
 
 function TMCPResourcesApi.TemplatesList(AParams: TPaginatedRequestParams): TListResourceTemplatesResult;
+var
+  LPageSize: Integer;
 begin
-  // See ResourcesList on why the params are taken but not yet read
+  // Its own cursor kind, off the Resources page size: the two lists are paged
+  // apart, so a cursor from one is refused by the other
+  LPageSize := PageSizeFor(MCPConfig.Resources.Paging);
+  CheckCursor(TMCPPageKind.Templates, AParams.Cursor, LPageSize);
+
   Result := TListResourceTemplatesResult.Create;
   try
     MCPConfig.Resources.TemplateList(Result);
+
+    Result.NextCursor := Paginate<TMCPResourceTemplate>(Result.ResourceTemplates,
+      TemplateKey, TMCPPageKind.Templates, AParams.Cursor, LPageSize);
+
     Identify(Result);
     Cache(Result, MCPConfig.Resources.CacheHints);
   except
@@ -562,7 +725,7 @@ function TMCPPromptsApi.DoPromptList(AContext: TMiddlewareContext;
 var
   LStopwatch: TStopwatch;
 begin
-  // See ResourcesList on why the params are taken but not yet read
+  // See DoResourcesList on where the cursor is read
   LStopwatch := TStopwatch.StartNew;
   try
     Result := MCPConfig.Prompts.ListComplete;
@@ -778,10 +941,31 @@ begin
   Identify(Result);
 end;
 
-function TMCPToolsApi.ToolsList(AParams: TPaginatedRequestParams): TListToolsResult;
+function TMCPToolsApi.ToolKey(AItem: TMCPTool): string;
 begin
+  Result := AItem.Name;
+end;
+
+function TMCPToolsApi.ToolsList(AParams: TPaginatedRequestParams): TListToolsResult;
+var
+  LPageSize: Integer;
+begin
+  LPageSize := PageSizeFor(MCPConfig.Tools.Paging);
+
+  // Before anything is built: a refusal from here leaves nothing behind
+  CheckCursor(TMCPPageKind.Tools, AParams.Cursor, LPageSize);
+
   Result := TListToolsChain.Run<IListToolsMiddleware>(RPCContext, DoToolsList, AParams);
+
+  // After the chain, so that a middleware which filters the list is paged over
+  // what it actually returns rather than over what the registry holds
+  Result.NextCursor := Paginate<TMCPTool>(Result.Tools, ToolKey,
+    TMCPPageKind.Tools, AParams.Cursor, LPageSize);
+
   Identify(Result);
+
+  // Each page is independently cacheable and carries its own hints, which is
+  // what the caching section of the revision says of a paged list
   Cache(Result, MCPConfig.Tools.CacheHints);
 end;
 
@@ -799,16 +983,54 @@ begin
     NoCache(Result);
 end;
 
-function TMCPResourcesApi.ResourcesList(AParams: TPaginatedRequestParams): TListResourcesResult;
+function TMCPResourcesApi.ResourceKey(AItem: TMCPResource): string;
 begin
+  Result := AItem.Uri;
+end;
+
+function TMCPResourcesApi.TemplateKey(AItem: TMCPResourceTemplate): string;
+begin
+  // A template with no uri sorts first and is its own problem; the key only
+  // has to be total
+  if AItem.UriTemplate.HasValue then
+    Result := AItem.UriTemplate.Value
+  else
+    Result := '';
+end;
+
+function TMCPResourcesApi.ResourcesList(AParams: TPaginatedRequestParams): TListResourcesResult;
+var
+  LPageSize: Integer;
+begin
+  LPageSize := PageSizeFor(MCPConfig.Resources.Paging);
+  CheckCursor(TMCPPageKind.Resources, AParams.Cursor, LPageSize);
+
   Result := TListResourcesChain.Run<IListResourcesMiddleware>(RPCContext, DoResourcesList, AParams);
+
+  Result.NextCursor := Paginate<TMCPResource>(Result.Resources, ResourceKey,
+    TMCPPageKind.Resources, AParams.Cursor, LPageSize);
+
   Identify(Result);
   Cache(Result, MCPConfig.Resources.CacheHints);
 end;
 
-function TMCPPromptsApi.PromptList(AParams: TPaginatedRequestParams): TListPromptsResult;
+function TMCPPromptsApi.PromptKey(AItem: TMCPPrompt): string;
 begin
+  Result := AItem.Name;
+end;
+
+function TMCPPromptsApi.PromptList(AParams: TPaginatedRequestParams): TListPromptsResult;
+var
+  LPageSize: Integer;
+begin
+  LPageSize := PageSizeFor(MCPConfig.Prompts.Paging);
+  CheckCursor(TMCPPageKind.Prompts, AParams.Cursor, LPageSize);
+
   Result := TListPromptsChain.Run<IListPromptsMiddleware>(RPCContext, DoPromptList, AParams);
+
+  Result.NextCursor := Paginate<TMCPPrompt>(Result.Prompts, PromptKey,
+    TMCPPageKind.Prompts, AParams.Cursor, LPageSize);
+
   Identify(Result);
   Cache(Result, MCPConfig.Prompts.CacheHints);
 end;

@@ -233,6 +233,13 @@ type
     ///   that answered has hints of its own. Unset by default.
     /// </summary>
     CacheHints: TMCPCacheHints;
+
+    /// <summary>
+    ///   How large a page the four list endpoints answer with, unless the
+    ///   section that answered has a size of its own. Unset by default, which
+    ///   means no paging.
+    /// </summary>
+    Paging: TMCPPaging;
     Capabilities: TServerCapabilities;
     WriterRegistry: TMCPWriterRegistry;
   public
@@ -356,6 +363,27 @@ type
     /// </remarks>
     function SetCacheHints(ATtlMs: UInt64;
       AScope: TCacheScope = TCacheScope.ScopePrivate): TMCPServerConfig;
+
+    /// <summary>
+    ///   Answers the four list endpoints - tools, resources, resource
+    ///   templates and prompts - APageSize items at a time, each page carrying
+    ///   the nextCursor that fetches the one after it. Zero or less turns
+    ///   paging off again.
+    /// </summary>
+    /// <returns>Self for fluent chaining</returns>
+    /// <remarks>
+    ///   Off by default: paging is a MAY, and a client that does not follow
+    ///   cursors would otherwise be handed a truncated list with no way to
+    ///   tell. `.Tools`, `.Resources` and `.Prompts` each override this for
+    ///   what they answer.
+    ///
+    ///   Every list is sorted by its own identity - tool and prompt name,
+    ///   resource uri, template uri - whether paging is on or not, both
+    ///   because the revision asks a list to be ordered deterministically and
+    ///   because a cursor that names a position needs the positions to hold
+    ///   still.
+    /// </remarks>
+    function SetPageSize(APageSize: Integer): TMCPServerConfig;
 
     /// <summary>
     ///   Natural-language guidance for the model about this server and what it
@@ -627,6 +655,12 @@ type
     ///   defers to IMCPConfig.Server.SetCacheHints.
     /// </summary>
     CacheHints: TMCPCacheHints;
+
+    /// <summary>
+    ///   The page size tools/list answers with. Unset by default, which defers
+    ///   to IMCPConfig.Server.SetPageSize.
+    /// </summary>
+    Paging: TMCPPaging;
   public
     constructor Create(AConfig: IMCPConfig);
     destructor Destroy; override;
@@ -642,6 +676,13 @@ type
     /// <returns>Self for fluent chaining</returns>
     function SetCacheHints(ATtlMs: UInt64;
       AScope: TCacheScope = TCacheScope.ScopePrivate): TMCPToolsConfig;
+
+    /// <summary>
+    ///   How large a page tools/list answers with, overriding the server-wide
+    ///   size. Zero or less turns paging off for tools alone.
+    /// </summary>
+    /// <returns>Self for fluent chaining</returns>
+    function SetPageSize(APageSize: Integer): TMCPToolsConfig;
     function RegisterTool(AClass: TClass; const AMethodName, AName, ADescription: string; const ATags: string = ''): TMCPToolConfig;
 
     /// <summary>
@@ -708,6 +749,12 @@ type
     ///   defers to IMCPConfig.Server.SetCacheHints.
     /// </summary>
     CacheHints: TMCPCacheHints;
+
+    /// <summary>
+    ///   The page size prompts/list answers with. Unset by default, which
+    ///   defers to IMCPConfig.Server.SetPageSize.
+    /// </summary>
+    Paging: TMCPPaging;
   public
     constructor Create(AConfig: IMCPConfig);
     destructor Destroy; override;
@@ -720,6 +767,13 @@ type
     /// <returns>Self for fluent chaining</returns>
     function SetCacheHints(ATtlMs: UInt64;
       AScope: TCacheScope = TCacheScope.ScopePrivate): TMCPPromptsConfig;
+
+    /// <summary>
+    ///   How large a page prompts/list answers with, overriding the server-wide
+    ///   size. Zero or less turns paging off for prompts alone.
+    /// </summary>
+    /// <returns>Self for fluent chaining</returns>
+    function SetPageSize(APageSize: Integer): TMCPPromptsConfig;
 
     /// <summary>
     ///   Registers a single prompt-serving method directly, without needing [McpPrompt]/
@@ -790,6 +844,13 @@ type
     ///   IMCPConfig.Server.SetCacheHints.
     /// </summary>
     CacheHints: TMCPCacheHints;
+
+    /// <summary>
+    ///   The page size resources/list and resources/templates/list answer
+    ///   with - they page independently, but off the one size. Unset by
+    ///   default, which defers to IMCPConfig.Server.SetPageSize.
+    /// </summary>
+    Paging: TMCPPaging;
   private
     function ParamIsType(AParam: TRttiParameter; ATypes: TypeKindSet): Boolean;
     function ValidUriResource(const AUri: string): Boolean;
@@ -830,6 +891,13 @@ type
     /// <returns>Self for fluent chaining</returns>
     function SetCacheHints(ATtlMs: UInt64;
       AScope: TCacheScope = TCacheScope.ScopePrivate): TMCPResourcesConfig;
+
+    /// <summary>
+    ///   How large a page resources/list and resources/templates/list answers with, overriding the server-wide
+    ///   size. Zero or less turns paging off for resources alone.
+    /// </summary>
+    /// <returns>Self for fluent chaining</returns>
+    function SetPageSize(APageSize: Integer): TMCPResourcesConfig;
     function RegisterFile(const AFileName, ADescription: string; const AMime: string = ''): TMCPResourcesConfig;
 
     /// <summary>
@@ -1232,6 +1300,12 @@ begin
   Result := Self;
 end;
 
+function TMCPToolsConfig.SetPageSize(APageSize: Integer): TMCPToolsConfig;
+begin
+  Paging := TMCPPaging.Create(APageSize);
+  Result := Self;
+end;
+
 function TMCPToolsConfig.RegisterClass(AClass: TClass): TMCPToolsConfig;
 var
   LScope: string;
@@ -1547,6 +1621,12 @@ begin
   Result := Self;
 end;
 
+function TMCPServerConfig.SetPageSize(APageSize: Integer): TMCPServerConfig;
+begin
+  Paging := TMCPPaging.Create(APageSize);
+  Result := Self;
+end;
+
 function TMCPServerConfig.SetInstructions(const AInstructions: string): TMCPServerConfig;
 begin
   Instructions := AInstructions;
@@ -1847,6 +1927,12 @@ function TMCPResourcesConfig.SetCacheHints(ATtlMs: UInt64;
   AScope: TCacheScope): TMCPResourcesConfig;
 begin
   CacheHints := TMCPCacheHints.Create(ATtlMs, AScope);
+  Result := Self;
+end;
+
+function TMCPResourcesConfig.SetPageSize(APageSize: Integer): TMCPResourcesConfig;
+begin
+  Paging := TMCPPaging.Create(APageSize);
   Result := Self;
 end;
 
@@ -2280,6 +2366,12 @@ function TMCPPromptsConfig.SetCacheHints(ATtlMs: UInt64;
   AScope: TCacheScope): TMCPPromptsConfig;
 begin
   CacheHints := TMCPCacheHints.Create(ATtlMs, AScope);
+  Result := Self;
+end;
+
+function TMCPPromptsConfig.SetPageSize(APageSize: Integer): TMCPPromptsConfig;
+begin
+  Paging := TMCPPaging.Create(APageSize);
   Result := Self;
 end;
 

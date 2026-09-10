@@ -103,6 +103,7 @@ uses
   MCPConnect.Tests.MCP.ParamHeaders in 'MCPConnect.Tests.MCP.ParamHeaders.pas',
   MCPConnect.Tests.Transport.Logging in 'MCPConnect.Tests.Transport.Logging.pas',
   MCPConnect.Tests.Transport.SSE in 'MCPConnect.Tests.Transport.SSE.pas',
+  MCPConnect.Tests.MCP.Pagination in 'MCPConnect.Tests.MCP.Pagination.pas',
   MCPConnect.Tests.Logging.Memory in 'MCPConnect.Tests.Logging.Memory.pas',
   MCPConnect.Tests.Metrics in 'MCPConnect.Tests.Metrics.pas';
 

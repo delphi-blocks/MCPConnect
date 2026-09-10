@@ -329,6 +329,19 @@ type
     /// </remarks>
     function IsUnsolicitedLog(AMessage: TJRPCMessage): Boolean;
 
+    /// <summary>
+    ///   Whether AMessages holds anything a response answers: a request, or the
+    ///   error a malformed payload was replaced with. False for a payload of
+    ///   nothing but notifications.
+    /// </summary>
+    /// <remarks>
+    ///   JSON-RPC gives a notification no reply, and the Streamable HTTP
+    ///   transport answers an accepted one with "202 Accepted" and no body -
+    ///   whatever its Accept asked for. So this is what decides the shape of
+    ///   the reply, and it can only be asked once the payload has been parsed.
+    /// </remarks>
+    function ExpectsResponse(AMessages: TJRPCMessages): Boolean;
+
     procedure HandlePOST;
     procedure HandleOPTIONS;
     function CreateAsyncThread(ARequestList: TJRPCMessages; AResponseQueue: TMCPMessageQueue): TThread;
@@ -813,11 +826,25 @@ begin
   Result := not LLog.Emits(LLevel);
 end;
 
+function TMCPTransportHandler.ExpectsResponse(AMessages: TJRPCMessages): Boolean;
+begin
+  // Types is the set of what the payload actually held, kept as the list was
+  // built - the error a malformed payload was replaced with included, which is
+  // very much something to answer.
+  Result := (AMessages.Types - [TJRPCMessageType.Notification]) <> [];
+end;
+
 procedure TMCPTransportHandler.HandlePOST;
 const
   QueueReadTimeout = 500;
 var
   LResponseList: TJRPCMessages;
+
+  /// <summary>
+  ///   Whether this reply is going out as a stream. Decided once, after the
+  ///   parse, and read everywhere the reply is written.
+  /// </summary>
+  LStreamed: Boolean;
 
   procedure ProcessQueue(AResponseList: TMCPMessageQueue);
   begin
@@ -832,7 +859,7 @@ var
         begin
           Logger.LogDebug('Log notification dropped, the request asked for no logging at this level');
         end
-        else if FRequest.AcceptsEventStream and FResponseWriter.SupportsStreaming then
+        else if LStreamed then
         begin
           WriteSSEResponse(AMessage.ToJson);
         end
@@ -842,9 +869,10 @@ var
           // no place in the JSON-RPC payload that answers this POST: per JSON-RPC
           // 2.0 a Request is answered with a Response, and a batch with an array
           // of Responses. SSE is the only channel this transport has for one -
-          // there is no GET endpoint since sessions went away - and the client
-          // did not ask for it, so this one is dropped rather than spliced into
-          // the reply. Leaving ADispose True is what frees it.
+          // there is no GET endpoint since sessions went away - and there is no
+          // stream here, either because the client asked for none or because
+          // this payload is answered 202 and carries no reply at all. Dropped
+          // rather than spliced into the reply; leaving ADispose True frees it.
           Logger.LogDebug('[SSE] Notification dropped, the client did not ask for a stream [method=%s]',
             [TJRPCNotification(AMessage).Method]);
         end
@@ -914,10 +942,18 @@ begin
   // the carry-over normally happens (see TJRPCMessages.ToJson).
   LResponseList.Single := LRequestList.Single;
 
+  // Decided here - after the parse, before anything is written. A payload of
+  // nothing but notifications is answered "202 Accepted" with no body whatever
+  // its Accept asked for, so there is no stream to open for one. Deciding this
+  // before the parse, on the Accept alone, is what used to answer a notification
+  // 200 with an empty event stream.
+  LStreamed := ExpectsResponse(LRequestList) and
+    FRequest.AcceptsEventStream and FResponseWriter.SupportsStreaming;
+
   LFragment := TStopwatch.StartNew;
   var LAsyncExecute := CreateAsyncThread(LRequestList, LResponseQueue);
   try
-    if FRequest.AcceptsEventStream and FResponseWriter.SupportsStreaming then
+    if LStreamed then
       SendSSEResponseHeaders;
 
     // The worker thread closes the queue when done, which wakes ProcessQueue
@@ -931,19 +967,27 @@ begin
     end;
     ProcessQueue(LResponseQueue);
 
-    // If not an event stream response send all the headers and content
-    if not FRequest.AcceptsEventStream or not FResponseWriter.SupportsStreaming then
+    // Not a stream: the reply is a document, or it is nothing at all
+    if not LStreamed then
     begin
       if LResponseList.Count = 0 then
-        FResponse.Code := HTTP_CODE_ACCEPTED
-      // Only for a reply that is one message: a batch answers with an array of
-      // outcomes, and a status can only describe one of them.
-      else if (FProtocolStatus <> 0) and LResponseList.Single then
-        FResponse.Code := FProtocolStatus
+      begin
+        // Taken, and there is nothing to say about it: a notification gets no
+        // reply, so no body - and with no body, no Content-Type either.
+        FResponse.Code := HTTP_CODE_ACCEPTED;
+        FResponse.Content := '';
+      end
       else
-        FResponse.Code := HTTP_CODE_OK;
-      FResponse.ContentType := TMediaType.APPLICATION_JSON;
-      FResponse.Content := LResponseList.ToJson;
+      begin
+        // Only for a reply that is one message: a batch answers with an array
+        // of outcomes, and a status can only describe one of them.
+        if (FProtocolStatus <> 0) and LResponseList.Single then
+          FResponse.Code := FProtocolStatus
+        else
+          FResponse.Code := HTTP_CODE_OK;
+        FResponse.ContentType := TMediaType.APPLICATION_JSON;
+        FResponse.Content := LResponseList.ToJson;
+      end;
     end;
   finally
     LAsyncExecute.Free;

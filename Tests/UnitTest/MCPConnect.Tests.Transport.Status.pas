@@ -25,7 +25,7 @@ unit MCPConnect.Tests.Transport.Status;
 interface
 
 uses
-  System.SysUtils, System.JSON,
+  System.SysUtils, System.Classes, System.JSON,
   DUnitX.TestFramework,
 
   MCPConnect.Configuration.MCP,
@@ -42,10 +42,29 @@ type
     function SupportsStreaming: Boolean;
   end;
 
+  /// <summary>
+  ///   A response writer that can stream, and keeps what it was given. What a
+  ///   payload answered 202 must never reach.
+  /// </summary>
+  TStreamingStatusWriter = class(TInterfacedObject, IMCPTransportWriter)
+  private
+    FFrames: TStrings;
+  public
+    constructor Create(AFrames: TStrings);
+
+    procedure Write(const AValue: string);
+    function Connected: Boolean;
+    function SupportsStreaming: Boolean;
+  end;
+
   /// <summary>What a request answered, as far as these tests care.</summary>
   TStatusAnswer = record
     Code: Integer;
     Content: string;
+
+    /// <summary>Whether the reply opened a stream, and what went out on it.</summary>
+    StreamOpened: Boolean;
+    Frames: string;
 
     /// <summary>The JSON-RPC error code of the reply, or 0 when it carries none.</summary>
     function ErrorCode: Integer;
@@ -62,8 +81,14 @@ type
 
     /// <summary>A request with the _meta a conforming client sends.</summary>
     function Body(const AMethod: string; const AParams: string = ''): string;
-    function Send(const ABody: string;
-      const ACommand: string = 'POST'): TStatusAnswer;
+
+    /// <summary>
+    ///   Sends ABody. AWantsStream models the whole of the streaming case: a
+    ///   client whose Accept includes text/event-stream, talking to a transport
+    ///   that can give it one.
+    /// </summary>
+    function Send(const ABody: string; const ACommand: string = 'POST';
+      AWantsStream: Boolean = False): TStatusAnswer;
   public
     [Setup]
     procedure Setup();
@@ -74,6 +99,18 @@ type
     procedure TestAnsweredRequestIsOk();
     [Test]
     procedure TestAcceptedNotificationIsAcceptedWithNoBody();
+    [Test]
+    procedure TestANotificationIsAcceptedEvenWhenAStreamWasOffered();
+    [Test]
+    procedure TestANotificationThatAcceptsAStreamOpensNone();
+    [Test]
+    procedure TestABatchOfNotificationsIsAcceptedToo();
+    [Test]
+    procedure TestARequestThatAcceptsAStreamStillStreams();
+    [Test]
+    procedure TestAMixedBatchStreams();
+    [Test]
+    procedure TestAMalformedPayloadIsAnsweredNotAccepted();
 
     [Test]
     procedure TestUnknownNamespaceIsNotFound();
@@ -136,6 +173,29 @@ begin
   Result := False;
 end;
 
+{ TStreamingStatusWriter }
+
+constructor TStreamingStatusWriter.Create(AFrames: TStrings);
+begin
+  inherited Create;
+  FFrames := AFrames;
+end;
+
+procedure TStreamingStatusWriter.Write(const AValue: string);
+begin
+  FFrames.Add(AValue);
+end;
+
+function TStreamingStatusWriter.Connected: Boolean;
+begin
+  Result := True;
+end;
+
+function TStreamingStatusWriter.SupportsStreaming: Boolean;
+begin
+  Result := True;
+end;
+
 { TStatusAnswer }
 
 function TStatusAnswer.ErrorCode: Integer;
@@ -194,22 +254,50 @@ begin
     [AMethod, AParams, Meta]);
 end;
 
-function TTransportStatusTest.Send(const ABody, ACommand: string): TStatusAnswer;
+function TTransportStatusTest.Send(const ABody, ACommand: string;
+  AWantsStream: Boolean): TStatusAnswer;
 var
-  LHandler: TMCPTransportHandler;
+  // The interface and not the class: SendResponseHeadersProc is declared on
+  // IMCPTransportHandler, and the reference counts the handler for us
+  LHandler: IMCPTransportHandler;
   LAnswer: TStatusAnswer;
+  LWriter: IMCPTransportWriter;
+  LFrames: TStringList;
+  LAccept: string;
+  LOpened: Boolean;
 begin
   LAnswer := Default(TStatusAnswer);
-
-  LHandler := TMCPTransportHandler.Create(FServer, TSilentStatusWriter.Create);
+  LOpened := False;
+  LFrames := TStringList.Create;
   try
+    if AWantsStream then
+    begin
+      LWriter := TStreamingStatusWriter.Create(LFrames);
+      LAccept := 'application/json, text/event-stream';
+    end
+    else
+    begin
+      LWriter := TSilentStatusWriter.Create;
+      LAccept := 'application/json';
+    end;
+
+    LHandler := TMCPTransportHandler.Create(FServer, LWriter);
+
+    // Only a stream sends its headers from inside the handler, so this firing
+    // at all is what says one was opened
+    LHandler.SendResponseHeadersProc :=
+      procedure (AResponse: TMCPTransportResponse)
+      begin
+        LOpened := True;
+      end;
+
     LHandler.ProcessRequest(
       procedure (ARequest: TMCPTransportRequest)
       begin
         ARequest.Url := '/';
         ARequest.Command := ACommand;
         ARequest.Protocol := TTransportProtocol.StreamableHTTP;
-        ARequest.Accept := 'application/json';
+        ARequest.Accept := LAccept;
         ARequest.Content := ABody;
       end,
       procedure (AResponse: TMCPTransportResponse)
@@ -217,8 +305,12 @@ begin
         LAnswer.Code := AResponse.Code;
         LAnswer.Content := AResponse.Content;
       end);
+    LHandler := nil;
+
+    LAnswer.StreamOpened := LOpened;
+    LAnswer.Frames := LFrames.Text;
   finally
-    LHandler.Free;
+    LFrames.Free;
   end;
 
   Result := LAnswer;
@@ -245,6 +337,90 @@ begin
 
   Assert.AreEqual(HTTP_CODE_ACCEPTED, LAnswer.Code, LAnswer.Content);
   Assert.AreEqual('', LAnswer.Content, 'a 202 carries no body');
+end;
+
+procedure TTransportStatusTest.TestANotificationIsAcceptedEvenWhenAStreamWasOffered;
+var
+  LAnswer: TStatusAnswer;
+begin
+  // "Regardless of Accept": the acceptance of a notification is the whole of
+  // the reply, and a client that would have taken a stream does not turn it
+  // into something to stream. This used to answer 200 with an empty event
+  // stream, because the shape of the reply was decided from the Accept before
+  // the payload had been parsed.
+  LAnswer := Send('{"jsonrpc":"2.0","method":"notifications/cancelled",' +
+    '"params":{"requestId":1}}', 'POST', True);
+
+  Assert.AreEqual(HTTP_CODE_ACCEPTED, LAnswer.Code, LAnswer.Content);
+  Assert.AreEqual('', LAnswer.Content, 'a 202 carries no body');
+end;
+
+procedure TTransportStatusTest.TestANotificationThatAcceptsAStreamOpensNone;
+var
+  LAnswer: TStatusAnswer;
+begin
+  LAnswer := Send('{"jsonrpc":"2.0","method":"notifications/cancelled",' +
+    '"params":{"requestId":1}}', 'POST', True);
+
+  Assert.IsFalse(LAnswer.StreamOpened,
+    'nothing is streamed for a payload that has no reply, so no stream is opened');
+  Assert.AreEqual('', LAnswer.Frames);
+end;
+
+procedure TTransportStatusTest.TestABatchOfNotificationsIsAcceptedToo;
+var
+  LAnswer: TStatusAnswer;
+begin
+  // A batch of nothing but notifications has no reply either - JSON-RPC 2.0
+  // says a batch of notifications is answered with nothing at all
+  LAnswer := Send('[{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}},' +
+    '{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":2}}]',
+    'POST', True);
+
+  Assert.AreEqual(HTTP_CODE_ACCEPTED, LAnswer.Code, LAnswer.Content);
+  Assert.AreEqual('', LAnswer.Content);
+  Assert.IsFalse(LAnswer.StreamOpened);
+end;
+
+procedure TTransportStatusTest.TestARequestThatAcceptsAStreamStillStreams;
+var
+  LAnswer: TStatusAnswer;
+begin
+  // The control: deciding after the parse must not have cost the streaming
+  // case, which is the one the whole mechanism exists for
+  LAnswer := Send(Body('tools/list'), 'POST', True);
+
+  Assert.IsTrue(LAnswer.StreamOpened, 'a request that asked for a stream gets one');
+  Assert.Contains(LAnswer.Frames, '"result"');
+  Assert.AreEqual('', LAnswer.Content, 'the reply went out on the stream, not in the body');
+end;
+
+procedure TTransportStatusTest.TestAMixedBatchStreams;
+var
+  LAnswer: TStatusAnswer;
+begin
+  // One request among the notifications is one reply to send, so the batch is
+  // answerable and the stream opens
+  LAnswer := Send('[{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}},' +
+    '{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{' + Meta + '}}]',
+    'POST', True);
+
+  Assert.IsTrue(LAnswer.StreamOpened);
+  Assert.Contains(LAnswer.Frames, '"result"');
+end;
+
+procedure TTransportStatusTest.TestAMalformedPayloadIsAnsweredNotAccepted;
+var
+  LAnswer: TStatusAnswer;
+begin
+  // The edge the "has anything to answer" test has to get right: a payload that
+  // would not parse holds no notification, but it does hold an error to send
+  LAnswer := Send('{ not json at all', 'POST', True);
+
+  Assert.AreNotEqual(HTTP_CODE_ACCEPTED, LAnswer.Code,
+    'a parse error is answered, not accepted');
+  Assert.IsTrue(LAnswer.StreamOpened, 'and it goes out on the stream that was asked for');
+  Assert.Contains(LAnswer.Frames, '"error"');
 end;
 
 procedure TTransportStatusTest.TestUnknownNamespaceIsNotFound;

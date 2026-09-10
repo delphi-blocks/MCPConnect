@@ -1259,6 +1259,30 @@ type
 
 function MCPNeonConfig: INeonConfiguration;
 
+/// <summary>
+///   The RFC 5424 §6.2.1 numeric severity of ALevel: 0 for emergency up to 7
+///   for debug, so a *lower* number is a graver message.
+/// </summary>
+/// <remarks>
+///   Deliberately not Ord(ALevel): TMCPLogLevel is declared in the alphabetical
+///   order of its wire names, which is not the order of severity.
+/// </remarks>
+function MCPLogSeverity(ALevel: TMCPLogLevel): Integer;
+
+/// <summary>
+///   Whether a message of AMessageLevel may be emitted for a request that asked
+///   for AMinimumLevel: it must be at least as grave as the minimum.
+/// </summary>
+function MCPLogLevelEmits(AMinimumLevel, AMessageLevel: TMCPLogLevel): Boolean;
+
+/// <summary>
+///   The level AName spells on the wire, or False when it names none. The
+///   comparison is case-insensitive, which is laxer than the wire format: the
+///   names are lower case there, and this only ever reads back what the server
+///   itself wrote.
+/// </summary>
+function MCPLogLevelFromName(const AName: string; out ALevel: TMCPLogLevel): Boolean;
+
 
 implementation
 
@@ -1274,6 +1298,51 @@ begin
     .SetMembers([TNeonMembers.Fields]);
 
   Result.GetSerializers.RegisterSerializer(TJSONValueSerializer);
+end;
+
+function MCPLogSeverity(ALevel: TMCPLogLevel): Integer;
+begin
+  case ALevel of
+    TMCPLogLevel.Emergency: Result := 0;
+    TMCPLogLevel.Alert:     Result := 1;
+    TMCPLogLevel.Critical:  Result := 2;
+    TMCPLogLevel.Error:     Result := 3;
+    TMCPLogLevel.Warning:   Result := 4;
+    TMCPLogLevel.Notice:    Result := 5;
+    TMCPLogLevel.Info:      Result := 6;
+  else
+    // Debug, the chattiest, and the safe answer for a level this function has
+    // not been taught: a message is dropped rather than sent unasked
+    Result := 7;
+  end;
+end;
+
+function MCPLogLevelEmits(AMinimumLevel, AMessageLevel: TMCPLogLevel): Boolean;
+begin
+  // "The minimum log level the server should emit." Syslog counts severity
+  // downwards, so a request that asked for warning wants warning and
+  // everything graver, and nothing chattier.
+  Result := MCPLogSeverity(AMessageLevel) <= MCPLogSeverity(AMinimumLevel);
+end;
+
+function MCPLogLevelFromName(const AName: string; out ALevel: TMCPLogLevel): Boolean;
+const
+  // In the declaration order of TMCPLogLevel, which is the order its
+  // NeonEnumNames gives - the same list, in one place each
+  LNames: array[TMCPLogLevel] of string = (
+    'alert', 'critical', 'debug', 'emergency', 'error', 'info', 'notice', 'warning');
+var
+  LCandidate: TMCPLogLevel;
+begin
+  for LCandidate := Low(TMCPLogLevel) to High(TMCPLogLevel) do
+    if SameText(LNames[LCandidate], AName) then
+    begin
+      ALevel := LCandidate;
+      Exit(True);
+    end;
+
+  ALevel := TMCPLogLevel.Debug;
+  Result := False;
 end;
 
 

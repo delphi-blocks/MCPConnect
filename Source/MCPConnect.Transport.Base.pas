@@ -302,6 +302,20 @@ type
     /// </remarks>
     function IsUnsolicitedProgress(AMessage: TJRPCMessage): Boolean;
 
+    /// <summary>
+    ///   Whether AMessage is a log notification the request did not ask for:
+    ///   one for a request that sent no log level at all, or one chattier than
+    ///   the level it sent.
+    /// </summary>
+    /// <remarks>
+    ///   "If absent, the server MUST NOT send any notifications/message for
+    ///   this request." TMCPLog already refuses to build one, so what reaches
+    ///   here is a notification enqueued by hand - the same escape hatch, and
+    ///   the same last word on it, as for progress. True only once the request
+    ///   "_meta" has been read, for the same reason.
+    /// </remarks>
+    function IsUnsolicitedLog(AMessage: TJRPCMessage): Boolean;
+
     procedure HandlePOST;
     procedure HandleOPTIONS;
     function CreateAsyncThread(ARequestList: TJRPCMessages; AResponseQueue: TMCPMessageQueue): TThread;
@@ -733,6 +747,43 @@ begin
   Result := Assigned(LProgress) and LProgress.Known and not LProgress.Wanted;
 end;
 
+function TMCPTransportHandler.IsUnsolicitedLog(AMessage: TJRPCMessage): Boolean;
+var
+  LLog: TMCPLog;
+  LParams: TJSONValue;
+  LName: string;
+  LLevel: TMCPLogLevel;
+begin
+  if not (AMessage is TJRPCNotification) or
+     (TJRPCNotification(AMessage).Method <> MCP_NOTIFY_MESSAGE) then
+    Exit(False);
+
+  LLog := FContext.FindContextDataAs<TMCPLog>;
+  if not Assigned(LLog) or not LLog.Known then
+    Exit(False);
+
+  // No level was asked for: the MUST NOT, and no need to look at the message
+  if not LLog.Wanted then
+    Exit(True);
+
+  // A level was asked for, and it is a minimum. A notification whose own level
+  // cannot be read is let through: the request did ask for logging, and a
+  // malformed payload is not this method's to diagnose.
+  LParams := TJRPCNotification(AMessage).Params;
+  if not (LParams is TJSONObject) then
+    Exit(False);
+
+  LName := '';
+  var LLevelValue := TJSONObject(LParams).GetValue('level');
+  if LLevelValue is TJSONString then
+    LName := TJSONString(LLevelValue).Value;
+
+  if not MCPLogLevelFromName(LName, LLevel) then
+    Exit(False);
+
+  Result := not LLog.Emits(LLevel);
+end;
+
 procedure TMCPTransportHandler.HandlePOST;
 const
   QueueReadTimeout = 500;
@@ -747,6 +798,10 @@ var
         if IsUnsolicitedProgress(AMessage) then
         begin
           Logger.LogDebug('Progress notification dropped, the request asked for none');
+        end
+        else if IsUnsolicitedLog(AMessage) then
+        begin
+          Logger.LogDebug('Log notification dropped, the request asked for no logging at this level');
         end
         else if FRequest.AcceptsEventStream and FResponseWriter.SupportsStreaming then
         begin
@@ -810,6 +865,13 @@ begin
   var LProgress := TMCPProgress.Create(LResponseQueue);
   FGarbage.Add(LProgress);
   FContext.AddContent(LProgress);
+
+  // And the log channel, on the same terms and for the same reason: what the
+  // request asked to be told is read by TMCPRequestMetaMiddleware and by
+  // nothing else, and until it says otherwise this one emits nothing.
+  var LLog := TMCPLog.Create(LResponseQueue);
+  FGarbage.Add(LLog);
+  FContext.AddContent(LLog);
 
   // This list contains the responses in case SSE channel is not active
   LResponseList := TJRPCMessages.Create(True);

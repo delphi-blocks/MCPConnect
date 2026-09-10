@@ -203,6 +203,7 @@
         <DCCReference Include="MCPConnect.Tests.MCP.Resources.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Capabilities.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.ParamHeaders.pas"/>
+        <DCCReference Include="MCPConnect.Tests.Transport.Logging.pas"/>
         <DCCReference Include="MCPConnect.Tests.Logging.Memory.pas"/>
         <DCCReference Include="MCPConnect.Tests.Metrics.pas"/>
         <BuildConfiguration Include="Base">

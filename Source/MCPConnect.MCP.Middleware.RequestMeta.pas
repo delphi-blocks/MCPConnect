@@ -172,6 +172,7 @@ var
   LMeta: TRequestMetaObject;
   LDeclared: TMCPDeclaredCapabilities;
   LProgress: TMCPProgress;
+  LLog: TMCPLog;
 begin
   LConfig := AContext.Find<TMCPConfig>;
 
@@ -269,6 +270,20 @@ begin
   LProgress := AContext.Find<TMCPProgress>;
   if Assigned(LProgress) then
     LProgress.Declare(LMeta.ProgressToken);
+
+  // And the log level to its channel, on the same terms: 2026-07-28 makes
+  // silence the default, so "the request asked for no logging" is exactly the
+  // fact the channel needs to be told.
+  LLog := AContext.Find<TMCPLog>;
+  if Assigned(LLog) then
+    LLog.Declare(LMeta.LogLevel);
+
+  // The application's own hook, called only when a level actually arrived:
+  // there is nothing to tell a server about a request that asked for nothing,
+  // and the hook is what a server uses to turn its *own* logging up for the
+  // duration of a call.
+  if LMeta.LogLevel.HasValue and Assigned(LConfig.MessageHandling.SetLogLevelProc) then
+    LConfig.MessageHandling.SetLogLevelProc(AContext.RPCContext, LMeta.LogLevel.Value);
 
   AChain.Next(AContext);
 end;

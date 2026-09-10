@@ -391,9 +391,10 @@ type
 
   /// <summary>
   ///   Configuration for handlers invoked when the server receives inbound
-  ///   JSON-RPC messages from the client. Covers both notifications
-  ///   (fire-and-forget, e.g. notifications/cancelled, notifications/initialized)
-  ///   and requests that need a response (e.g. logging/setLevel).
+  ///   JSON-RPC messages from the client: the notifications it is sent
+  ///   (fire-and-forget, e.g. notifications/cancelled), the per-request log
+  ///   level it is asked to emit at, and whole namespaces a class of its own
+  ///   takes over (RegisterApi).
   /// </summary>
   TMCPMessageHandlingConfig = class(TMCPBaseConfig)
   private
@@ -456,8 +457,11 @@ type
     property InitializedProc: TProc<TJRPCContext> read FInitializedProc;
 
     /// <summary>
-    ///   Read-only access to the registered "logging/setLevel" handler.
-    ///   Used by the framework to apply log level changes requested by the client.
+    ///   Read-only access to the registered log-level handler. Called by
+    ///   TMCPRequestMetaMiddleware for every request that states a level, and
+    ///   not at all for one that states none - what MCPConnect itself does
+    ///   with the level is gate the TMCPLog channel of the request, which needs
+    ///   no hook.
     /// </summary>
     property SetLogLevelProc: TProc<TJRPCContext, TMCPLogLevel> read FSetLogLevelProc;
   end;

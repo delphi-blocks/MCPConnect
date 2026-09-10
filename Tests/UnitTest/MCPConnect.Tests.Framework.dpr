@@ -101,6 +101,7 @@ uses
   MCPConnect.Tests.MCP.Capabilities in 'MCPConnect.Tests.MCP.Capabilities.pas',
   MCPConnect.Tests.MCP.ToolNames in 'MCPConnect.Tests.MCP.ToolNames.pas',
   MCPConnect.Tests.MCP.ParamHeaders in 'MCPConnect.Tests.MCP.ParamHeaders.pas',
+  MCPConnect.Tests.Transport.Logging in 'MCPConnect.Tests.Transport.Logging.pas',
   MCPConnect.Tests.Logging.Memory in 'MCPConnect.Tests.Logging.Memory.pas',
   MCPConnect.Tests.Metrics in 'MCPConnect.Tests.Metrics.pas';
 

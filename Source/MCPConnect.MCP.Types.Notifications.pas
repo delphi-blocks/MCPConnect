@@ -324,6 +324,91 @@ type
     function Advance(AProgress: Double): Boolean;
   end;
 
+  /// <summary>
+  ///   The log channel of the request being served: what a tool emits
+  ///   "notifications/message" through, and the only thing that knows whether
+  ///   the client asked to hear anything and how grave it has to be.
+  /// </summary>
+  /// <remarks>
+  ///   Injected with [Context]:
+  ///
+  ///     [Context] FLog: TMCPLog;
+  ///     ...
+  ///     FLog.Log(TMCPLogLevel.Warning, 'Falling back to the cached rates');
+  ///
+  ///   2026-07-28 removed the "logging/setLevel" request: a level now arrives
+  ///   per request in "_meta.io.modelcontextprotocol/logLevel", and a server
+  ///   sent none MUST NOT emit log notifications for that request at all. That
+  ///   is the reason to go through this rather than enqueue a notification by
+  ///   hand - a tool has no way to know what the request asked for, and the
+  ///   default is silence, not chatter.
+  ///
+  ///   A level that was sent is a *minimum*: a message graver than it is
+  ///   emitted, a chattier one dropped, counting severity the way RFC 5424
+  ///   does (see MCPLogLevelEmits).
+  ///
+  ///   The channel is put in the request context by the transport and told the
+  ///   level by TMCPRequestMetaMiddleware, so it is there whether or not the
+  ///   client asked for anything - a tool never needs to test it for nil. When
+  ///   the "_meta" check is turned off nobody reads the request's level, and
+  ///   the channel then emits nothing: unasked is unasked.
+  /// </remarks>
+  TMCPLog = class
+  private
+    FQueue: TMCPMessageQueue;
+    FLevel: TMCPLogLevel;
+    FWanted: Boolean;
+    FKnown: Boolean;
+  public
+    constructor Create(AQueue: TMCPMessageQueue);
+
+    /// <summary>
+    ///   Records what the request asked for: its logLevel, or an empty
+    ///   Nullable when it carried none. Called by the middleware that reads the
+    ///   request "_meta", and by nothing else.
+    /// </summary>
+    procedure Declare(const ALevel: Nullable<TMCPLogLevel>);
+
+    /// <summary>
+    ///   True when this request asked for log notifications at all. A tool with
+    ///   something expensive to prepare *for* the logging can skip it when this
+    ///   is False; prefer Emits when the level is known.
+    /// </summary>
+    function Wanted: Boolean;
+
+    /// <summary>
+    ///   True once the request's "_meta" has been read - which is what makes
+    ///   "no level" mean "the client asked for none" rather than "nobody
+    ///   looked". The transport uses it to decide whether a log notification
+    ///   built by hand is a violation or merely unverifiable.
+    /// </summary>
+    function Known: Boolean;
+
+    /// <summary>
+    ///   Whether a message of ALevel would actually be sent: the request asked
+    ///   for logging, and asked for a level this one is at least as grave as.
+    /// </summary>
+    function Emits(ALevel: TMCPLogLevel): Boolean;
+
+    /// <summary>
+    ///   The minimum level this request asked for. Only meaningful while
+    ///   Wanted; Emits is what to ask instead of comparing it by hand.
+    /// </summary>
+    function Level: TMCPLogLevel;
+
+    /// <summary>Logs AMessage at ALevel, if the request asked for it.</summary>
+    procedure Log(ALevel: TMCPLogLevel; const AMessage: string;
+      const ALogger: string = ''); overload;
+
+    /// <summary>
+    ///   Logs AData at ALevel, if the request asked for it. AData is owned by
+    ///   this call either way: it is freed when the message is dropped, and
+    ///   handed to the notification when it is not.
+    /// </summary>
+    procedure Log(ALevel: TMCPLogLevel; AData: TJSONValue;
+      const ALogger: string = ''); overload;
+  end;
+
 implementation
 
 uses
@@ -704,6 +789,65 @@ begin
 
   FLast := AProgress;
   FStarted := True;
+end;
+
+{ TMCPLog }
+
+constructor TMCPLog.Create(AQueue: TMCPMessageQueue);
+begin
+  inherited Create;
+  FQueue := AQueue;
+  FLevel := TMCPLogLevel.Debug;
+end;
+
+procedure TMCPLog.Declare(const ALevel: Nullable<TMCPLogLevel>);
+begin
+  FWanted := ALevel.HasValue;
+  if FWanted then
+    FLevel := ALevel.Value;
+
+  FKnown := True;
+end;
+
+function TMCPLog.Wanted: Boolean;
+begin
+  Result := FWanted and Assigned(FQueue);
+end;
+
+function TMCPLog.Known: Boolean;
+begin
+  Result := FKnown;
+end;
+
+function TMCPLog.Level: TMCPLogLevel;
+begin
+  Result := FLevel;
+end;
+
+function TMCPLog.Emits(ALevel: TMCPLogLevel): Boolean;
+begin
+  Result := Wanted and MCPLogLevelEmits(FLevel, ALevel);
+end;
+
+procedure TMCPLog.Log(ALevel: TMCPLogLevel; const AMessage, ALogger: string);
+begin
+  if not Emits(ALevel) then
+    Exit;
+
+  FQueue.Enqueue(TMCPNotification.LogMessage(ALevel, AMessage, ALogger));
+end;
+
+procedure TMCPLog.Log(ALevel: TMCPLogLevel; AData: TJSONValue; const ALogger: string);
+begin
+  // Owned either way, so that a caller can build its payload unconditionally
+  // and not have to remember which of the two paths frees it
+  if not Emits(ALevel) then
+  begin
+    AData.Free;
+    Exit;
+  end;
+
+  FQueue.Enqueue(TMCPNotification.LogMessage(ALevel, AData, ALogger));
 end;
 
 end.

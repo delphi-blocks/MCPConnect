@@ -109,7 +109,7 @@ var
   LException: EMCPHeaderMismatchError;
   LError: TJSONObject;
 begin
-  LException := EMCPHeaderMismatchError.CreateForHeader('Mcp-Method');
+  LException := EMCPHeaderMismatchError.Create('Mcp-Method');
   try
     Assert.AreEqual(MCP_HEADER_MISMATCH, LException.Code);
     Assert.AreEqual(-32020, LException.Code, 'Renumbered from -32001 in 2026-07-28');
@@ -129,9 +129,12 @@ end;
 
 procedure TMCPProtocolErrorTest.TestHeaderMismatch_MissingHeaderVariant;
 var
-  LException: EMCPHeaderMismatchError;
+  // A class of its own since the EMCPHeader* split, reporting the same code:
+  // what was one exception with two constructors is now two exceptions, so that
+  // C++Builder has no overloaded constructor to warn about
+  LException: EMCPHeaderMissingError;
 begin
-  LException := EMCPHeaderMismatchError.CreateForMissingHeader('MCP-Protocol-Version');
+  LException := EMCPHeaderMissingError.Create('MCP-Protocol-Version');
   try
     Assert.AreEqual(MCP_HEADER_MISMATCH, LException.Code);
     Assert.IsTrue(LException.Message.Contains('MCP-Protocol-Version'));

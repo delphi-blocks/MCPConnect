@@ -69,6 +69,55 @@ type
   end;
 
   /// <summary>
+  ///   TSamplingMessage's content: the SamplingMessageContentBlock union, which
+  ///   is one block or an array of them, and the typed access over the raw JSON
+  ///   it is held as.
+  /// </summary>
+  [TestFixture]
+  TMCPSamplingMessageTest = class(TObject)
+  private
+    /// <summary>A result read from AJson. Caller owns it.</summary>
+    function ResultFrom(const AJson: string): TCreateMessageResult;
+  public
+    [Test]
+    procedure TestCreateLeavesMetaAssigned;
+    [Test]
+    procedure TestTagsAreAssignedToo;
+
+    [Test]
+    procedure TestSingleBlockIsOneBlock;
+    [Test]
+    procedure TestArrayOfBlocksIsCounted;
+    [Test]
+    procedure TestNoContentIsNoBlocks;
+
+    [Test]
+    procedure TestSingleBlockIsReadableAsBlockZero;
+    [Test]
+    procedure TestEveryBlockTypeIsReadable;
+    [Test]
+    procedure TestTheWrongTypeAnswersNil;
+    [Test]
+    procedure TestAskingTwiceAnswersTheSameInstance;
+    [Test]
+    procedure TestABlockThatIsNotThereAnswersNil;
+
+    [Test]
+    procedure TestModelAndStopReasonSurvive;
+    [Test]
+    procedure TestMetaSurvivesTheRoundTrip;
+
+    [Test]
+    procedure TestAddContentMakesASingleBlock;
+    [Test]
+    procedure TestASecondBlockPromotesToAnArray;
+    [Test]
+    procedure TestPromotionKeepsTheFirstBlockAtIndexZero;
+    [Test]
+    procedure TestAddTextIsATextBlock;
+  end;
+
+  /// <summary>
   ///   Decoding InputResponses: the client's answers on the retry.
   /// </summary>
   [TestFixture]
@@ -501,8 +550,289 @@ begin
   end;
 end;
 
+{ TMCPSamplingMessageTest }
+
+function TMCPSamplingMessageTest.ResultFrom(const AJson: string): TCreateMessageResult;
+var
+  LTree: TJSONValue;
+begin
+  Result := TCreateMessageResult.Create;
+  try
+    LTree := TJSONObject.ParseJSONValue(AJson);
+    Assert.IsTrue(LTree is TJSONObject, 'the fixture own JSON must parse: ' + AJson);
+    try
+      TNeon.JSONToObject(Result, LTree as TJSONObject, MCPNeonConfig);
+    finally
+      // The message takes a clone of the content, so the tree it was read from
+      // is the fixture's to free
+      LTree.Free;
+    end;
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+procedure TMCPSamplingMessageTest.TestCreateLeavesMetaAssigned;
+var
+  LMsg: TSamplingMessage;
+begin
+  // The constructor used not to call inherited, which left this nil: harmless
+  // on the way in, and an access violation for anyone building a message to
+  // send
+  LMsg := TSamplingMessage.Create;
+  try
+    Assert.IsNotNull(LMsg.Meta);
+    LMsg.Meta.AddPair('k', 'v');
+    Assert.AreEqual(1, LMsg.Meta.Count, 'and it is usable, not merely non-nil');
+  finally
+    LMsg.Free;
+  end;
+end;
+
+procedure TMCPSamplingMessageTest.TestTagsAreAssignedToo;
+var
+  LMsg: TSamplingMessage;
+begin
+  LMsg := TSamplingMessage.Create;
+  try
+    Assert.IsNotNull(LMsg.Tags);
+  finally
+    LMsg.Free;
+  end;
+end;
+
+procedure TMCPSamplingMessageTest.TestSingleBlockIsOneBlock;
+var
+  LRes: TCreateMessageResult;
+begin
+  LRes := ResultFrom('{"role":"assistant","model":"m","content":{"type":"text","text":"hi"}}');
+  try
+    Assert.AreEqual(1, LRes.ContentCount);
+  finally
+    LRes.Free;
+  end;
+end;
+
+procedure TMCPSamplingMessageTest.TestArrayOfBlocksIsCounted;
+var
+  LRes: TCreateMessageResult;
+begin
+  LRes := ResultFrom('{"role":"assistant","model":"m","content":' +
+    '[{"type":"text","text":"a"},{"type":"text","text":"b"},{"type":"text","text":"c"}]}');
+  try
+    Assert.AreEqual(3, LRes.ContentCount);
+  finally
+    LRes.Free;
+  end;
+end;
+
+procedure TMCPSamplingMessageTest.TestNoContentIsNoBlocks;
+var
+  LRes: TCreateMessageResult;
+begin
+  LRes := ResultFrom('{"role":"assistant","model":"m"}');
+  try
+    Assert.AreEqual(0, LRes.ContentCount);
+    Assert.AreEqual('', LRes.ContentTypeAt(0));
+    Assert.IsNull(LRes.AsText(0));
+  finally
+    LRes.Free;
+  end;
+end;
+
+procedure TMCPSamplingMessageTest.TestSingleBlockIsReadableAsBlockZero;
+var
+  LRes: TCreateMessageResult;
+begin
+  // A caller that does not care whether the server wrapped its content in an
+  // array should not have to ask
+  LRes := ResultFrom('{"role":"assistant","model":"m","content":{"type":"text","text":"hi"}}');
+  try
+    Assert.AreEqual(MCP_CONTENT_TEXT, LRes.ContentTypeAt);
+    Assert.IsNotNull(LRes.AsText);
+    Assert.AreEqual('hi', LRes.AsText.Text);
+  finally
+    LRes.Free;
+  end;
+end;
+
+procedure TMCPSamplingMessageTest.TestEveryBlockTypeIsReadable;
+var
+  LRes: TCreateMessageResult;
+begin
+  LRes := ResultFrom('{"role":"assistant","model":"m","content":[' +
+    '{"type":"text","text":"hi"},' +
+    '{"type":"image","data":"AA==","mimeType":"image/png"},' +
+    '{"type":"audio","data":"BB==","mimeType":"audio/wav"},' +
+    '{"type":"tool_use","id":"t1","name":"search","input":{"q":"x"}},' +
+    '{"type":"tool_result","toolUseId":"t1","isError":false}]}');
+  try
+    Assert.AreEqual(5, LRes.ContentCount);
+
+    Assert.AreEqual('hi', LRes.AsText(0).Text);
+
+    Assert.AreEqual('AA==', LRes.AsImage(1).Data);
+    Assert.AreEqual('image/png', LRes.AsImage(1).MimeType);
+
+    Assert.AreEqual('BB==', LRes.AsAudio(2).Data);
+
+    Assert.AreEqual('search', LRes.AsToolUse(3).Name);
+    Assert.IsNotNull(LRes.AsToolUse(3).Input, 'the tool input is raw JSON and survives');
+
+    Assert.AreEqual('t1', LRes.AsToolResult(4).ToolUseId);
+  finally
+    LRes.Free;
+  end;
+end;
+
+procedure TMCPSamplingMessageTest.TestTheWrongTypeAnswersNil;
+var
+  LRes: TCreateMessageResult;
+begin
+  // The discriminator decides, so asking for the wrong class is answered rather
+  // than guessed at - and nothing is materialized for it
+  LRes := ResultFrom('{"role":"assistant","model":"m","content":{"type":"text","text":"hi"}}');
+  try
+    Assert.IsNull(LRes.AsImage(0));
+    Assert.IsNull(LRes.AsToolUse(0));
+    Assert.IsNotNull(LRes.AsText(0), 'and the right one still works afterwards');
+  finally
+    LRes.Free;
+  end;
+end;
+
+procedure TMCPSamplingMessageTest.TestAskingTwiceAnswersTheSameInstance;
+var
+  LRes: TCreateMessageResult;
+begin
+  // The message owns what it materializes, so a caller in a loop neither leaks
+  // nor has to free anything
+  LRes := ResultFrom('{"role":"assistant","model":"m","content":{"type":"text","text":"hi"}}');
+  try
+    Assert.AreSame(LRes.AsText(0), LRes.AsText(0));
+  finally
+    LRes.Free;
+  end;
+end;
+
+procedure TMCPSamplingMessageTest.TestABlockThatIsNotThereAnswersNil;
+var
+  LRes: TCreateMessageResult;
+begin
+  LRes := ResultFrom('{"role":"assistant","model":"m","content":{"type":"text","text":"hi"}}');
+  try
+    Assert.IsNull(LRes.AsText(1), 'a single block has no index one');
+    Assert.IsNull(LRes.AsText(-1));
+    Assert.AreEqual('', LRes.ContentTypeAt(9));
+  finally
+    LRes.Free;
+  end;
+end;
+
+procedure TMCPSamplingMessageTest.TestModelAndStopReasonSurvive;
+var
+  LRes: TCreateMessageResult;
+begin
+  LRes := ResultFrom('{"role":"assistant","model":"claude","stopReason":"endTurn",' +
+    '"content":{"type":"text","text":"hi"}}');
+  try
+    Assert.AreEqual('claude', LRes.Model);
+    Assert.AreEqual('endTurn', LRes.StopReason.Value);
+    Assert.AreEqual(Ord(TRole.Assistant), Ord(LRes.Role));
+  finally
+    LRes.Free;
+  end;
+end;
+
+procedure TMCPSamplingMessageTest.TestMetaSurvivesTheRoundTrip;
+var
+  LRes: TCreateMessageResult;
+begin
+  LRes := ResultFrom('{"role":"assistant","model":"m","content":{"type":"text","text":"hi"},' +
+    '"_meta":{"k":"v"}}');
+  try
+    Assert.IsNotNull(LRes.Meta);
+    Assert.AreEqual('v', LRes.Meta.GetValue<string>('k'));
+  finally
+    LRes.Free;
+  end;
+end;
+
+procedure TMCPSamplingMessageTest.TestAddContentMakesASingleBlock;
+var
+  LMsg: TSamplingMessage;
+begin
+  LMsg := TSamplingMessage.Create;
+  try
+    LMsg.AddContent(TTextContent.CreateWithText('hi'));
+
+    Assert.AreEqual(1, LMsg.ContentCount);
+    Assert.IsTrue(LMsg.Content is TJSONObject, 'one block is an object, not an array of one');
+    Assert.AreEqual('hi', LMsg.AsText.Text);
+  finally
+    LMsg.Free;
+  end;
+end;
+
+procedure TMCPSamplingMessageTest.TestASecondBlockPromotesToAnArray;
+var
+  LMsg: TSamplingMessage;
+begin
+  LMsg := TSamplingMessage.Create;
+  try
+    LMsg.AddText('a');
+    LMsg.AddText('b');
+
+    Assert.AreEqual(2, LMsg.ContentCount);
+    Assert.IsTrue(LMsg.Content is TJSONArray);
+    Assert.AreEqual('a', LMsg.AsText(0).Text);
+    Assert.AreEqual('b', LMsg.AsText(1).Text);
+  finally
+    LMsg.Free;
+  end;
+end;
+
+procedure TMCPSamplingMessageTest.TestPromotionKeepsTheFirstBlockAtIndexZero;
+var
+  LMsg: TSamplingMessage;
+  LFirst: TTextContent;
+begin
+  // Reading a block and then appending another must not move what was read: the
+  // materialized instance is keyed by index, and a shifted index would hand the
+  // caller the wrong block
+  LMsg := TSamplingMessage.Create;
+  try
+    LMsg.AddText('a');
+    LFirst := LMsg.AsText(0);
+
+    LMsg.AddText('b');
+
+    Assert.AreSame(LFirst, LMsg.AsText(0));
+    Assert.AreEqual('a', LMsg.AsText(0).Text);
+  finally
+    LMsg.Free;
+  end;
+end;
+
+procedure TMCPSamplingMessageTest.TestAddTextIsATextBlock;
+var
+  LMsg: TSamplingMessage;
+begin
+  LMsg := TSamplingMessage.Create;
+  try
+    LMsg.AddText('hello');
+
+    Assert.AreEqual(MCP_CONTENT_TEXT, LMsg.ContentTypeAt,
+      'the block declares the type its class set');
+  finally
+    LMsg.Free;
+  end;
+end;
+
 initialization
   TDUnitX.RegisterTestFixture(TMCPInputRequestsTest);
+  TDUnitX.RegisterTestFixture(TMCPSamplingMessageTest);
   TDUnitX.RegisterTestFixture(TMCPInputResponsesTest);
   TDUnitX.RegisterTestFixture(TMCPToolCallResultUnionTest);
 

@@ -42,6 +42,18 @@ const
   MCP_LATEST_PROTOCOL_VERSION = MCP_PROTOCOL_VERSION_2026_07_28;
 
   /// <summary>
+  ///   The "type" discriminator of the five content blocks a sampling message
+  ///   may carry, as it appears on the wire. Named so that the classes which
+  ///   set their own type and TSamplingMessage, which reads a block's type back
+  ///   to decide what to materialize, cannot drift apart.
+  /// </summary>
+  MCP_CONTENT_TEXT = 'text';
+  MCP_CONTENT_IMAGE = 'image';
+  MCP_CONTENT_AUDIO = 'audio';
+  MCP_CONTENT_TOOL_USE = 'tool_use';
+  MCP_CONTENT_TOOL_RESULT = 'tool_result';
+
+  /// <summary>
   ///   Protocol versions this server is able to speak, checked during the
   ///   handshake against the client-requested version.
   /// </summary>
@@ -1714,7 +1726,7 @@ end;
 constructor TTextContent.Create;
 begin
   inherited Create;
-  &Type := 'text';
+  &Type := MCP_CONTENT_TEXT;
 end;
 
 { TImageContent }
@@ -1722,7 +1734,7 @@ end;
 constructor TImageContent.Create;
 begin
   inherited Create;
-  &Type := 'image';
+  &Type := MCP_CONTENT_IMAGE;
 end;
 
 { TAudioContent }
@@ -1730,7 +1742,7 @@ end;
 constructor TAudioContent.Create;
 begin
   inherited Create;
-  &Type := 'audio';
+  &Type := MCP_CONTENT_AUDIO;
 end;
 
 { TResourceLink }

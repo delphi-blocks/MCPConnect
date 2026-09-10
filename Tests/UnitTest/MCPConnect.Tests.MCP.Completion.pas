@@ -685,17 +685,28 @@ end;
 function TMCPCompletionCapabilityTest.DiscoverCapabilities: TJSONObject;
 var
   LApi: TMCPServerApi;
+  LContext: TJRPCContext;
   LResult: TDiscoverResult;
 begin
   LApi := TMCPServerApi.Create;
   try
     LApi.MCPConfig := FServer.GetConfiguration<TMCPConfig>;
 
-    LResult := LApi.Discover(nil);
+    // A context of its own: this fixture builds the api by hand rather than
+    // going through the transport, and Discover now publishes its params into
+    // the request context, which a nil one cannot hold
+    LContext := TJRPCContext.Create;
     try
-      Result := TNeon.ObjectToJSON(LResult.Capabilities, MCPNeonConfig) as TJSONObject;
+      LApi.RPCContext := LContext;
+
+      LResult := LApi.Discover(nil);
+      try
+        Result := TNeon.ObjectToJSON(LResult.Capabilities, MCPNeonConfig) as TJSONObject;
+      finally
+        LResult.Free;
+      end;
     finally
-      LResult.Free;
+      LContext.Free;
     end;
   finally
     LApi.Free;

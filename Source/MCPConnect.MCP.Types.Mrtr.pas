@@ -191,35 +191,108 @@ type
     destructor Destroy; override;
   end;
 
-  { TODO -opaolo -c : How to free the object(s) in TValue 29/08/2026 11:11:54 }
+  /// <summary>
+  ///   A message issued to or received from an LLM. The base of
+  ///   TCreateMessageResult, and the element type of a sampling request's
+  ///   Messages.
+  /// </summary>
+  /// <remarks>
+  ///   Content is the union the specification calls SamplingMessageContentBlock:
+  ///   one of TextContent, ImageContent, AudioContent, ToolUseContent or
+  ///   ToolResultContent - or an *array* of them. It is held as raw JSON
+  ///   because Delphi has no union type and the wire shape has to survive
+  ///   either way; ContentCount, ContentTypeAt and the As... getters below are
+  ///   how a caller reads it without parsing JSON by hand, and AddContent is
+  ///   how one is built.
+  ///
+  ///   The whole sampling family is deprecated as of protocol version
+  ///   2026-07-28 (SEP-2577) and retained for at least twelve months, so this
+  ///   is what a server still needs to read a client's answer to a
+  ///   sampling/createMessage input request - no more.
+  /// </remarks>
   TSamplingMessage = class(TMetaClass)
   private
-    [NeonIgnore] Text: TObjectList<TTextContent>;
-    [NeonIgnore] Image: TObjectList<TImageContent>;
-    [NeonIgnore] Audio: TObjectList<TAudioContent>;
-    [NeonIgnore] ToolUse: TObjectList<TToolUseContent>;
-    [NeonIgnore] ToolResult: TObjectList<TToolResultContent>;
-    //Array<anyOf [TextContent, ImageContent, AudioContent, ToolUseContent, ToolResultContent]>]
-  public
-    [NeonIgnore] Single: NullBoolean;
+    /// <summary>
+    ///   The content blocks this message has been asked for, materialized and
+    ///   owned here so that a caller of the As... getters never frees what it
+    ///   is handed. Keyed by block index, which is enough: a block has exactly
+    ///   one type.
+    /// </summary>
+    [NeonIgnore] FBlocks: TObjectDictionary<Integer, TMetaClass>;
 
+    /// <summary>Block AIndex of Content, or nil when there is no such block.</summary>
+    function BlockAt(AIndex: Integer): TJSONObject;
+
+    /// <summary>
+    ///   Block AIndex read into AInstance, when the block is of AType. AInstance
+    ///   is this method's to own either way: it is cached and returned on a
+    ///   match, and freed otherwise - which is what lets each getter be one
+    ///   line that names its own class.
+    /// </summary>
+    function BlockOfType(AIndex: Integer; const AType: string; AInstance: TMetaClass): TMetaClass;
+  public
     /// <summary>
     ///   The sender or recipient of messages and data in a conversation.
     /// </summary>
     Role: TRole;
 
+    /// <summary>
+    ///   The content of the message: one content block, or an array of them.
+    ///   Read it through ContentCount and the As... getters rather than by hand.
+    /// </summary>
+    /// <remarks>
+    ///   Assigning this directly is allowed but bypasses the materialized-block
+    ///   cache, which then describes content that is no longer there. AddContent
+    ///   keeps the two in step.
+    /// </remarks>
     Content: TJSONValue;
   public
     constructor Create;
     destructor Destroy; override;
 
-    {
-    procedure AddContent(AContent: TToolContent); overload;
-    procedure AddContent(AContent: TToolUseContent); overload;
-    procedure AddContent(AContent: TToolResultContent); overload;
+    /// <summary>
+    ///   How many content blocks this message carries: 0 when it has no
+    ///   content, 1 for a single block, and the length of the array otherwise.
+    ///   A single block and an array of one are both one block here - the
+    ///   difference is preserved on the wire and is not the caller's business.
+    /// </summary>
+    function ContentCount: Integer;
 
-    function GetClass: TClass;
-    }
+    /// <summary>
+    ///   The "type" of block AIndex - one of the MCP_CONTENT_... values - or ''
+    ///   when there is no such block or it declares no type.
+    /// </summary>
+    function ContentTypeAt(AIndex: Integer = 0): string;
+
+    /// <summary>
+    ///   Block AIndex as the content class it declares itself to be, or nil
+    ///   when the block is of another type or is not there at all. The instance
+    ///   belongs to this message and lives as long as it does; asking twice
+    ///   answers the same one.
+    /// </summary>
+    function AsText(AIndex: Integer = 0): TTextContent;
+    function AsImage(AIndex: Integer = 0): TImageContent;
+    function AsAudio(AIndex: Integer = 0): TAudioContent;
+    function AsToolUse(AIndex: Integer = 0): TToolUseContent;
+    function AsToolResult(AIndex: Integer = 0): TToolResultContent;
+
+    /// <summary>
+    ///   Appends AContent as a content block, taking ownership of it: the first
+    ///   call makes the content a single block, and the next turns that into an
+    ///   array of two. Freeing what it is handed is deliberate and matches
+    ///   TMCPNotification.FromParams - the block is rendered to JSON here and
+    ///   the object has no further use.
+    /// </summary>
+    /// <remarks>
+    ///   Appending never moves a block that is already there, so the indices the
+    ///   As... getters were asked for stay valid.
+    /// </remarks>
+    procedure AddContent(AContent: TMetaClass);
+
+    /// <summary>
+    ///   Appends a text block, which is what most messages carry.
+    /// </summary>
+    procedure AddText(const AText: string);
   end;
 
 
@@ -637,7 +710,7 @@ end;
 constructor TToolUseContent.Create;
 begin
   Input := TJSONObject.Create;
-  &Type := 'tool_use';
+  &Type := MCP_CONTENT_TOOL_USE;
 end;
 
 destructor TToolUseContent.Destroy;
@@ -657,7 +730,7 @@ constructor TToolResultContent.Create;
 begin
   Content := TContentList.Create;
   StructuredContent := TJSONObject.Create;
-  &type := 'tool_result';
+  &Type := MCP_CONTENT_TOOL_RESULT;
 end;
 
 destructor TToolResultContent.Destroy;
@@ -671,13 +744,160 @@ end;
 
 constructor TSamplingMessage.Create;
 begin
-
+  // The inherited call was missing, which left Tags and Meta nil on every
+  // instance: harmless on the way in, since Neon assigns Meta when it finds a
+  // "_meta", and an access violation for anyone building a message by hand.
+  inherited Create;
+  FBlocks := TObjectDictionary<Integer, TMetaClass>.Create([doOwnsValues]);
 end;
 
 destructor TSamplingMessage.Destroy;
 begin
+  FBlocks.Free;
   Content.Free;
   inherited;
+end;
+
+function TSamplingMessage.ContentCount: Integer;
+begin
+  if not Assigned(Content) then
+    Result := 0
+  else if Content is TJSONArray then
+    Result := TJSONArray(Content).Count
+  else
+    Result := 1;
+end;
+
+function TSamplingMessage.BlockAt(AIndex: Integer): TJSONObject;
+var
+  LItems: TJSONArray;
+begin
+  Result := nil;
+  if not Assigned(Content) then
+    Exit;
+
+  if Content is TJSONArray then
+  begin
+    LItems := TJSONArray(Content);
+    if (AIndex >= 0) and (AIndex < LItems.Count) and (LItems.Items[AIndex] is TJSONObject) then
+      Result := TJSONObject(LItems.Items[AIndex]);
+  end
+  // A single block is block zero, so a caller that does not care whether the
+  // content was wrapped in an array never has to ask
+  else if (AIndex = 0) and (Content is TJSONObject) then
+    Result := TJSONObject(Content);
+end;
+
+function TSamplingMessage.ContentTypeAt(AIndex: Integer): string;
+var
+  LBlock: TJSONObject;
+  LType: TJSONValue;
+begin
+  Result := '';
+
+  LBlock := BlockAt(AIndex);
+  if not Assigned(LBlock) then
+    Exit;
+
+  LType := LBlock.GetValue('type');
+  if LType is TJSONString then
+    Result := TJSONString(LType).Value;
+end;
+
+function TSamplingMessage.BlockOfType(AIndex: Integer; const AType: string; AInstance: TMetaClass): TMetaClass;
+var
+  LCached: TMetaClass;
+begin
+  // Asked for a type the block is not: the instance the caller built for it has
+  // nowhere to go
+  if not SameText(ContentTypeAt(AIndex), AType) then
+  begin
+    AInstance.Free;
+    Exit(nil);
+  end;
+
+  // The type matched, so anything already materialized for this index is of the
+  // class being asked for - a block declares one type and does not change it
+  if FBlocks.TryGetValue(AIndex, LCached) then
+  begin
+    AInstance.Free;
+    Exit(LCached);
+  end;
+
+  try
+    TNeon.JSONToObject(AInstance, BlockAt(AIndex), MCPNeonConfig);
+  except
+    AInstance.Free;
+    raise;
+  end;
+
+  FBlocks.Add(AIndex, AInstance);
+  Result := AInstance;
+end;
+
+function TSamplingMessage.AsText(AIndex: Integer): TTextContent;
+begin
+  Result := BlockOfType(AIndex, MCP_CONTENT_TEXT, TTextContent.Create) as TTextContent;
+end;
+
+function TSamplingMessage.AsImage(AIndex: Integer): TImageContent;
+begin
+  Result := BlockOfType(AIndex, MCP_CONTENT_IMAGE, TImageContent.Create) as TImageContent;
+end;
+
+function TSamplingMessage.AsAudio(AIndex: Integer): TAudioContent;
+begin
+  Result := BlockOfType(AIndex, MCP_CONTENT_AUDIO, TAudioContent.Create) as TAudioContent;
+end;
+
+function TSamplingMessage.AsToolUse(AIndex: Integer): TToolUseContent;
+begin
+  Result := BlockOfType(AIndex, MCP_CONTENT_TOOL_USE, TToolUseContent.Create) as TToolUseContent;
+end;
+
+function TSamplingMessage.AsToolResult(AIndex: Integer): TToolResultContent;
+begin
+  Result := BlockOfType(AIndex, MCP_CONTENT_TOOL_RESULT, TToolResultContent.Create) as TToolResultContent;
+end;
+
+procedure TSamplingMessage.AddContent(AContent: TMetaClass);
+var
+  LBlock: TJSONValue;
+  LItems: TJSONArray;
+begin
+  if not Assigned(AContent) then
+    Exit;
+
+  try
+    LBlock := TNeon.ObjectToJSON(AContent, MCPNeonConfig);
+  finally
+    AContent.Free;
+  end;
+
+  if not Assigned(Content) then
+  begin
+    Content := LBlock;
+    Exit;
+  end;
+
+  if Content is TJSONArray then
+    LItems := TJSONArray(Content)
+  else
+  begin
+    // The single block becomes the first element of an array rather than being
+    // replaced: it keeps index zero, so a caller that already read it through
+    // one of the getters still holds the right thing
+    LItems := TJSONArray.Create;
+    LItems.AddElement(Content);
+    Content := LItems;
+  end;
+
+  LItems.AddElement(LBlock);
+end;
+
+procedure TSamplingMessage.AddText(const AText: string);
+begin
+  AddContent(TTextContent.CreateWithText(AText));
 end;
 
 { TInputRequest }

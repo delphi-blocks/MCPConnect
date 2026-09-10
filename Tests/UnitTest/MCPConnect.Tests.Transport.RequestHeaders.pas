@@ -104,10 +104,11 @@ type
     ///   annotation, which is how a tool asks for an argument to be mirrored.
     /// </summary>
     /// <remarks>
-    ///   Written into the generated schema by hand: emitting the annotation
-    ///   from an [McpParam] tag is the other half of the feature and is not
-    ///   implemented yet, while the server side - validating what a client
-    ///   sends against it - is required of a server either way.
+    ///   Written into the generated schema by hand even though an [McpParam]
+    ///   "header=" tag can put it there now (see
+    ///   MCPConnect.Tests.MCP.ParamHeaders): these tests are about what the
+    ///   server does with an annotation it finds, and a change to the tag
+    ///   vocabulary must not be able to quietly stop exercising them.
     /// </remarks>
     procedure AnnotateParam(const AToolName, AParamName, AHeaderName: string);
   public

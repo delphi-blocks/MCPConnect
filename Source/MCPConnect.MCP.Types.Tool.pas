@@ -32,6 +32,13 @@ const
   MCP_TOOL_NAME_MIN_LENGTH = 1;
   MCP_TOOL_NAME_MAX_LENGTH = 128;
 
+  /// <summary>
+  ///   The [McpParam] tag (and the WithParam one) that asks for a parameter to
+  ///   be mirrored into a Mcp-Param-&lt;value&gt; header: its value is written
+  ///   into the generated schema as the "x-mcp-header" annotation.
+  /// </summary>
+  MCP_TOOL_PARAM_HEADER_TAG = 'header';
+
 type
   /// <summary>
   /// Optional properties describing tool behavior
@@ -167,6 +174,25 @@ type
 /// </remarks>
 function IsValidToolName(const AName: string): Boolean;
 
+/// <summary>
+///   Whether AName may be the value of an "x-mcp-header" annotation: a
+///   non-empty RFC 9110 field-name token (1*tchar). The rule excludes the
+///   control characters CR and LF by construction, which is what makes an
+///   annotation safe to hand to a client to put on the wire verbatim.
+/// </summary>
+/// <remarks>
+///   The value names the Mcp-Param-&lt;name&gt; header, so the
+///   MCP_HEADER_PARAM_PREFIX is not part of what is checked here.
+/// </remarks>
+function IsValidHeaderParamName(const AName: string): Boolean;
+
+/// <summary>
+///   The JSON type ASchema declares for itself, looking through the
+///   ["X","null"] union a Nullable&lt;T&gt; generates, or '' when the schema
+///   declares no scalar "type" at all.
+/// </summary>
+function SchemaJSONType(ASchema: TJSONObject): string;
+
 implementation
 
 function IsValidToolName(const AName: string): Boolean;
@@ -186,6 +212,50 @@ begin
     end;
 
   Result := True;
+end;
+
+function IsValidHeaderParamName(const AName: string): Boolean;
+var
+  LChar: Char;
+begin
+  if AName.IsEmpty then
+    Exit(False);
+
+  for LChar in AName do
+    case LChar of
+      // tchar, RFC 9110 5.6.2: the unreserved punctuation plus DIGIT and ALPHA.
+      // Everything a field name may not carry - the space, the separators, the
+      // control characters, and CR and LF with them - falls through to the else
+      'A'..'Z', 'a'..'z', '0'..'9',
+      '!', '#', '$', '%', '&', '''', '*', '+', '-', '.',
+      '^', '_', '`', '|', '~': ;
+    else
+      Exit(False);
+    end;
+
+  Result := True;
+end;
+
+function SchemaJSONType(ASchema: TJSONObject): string;
+var
+  LType: TJSONValue;
+  LEntry: TJSONValue;
+begin
+  Result := '';
+  if not Assigned(ASchema) then
+    Exit;
+
+  LType := ASchema.GetValue('type');
+
+  if LType is TJSONString then
+    Exit(TJSONString(LType).Value);
+
+  // A Nullable<T> is rendered as a union with "null": the T is the type the
+  // schema is about, and the null is the absence the caller already handles
+  if LType is TJSONArray then
+    for LEntry in TJSONArray(LType) do
+      if (LEntry is TJSONString) and (TJSONString(LEntry).Value <> 'null') then
+        Exit(TJSONString(LEntry).Value);
 end;
 
 { TMCPUIApp }

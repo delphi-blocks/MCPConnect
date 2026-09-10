@@ -50,6 +50,9 @@ resourcestring
   SNonConfiguredParamsNotPermitted = 'Non-configured params are not permitted';
   SParamHasNoConfigurationFmt = 'The [%s] parameter has no configuration';
   SNonAnnotatedParamsNotPermitted = 'Non-annotated params are not permitted';
+  SParamHeaderNameInvalidFmt = 'Tool [%s]: [%s] is not a valid header name for parameter [%s]: a header name is a non-empty RFC 9110 token';
+  SParamHeaderNameDuplicateFmt = 'Tool [%s]: parameters [%s] and [%s] both ask for header [%s]: a header name must be case-insensitively unique in one inputSchema';
+  SParamHeaderTypeFmt = 'Tool [%s]: parameter [%s] is of JSON type [%s] and cannot be mirrored into a header: only integer, string and boolean can be';
   SConfigResourceNotFoundFmt = 'Resource [%s] not found';
   SStandardMethodNoParamsFmt = 'Standard method for resource [%s] cannot have parameters';
   SAppsUIUriScheme = 'Apps UI uri must use the "ui://" scheme';
@@ -598,6 +601,15 @@ type
     procedure WriteInputSchema(ATool: TMCPTool);
     procedure WriteOutputSchema(ATool: TMCPTool);
     procedure WriteParams(AConfig: TMCPTool; AProps: TJSONObject; ARequired: TJSONArray); overload;
+
+    /// <summary>
+    ///   Writes the "x-mcp-header" annotation a parameter's "header=" tag asks
+    ///   for into ASchema, after checking it against the constraints the spec
+    ///   puts on the value. AHeaders carries the names already claimed by the
+    ///   other parameters of the same tool, lowercased.
+    /// </summary>
+    procedure WriteParamHeader(ATool: TMCPTool; AParam: TMCPToolParam;
+      ASchema: TJSONObject; AHeaders: TDictionary<string, string>);
 
     procedure WriteTool(ATool: TMCPTool);
 
@@ -1437,28 +1449,72 @@ begin
   ATool.ExchangeOutputSchema(LJSONObj);
 end;
 
-procedure TMCPToolsConfig.WriteParams(AConfig: TMCPTool;
-  AProps: TJSONObject; ARequired: TJSONArray);
+procedure TMCPToolsConfig.WriteParams(AConfig: TMCPTool; AProps: TJSONObject; ARequired: TJSONArray);
 var
   LJSONObj: TJSONObject;
   LParam: TRttiParameter;
+  LHeaders: TDictionary<string, string>;
 begin
   if AConfig.MethodParams.Count <> Length(AConfig.Method.GetParameters) then
     raise EJRPCException.Create(SNonConfiguredParamsNotPermitted);
-  
-  for LParam in AConfig.Method.GetParameters do
-  begin
-    var par := AConfig.FindMCPParam(LParam.Name);
-    if not Assigned(par) then
-      raise EJRPCException.CreateFmt(SParamHasNoConfigurationFmt, [LParam.Name]);
-      
-    LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LParam.ParamType, NeonConfig);
 
-    LJSONObj.AddPair('description', TJSONString.Create(par.Description));
-    AProps.AddPair(par.Name, LJSONObj);
-    ARequired.Add(par.Name);
+  // Header name (lowercased) -> the parameter that claimed it, so that the
+  // uniqueness rule can name both sides of a collision
+  LHeaders := TDictionary<string, string>.Create;
+  try
+    for LParam in AConfig.Method.GetParameters do
+    begin
+      var par := AConfig.FindMCPParam(LParam.Name);
+      if not Assigned(par) then
+        raise EJRPCException.CreateFmt(SParamHasNoConfigurationFmt, [LParam.Name]);
+
+      LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LParam.ParamType, NeonConfig);
+
+      LJSONObj.AddPair('description', TJSONString.Create(par.Description));
+      AProps.AddPair(par.Name, LJSONObj);
+      ARequired.Add(par.Name);
+
+      // After AddPair, so that a refusal leaves the schema for AProps to free
+      WriteParamHeader(AConfig, par, LJSONObj, LHeaders);
+    end;
+  finally
+    LHeaders.Free;
   end;
+end;
 
+procedure TMCPToolsConfig.WriteParamHeader(ATool: TMCPTool; AParam: TMCPToolParam; 
+  ASchema: TJSONObject; AHeaders: TDictionary<string, string>);
+var
+  LHeaderName, LOwner, LJSONType: string;
+begin
+  if not AParam.Tags.Exists(MCP_TOOL_PARAM_HEADER_TAG) then
+    Exit;
+
+  LHeaderName := AParam.Tags.GetValueAs<string>(MCP_TOOL_PARAM_HEADER_TAG);
+
+  // All three are checked here rather than left to the client, because the
+  // client's remedy for an annotation it rejects is to drop the whole tool from
+  // tools/list: a typo in a routing hint would take the tool off the wire
+  // without anybody being told which one, or why.
+  if not IsValidHeaderParamName(LHeaderName) then
+    raise EMCPException.CreateFmt(SParamHeaderNameInvalidFmt,
+      [ATool.Name, LHeaderName, AParam.Name]);
+
+  if AHeaders.TryGetValue(LHeaderName.ToLower, LOwner) then
+    raise EMCPException.CreateFmt(SParamHeaderNameDuplicateFmt,
+      [ATool.Name, LOwner, AParam.Name, LHeaderName]);
+
+  // Only a primitive can be mirrored, and "number" is excluded even though it
+  // is one: a header carries the decimal rendering of a value the body carries
+  // as a double, and the two do not round-trip.
+  LJSONType := SchemaJSONType(ASchema);
+  if (LJSONType <> 'integer') and (LJSONType <> 'string') and
+     (LJSONType <> 'boolean') then
+    raise EMCPException.CreateFmt(SParamHeaderTypeFmt,
+      [ATool.Name, AParam.Name, LJSONType]);
+
+  AHeaders.Add(LHeaderName.ToLower, AParam.Name);
+  ASchema.AddPair(MCP_SCHEMA_HEADER_KEYWORD, LHeaderName);
 end;
 
 constructor TMCPServerConfig.Create(AConfig: IMCPConfig);

@@ -721,10 +721,15 @@ var
   LAnswer: THeaderAnswer;
 begin
   // A batch is outside this revision - the body MUST be a single message - so
-  // there is nothing for a single set of headers to mirror
+  // there is nothing for a single set of headers to mirror, and this middleware
+  // hands it on untouched rather than calling it a header mismatch.
+  //
+  // The transport then refuses it for its shape, which is a 400 of its own: what
+  // this asserts is the *reason*, not the status. Using the status as a proxy for
+  // it stopped working the day a batch became a refusal.
   LAnswer := Send('[{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}]');
 
-  Assert.IsFalse(LAnswer.Code = 400, LAnswer.Content);
+  Assert.AreNotEqual(MCP_HEADER_MISMATCH, LAnswer.ErrorCode, LAnswer.Content);
 end;
 
 procedure TStrictHeadersTest.TestMalformedBodyIsStillAParseError;

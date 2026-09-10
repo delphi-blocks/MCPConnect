@@ -165,11 +165,12 @@ type
   ///   Three shapes are deliberately let through untouched:
   ///
   ///   - anything that is not a single JSON-RPC Request object. A batch is
-  ///     outside this revision (the body MUST be one request or one
+  ///     refused outright by the transport (the body MUST be one request or one
   ///     notification), the header rules of a notification POST are explicitly
-  ///     undefined by it, and a body that is not JSON at all is a parse error
-  ///     for the handler to answer as one. Answering any of those with -32020
-  ///     would describe them wrongly.
+  ///     undefined by this revision, and a body that is not JSON at all is a
+  ///     parse error for the handler to answer as one. Answering any of those
+  ///     with -32020 would describe them wrongly - and this middleware runs
+  ///     before the transport refuses the batch, so it has to say so itself.
   ///   - STDIO, which has no headers to mirror.
   ///   - anything that is not a POST: a CORS preflight, and the OAuth metadata
   ///     endpoints, carry no JSON-RPC body.

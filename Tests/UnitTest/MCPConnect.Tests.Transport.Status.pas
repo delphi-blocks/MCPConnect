@@ -104,11 +104,11 @@ type
     [Test]
     procedure TestANotificationThatAcceptsAStreamOpensNone();
     [Test]
-    procedure TestABatchOfNotificationsIsAcceptedToo();
+    procedure TestABatchOfNotificationsIsRefusedNotAccepted();
     [Test]
     procedure TestARequestThatAcceptsAStreamStillStreams();
     [Test]
-    procedure TestAMixedBatchStreams();
+    procedure TestARefusedPayloadIsNotStreamed();
     [Test]
     procedure TestAMalformedPayloadIsAnsweredNotAccepted();
 
@@ -127,7 +127,7 @@ type
     [Test]
     procedure TestAnOrdinaryErrorKeepsTheOrdinaryStatus();
     [Test]
-    procedure TestABatchKeepsTheOrdinaryStatus();
+    procedure TestABatchIsRefusedWholeNotElementByElement();
 
     [Test]
     procedure TestGetIsMethodNotAllowed();
@@ -367,19 +367,19 @@ begin
   Assert.AreEqual('', LAnswer.Frames);
 end;
 
-procedure TTransportStatusTest.TestABatchOfNotificationsIsAcceptedToo;
+procedure TTransportStatusTest.TestABatchOfNotificationsIsRefusedNotAccepted;
 var
   LAnswer: TStatusAnswer;
 begin
-  // A batch of nothing but notifications has no reply either - JSON-RPC 2.0
-  // says a batch of notifications is answered with nothing at all
+  // The near-miss worth pinning: a batch of nothing but notifications would be
+  // answered 202 if the messages inside it were what decided. The envelope
+  // decides first, and an array is not a single message.
   LAnswer := Send('[{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}},' +
     '{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":2}}]',
     'POST', True);
 
-  Assert.AreEqual(HTTP_CODE_ACCEPTED, LAnswer.Code, LAnswer.Content);
-  Assert.AreEqual('', LAnswer.Content);
-  Assert.IsFalse(LAnswer.StreamOpened);
+  Assert.AreEqual(HTTP_CODE_BADREQUEST, LAnswer.Code, LAnswer.Content);
+  Assert.AreEqual(JRPC_INVALID_REQUEST, LAnswer.ErrorCode, LAnswer.Content);
 end;
 
 procedure TTransportStatusTest.TestARequestThatAcceptsAStreamStillStreams;
@@ -395,18 +395,19 @@ begin
   Assert.AreEqual('', LAnswer.Content, 'the reply went out on the stream, not in the body');
 end;
 
-procedure TTransportStatusTest.TestAMixedBatchStreams;
+procedure TTransportStatusTest.TestARefusedPayloadIsNotStreamed;
 var
   LAnswer: TStatusAnswer;
 begin
-  // One request among the notifications is one reply to send, so the batch is
-  // answerable and the stream opens
-  LAnswer := Send('[{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}},' +
-    '{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{' + Meta + '}}]',
-    'POST', True);
+  // A refusal decided before dispatch is answered as a document even to a client
+  // that offered a stream: its status was settled before any header went out, so
+  // unlike an error raised *during* dispatch it can actually be sent. Streaming
+  // it would mean 200 with the refusal in a frame.
+  LAnswer := Send('[' + Body('tools/list') + ']', 'POST', True);
 
-  Assert.IsTrue(LAnswer.StreamOpened);
-  Assert.Contains(LAnswer.Frames, '"result"');
+  Assert.IsFalse(LAnswer.StreamOpened, 'nothing is streamed for a payload that was refused');
+  Assert.AreEqual(HTTP_CODE_BADREQUEST, LAnswer.Code, LAnswer.Content);
+  Assert.Contains(LAnswer.Content, '-32600');
 end;
 
 procedure TTransportStatusTest.TestAMalformedPayloadIsAnsweredNotAccepted;
@@ -501,17 +502,20 @@ begin
   Assert.AreEqual(JRPC_INVALID_PARAMS, LAnswer.ErrorCode);
 end;
 
-procedure TTransportStatusTest.TestABatchKeepsTheOrdinaryStatus;
+procedure TTransportStatusTest.TestABatchIsRefusedWholeNotElementByElement;
 var
   LAnswer: TStatusAnswer;
 begin
-  // A batch answers with an array of outcomes, and one status cannot describe
-  // several of them - so the reply stays 200 even though one element was
-  // refused. (A batch is outside this revision anyway.)
+  // This used to be the reason the mapping had to stay conservative: a batch came
+  // back as an array of outcomes, and one status could not describe several of
+  // them. Refusing the batch whole removed the exception - the array is never
+  // looked inside, so the unknown method in it is never reported.
   LAnswer := Send('[' + Body('tools/list') + ',' + Body('nosuch/method') + ']');
 
-  Assert.AreEqual(HTTP_CODE_OK, LAnswer.Code, LAnswer.Content);
-  Assert.Contains(LAnswer.Content, '-32601', 'the refusal is still in the array');
+  Assert.AreEqual(HTTP_CODE_BADREQUEST, LAnswer.Code, LAnswer.Content);
+  Assert.AreEqual(JRPC_INVALID_REQUEST, LAnswer.ErrorCode, LAnswer.Content);
+  Assert.DoesNotContain(LAnswer.Content, '-32601',
+    'the elements are never dispatched, so nothing reports on them');
 end;
 
 procedure TTransportStatusTest.TestGetIsMethodNotAllowed;

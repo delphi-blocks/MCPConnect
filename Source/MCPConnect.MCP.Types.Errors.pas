@@ -83,6 +83,7 @@ resourcestring
   SMCPMissingClientCapability = 'The request requires a client capability that was not declared';
   SMCPMissingClientCapabilityFmt = 'The request requires the [%s] client capability, not declared by the client';
   SMCPUnsupportedProtocolVersionFmt = 'Protocol version [%s] is not supported by this server';
+  SMCPBatchNotSupported = 'The body of a request must be a single JSON-RPC request or notification, not a batch';
 
 type
   /// <summary>
@@ -191,6 +192,29 @@ type
 
     /// <summary>Required header missing or malformed.</summary>
     constructor CreateForMissingHeader(const AHeaderName: string);
+  end;
+
+  /// <summary>
+  ///   Raised when the body carries a JSON-RPC batch. 2026-07-28 requires the
+  ///   body of a request to be a single request or a single notification, so a
+  ///   top-level array is not something this transport can serve.
+  /// </summary>
+  /// <remarks>
+  ///   Reported as Invalid Request (-32600), the code JSON-RPC 2.0 assigns to a
+  ///   Request object that is not valid - the specification reserves no code of
+  ///   its own for this. It is an EMCPProtocolError so that the transport
+  ///   answers it 400 like every other violation of the transport's own
+  ///   contract: what is wrong is the envelope, not the parameters inside it.
+  ///
+  ///   The JSON-RPC layer underneath (Libs/JRPC) still reads and answers
+  ///   batches; this is a policy of the MCP transport, not a missing
+  ///   capability.
+  /// </remarks>
+  EMCPBatchNotSupportedError = class(EMCPProtocolError)
+  public
+    procedure AfterConstruction; override;
+
+    constructor Create; reintroduce;
   end;
 
   /// <summary>
@@ -430,6 +454,19 @@ end;
 constructor EMCPHeaderMismatchError.CreateForMissingHeader(const AHeaderName: string);
 begin
   CreateFmt(SMCPHeaderMissingFmt, [AHeaderName]);
+end;
+
+{ EMCPBatchNotSupportedError }
+
+procedure EMCPBatchNotSupportedError.AfterConstruction;
+begin
+  inherited;
+  FCode := JRPC_INVALID_REQUEST;
+end;
+
+constructor EMCPBatchNotSupportedError.Create;
+begin
+  inherited Create(SMCPBatchNotSupported);
 end;
 
 { EMCPInvalidRequestMetaError }

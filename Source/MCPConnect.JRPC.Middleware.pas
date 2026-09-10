@@ -310,8 +310,12 @@ type
   ///   Find&lt;TMCPTransportResponse&gt;: this unit knows nothing of HTTP.
   ///
   ///   A middleware of this level is built once per transport request, and its
-  ///   instance is not the one the message levels of the same request get: a
-  ///   request may carry a batch of messages, so the two scopes are different.
+  ///   instance is not the one the message levels of the same request get. The
+  ///   MCP transport now refuses a batch, so in practice one request carries one
+  ///   message and the two scopes coincide - but they stay separate levels: this
+  ///   unit is the JSON-RPC middleware chain and knows nothing of that policy,
+  ///   and a long-lived request such as subscriptions/listen depends on the
+  ///   transport-scoped instance outliving the message-scoped one.
   ///   Refusing here means not calling Next, or raising - which for the HTTP
   ///   transports is how an answer with a status code of its own is produced.
   /// </remarks>

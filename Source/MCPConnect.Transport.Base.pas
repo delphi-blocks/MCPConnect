@@ -638,8 +638,10 @@ begin
           // The status this error deserves, recorded in the one place where it
           // is still an exception: the JSON-RPC code alone cannot say, since
           // -32602 is a 400 when it reports a malformed "_meta" and an ordinary
-          // 200 when it reports an unknown tool name. First one wins - a batch
-          // that produced two is answered 200 anyway, see HandlePOST.
+          // 200 when it reports an unknown tool name. One message per request, so
+          // there is exactly one status to record; the guard below keeps the
+          // first anyway, since HandlePOST can have recorded one already for a
+          // payload it refused before dispatch.
           if FProtocolStatus = 0 then
           begin
             // The whole family in one test, which is what the common ancestor
@@ -704,7 +706,8 @@ begin
     // Request=True marks a message the server must not answer: an Error object
     // the client itself sent, or a notification that failed to parse. Anything
     // else is an error the parser produced for a message that IS waiting for a
-    // reply - a malformed element of a batch - and it has to reach the client.
+    // reply - a body that would not parse, or one this transport refused - and
+    // it has to reach the client.
     if LErr.Request then
       Logger.LogDebug('Discarding error [%s]', [LErr.Error.Message.Value])
     else
@@ -867,8 +870,8 @@ var
         begin
           // A server-to-client notification is not a reply to anything, so it has
           // no place in the JSON-RPC payload that answers this POST: per JSON-RPC
-          // 2.0 a Request is answered with a Response, and a batch with an array
-          // of Responses. SSE is the only channel this transport has for one -
+          // 2.0 a Request is answered with a Response, and nothing else belongs
+          // there. SSE is the only channel this transport has for one -
           // there is no GET endpoint since sessions went away - and there is no
           // stream here, either because the client asked for none or because
           // this payload is answered 202 and carries no reply at all. Dropped
@@ -891,20 +894,45 @@ var
 begin
   LFragment := TStopwatch.StartNew;
   try
+    // Parsed once per request: the request-headers middleware leaves its tree
+    // here when it runs, and this puts one here when it does not, so no body is
+    // parsed twice. TMCPTransportRequest owns it either way.
+    if not Assigned(FRequest.ContentJSON) and not FRequest.Content.IsEmpty then
+      FRequest.ContentJSON := TJSONObject.ParseJSONValue(FRequest.Content);
+
+    // A top-level array is a JSON-RPC batch, and 2026-07-28 requires the body of
+    // a request to be a single request or a single notification. Refused here,
+    // before anything is dispatched, so nothing downstream ever sees more than
+    // one message - and an empty "[]" is refused by the same rule as a full one,
+    // rather than as the Invalid Request the JSON-RPC layer would make of it.
+    //
+    // That layer still reads and answers batches for its own callers: this is a
+    // policy of the MCP transport, not a missing capability.
+    if FRequest.ContentJSON is TJSONArray then
+      raise EMCPBatchNotSupportedError.Create;
+
     if Assigned(FRequest.ContentJSON) then
       LRequestList := TJRPCMessages.CreateFromJson(FRequest.ContentJSON)
     else
+      // Not JSON at all, or empty: let the JSON-RPC layer raise the parse error
+      // it raises for every other unreadable body
       LRequestList := TJRPCMessages.CreateFromJson(FRequest.Content);
   except
     on E: EJRPCException do
     begin
-      // Per JSON-RPC 2.0, malformed JSON (parse error), an empty batch, or a
-      // top-level value that is neither a Request nor a batch must be answered
-      // with a single JSON-RPC error response carrying a null id - never an
-      // HTTP 500 or an empty body.
+      // Per JSON-RPC 2.0, malformed JSON (parse error) or a top-level value that
+      // is not a Request object must be answered with a single JSON-RPC error
+      // response carrying a null id - never an HTTP 500 or an empty body.
       var LErrorId: TJRPCID;
       LRequestList := TJRPCMessages.Create(True);
       LRequestList.AddMessage(TJRPCError.CreateFromException(E, LErrorId));
+
+      // The status the refusal deserves, recorded in the one place where it is
+      // still an exception - the same rule HandleMessage applies, which never
+      // sees this one because it is refused before dispatch. A parse error is
+      // not an EMCPProtocolError and keeps its ordinary 200.
+      if E is EMCPProtocolError then
+        FProtocolStatus := HTTP_CODE_BADREQUEST;
     end;
   end;
   Logger.LogDebug('[PERF] Transport CreateFromJSON: %d ms', [LFragment.ElapsedMilliseconds]);
@@ -934,20 +962,22 @@ begin
   LResponseList := TJRPCMessages.Create(True);
   FGarbage.Add(LResponseList);
 
-  // The reply must have the same shape as the payload: an object answers an
-  // object, an array answers an array - including a batch of exactly one
-  // Request, which JSON-RPC 2.0 still answers with a one-element array. Only
-  // Single says which one this is, and this path builds its response list by
-  // hand instead of going through TJRPCServer.ProcessMessages, which is where
-  // the carry-over normally happens (see TJRPCMessages.ToJson).
-  LResponseList.Single := LRequestList.Single;
+  // No carry-over of the payload's shape: the body is a single message or it was
+  // refused, so an object always answers an object. TJRPCMessages.Single is True
+  // for a hand-built list, which is what this one is.
 
   // Decided here - after the parse, before anything is written. A payload of
   // nothing but notifications is answered "202 Accepted" with no body whatever
   // its Accept asked for, so there is no stream to open for one. Deciding this
   // before the parse, on the Accept alone, is what used to answer a notification
   // 200 with an empty event stream.
-  LStreamed := ExpectsResponse(LRequestList) and
+  //
+  // A payload already refused above is answered as a document too, whatever the
+  // Accept: its status was settled before any header went out, and it is the one
+  // refusal early enough for the reply to carry it. Streaming it would send 200
+  // with the refusal in a frame - which is what a status decided *during*
+  // dispatch has to settle for, and this one does not.
+  LStreamed := (FProtocolStatus = 0) and ExpectsResponse(LRequestList) and
     FRequest.AcceptsEventStream and FResponseWriter.SupportsStreaming;
 
   LFragment := TStopwatch.StartNew;
@@ -979,9 +1009,11 @@ begin
       end
       else
       begin
-        // Only for a reply that is one message: a batch answers with an array
-        // of outcomes, and a status can only describe one of them.
-        if (FProtocolStatus <> 0) and LResponseList.Single then
+        // One message in, one reply out, so a protocol status always has exactly
+        // one outcome to describe. The guard this used to carry - "only when the
+        // reply is single" - existed for batches, which are now refused before
+        // they reach here.
+        if FProtocolStatus <> 0 then
           FResponse.Code := FProtocolStatus
         else
           FResponse.Code := HTTP_CODE_OK;

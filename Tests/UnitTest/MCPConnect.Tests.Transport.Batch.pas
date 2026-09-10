@@ -13,16 +13,21 @@
 {******************************************************************************}
 
 /// <summary>
-///   Covers the *shape* of what a POST comes back with, which JSON-RPC 2.0 ties to
-///   the shape of the payload rather than to the number of responses: a Request
-///   object is answered with a Response object, a batch is answered with an Array
-///   even when exactly one element of it is answerable.
+///   The batch policy of the MCP transport, and the reply shape it leaves behind.
+///   2026-07-28 requires the body of a request to be a single JSON-RPC request or
+///   notification, so a top-level array is refused outright - and with only one
+///   message ever reaching dispatch, a Response object is the only reply shape
+///   there is.
 /// </summary>
 /// <remarks>
-///   TMCPTransportHandler.HandlePOST builds its response list by hand instead of
-///   going through TJRPCServer.ProcessMessages, so the Single carry-over that
-///   TJRPCMessages.ToJson keys off has to be repeated there - and was not, which is
-///   how a batch of one came to be answered with a bare object.
+///   The refusal is the MCP transport's, not the JSON-RPC layer's: Libs/JRPC still
+///   reads and answers batches for its own callers, and its own suite still covers
+///   them. What is asserted here is that MCPConnect declines to.
+///
+///   The single-message tests are the older half of this fixture and stay: they were
+///   the regression net for the reply shape (TMCPTransportHandler.HandlePOST builds
+///   its response list by hand rather than going through TJRPCServer.ProcessMessages)
+///   and they still are.
 /// </remarks>
 unit MCPConnect.Tests.Transport.Batch;
 
@@ -87,26 +92,26 @@ type
     [Test]
     procedure TestSingleRequest_IsAnsweredWithAnObject;
     [Test]
-    procedure TestBatchOfOne_IsAnsweredWithAnArrayOfOne;
-    [Test]
-    procedure TestBatchOfTwo_IsAnsweredWithAnArrayOfTwo;
-    [Test]
-    procedure TestBatchWithANotification_IsStillAnsweredWithAnArray;
-    [Test]
-    procedure TestBatchOfOnlyNotifications_IsAnsweredWithNoContent;
-    [Test]
     procedure TestSingleNotification_IsAnsweredWithNoContent;
     [Test]
     procedure TestMalformedJson_IsAnsweredWithAnObject;
     [Test]
-    procedure TestEmptyBatch_IsAnsweredWithAnObject;
+    procedure TestNotification_IsNotSplicedIntoASingleReply;
 
     [Test]
-    procedure TestNotification_IsNotSplicedIntoASingleReply;
+    procedure TestBatchOfOne_IsRefused;
     [Test]
-    procedure TestNotification_IsNotSplicedIntoABatchReply;
+    procedure TestBatchOfTwo_IsRefused;
     [Test]
-    procedure TestNotifications_DoNotInflateABatchReply;
+    procedure TestBatchOfOnlyNotifications_IsRefusedRatherThanAccepted;
+    [Test]
+    procedure TestEmptyBatch_IsRefusedByTheSameRule;
+    [Test]
+    procedure TestRefusalIsInvalidRequest;
+    [Test]
+    procedure TestRefusalIsAnObjectWithANullId;
+    [Test]
+    procedure TestRefusalNamesTheRule;
   end;
 
 implementation
@@ -159,9 +164,9 @@ begin
       .SetVersion('1.0.0')
     .BackToMCP
     .Security
-      // A batch is outside 2026-07-28 - the body of a POST MUST be a single
-      // message - so there is nothing for one set of request-metadata headers
-      // to mirror, and these tests send none.
+      // These tests send no request-metadata headers: a batch is refused before
+      // anything could mirror one, and the single-message tests are about the
+      // reply shape rather than the header contract.
       .SetHeaderValidation(TMCPValidationLevel.Off)
       .SetMetaValidation(TMCPValidationLevel.Off)
     .BackToMCP
@@ -225,60 +230,38 @@ begin
   end;
 end;
 
-procedure TTransportBatchTest.TestBatchOfOne_IsAnsweredWithAnArrayOfOne;
-var
-  LReply: TJSONValue;
-begin
-  // The regression: a one-element batch used to come back as a bare object, which a
-  // client that sent an array has no reason to accept.
-  LReply := ParseReply(Post('[' + Format(Discover, [1]) + ']'));
-  try
-    Assert.IsTrue(LReply is TJSONArray,
-      'A batch is answered with an Array even when it holds exactly one Request');
-    Assert.AreEqual(1, TJSONArray(LReply).Count);
-  finally
-    LReply.Free;
-  end;
-end;
-
-procedure TTransportBatchTest.TestBatchOfTwo_IsAnsweredWithAnArrayOfTwo;
-var
-  LReply: TJSONValue;
-begin
-  LReply := ParseReply(Post('[' + Format(Discover, [1]) + ',' + Format(Discover, [2]) + ']'));
-  try
-    Assert.IsTrue(LReply is TJSONArray, 'A batch is answered with an Array');
-    Assert.AreEqual(2, TJSONArray(LReply).Count);
-  finally
-    LReply.Free;
-  end;
-end;
-
-procedure TTransportBatchTest.TestBatchWithANotification_IsStillAnsweredWithAnArray;
-var
-  LReply: TJSONValue;
-begin
-  // Two elements in, one answerable: the number of responses is what used to decide
-  // the shape, and it is the wrong thing to decide it by.
-  LReply := ParseReply(Post('[' + Format(Discover, [1]) + ',' + DiscoverNotification + ']'));
-  try
-    Assert.IsTrue(LReply is TJSONArray,
-      'A batch that produced one Response is still answered with an Array');
-    Assert.AreEqual(1, TJSONArray(LReply).Count);
-  finally
-    LReply.Free;
-  end;
-end;
-
-procedure TTransportBatchTest.TestBatchOfOnlyNotifications_IsAnsweredWithNoContent;
+procedure TTransportBatchTest.TestBatchOfOne_IsRefused;
 var
   LOutcome: TPostOutcome;
 begin
-  // Nothing to answer: the spec says return nothing at all, not an empty array.
+  // One element is still an array, and an array is still not a single message.
+  // Nothing about the count makes a batch acceptable.
+  LOutcome := Post('[' + Format(Discover, [1]) + ']');
+
+  Assert.AreEqual(400, LOutcome.Code, LOutcome.Content);
+end;
+
+procedure TTransportBatchTest.TestBatchOfTwo_IsRefused;
+var
+  LOutcome: TPostOutcome;
+begin
+  LOutcome := Post('[' + Format(Discover, [1]) + ',' + Format(Discover, [2]) + ']');
+
+  Assert.AreEqual(400, LOutcome.Code, LOutcome.Content);
+end;
+
+procedure TTransportBatchTest.TestBatchOfOnlyNotifications_IsRefusedRatherThanAccepted;
+var
+  LOutcome: TPostOutcome;
+begin
+  // The one case where refusing and accepting look alike from a distance: a batch
+  // of notifications would have been answered 202 with no body. It is refused
+  // instead, because what is wrong with it is the envelope, before anything asks
+  // whether the messages inside want a reply.
   LOutcome := Post('[' + DiscoverNotification + ']');
 
-  Assert.AreEqual(202, LOutcome.Code);
-  Assert.AreEqual('', LOutcome.Content);
+  Assert.AreEqual(400, LOutcome.Code, LOutcome.Content);
+  Assert.AreNotEqual('', LOutcome.Content, 'a refusal says why; an acceptance says nothing');
 end;
 
 procedure TTransportBatchTest.TestSingleNotification_IsAnsweredWithNoContent;
@@ -306,15 +289,63 @@ begin
   end;
 end;
 
-procedure TTransportBatchTest.TestEmptyBatch_IsAnsweredWithAnObject;
+procedure TTransportBatchTest.TestEmptyBatch_IsRefusedByTheSameRule;
+var
+  LOutcome: TPostOutcome;
+begin
+  // "[]" used to reach the JSON-RPC layer and come back as its Invalid Request.
+  // It is now refused by the transport, one step earlier and by the same rule as
+  // a full batch - one rule about the envelope rather than two answers that
+  // happen to share a code.
+  LOutcome := Post('[]');
+
+  Assert.AreEqual(400, LOutcome.Code, LOutcome.Content);
+  Assert.Contains(LOutcome.Content, 'single', 'refused for its shape, not for being empty');
+end;
+
+procedure TTransportBatchTest.TestRefusalIsInvalidRequest;
 var
   LReply: TJSONValue;
 begin
-  // "[]" has brackets but never produced a batch to reply to element by element.
-  LReply := ParseReply(Post('[]'));
+  // -32600: the specification reserves no code for this, and "the JSON sent is
+  // not a valid Request object" is what JSON-RPC 2.0 already means by it
+  LReply := ParseReply(Post('[' + Format(Discover, [1]) + ']'));
   try
-    Assert.IsTrue(LReply is TJSONObject, 'An empty batch is Invalid Request, as an object');
-    Assert.IsNotNull(TJSONObject(LReply).GetValue('error'));
+    Assert.IsTrue(LReply is TJSONObject);
+    Assert.AreEqual(-32600,
+      TJSONObject(LReply).GetValue('error').GetValue<Integer>('code'));
+  finally
+    LReply.Free;
+  end;
+end;
+
+procedure TTransportBatchTest.TestRefusalIsAnObjectWithANullId;
+var
+  LReply: TJSONValue;
+begin
+  // There is no id to answer on - the server declined to look inside the array -
+  // and JSON-RPC 2.0 says such an error carries a null id. An object, not an
+  // array: the reply does not mirror the shape of a payload that was refused.
+  LReply := ParseReply(Post('[' + Format(Discover, [1]) + ']'));
+  try
+    Assert.IsTrue(LReply is TJSONObject, 'a refused batch is not answered element by element');
+    Assert.IsTrue(TJSONObject(LReply).GetValue('id') is TJSONNull);
+  finally
+    LReply.Free;
+  end;
+end;
+
+procedure TTransportBatchTest.TestRefusalNamesTheRule;
+var
+  LReply: TJSONValue;
+begin
+  // A client that sends a batch has a bug in it, and -32600 alone does not say
+  // which: the message is what tells whoever reads the log what to change
+  LReply := ParseReply(Post('[' + Format(Discover, [1]) + ']'));
+  try
+    Assert.Contains(
+      TJSONObject(LReply).GetValue('error').GetValue<string>('message'),
+      'single JSON-RPC request or notification');
   finally
     LReply.Free;
   end;
@@ -334,35 +365,6 @@ begin
       'A single Request is answered with a single Response, notifications or not');
     Assert.IsNotNull(TJSONObject(LReply).GetValue('result'));
     Assert.AreEqual(Int64(1), TJSONObject(LReply).GetValue<Int64>('id'));
-  finally
-    LReply.Free;
-  end;
-end;
-
-procedure TTransportBatchTest.TestNotification_IsNotSplicedIntoABatchReply;
-var
-  LReply: TJSONValue;
-begin
-  LReply := ParseReply(Post('[' + Format(CallNotifyingTool, [1]) + ']'));
-  try
-    Assert.IsTrue(LReply is TJSONArray, 'A batch is answered with an Array');
-    Assert.AreEqual(1, TJSONArray(LReply).Count,
-      'One Request in, one Response out: the notification is not an element of the batch reply');
-  finally
-    LReply.Free;
-  end;
-end;
-
-procedure TTransportBatchTest.TestNotifications_DoNotInflateABatchReply;
-var
-  LReply: TJSONValue;
-begin
-  LReply := ParseReply(Post('[' + Format(CallNotifyingTool, [1]) + ',' +
-    Format(CallNotifyingTool, [2]) + ']'));
-  try
-    Assert.IsTrue(LReply is TJSONArray, 'A batch is answered with an Array');
-    Assert.AreEqual(2, TJSONArray(LReply).Count,
-      'Two Requests in, two Responses out - not four');
   finally
     LReply.Free;
   end;

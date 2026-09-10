@@ -202,7 +202,7 @@ type
     function BackToMCP: IMCPConfig; virtual;
   end;
 
-  TMCPCapability = (Tools, Resources, Prompts, Tasks, Logging, Completions);
+  TMCPCapability = (Tools, Resources, Prompts, Logging, Completions);
   TMCPCapabilities = set of TMCPCapability;
 
   /// <summary>
@@ -1640,8 +1640,7 @@ begin
   Result := Self;
 end;
 
-function TMCPServerConfig.SetCapabilities(
-  ACapabilities: TMCPCapabilities): TMCPServerConfig;
+function TMCPServerConfig.SetCapabilities(ACapabilities: TMCPCapabilities): TMCPServerConfig;
 begin
   if Assigned(Capabilities) then
     Capabilities.Free;
@@ -1649,13 +1648,16 @@ begin
 
   if TMCPCapability.Tools in ACapabilities then
     Capabilities.Tools.ListChanged := False;
+
   if TMCPCapability.Resources in ACapabilities then
   begin
     Capabilities.Resources.ListChanged := False;
     Capabilities.Resources.Subscribe := False;
   end;
+
   if TMCPCapability.Prompts in ACapabilities then
     Capabilities.Prompts.ListChanged := False;
+
   if TMCPCapability.Completions in ACapabilities then
     Capabilities.EnableCompletions;
 

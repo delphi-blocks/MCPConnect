@@ -67,11 +67,19 @@ type
     LogClass: string;
     Level: TLogLevel;
     Text: string;
-    /// <summary>Exception class, message, stack trace and inner chain; empty when there was none.</summary>
+    /// <summary>
+    ///   Exception rendered by the adapter's TLoggerFormatter: class, message,
+    ///   stack trace and the nested inner chain; empty when there was none.
+    /// </summary>
     ExceptionInfo: string;
 
+    /// <summary>
+    ///   AFormatter is the formatter the capturing adapter uses (its Formatter
+    ///   property), so an exception is rendered the way that adapter would,
+    ///   custom formatter included. Nil falls back to a plain TLoggerFormatter.
+    /// </summary>
     class function New(const ALogClass, AText: string; AException: Exception;
-      ALevel: TLogLevel): TMCPLogEntry; static;
+      ALevel: TLogLevel; AFormatter: TLoggerFormatter = nil): TMCPLogEntry; static;
     function ToString: string;
   end;
 
@@ -407,8 +415,11 @@ end;
 
 { TMCPLogEntry }
 
-class function TMCPLogEntry.New(const ALogClass, AText: string;
-  AException: Exception; ALevel: TLogLevel): TMCPLogEntry;
+class function TMCPLogEntry.New(const ALogClass, AText: string; AException: Exception; 
+  ALevel: TLogLevel; AFormatter: TLoggerFormatter): TMCPLogEntry;
+var
+  LFormatter: TLoggerFormatter;
+  LOwnsFormatter: Boolean;
 begin
   Result := Default(TMCPLogEntry);
   Result.Timestamp := Now;
@@ -417,7 +428,21 @@ begin
   Result.Level := ALevel;
   Result.Text := AText;
   if AException <> nil then
-    Result.ExceptionInfo := GetFullExceptionInfo(AException);
+  begin
+    // The formatter is instanced, so the class function needs one: the
+    // adapter's own when it has one, a throwaway default otherwise.
+    LOwnsFormatter := AFormatter = nil;
+    if LOwnsFormatter then
+      LFormatter := TLoggerFormatter.Create
+    else
+      LFormatter := AFormatter;
+    try
+      Result.ExceptionInfo := LFormatter.FormatException(AException);
+    finally
+      if LOwnsFormatter then
+        LFormatter.Free;
+    end;
+  end;
 end;
 
 function TMCPLogEntry.ToString: string;
@@ -855,7 +880,7 @@ begin
   if _Shutdown or not Assigned(FStore) then
     Exit;
 
-  FStore.Capture(TMCPLogEntry.New(AClassName, AMessage, AException, ALevel));
+  FStore.Capture(TMCPLogEntry.New(AClassName, AMessage, AException, ALevel, Formatter));
 end;
 
 procedure TLogifyAdapterMemory.InternalRaw(const AMessage: string; ALevel: TLogLevel);

@@ -149,8 +149,9 @@ type
     function Server: TMCPServerConfig;
 
     /// <summary>
-    ///   Handlers for inbound JSON-RPC messages from the client
-    ///   (notifications such as cancelled/initialized, and requests such as logging/setLevel).
+    ///   Handlers for inbound JSON-RPC messages from the client: the log level
+    ///   a request asks the server to emit at, and whole namespaces a class of
+    ///   its own takes over.
     /// </summary>
     function MessageHandling: TMCPMessageHandlingConfig;
 
@@ -428,7 +429,6 @@ type
   private
     FRegistry: TJRPCRegistry;
     //FCancelledProc: TProc<TJRPCContext, TCancelledNotificationParams>;
-    FInitializedProc: TProc<TJRPCContext>;
     FSetLogLevelProc: TProc<TJRPCContext, TMCPLogLevel>;
   public
     constructor Create(AConfig: IMCPConfig);
@@ -454,14 +454,6 @@ type
     property Registry: TJRPCRegistry read FRegistry;
 
     /// <summary>
-    ///   Registers a handler for the "notifications/initialized" notification,
-    ///   sent by the client once the initialization handshake is complete.
-    /// </summary>
-    /// <param name="AProc">Callback invoked after initialization. Pass nil to unregister.</param>
-    /// <returns>Self for fluent chaining</returns>
-    function OnInitialized(AProc: TProc<TJRPCContext>): TMCPMessageHandlingConfig;
-
-    /// <summary>
     ///   Registers a handler for the log level a client asks the server to emit
     ///   at.
     /// </summary>
@@ -477,12 +469,6 @@ type
     /// </param>
     /// <returns>Self for fluent chaining</returns>
     function OnSetLogLevel(AProc: TProc<TJRPCContext, TMCPLogLevel>): TMCPMessageHandlingConfig;
-
-    /// <summary>
-    ///   Read-only access to the registered "notifications/initialized" handler.
-    ///   Used by the framework to dispatch the post-handshake initialized notification.
-    /// </summary>
-    property InitializedProc: TProc<TJRPCContext> read FInitializedProc;
 
     /// <summary>
     ///   Read-only access to the registered log-level handler. Called by
@@ -2653,12 +2639,6 @@ end;
 function TMCPMessageHandlingConfig.RegisterApi(AClass: TClass): TMCPMessageHandlingConfig;
 begin
   FRegistry.RegisterClass(AClass, MCPNeonConfig);
-  Result := Self;
-end;
-
-function TMCPMessageHandlingConfig.OnInitialized(AProc: TProc<TJRPCContext>): TMCPMessageHandlingConfig;
-begin
-  FInitializedProc := AProc;
   Result := Self;
 end;
 

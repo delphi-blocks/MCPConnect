@@ -41,7 +41,7 @@ type
   ///   through the response converter.</summary>
   TSilentWriter = class(TInterfacedObject, IMCPTransportWriter)
   public
-    procedure Write(const AValue: string; const AEventId: string = '');
+    procedure Write(const AValue: string);
     function Connected: Boolean;
     function SupportsStreaming: Boolean;
   end;
@@ -259,7 +259,7 @@ end;
 
 { TSilentWriter }
 
-procedure TSilentWriter.Write(const AValue: string; const AEventId: string);
+procedure TSilentWriter.Write(const AValue: string);
 begin
   // Nothing streams in these tests.
 end;

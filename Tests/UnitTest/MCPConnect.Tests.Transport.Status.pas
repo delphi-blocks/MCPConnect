@@ -37,7 +37,7 @@ type
   /// <summary>A response writer that streams nothing.</summary>
   TSilentStatusWriter = class(TInterfacedObject, IMCPTransportWriter)
   public
-    procedure Write(const AValue: string; const AEventId: string = '');
+    procedure Write(const AValue: string);
     function Connected: Boolean;
     function SupportsStreaming: Boolean;
   end;
@@ -120,7 +120,7 @@ end;
 
 { TSilentStatusWriter }
 
-procedure TSilentStatusWriter.Write(const AValue: string; const AEventId: string);
+procedure TSilentStatusWriter.Write(const AValue: string);
 begin
   // Nothing streams in these tests: a stream sends its headers before the
   // handler runs, so a status decided later could never reach it anyway.

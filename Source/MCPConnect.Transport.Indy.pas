@@ -64,11 +64,11 @@ type
   private
     FConnection: TIdTCPConnection;
     function SplitString(const AValue: string): TArray<string>;
-    procedure WriteSSEEvent(const AId, AEvent, AValue: string; ARetry: Integer);
+    procedure WriteSSEEvent(const AEvent, AValue: string; ARetry: Integer);
   protected
     { IMCPTransportWriter }
     function Connected: Boolean;
-    procedure Write(const AValue: string; const AEventId: string = '');
+    procedure Write(const AValue: string);
     procedure WriteComment(const AValue: string); overload;
     function SupportsStreaming: Boolean;
   public
@@ -271,9 +271,9 @@ begin
   Result := True;
 end;
 
-procedure TMCPTransportWriterIndy.Write(const AValue: string; const AEventId: string);
+procedure TMCPTransportWriterIndy.Write(const AValue: string);
 begin
-  WriteSSEEvent(AEventId, '', AValue, -1);
+  WriteSSEEvent('', AValue, -1);
 end;
 
 procedure TMCPTransportWriterIndy.WriteComment(const AValue: string);
@@ -293,7 +293,7 @@ begin
   FConnection.Socket.WriteBufferFlush;
 end;
 
-procedure TMCPTransportWriterIndy.WriteSSEEvent(const AId, AEvent, AValue: string; ARetry: Integer);
+procedure TMCPTransportWriterIndy.WriteSSEEvent(const AEvent, AValue: string; ARetry: Integer);
 var
   LLines: TArray<string>;
   LLine: string;
@@ -301,9 +301,11 @@ var
 begin
   LLines := SplitString(AValue);
 
+  // No "id:" field, and no parameter to put one in: event ids were how a
+  // client resumed a stream, and 2026-07-28 removed resumability along with
+  // the sessions it was built on. "event:" and "retry:" are unrelated to that
+  // and stay.
   LMessage := '';
-  if AId <> '' then
-    LMessage := LMessage + 'id: ' + AId + #13#10;
   if AEvent <> '' then
     LMessage := LMessage + 'event: ' + AEvent + #13#10;
   if ARetry > 0 then

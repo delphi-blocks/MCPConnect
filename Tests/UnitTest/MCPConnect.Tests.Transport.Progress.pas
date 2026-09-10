@@ -40,7 +40,7 @@ type
   public
     constructor Create(AFrames: TStringList);
 
-    procedure Write(const AValue: string; const AEventId: string = '');
+    procedure Write(const AValue: string);
     function Connected: Boolean;
     function SupportsStreaming: Boolean;
   end;
@@ -149,7 +149,7 @@ begin
   FFrames := AFrames;
 end;
 
-procedure TRecordingWriter.Write(const AValue: string; const AEventId: string);
+procedure TRecordingWriter.Write(const AValue: string);
 begin
   FFrames.Add(AValue);
 end;

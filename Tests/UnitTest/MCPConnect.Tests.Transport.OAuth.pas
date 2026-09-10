@@ -47,7 +47,7 @@ type
   /// </summary>
   TStubTransportWriter = class(TInterfacedObject, IMCPTransportWriter)
   public
-    procedure Write(const AValue: string; const AEventId: string = '');
+    procedure Write(const AValue: string);
     function Connected: Boolean;
     function SupportsStreaming: Boolean;
   end;
@@ -147,7 +147,7 @@ implementation
 
 { TStubTransportWriter }
 
-procedure TStubTransportWriter.Write(const AValue: string; const AEventId: string);
+procedure TStubTransportWriter.Write(const AValue: string);
 begin
   // Nothing streams in these tests: a response that reaches here would not be observed,
   // and none of the paths under test take that route.

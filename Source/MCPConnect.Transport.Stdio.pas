@@ -151,7 +151,7 @@ type
     FStdOutWriter: TStdOutWriter;
   public
     { IMCPTransportWriter }
-    procedure Write(const AValue: string; const AEventId: string = '');
+    procedure Write(const AValue: string);
     function Connected: Boolean;
     function SupportsStreaming: Boolean;
 
@@ -557,7 +557,7 @@ begin
   Result := True;
 end;
 
-procedure TMCPTransportWriterStdio.Write(const AValue: string; const AEventId: string);
+procedure TMCPTransportWriterStdio.Write(const AValue: string);
 begin
   FStdOutWriter.WriteLine(RemoveLineBreaks(AValue));
 end;

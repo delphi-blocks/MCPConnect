@@ -72,7 +72,12 @@ type
 
   IMCPTransportWriter = interface
     ['{68598454-50C5-4892-B8E0-81687CC2F4DE}']
-    procedure Write(const AValue: string; const AEventId: string = '');
+    /// <summary>
+    ///   Writes AValue as one SSE event. Deliberately without an event id:
+    ///   ids existed only for resumability, which went with sessions in
+    ///   2026-07-28, and this transport has nothing to replay them from.
+    /// </summary>
+    procedure Write(const AValue: string);
     function Connected: Boolean;
     function SupportsStreaming: Boolean;
   end;
@@ -283,7 +288,15 @@ type
     class function MessageKindOf(AMessage: TJRPCMessage): TMiddlewareMessageKind; static;
     class function MethodNameOf(AMessage: TJRPCMessage): string; static;
     procedure SendResponseHeaders(AResponse: TMCPTransportResponse);
-    procedure WriteSSEResponse(const AValue: string; const AEventId: string = '');
+
+    /// <summary>
+    ///   Turns the response into an SSE stream and sends its headers: the
+    ///   status, the media type, and the two that keep an intermediary from
+    ///   holding the stream back.
+    /// </summary>
+    procedure SendSSEResponseHeaders;
+
+    procedure WriteSSEResponse(const AValue: string);
 
     /// <summary>
     ///   Whether AMessage is a progress notification for a request that never
@@ -363,15 +376,31 @@ begin
   inherited;
 end;
 
-procedure TMCPTransportHandler.WriteSSEResponse(const AValue, AEventId: string);
+procedure TMCPTransportHandler.SendSSEResponseHeaders;
+begin
+  FResponse.Code := HTTP_CODE_OK;
+  FResponse.ContentType := TMediaType.TEXT_EVENT_STREAM;
+
+  // A stream is not a document: an intermediary that caches it, or holds it
+  // until it looks complete, breaks the one thing it is for. Cache-Control is
+  // the standard way to say the first; X-Accel-Buffering is nginx's way of
+  // being told the second, honoured by enough reverse proxies that the spec
+  // makes it a SHOULD on every SSE response.
+  FResponse.SetHeader('Cache-Control', 'no-cache');
+  FResponse.SetHeader('X-Accel-Buffering', 'no');
+
+  SendResponseHeaders(FResponse);
+end;
+
+procedure TMCPTransportHandler.WriteSSEResponse(const AValue: string);
 begin
   if Assigned(FResponseWriter) then
   begin
-    Logger.LogDebug('[SSE] Event Sent [id=%s, size=%d]', [AEventId, Length(AValue)]);
+    Logger.LogDebug('[SSE] Event Sent [size=%d]', [Length(AValue)]);
     {$IFDEF FULL_PAYLOAD_LOGGING}
     Logger.LogTrace('[SSE] data: %s', [AValue]);
     {$ENDIF}
-    FResponseWriter.Write(AValue, AEventId);
+    FResponseWriter.Write(AValue);
   end;
 end;
 
@@ -889,11 +918,7 @@ begin
   var LAsyncExecute := CreateAsyncThread(LRequestList, LResponseQueue);
   try
     if FRequest.AcceptsEventStream and FResponseWriter.SupportsStreaming then
-    begin
-      FResponse.Code := 200;
-      FResponse.ContentType := TMediaType.TEXT_EVENT_STREAM;
-      SendResponseHeaders(FResponse);
-    end;
+      SendSSEResponseHeaders;
 
     // The worker thread closes the queue when done, which wakes ProcessQueue
     // immediately: on the happy path no read timeout is ever paid. The loop is

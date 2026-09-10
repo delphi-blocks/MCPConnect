@@ -46,7 +46,7 @@ type
   ///   through the response converter.</summary>
   TNonStreamingWriter = class(TInterfacedObject, IMCPTransportWriter)
   public
-    procedure Write(const AValue: string; const AEventId: string = '');
+    procedure Write(const AValue: string);
     function Connected: Boolean;
     function SupportsStreaming: Boolean;
   end;
@@ -132,7 +132,7 @@ end;
 
 { TNonStreamingWriter }
 
-procedure TNonStreamingWriter.Write(const AValue: string; const AEventId: string);
+procedure TNonStreamingWriter.Write(const AValue: string);
 begin
   // Nothing streams in these tests: the handler takes the buffered path.
 end;

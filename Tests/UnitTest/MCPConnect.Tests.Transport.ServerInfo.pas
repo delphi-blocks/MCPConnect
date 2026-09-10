@@ -37,7 +37,7 @@ type
   /// <summary>A response writer that streams nothing.</summary>
   TSilentInfoWriter = class(TInterfacedObject, IMCPTransportWriter)
   public
-    procedure Write(const AValue: string; const AEventId: string = '');
+    procedure Write(const AValue: string);
     function Connected: Boolean;
     function SupportsStreaming: Boolean;
   end;
@@ -142,7 +142,7 @@ end;
 
 { TSilentInfoWriter }
 
-procedure TSilentInfoWriter.Write(const AValue: string; const AEventId: string);
+procedure TSilentInfoWriter.Write(const AValue: string);
 begin
   // Nothing streams in these tests.
 end;

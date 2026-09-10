@@ -35,7 +35,7 @@ type
   /// <summary>A response writer that streams nothing.</summary>
   TSilentCacheWriter = class(TInterfacedObject, IMCPTransportWriter)
   public
-    procedure Write(const AValue: string; const AEventId: string = '');
+    procedure Write(const AValue: string);
     function Connected: Boolean;
     function SupportsStreaming: Boolean;
   end;
@@ -123,7 +123,7 @@ end;
 
 { TSilentCacheWriter }
 
-procedure TSilentCacheWriter.Write(const AValue: string; const AEventId: string);
+procedure TSilentCacheWriter.Write(const AValue: string);
 begin
   // Nothing streams in these tests.
 end;

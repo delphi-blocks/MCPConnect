@@ -66,12 +66,12 @@ type
     FSSEStream: TWebResponseStream;
     FPing: TStopwatch;
     {$ENDIF}
-    procedure WriteSSEEvent(const AId, AEvent, AValue: string; ARetry: Integer);
+    procedure WriteSSEEvent(const AEvent, AValue: string; ARetry: Integer);
   public
     function SSEStream: TWebResponseStream;
 
     { IMCPTransportWriter }
-    procedure Write(const AValue: string; const AEventId: string = ''); overload;
+    procedure Write(const AValue: string); overload;
     procedure WriteComment(const AValue: string); overload;
     function Connected: Boolean;
     function SupportsStreaming: Boolean;
@@ -363,17 +363,18 @@ begin
   {$ENDIF}
 end;
 
-procedure TMCPTransportWriterWebBroker.Write(const AValue: string; const AEventId: string);
+procedure TMCPTransportWriterWebBroker.Write(const AValue: string);
 begin
-  WriteSSEEvent(AEventId, '', AValue, -1);
+  WriteSSEEvent('', AValue, -1);
 end;
 
-procedure TMCPTransportWriterWebBroker.WriteSSEEvent(const AId, AEvent,
+procedure TMCPTransportWriterWebBroker.WriteSSEEvent(const AEvent,
   AValue: string; ARetry: Integer);
 begin
   {$IFDEF HAS_WEBBROKER_SSE}
-  if AId <> '' then
-    SSEStream.WriteID(AId);
+  // No WriteID, and no parameter to feed one: event ids were how a client
+  // resumed a stream, and 2026-07-28 removed resumability along with the
+  // sessions it was built on. "event:" and "retry:" are unrelated and stay.
   if AEvent <> '' then
     SSEStream.WriteEvent(AEvent);
 

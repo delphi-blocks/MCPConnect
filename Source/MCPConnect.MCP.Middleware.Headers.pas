@@ -457,12 +457,12 @@ var
 
   procedure FailMismatch(const AHeaderName: string);
   begin
-    raise EMCPHeaderMismatchError.CreateForHeader(AHeaderName);
+    raise EMCPHeaderMismatchError.Create(AHeaderName);
   end;
 
   procedure FailMissing(const AHeaderName: string);
   begin
-    raise EMCPHeaderMismatchError.CreateForMissingHeader(AHeaderName);
+    raise EMCPHeaderMissingError.Create(AHeaderName);
   end;
 
   /// The header as the body would have to spell it: sentinel unwrapped, and

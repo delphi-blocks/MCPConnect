@@ -658,8 +658,7 @@ begin
     begin
       LTpl := MCPConfig.Resources.GetTemplate(AParams.Uri);
 
-      // Resource-not-found is Invalid Params (-32602) since 2026-07-28; the
-      // -32002 of earlier revisions MUST NOT be emitted any more.
+      // Resource-not-found is Invalid Params (-32602) since 2026-07-28
       if not Assigned(LTpl) then
         raise EJRPCInvalidParamsError.CreateFmt(SMCPResourceNotFound, [AParams.Uri]);
     end;
@@ -698,6 +697,8 @@ function TMCPResourcesApi.TemplatesList(AParams: TPaginatedRequestParams): TList
 var
   LPageSize: Integer;
 begin
+  RPCContext.AddContent(AParams);
+
   // Its own cursor kind, off the Resources page size: the two lists are paged
   // apart, so a cursor from one is refused by the other
   LPageSize := PageSizeFor(MCPConfig.Resources.Paging);
@@ -777,6 +778,8 @@ var
   LTarget: string;
   LStopwatch: TStopwatch;
 begin
+  RPCContext.AddContent(AParams);
+
   LStopwatch := TStopwatch.StartNew;
   try
     LTarget := AParams.Ref.Target;
@@ -884,6 +887,8 @@ function TMCPSubscriptionsApi.Listen(AParams: TSubscriptionsListenRequestParams)
 var
   LAck: TSubscriptionsAcknowledgedNotificationParams;
 begin
+  RPCContext.AddContent(AParams);
+
   // Acknowledge with the subset this server can actually serve: a type it has
   // nothing to report on is left out rather than silently never sent
   LAck := TSubscriptionsAcknowledgedNotificationParams.Create;
@@ -933,9 +938,12 @@ begin
       Result := Result + [LUri];
 end;
 
+{ TMCPToolsApi }
 
 function TMCPToolsApi.CallTool(AParams: TCallToolRequestParams): TBaseResult;
 begin
+  RPCContext.AddContent(AParams);
+
   Result := TCallToolChain.Run<ICallToolMiddleware>(RPCContext, DoCallTool, AParams);
   RequireInputCapabilities(Result);
   Identify(Result);
@@ -950,6 +958,8 @@ function TMCPToolsApi.ToolsList(AParams: TPaginatedRequestParams): TListToolsRes
 var
   LPageSize: Integer;
 begin
+  RPCContext.AddContent(AParams);
+
   LPageSize := PageSizeFor(MCPConfig.Tools.Paging);
 
   // Before anything is built: a refusal from here leaves nothing behind
@@ -969,16 +979,20 @@ begin
   Cache(Result, MCPConfig.Tools.CacheHints);
 end;
 
+{ TMCPResourcesApi }
+
 function TMCPResourcesApi.ReadResource(AParams: TReadResourceParams): TBaseResult;
 begin
+  RPCContext.AddContent(AParams);
+
   Result := TReadResourceChain.Run<IReadResourceMiddleware>(RPCContext, DoReadResource, AParams);
   RequireInputCapabilities(Result);
   Identify(Result);
   Cache(Result, MCPConfig.Resources.CacheHints);
 
   // The one cacheable operation that can also be an MRTR retry: what it
-  // answered depends on the input the client sent back, and none of that is in
-  // the cache key, so this reply speaks for this request alone.
+  // answered depends on the input the client sent back, and none of that
+  // is in the cache key, so this reply speaks for this request alone.
   if (AParams.InputResponses.Count > 0) or AParams.RequestState.HasValue then
     NoCache(Result);
 end;
@@ -1002,6 +1016,8 @@ function TMCPResourcesApi.ResourcesList(AParams: TPaginatedRequestParams): TList
 var
   LPageSize: Integer;
 begin
+  RPCContext.AddContent(AParams);
+
   LPageSize := PageSizeFor(MCPConfig.Resources.Paging);
   CheckCursor(TMCPPageKind.Resources, AParams.Cursor, LPageSize);
 
@@ -1023,6 +1039,8 @@ function TMCPPromptsApi.PromptList(AParams: TPaginatedRequestParams): TListPromp
 var
   LPageSize: Integer;
 begin
+  RPCContext.AddContent(AParams);
+
   LPageSize := PageSizeFor(MCPConfig.Prompts.Paging);
   CheckCursor(TMCPPageKind.Prompts, AParams.Cursor, LPageSize);
 
@@ -1037,6 +1055,8 @@ end;
 
 function TMCPPromptsApi.ReadPrompt(AParams: TGetPromptRequestParams): TBaseResult;
 begin
+  RPCContext.AddContent(AParams);
+
   Result := TGetPromptChain.Run<IGetPromptMiddleware>(RPCContext, DoReadPrompt, AParams);
   RequireInputCapabilities(Result);
   Identify(Result);
@@ -1044,6 +1064,8 @@ end;
 
 function TMCPServerApi.Discover(AParams: TRequestMetaParams): TDiscoverResult;
 begin
+  RPCContext.AddContent(AParams);
+
   Result := TDiscoverChain.Run<IDiscoverMiddleware>(RPCContext, DoDiscover, AParams);
   Identify(Result);
   Cache(Result, MCPConfig.Server.CacheHints);

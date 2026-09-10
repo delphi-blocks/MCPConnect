@@ -180,18 +180,26 @@ type
 
   /// <summary>
   ///   Raised when the values in the request's HTTP headers do not match the
-  ///   corresponding values in the request body, or when a required header is
-  ///   missing or malformed. Carries no "data" payload.
+  ///   corresponding values in the request body. Carries no "data" payload.
   /// </summary>
   EMCPHeaderMismatchError = class(EMCPProtocolError)
   public
     procedure AfterConstruction; override;
 
     /// <summary>Header present but contradicting the request body.</summary>
-    constructor CreateForHeader(const AHeaderName: string);
+    constructor Create(const AHeaderName: string);
+  end;
+
+  /// <summary>
+  ///   Raised when the values in the request's HTTP headers is
+  ///   missing or malformed. Carries no "data" payload.
+  /// </summary>
+  EMCPHeaderMissingError = class(EMCPProtocolError)
+  public
+    procedure AfterConstruction; override;
 
     /// <summary>Required header missing or malformed.</summary>
-    constructor CreateForMissingHeader(const AHeaderName: string);
+    constructor Create(const AHeaderName: string);
   end;
 
   /// <summary>
@@ -446,14 +454,9 @@ begin
   FCode := MCP_HEADER_MISMATCH;
 end;
 
-constructor EMCPHeaderMismatchError.CreateForHeader(const AHeaderName: string);
+constructor EMCPHeaderMismatchError.Create(const AHeaderName: string);
 begin
   CreateFmt(SMCPHeaderMismatchFmt, [AHeaderName]);
-end;
-
-constructor EMCPHeaderMismatchError.CreateForMissingHeader(const AHeaderName: string);
-begin
-  CreateFmt(SMCPHeaderMissingFmt, [AHeaderName]);
 end;
 
 { EMCPBatchNotSupportedError }
@@ -560,6 +563,19 @@ begin
   finally
     LData.Free;
   end;
+end;
+
+{ EMCPHeaderMissingError }
+
+procedure EMCPHeaderMissingError.AfterConstruction;
+begin
+  inherited;
+  FCode := MCP_HEADER_MISMATCH;
+end;
+
+constructor EMCPHeaderMissingError.Create(const AHeaderName: string);
+begin
+  CreateFmt(SMCPHeaderMissingFmt, [AHeaderName]);
 end;
 
 end.

@@ -191,7 +191,7 @@ type
     destructor Destroy; override;
   end;
 
-  { TODO -opaolo -c : Hot to free the object(s) in TValue 29/08/2026 11:11:54 }
+  { TODO -opaolo -c : How to free the object(s) in TValue 29/08/2026 11:11:54 }
   TSamplingMessage = class(TMetaClass)
   private
     [NeonIgnore] Text: TObjectList<TTextContent>;

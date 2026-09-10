@@ -6,12 +6,14 @@ uses
   System.Classes, System.SysUtils, System.Generics.Collections, System.SyncObjs,
   System.JSON,
 
+  Logify,
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
   Neon.Core.Persistence.JSON.Schema,
 
-  MCPConnect.Transport.Base,
+  JRPC.Classes,
 
+  MCPConnect.Transport.Base,
   MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Tools,
   MCPConnect.MCP.Types.Mrtr,
@@ -66,8 +68,7 @@ type
 
   TTodoTool = class
   private
-//    [Context]
-//    AParams: TCallToolRequestParams;
+    [Context] FParams: TCallToolRequestParams;
   public
     [McpTool('add_task', 'Add a new task to the todo list')]
     function AddTask(
@@ -347,6 +348,9 @@ var
   LTask: TTaskItem;
   LTitle: string;
 begin
+  if FParams.InputResponses.Count > 0 then
+    Logger.Log('User response for a previous Input Request', TLogLevel.Debug);
+
   TMetrics
     .Counter('todo.tool.calls', 'Todo tool invocations', 'calls')
     .Add(1, ['tool', 'delete_task']);

@@ -80,6 +80,15 @@ type
   end;
 
   /// <summary>
+  ///   The same context as a record: the codec takes either, and a record leaves
+  ///   the round trip owning nothing.
+  /// </summary>
+  TDeleteState = record
+    TaskId: Integer;
+    Reason: string;
+  end;
+
+  /// <summary>
   ///   The builder on its own: what it puts in the result, and the two things
   ///   it refuses to build.
   /// </summary>
@@ -245,6 +254,10 @@ type
     procedure TestParamsHelperReadsTheState();
     [Test]
     procedure TestInputCarriesTheState();
+    [Test]
+    procedure TestStructRoundTrip();
+    [Test]
+    procedure TestSignedStructIsVerified();
   end;
 
 implementation
@@ -1321,6 +1334,60 @@ begin
   finally
     LResult.Free;
   end;
+end;
+
+procedure TMCPRequestStateTest.TestStructRoundTrip;
+var
+  LState: string;
+  LContext, LBack: TDeleteState;
+begin
+  LContext.TaskId := 7;
+  LContext.Reason := 'because';
+
+  // Same envelope as the class codec writes, and nothing to free on either side
+  LState := TMCPRequestState.EncodeStruct<TDeleteState>(LContext);
+  Assert.IsTrue(TMCPRequestState.IsRequestState(LState));
+  Assert.IsTrue(LState.StartsWith(MCP_REQUEST_STATE_PREFIX));
+
+  Assert.IsTrue(TMCPRequestState.TryDecodeStruct<TDeleteState>(LState, LBack));
+  Assert.AreEqual(7, LBack.TaskId);
+  Assert.AreEqual('because', LBack.Reason);
+
+  // A foreign state leaves the record cleared rather than half-read
+  Assert.IsFalse(TMCPRequestState.TryDecodeStruct<TDeleteState>('not-a-state', LBack));
+  Assert.AreEqual(0, LBack.TaskId);
+  Assert.AreEqual('', LBack.Reason);
+
+  Assert.WillRaise(
+    procedure
+    begin
+      TMCPRequestState.DecodeStruct<TDeleteState>('not-a-state');
+    end,
+    EMCPException);
+end;
+
+procedure TMCPRequestStateTest.TestSignedStructIsVerified;
+var
+  LState, LTampered: string;
+  LContext, LBack: TDeleteState;
+begin
+  LContext.TaskId := 7;
+  LContext.Reason := 'because';
+
+  LState := TMCPRequestState.EncodeStruct<TDeleteState>(LContext, 's3cret');
+  Assert.IsTrue(LState.StartsWith(MCP_REQUEST_STATE_SIGNED_PREFIX));
+
+  Assert.IsTrue(TMCPRequestState.TryDecodeStruct<TDeleteState>(LState, 's3cret', LBack));
+  Assert.AreEqual(7, LBack.TaskId);
+
+  // The wrong secret, and a payload edited under the right one, are both refused
+  // before anything decodes them
+  Assert.IsFalse(TMCPRequestState.TryDecodeStruct<TDeleteState>(LState, 'other', LBack));
+
+  LTampered := LState.Replace(MCP_REQUEST_STATE_SIGNED_PREFIX,
+    MCP_REQUEST_STATE_SIGNED_PREFIX + 'x');
+  Assert.IsFalse(TMCPRequestState.TryDecodeStruct<TDeleteState>(LTampered, 's3cret', LBack));
+  Assert.AreEqual(0, LBack.TaskId);
 end;
 
 initialization

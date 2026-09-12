@@ -565,6 +565,25 @@ type
     class function SameDigest(const ALeft, ARight: string): Boolean; static;
     class function DecodePayload<T: class, constructor>(const APayload: string;
       AConfig: INeonConfiguration): T; static;
+
+    /// <summary>The state AJson travels as, unsigned.</summary>
+    class function WrapUnsigned(const AJson: string): string; static;
+
+    /// <summary>The state AJson travels as, with its HMAC appended.</summary>
+    class function WrapSigned(const AJson, ASecret: string): string; static;
+
+    /// <summary>
+    ///   The payload of an unsigned state, or '' when AState is not one. Both
+    ///   decoders read the envelope through these, so the marker and the
+    ///   signature are checked in one place whatever the payload decodes into.
+    /// </summary>
+    class function UnsignedPayload(const AState: string): string; static;
+
+    /// <summary>
+    ///   The payload of a signed state whose signature matches ASecret, or ''
+    ///   when AState is not one or was tampered with.
+    /// </summary>
+    class function SignedPayload(const AState, ASecret: string): string; static;
   public
     /// <summary>
     ///   The state for AValue: MCPRS1. followed by the Base64 of its Neon JSON.
@@ -607,6 +626,45 @@ type
     /// </summary>
     class function Decode<T: class, constructor>(const AState, ASecret: string;
       AConfig: INeonConfiguration = nil): T; overload;
+
+    /// <summary>
+    ///   The state for AValue when the context is a record rather than a class:
+    ///   the same envelope, a value where the overloads above take an object.
+    /// </summary>
+    /// <remarks>
+    ///   A record needs no Create and no Free, which is most of what the state
+    ///   of one round trip is worth. The class overloads stay for a context that
+    ///   is already a class, or that carries one.
+    /// </remarks>
+    class function EncodeStruct<T>(const AValue: T;
+      AConfig: INeonConfiguration = nil): string; overload;
+
+    /// <summary>The signed state for the record AValue.</summary>
+    class function EncodeStruct<T>(const AValue: T; const ASecret: string;
+      AConfig: INeonConfiguration = nil): string; overload;
+
+    /// <summary>
+    ///   Decodes an unsigned state into the record T. False, with AValue
+    ///   cleared, when AState was not written by EncodeStruct or does not
+    ///   decode.
+    /// </summary>
+    class function TryDecodeStruct<T>(const AState: string; out AValue: T;
+      AConfig: INeonConfiguration = nil): Boolean; overload;
+
+    /// <summary>
+    ///   Decodes a signed state into the record T, refusing one whose signature
+    ///   does not match.
+    /// </summary>
+    class function TryDecodeStruct<T>(const AState, ASecret: string; out AValue: T;
+      AConfig: INeonConfiguration = nil): Boolean; overload;
+
+    /// <summary>As the unsigned TryDecodeStruct, raising when it fails.</summary>
+    class function DecodeStruct<T>(const AState: string;
+      AConfig: INeonConfiguration = nil): T; overload;
+
+    /// <summary>As the signed TryDecodeStruct, raising when it fails.</summary>
+    class function DecodeStruct<T>(const AState, ASecret: string;
+      AConfig: INeonConfiguration = nil): T; overload;
   end;
 
   /// <summary>
@@ -621,6 +679,22 @@ type
       AConfig: INeonConfiguration = nil): Boolean; overload;
     function TryStateAs<T: class, constructor>(const ASecret: string;
       out AValue: T; AConfig: INeonConfiguration = nil): Boolean; overload;
+
+    /// <summary>
+    ///   The requestState read as the record T - the way back from
+    ///   TMCPRequestState.EncodeStruct, with nothing to free.
+    /// </summary>
+    function StateAsStruct<T>(AConfig: INeonConfiguration = nil): T; overload;
+    function StateAsStruct<T>(const ASecret: string;
+      AConfig: INeonConfiguration = nil): T; overload;
+
+    /// <summary>
+    ///   True when the requestState is one of this server's and decodes as T.
+    /// </summary>
+    function TryStateAsStruct<T>(out AValue: T;
+      AConfig: INeonConfiguration = nil): Boolean; overload;
+    function TryStateAsStruct<T>(const ASecret: string; out AValue: T;
+      AConfig: INeonConfiguration = nil): Boolean; overload;
   end;
 
 implementation
@@ -1473,26 +1547,82 @@ begin
   Result := TNeon.JSONToObject<T>(DecodeBase64(APayload), ConfigOrDefault(AConfig));
 end;
 
+class function TMCPRequestState.WrapUnsigned(const AJson: string): string;
+begin
+  Result := MCP_REQUEST_STATE_PREFIX + EncodeBase64(AJson);
+end;
+
+class function TMCPRequestState.WrapSigned(const AJson, ASecret: string): string;
+var
+  LPayload: string;
+begin
+  LPayload := EncodeBase64(AJson);
+  Result := MCP_REQUEST_STATE_SIGNED_PREFIX + LPayload + '.' +
+    Signature(LPayload, ASecret);
+end;
+
+class function TMCPRequestState.UnsignedPayload(const AState: string): string;
+begin
+  if not AState.StartsWith(MCP_REQUEST_STATE_PREFIX) then
+    Exit('');
+
+  Result := Copy(AState, Length(MCP_REQUEST_STATE_PREFIX) + 1, MaxInt);
+end;
+
+class function TMCPRequestState.SignedPayload(const AState, ASecret: string): string;
+var
+  LBody, LPayload, LGiven: string;
+  LSplit: Integer;
+begin
+  Result := '';
+  if not AState.StartsWith(MCP_REQUEST_STATE_SIGNED_PREFIX) then
+    Exit;
+
+  LBody := Copy(AState, Length(MCP_REQUEST_STATE_SIGNED_PREFIX) + 1, MaxInt);
+  LSplit := LBody.LastIndexOf('.');
+  if LSplit < 1 then
+    Exit;
+
+  LPayload := Copy(LBody, 1, LSplit);
+  LGiven := Copy(LBody, LSplit + 2, MaxInt);
+
+  // The signature is verified before anything decodes the payload, so a state
+  // that was tampered with is refused rather than read
+  if not SameDigest(LGiven, Signature(LPayload, ASecret)) then
+    Exit;
+
+  Result := LPayload;
+end;
+
 class function TMCPRequestState.Encode(AValue: TObject; AConfig: INeonConfiguration): string;
 begin
   if not Assigned(AValue) then
     raise EMCPException.Create(SMCPRequestStateNil);
 
-  Result := MCP_REQUEST_STATE_PREFIX +
-    EncodeBase64(TNeon.ObjectToJSONString(AValue, ConfigOrDefault(AConfig)));
+  Result := WrapUnsigned(TNeon.ObjectToJSONString(AValue, ConfigOrDefault(AConfig)));
 end;
 
 class function TMCPRequestState.Encode(AValue: TObject; const ASecret: string;
   AConfig: INeonConfiguration): string;
-var
-  LPayload: string;
 begin
   if not Assigned(AValue) then
     raise EMCPException.Create(SMCPRequestStateNil);
 
-  LPayload := EncodeBase64(TNeon.ObjectToJSONString(AValue, ConfigOrDefault(AConfig)));
-  Result := MCP_REQUEST_STATE_SIGNED_PREFIX + LPayload + '.' +
-    Signature(LPayload, ASecret);
+  Result := WrapSigned(TNeon.ObjectToJSONString(AValue, ConfigOrDefault(AConfig)), ASecret);
+end;
+
+class function TMCPRequestState.EncodeStruct<T>(const AValue: T;
+  AConfig: INeonConfiguration): string;
+begin
+  Result := WrapUnsigned(TNeon.ValueToJSONString(TValue.From<T>(AValue),
+    ConfigOrDefault(AConfig)));
+end;
+
+class function TMCPRequestState.EncodeStruct<T>(const AValue: T; const ASecret: string;
+  AConfig: INeonConfiguration): string;
+begin
+  Result := WrapSigned(TNeon.ValueToJSONString(TValue.From<T>(AValue),
+    ConfigOrDefault(AConfig)), ASecret);
 end;
 
 class function TMCPRequestState.IsRequestState(const AState: string): Boolean;
@@ -1507,10 +1637,11 @@ var
   LPayload: string;
 begin
   AValue := nil;
-  if not AState.StartsWith(MCP_REQUEST_STATE_PREFIX) then
+
+  LPayload := UnsignedPayload(AState);
+  if LPayload.IsEmpty then
     Exit(False);
 
-  LPayload := Copy(AState, Length(MCP_REQUEST_STATE_PREFIX) + 1, MaxInt);
   try
     AValue := DecodePayload<T>(LPayload, AConfig);
     Result := True;
@@ -1523,22 +1654,12 @@ end;
 class function TMCPRequestState.TryDecode<T>(const AState, ASecret: string;
   out AValue: T; AConfig: INeonConfiguration): Boolean;
 var
-  LBody, LPayload, LGiven, LExpected: string;
-  LSplit: Integer;
+  LPayload: string;
 begin
   AValue := nil;
-  if not AState.StartsWith(MCP_REQUEST_STATE_SIGNED_PREFIX) then
-    Exit(False);
 
-  LBody := Copy(AState, Length(MCP_REQUEST_STATE_SIGNED_PREFIX) + 1, MaxInt);
-  LSplit := LBody.LastIndexOf('.');
-  if LSplit < 1 then
-    Exit(False);
-
-  LPayload := Copy(LBody, 1, LSplit);
-  LGiven := Copy(LBody, LSplit + 2, MaxInt);
-  LExpected := Signature(LPayload, ASecret);
-  if not SameDigest(LGiven, LExpected) then
+  LPayload := SignedPayload(AState, ASecret);
+  if LPayload.IsEmpty then
     Exit(False);
 
   try
@@ -1561,6 +1682,60 @@ class function TMCPRequestState.Decode<T>(const AState, ASecret: string;
   AConfig: INeonConfiguration): T;
 begin
   if not TryDecode<T>(AState, ASecret, Result, AConfig) then
+    raise EMCPException.Create(SMCPRequestStateInvalid);
+end;
+
+class function TMCPRequestState.TryDecodeStruct<T>(const AState: string; out AValue: T;
+  AConfig: INeonConfiguration): Boolean;
+var
+  LPayload: string;
+begin
+  AValue := Default(T);
+
+  LPayload := UnsignedPayload(AState);
+  if LPayload.IsEmpty then
+    Exit(False);
+
+  try
+    AValue := TNeon.JSONToValue<T>(DecodeBase64(LPayload), ConfigOrDefault(AConfig));
+    Result := True;
+  except
+    AValue := Default(T);
+    Result := False;
+  end;
+end;
+
+class function TMCPRequestState.TryDecodeStruct<T>(const AState, ASecret: string;
+  out AValue: T; AConfig: INeonConfiguration): Boolean;
+var
+  LPayload: string;
+begin
+  AValue := Default(T);
+
+  LPayload := SignedPayload(AState, ASecret);
+  if LPayload.IsEmpty then
+    Exit(False);
+
+  try
+    AValue := TNeon.JSONToValue<T>(DecodeBase64(LPayload), ConfigOrDefault(AConfig));
+    Result := True;
+  except
+    AValue := Default(T);
+    Result := False;
+  end;
+end;
+
+class function TMCPRequestState.DecodeStruct<T>(const AState: string;
+  AConfig: INeonConfiguration): T;
+begin
+  if not TryDecodeStruct<T>(AState, Result, AConfig) then
+    raise EMCPException.Create(SMCPRequestStateInvalid);
+end;
+
+class function TMCPRequestState.DecodeStruct<T>(const AState, ASecret: string;
+  AConfig: INeonConfiguration): T;
+begin
+  if not TryDecodeStruct<T>(AState, ASecret, Result, AConfig) then
     raise EMCPException.Create(SMCPRequestStateInvalid);
 end;
 
@@ -1588,6 +1763,32 @@ function TMCPRequestStateHelper.TryStateAs<T>(const ASecret: string;
 begin
   Result := TMCPRequestState.TryDecode<T>(RequestState.GetValueOrDefault, ASecret,
     AValue, AConfig);
+end;
+
+function TMCPRequestStateHelper.StateAsStruct<T>(AConfig: INeonConfiguration): T;
+begin
+  Result := TMCPRequestState.DecodeStruct<T>(RequestState.GetValueOrDefault, AConfig);
+end;
+
+function TMCPRequestStateHelper.StateAsStruct<T>(const ASecret: string;
+  AConfig: INeonConfiguration): T;
+begin
+  Result := TMCPRequestState.DecodeStruct<T>(RequestState.GetValueOrDefault, ASecret,
+    AConfig);
+end;
+
+function TMCPRequestStateHelper.TryStateAsStruct<T>(out AValue: T;
+  AConfig: INeonConfiguration): Boolean;
+begin
+  Result := TMCPRequestState.TryDecodeStruct<T>(RequestState.GetValueOrDefault,
+    AValue, AConfig);
+end;
+
+function TMCPRequestStateHelper.TryStateAsStruct<T>(const ASecret: string;
+  out AValue: T; AConfig: INeonConfiguration): Boolean;
+begin
+  Result := TMCPRequestState.TryDecodeStruct<T>(RequestState.GetValueOrDefault,
+    ASecret, AValue, AConfig);
 end;
 
 end.

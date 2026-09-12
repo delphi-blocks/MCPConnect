@@ -108,10 +108,9 @@ type
   ///   What the delete round trip carries in its requestState: which task the
   ///   user was asked about. TMCPRequestState writes it as Neon JSON and reads
   ///   it back on the retry, so the answer cannot be replayed against another
-  ///   task.
+  ///   task. A record, so the round trip owns nothing.
   /// </summary>
-  TDeleteContext = class
-  public
+  TDeleteContext = record
     TaskId: Integer;
   end;
 
@@ -350,15 +349,10 @@ begin
   // retries with the user's answer under the key this server chose for it
   if FParams.InputResponses.Outcome(SElicitationDeleteKey) = TElicitationOutcome.Absent then
   begin
-    LContext := TDeleteContext.Create;
-    try
-      LContext.TaskId := ATaskId;
-      Exit(TMCPResponse<string>.Needs(
-        TMCPInput.New(TMCPRequestState.Encode(LContext))
-          .Ask<TDeleteAsk>(SElicitationDeleteKey, Format('Delete task #%d?', [ATaskId]))));
-    finally
-      LContext.Free;
-    end;
+    LContext.TaskId := ATaskId;
+    Exit(TMCPResponse<string>.Needs(
+      TMCPInput.New(TMCPRequestState.EncodeStruct<TDeleteContext>(LContext))
+        .Ask<TDeleteAsk>(SElicitationDeleteKey, Format('Delete task #%d?', [ATaskId]))));
   end;
 
   Logger.Log('User response for a previous Input Request', TLogLevel.Debug);
@@ -367,13 +361,9 @@ begin
   // is decoded back into the context rather than compared as text. Encode and
   // decode it with a secret when the context can influence authorization, so
   // a client cannot edit it.
-  if not FParams.TryStateAs<TDeleteContext>(LContext) or (LContext.TaskId <> ATaskId) then
-  begin
-    LContext.Free;
+  if not FParams.TryStateAsStruct<TDeleteContext>(LContext) or (LContext.TaskId <> ATaskId) then
     Exit(TMCPResponse<string>.Ready(
       TCallToolReply.Fail('This confirmation belongs to another request')));
-  end;
-  LContext.Free;
 
   // The record that asked is the record that answers. A decline or a cancel
   // carries no content, so it reads as an empty TDeleteAsk - Confirm False, and

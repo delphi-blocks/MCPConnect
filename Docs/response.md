@@ -255,30 +255,32 @@ if not LAnswer.Confirm then
 
 ## The requestState
 
-The `requestState` is the opaque token the server hands to the client and gets back on the retry — the natural place for the context of the round trip: which record was asked about, when, what the server must remember. `TMCPRequestState` turns a Delphi object into one:
+The `requestState` is the opaque token the server hands to the client and gets back on the retry — the natural place for the context of the round trip: which record was asked about, when, what the server must remember. `TMCPRequestState` turns a Delphi type into one, and a record is usually the right type for it, since the context of one round trip is not something anybody should have to own:
+
+```pascal
+type
+  TDeleteContext = record
+    TaskId: Integer;
+  end;
+```
 
 ```pascal
 // ask
-LContext := TDeleteContext.Create;
-try
-  LContext.TaskId := AId;
-  Exit(TMCPResponse<string>.Needs(
-    TMCPInput.New(TMCPRequestState.Encode(LContext))
-      .Ask<TDeleteAsk>('delete', Format('Delete task #%d?', [AId]))));
-finally
-  LContext.Free;
-end;
+LContext.TaskId := AId;
+Exit(TMCPResponse<string>.Needs(
+  TMCPInput.New(TMCPRequestState.EncodeStruct<TDeleteContext>(LContext))
+    .Ask<TDeleteAsk>('delete', Format('Delete task #%d?', [AId]))));
 
 // retry
-if not FParams.TryStateAs<TDeleteContext>(LContext) or (LContext.TaskId <> AId) then
+if not FParams.TryStateAsStruct<TDeleteContext>(LContext) or (LContext.TaskId <> AId) then
   Exit(TMCPResponse<string>.Ready(
     TCallToolReply.Fail('This confirmation belongs to another request')));
 ```
 
-`Encode` Neon-serializes the object and Base64s it under an `MCPRS1.` marker; `Decode<T>` / `TryDecode<T>` read it back, and `TInputRequestParams.StateAs<T>` / `TryStateAs<T>` are the same thing on the retry's params. `IsRequestState` tells a state this codec wrote from a foreign one before anything tries to decode it.
+`EncodeStruct` Neon-serializes the value and Base64s it under an `MCPRS1.` marker; `DecodeStruct<T>` / `TryDecodeStruct<T>` read it back, and `TInputRequestParams.StateAsStruct<T>` / `TryStateAsStruct<T>` are the same thing on the retry's params. A context that is already a class — or that carries one — uses the object overloads instead (`Encode(AObject)`, `Decode<T>` / `TryDecode<T>`, `StateAs<T>` / `TryStateAs<T>`), which return an instance the caller frees. Both write the same envelope, so switching between them does not change the token. `IsRequestState` tells a state this codec wrote from a foreign one before anything tries to decode it.
 
 ::: warning The unsigned form is obfuscation, not protection
-Base64 is reversible by anyone. **When what the state says can influence what the server does, encode and decode it with a secret**: `Encode(obj, secret)` / `Decode<T>(state, secret)` (marker `MCPRS1S.`) carry an HMAC-SHA256 over the payload, verified before decoding, so a state that was tampered with is refused rather than trusted. The library does not sign it for you.
+Base64 is reversible by anyone. **When what the state says can influence what the server does, encode and decode it with a secret**: `EncodeStruct(value, secret)` / `DecodeStruct<T>(state, secret)` — or `Encode(obj, secret)` / `Decode<T>(state, secret)` — write the `MCPRS1S.` marker and carry an HMAC-SHA256 over the payload, verified before anything decodes it, so a state that was tampered with is refused rather than read. The library does not sign it for you.
 :::
 
 Note the second half of the retry check above: the state is decoded back into the context and compared, rather than trusting the repeated argument. An answer given to one question says nothing about another.
@@ -298,7 +300,7 @@ A mode-less `"elicitation": {}` counts as declaring every mode. The check is ski
 
 ## A Complete Example
 
-`Demo/MCPServer/MCPServer.Tools.pas` has the whole round trip in one method: `delete_task` is declared `TMCPResponse<string>`, asks with `Ask<TDeleteAsk>` on the first call, carries the task id in a signed-capable `requestState`, reads the retry with `StructAs<TDeleteAsk>`, logs the reason the user gave, and deletes only when the answer says so. The first call answers:
+`Demo/MCPServer/MCPServer.Tools.pas` has the whole round trip in one method: `delete_task` is declared `TMCPResponse<string>`, asks with `Ask<TDeleteAsk>` on the first call, carries the task id in a `requestState` encoded from a record, reads the retry with `StructAs<TDeleteAsk>`, checks the decoded state against the argument, logs the reason the user gave, and deletes only when the answer says so. Two records and no ownership anywhere in it. The first call answers:
 
 ```json
 {"result":{"inputRequests":{"delete":{"method":"elicitation/create","params":{

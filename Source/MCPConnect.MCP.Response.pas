@@ -54,6 +54,7 @@ interface
 uses
   System.SysUtils, System.Rtti, System.TypInfo, System.JSON,
 
+  Neon.Core.Utils,
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
 
@@ -136,18 +137,37 @@ type
     /// </remarks>
     class function New(const ARequestState: string = ''): TMCPInput; static;
 
-    /// <summary>Sets (or replaces) the continuation token.</summary>
+    /// <summary>
+    ///   Sets (or replaces) the continuation token.
+    /// </summary>
     function State(const ARequestState: string): TMCPInput;
 
     /// <summary>
     ///   Asks the client to render a form for ASchema. The schema is rendered
     ///   here and, unless AOwnsSchema says otherwise, stays the caller's.
     /// </summary>
-    function Elicit(const AKey, AMessage: string; ASchema: TMCPElicitationSchema;
+    function Elicit(const AKey, AMessage: string; ASchema: TMCPRequestedSchema;
       AOwnsSchema: Boolean = False): TMCPInput;
 
-    /// <summary>Asks with a request the caller already built.</summary>
-    /// <remarks>AParams' ownership passes to the result.</remarks>
+    /// <summary>
+    ///   Asks the client to fill in the record or class T, whose RTTI is both
+    ///   the schema the client renders and the shape the answer comes back in -
+    ///   read it with TInputResponses.StructAs&lt;T&gt; (a record) or
+    ///   FieldsAs&lt;T&gt; (a class).
+    /// </summary>
+    /// <remarks>
+    ///   Per-member titles, descriptions, bounds and the required flag come
+    ///   from [JsonSchema]; see TMCPTypeSchema for what an elicitation may ask
+    ///   for.
+    /// </remarks>
+    function Ask<T>(const AKey, AMessage: string): TMCPInput;
+
+    /// <summary>
+    ///   Asks with a request the caller already built.
+    /// </summary>
+    /// <remarks>
+    ///   AParams' ownership passes to the result.
+    /// </remarks>
     function ElicitParams(const AKey: string; AParams: TElicitRequestParams): TMCPInput;
 
     /// <summary>
@@ -181,18 +201,16 @@ type
     function AskNumber(const AKey, AMessage, AProperty, ATitle: string): TMCPInput;
 
     /// <summary>
-    ///   Asks the user to pick one of AValues, read back with
-    ///   TInputResponses.FieldAsString.
+    ///   Asks the user to pick one member of the enumerated type T, read back
+    ///   with TInputResponses.FieldAs&lt;T&gt;.
     /// </summary>
-    function AskChoice(const AKey, AMessage, AProperty, ATitle: string;
-      const AValues: TArray<string>): TMCPInput;
+    function AskChoice<T>(const AKey, AMessage, AProperty, ATitle: string): TMCPInput;
 
     /// <summary>
-    ///   Asks the user to pick one or more of AValues, read back with
-    ///   TInputResponses.FieldAsStrings.
+    ///   Asks the user to pick any number of the members the set type T admits,
+    ///   read back with TInputResponses.FieldAs&lt;T&gt;.
     /// </summary>
-    function AskMultiChoice(const AKey, AMessage, AProperty, ATitle: string;
-      const AValues: TArray<string>): TMCPInput;
+    function AskMultiChoice<T>(const AKey, AMessage, AProperty, ATitle: string): TMCPInput;
 
     /// <summary>
     ///   Asks the client to sample an LLM. The params become the request's.
@@ -263,7 +281,7 @@ type
     ///   an outputSchema describes. Nil here: the non-generic box says nothing
     ///   about its content, so a tool using it cannot ask for a schema.
     /// </summary>
-    class function PayloadTypeInfo: PTypeInfo; virtual;
+    class function PayloadType: TRttiType; virtual;
 
     /// <summary>
     ///   Opens the box in AValue, replacing it with what it holds, and frees
@@ -333,7 +351,7 @@ type
   /// </example>
   TMCPResponse<T> = class(TMCPResponse)
   public
-    class function PayloadTypeInfo: PTypeInfo; override;
+    class function PayloadType: TRttiType; override;
 
     /// <summary>Boxes the normal answer.</summary>
     class function Value(const AValue: T): TMCPResponse<T>; reintroduce;
@@ -463,10 +481,35 @@ type
     function TryFieldAsBoolean(const AKey, AProperty: string; out AValue: Boolean): Boolean;
 
     /// <summary>
+    ///   The member of the accepted content under AKey read as T through Neon:
+    ///   the way back from what a Delphi type asked for - an enumerated type for
+    ///   a single choice, a set for a multiple one, and the scalars besides.
+    ///   Default(T) when the answer, the member or its shape is not there.
+    /// </summary>
+    function FieldAs<T>(const AKey, AProperty: string): T;
+
+    /// <summary>
+    ///   True when the member exists and Neon could read it as T.
+    /// </summary>
+    function TryFieldAs<T>(const AKey, AProperty: string; out AValue: T): Boolean;
+
+    /// <summary>
     ///   The accepted content under AKey read into a new T through Neon, or nil
     ///   when there is no accepted answer. The caller owns the instance.
     /// </summary>
     function FieldsAs<T: class, constructor>(const AKey: string): T;
+
+    /// <summary>
+    ///   The accepted content under AKey read as the record T - the way back
+    ///   from TMCPInput.Ask&lt;T&gt;. Default(T), all members cleared, when there
+    ///   is no accepted answer.
+    /// </summary>
+    function StructAs<T>(const AKey: string): T;
+
+    /// <summary>
+    ///   True when an accepted answer is there and Neon could read it as T.
+    /// </summary>
+    function TryStructAs<T>(const AKey: string; out AValue: T): Boolean;
   end;
 
   /// <summary>
@@ -702,7 +745,7 @@ begin
   Result := Self;
 end;
 
-function TMCPInput.Elicit(const AKey, AMessage: string; ASchema: TMCPElicitationSchema;
+function TMCPInput.Elicit(const AKey, AMessage: string; ASchema: TMCPRequestedSchema;
   AOwnsSchema: Boolean): TMCPInput;
 begin
   try
@@ -713,6 +756,11 @@ begin
       ASchema.Free;
   end;
   Result := Self;
+end;
+
+function TMCPInput.Ask<T>(const AKey, AMessage: string): TMCPInput;
+begin
+  Result := Elicit(AKey, AMessage, TMCPTypeSchema.From<T>, True);
 end;
 
 function TMCPInput.ElicitParams(const AKey: string; AParams: TElicitRequestParams): TMCPInput;
@@ -781,28 +829,26 @@ begin
   end;
 end;
 
-function TMCPInput.AskChoice(const AKey, AMessage, AProperty, ATitle: string;
-  const AValues: TArray<string>): TMCPInput;
+function TMCPInput.AskChoice<T>(const AKey, AMessage, AProperty, ATitle: string): TMCPInput;
 var
   LSchema: TMCPElicitationSchema;
 begin
   LSchema := TMCPElicitationSchema.Create;
   try
-    LSchema.AddEnum(AProperty, ATitle, AValues, True);
+    LSchema.AddEnum<T>(AProperty, ATitle, True);
     Result := Elicit(AKey, AMessage, LSchema);
   finally
     LSchema.Free;
   end;
 end;
 
-function TMCPInput.AskMultiChoice(const AKey, AMessage, AProperty, ATitle: string;
-  const AValues: TArray<string>): TMCPInput;
+function TMCPInput.AskMultiChoice<T>(const AKey, AMessage, AProperty, ATitle: string): TMCPInput;
 var
   LSchema: TMCPElicitationSchema;
 begin
   LSchema := TMCPElicitationSchema.Create;
   try
-    LSchema.AddMultiEnum(AProperty, ATitle, AValues, True);
+    LSchema.AddSet<T>(AProperty, ATitle, True);
     Result := Elicit(AKey, AMessage, LSchema);
   finally
     LSchema.Free;
@@ -884,7 +930,9 @@ begin
 
   LTypeInfo := PTypeInfo(AResult.ClassInfo);
   if Assigned(LTypeInfo) then
-    Result := TValue.From(LTypeInfo, AResult)
+    // Not TValue.From(LTypeInfo, AResult): that overload is 12 and later, and
+    // Source still compiles on 11
+    TValue.Make(@AResult, LTypeInfo, Result)
   else
     Result := TValue.From<TObject>(AResult);
 end;
@@ -905,7 +953,7 @@ begin
   FOwnsPayload := AOwnsValue;
 end;
 
-class function TMCPResponse.PayloadTypeInfo: PTypeInfo;
+class function TMCPResponse.PayloadType: TRttiType;
 begin
   Result := nil;
 end;
@@ -971,9 +1019,9 @@ end;
 
 { TMCPResponse<T> }
 
-class function TMCPResponse<T>.PayloadTypeInfo: PTypeInfo;
+class function TMCPResponse<T>.PayloadType: TRttiType;
 begin
-  Result := TypeInfo(T);
+  Result := TRttiUtils.Context.GetType(System.TypeInfo(T));
 end;
 
 class function TMCPResponse<T>.Value(const AValue: T): TMCPResponse<T>;
@@ -1323,6 +1371,60 @@ begin
   except
     Result.Free;
     raise;
+  end;
+end;
+
+function TMCPInputResponsesHelper.FieldAs<T>(const AKey, AProperty: string): T;
+begin
+  if not TryFieldAs<T>(AKey, AProperty, Result) then
+    Result := Default(T);
+end;
+
+function TMCPInputResponsesHelper.TryFieldAs<T>(const AKey, AProperty: string; out AValue: T): Boolean;
+var
+  LField: TJSONValue;
+begin
+  AValue := Default(T);
+
+  LField := RawField(AKey, AProperty);
+  if not Assigned(LField) then
+    Exit(False);
+
+  // Neon reads the value the same way it wrote the schema that asked for it, so
+  // an enum member comes back as the member and a set as the set. Forgiving like
+  // every other reader here: the content is a client's, and a value of the wrong
+  // shape reads as absent rather than raising
+  try
+    AValue := TNeon.JSONToValue<T>(LField, MCPNeonConfig);
+    Result := True;
+  except
+    AValue := Default(T);
+    Result := False;
+  end;
+end;
+
+function TMCPInputResponsesHelper.StructAs<T>(const AKey: string): T;
+begin
+  if not TryStructAs<T>(AKey, Result) then
+    Result := Default(T);
+end;
+
+function TMCPInputResponsesHelper.TryStructAs<T>(const AKey: string; out AValue: T): Boolean;
+var
+  LContent: TJSONObject;
+begin
+  AValue := Default(T);
+
+  LContent := AcceptedContent(AKey);
+  if not Assigned(LContent) then
+    Exit(False);
+
+  try
+    AValue := TNeon.JSONToValue<T>(LContent, MCPNeonConfig);
+    Result := True;
+  except
+    AValue := Default(T);
+    Result := False;
   end;
 end;
 

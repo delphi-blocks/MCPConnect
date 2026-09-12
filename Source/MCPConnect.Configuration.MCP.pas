@@ -1500,7 +1500,7 @@ procedure TMCPToolsConfig.WriteOutputSchema(ATool: TMCPTool);
 var
   LJSONObj: TJSONObject;
   LType: TRttiType;
-  LPayload: PTypeInfo;
+  LPayload: TRttiType;
 begin
   LType := ATool.Method.ReturnType;
   if not Assigned(LType) then
@@ -1512,10 +1512,10 @@ begin
   // schema while using it is asking for a schema of nothing
   if (LType.TypeKind = tkClass) and LType.AsInstance.MetaclassType.InheritsFrom(TMCPResponse) then
   begin
-    LPayload := TMCPResponseClass(LType.AsInstance.MetaclassType).PayloadTypeInfo;
+    LPayload := TMCPResponseClass(LType.AsInstance.MetaclassType).PayloadType;
     if not Assigned(LPayload) then
       raise EMCPException.CreateFmt(SToolResponseNeedsPayloadFmt, [ATool.Name]);
-    LType := TRttiUtils.Context.GetType(LPayload);
+    LType := LPayload;
   end;
 
   // Any JSON Schema 2020-12 will do here since SEP-2106: an outputSchema

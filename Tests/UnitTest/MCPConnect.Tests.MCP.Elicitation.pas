@@ -19,10 +19,73 @@ uses
   System.SysUtils, System.JSON, System.Generics.Collections,
   DUnitX.TestFramework,
 
+  Neon.Core.Attributes,
+  Neon.Core.Nullables,
+  Neon.Core.Persistence.JSON.Schema,
+
   MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Elicitation;
 
 type
+  /// <summary>
+  ///   A choice whose option values are the member names under the configured
+  ///   case, which MCPNeonConfig makes camelCase.
+  /// </summary>
+  TTestLang = (Delphi, Pascal, Basic);
+
+  /// <summary>
+  ///   A choice that names its own options, the only thing on a Delphi enum that
+  ///   can: what [NeonEnumNames] says is what the schema offers and what the
+  ///   client sends back.
+  /// </summary>
+  [NeonEnumNames('delphi,free-pascal,basic')]
+  TTestNamedLang = (NamedDelphi, NamedPascal, NamedBasic);
+
+  [NeonEnumNames('read,write,admin')]
+  TTestPerm = (PermRead, PermWrite, PermAdmin);
+
+  /// <summary>A multiple choice: a set of the type above.</summary>
+  TTestPerms = set of TTestPerm;
+
+  /// <summary>
+  ///   What a form asks for, declared once: the schema comes from this RTTI and
+  ///   so does the answer.
+  /// </summary>
+  TTestSignup = record
+    [JsonSchema('title=Your name, description=As on your badge, required, minLength=2')]
+    Name: string;
+    [JsonSchema('title=Your age, minimum=0, maximum=130')]
+    Age: Integer;
+    [JsonSchema('title=Language')]
+    Lang: TTestLang;
+    [JsonSchema('title=Permissions')]
+    Perms: TTestPerms;
+    [JsonSchema('title=Subscribe?')]
+    Subscribe: Boolean;
+  end;
+
+  /// <summary>A class asks for the same thing as a record.</summary>
+  TTestSignupClass = class
+  public
+    [JsonSchema('title=Your name, required')]
+    Name: string;
+  end;
+
+  /// <summary>A nested structure: not a primitive an elicitation may ask for.</summary>
+  TTestNested = record
+    [JsonSchema('title=Who')]
+    Who: TTestSignup;
+  end;
+
+  /// <summary>
+  ///   A Nullable member, which renders as a union of types - optionality is
+  ///   "required", not "null".
+  /// </summary>
+  TTestNullableAsk = record
+    [JsonSchema('title=Nickname')]
+    Nickname: NullString;
+  end;
+
   /// <summary>
   ///   The PrimitiveSchemaDefinition family: every variant must render the
   ///   exact shape the 2026-07-28 schema defines for it.
@@ -61,6 +124,8 @@ type
     [Test]
     procedure TestUntitledSingleSelectEnum;
     [Test]
+    procedure TestSingleSelectEnumUsesTheNeonNames;
+    [Test]
     procedure TestTitledSingleSelectEnum;
     [Test]
     procedure TestLegacyTitledEnum;
@@ -69,7 +134,43 @@ type
     [Test]
     procedure TestTitledMultiSelectEnum;
     [Test]
-    procedure TestEnumWithoutOptions_Raises;
+    procedure TestChoiceNeedsAnEnumType_Raises;
+    [Test]
+    procedure TestMultiChoiceNeedsASetType_Raises;
+    [Test]
+    procedure TestTypeWithoutOptions_Raises;
+  end;
+
+  /// <summary>
+  ///   The requestedSchema generated from a Delphi type: Neon writes the
+  ///   document, this class only refuses what an elicitation may not ask for.
+  /// </summary>
+  [TestFixture]
+  TMCPTypeSchemaTest = class(TObject)
+  private
+    /// <summary>The rendered schema of T. Caller owns it.</summary>
+    function SchemaOf<T>: TJSONObject;
+    /// <summary>The rendered schema of one member of T. Caller owns nothing.</summary>
+    function MemberOf(AJson: TJSONObject; const AName: string): TJSONObject;
+  public
+    [Test]
+    procedure TestRecordIsAFlatObjectSchema;
+    [Test]
+    procedure TestMemberKeywordsComeFromTheAttribute;
+    [Test]
+    procedure TestRequiredComesFromTheAttribute;
+    [Test]
+    procedure TestEnumMemberIsASingleChoice;
+    [Test]
+    procedure TestSetMemberIsAMultipleChoice;
+    [Test]
+    procedure TestClassIsAskedForLikeARecord;
+    [Test]
+    procedure TestNestedStructure_Raises;
+    [Test]
+    procedure TestNullableMember_Raises;
+    [Test]
+    procedure TestNonStructType_Raises;
   end;
 
   /// <summary>
@@ -110,6 +211,8 @@ type
   public
     [Test]
     procedure TestForm_SetsModeAndSchema;
+    [Test]
+    procedure TestFormOfType_SetsModeAndSchema;
     [Test]
     procedure TestForm_NilSchema_Raises;
     [Test]
@@ -267,17 +370,42 @@ var
   LJson: TJSONObject;
   LEnum: TJSONArray;
 begin
-  FSchema.AddEnum('lang', 'Language', ['delphi', 'pascal']);
+  FSchema.AddEnum<TTestLang>('lang', 'Language');
 
   LJson := PropertyJson('lang');
   try
     Assert.AreEqual('string', LJson.GetValue<string>('type'));
 
     LEnum := LJson.GetValue('enum') as TJSONArray;
-    Assert.IsNotNull(LEnum, 'Options with no titles render as a bare "enum"');
-    Assert.AreEqual(2, LEnum.Count);
+    Assert.IsNotNull(LEnum, 'The plain shape is a bare "enum"');
+    Assert.AreEqual(3, LEnum.Count);
+
+    // The names Neon writes, which is what the client has to send back:
+    // MCPNeonConfig is camelCase
     Assert.AreEqual('delphi', LEnum.Items[0].Value);
+    Assert.AreEqual('pascal', LEnum.Items[1].Value);
     Assert.IsNull(LJson.GetValue('oneOf'));
+  finally
+    LJson.Free;
+  end;
+end;
+
+procedure TMCPPrimitiveSchemaTest.TestSingleSelectEnumUsesTheNeonNames;
+var
+  LJson: TJSONObject;
+  LEnum: TJSONArray;
+begin
+  FSchema.AddEnum<TTestNamedLang>('lang', 'Language');
+
+  LJson := PropertyJson('lang');
+  try
+    LEnum := LJson.GetValue('enum') as TJSONArray;
+
+    // [NeonEnumNames] wins over the case conversion, for the reader and the
+    // writer as much as for the schema
+    Assert.AreEqual('delphi', LEnum.Items[0].Value);
+    Assert.AreEqual('free-pascal', LEnum.Items[1].Value);
+    Assert.AreEqual('basic', LEnum.Items[2].Value);
   finally
     LJson.Free;
   end;
@@ -289,20 +417,22 @@ var
   LOneOf: TJSONArray;
   LEntry: TJSONObject;
 begin
-  FSchema.AddEnum('level', 'Level', []).AddOption('b', 'Beginner').AddOption('a', 'Advanced');
+  FSchema.AddEnum<TTestNamedLang>('lang', 'Language').Shape := TMCPChoiceShape.Titled;
 
-  LJson := PropertyJson('level');
+  LJson := PropertyJson('lang');
   try
     Assert.AreEqual('string', LJson.GetValue<string>('type'));
     Assert.IsNull(LJson.GetValue('enum'), 'A titled enum renders as "oneOf", not "enum"');
 
     LOneOf := LJson.GetValue('oneOf') as TJSONArray;
     Assert.IsNotNull(LOneOf);
-    Assert.AreEqual(2, LOneOf.Count);
+    Assert.AreEqual(3, LOneOf.Count);
 
-    LEntry := LOneOf.Items[0] as TJSONObject;
-    Assert.AreEqual('b', LEntry.GetValue<string>('const'));
-    Assert.AreEqual('Beginner', LEntry.GetValue<string>('title'));
+    // The label is the value: the only thing that names the members of a Delphi
+    // enum for JSON is [NeonEnumNames], and what it names is what travels
+    LEntry := LOneOf.Items[1] as TJSONObject;
+    Assert.AreEqual('free-pascal', LEntry.GetValue<string>('const'));
+    Assert.AreEqual('free-pascal', LEntry.GetValue<string>('title'));
   finally
     LJson.Free;
   end;
@@ -310,13 +440,10 @@ end;
 
 procedure TMCPPrimitiveSchemaTest.TestLegacyTitledEnum;
 var
-  LProperty: TMCPEnumSchema;
   LJson: TJSONObject;
   LNames: TJSONArray;
 begin
-  LProperty := FSchema.AddEnum('legacy', 'Legacy', []);
-  LProperty.AddOption('x', 'Ex').AddOption('y', 'Why');
-  LProperty.Legacy := True;
+  FSchema.AddEnum<TTestNamedLang>('legacy', 'Legacy').Shape := TMCPChoiceShape.Legacy;
 
   LJson := PropertyJson('legacy');
   try
@@ -326,8 +453,8 @@ begin
 
     LNames := LJson.GetValue('enumNames') as TJSONArray;
     Assert.IsNotNull(LNames);
-    Assert.AreEqual('Ex', LNames.Items[0].Value);
-    Assert.AreEqual('Why', LNames.Items[1].Value);
+    Assert.AreEqual('delphi', LNames.Items[0].Value);
+    Assert.AreEqual('free-pascal', LNames.Items[1].Value);
   finally
     LJson.Free;
   end;
@@ -335,16 +462,16 @@ end;
 
 procedure TMCPPrimitiveSchemaTest.TestUntitledMultiSelectEnum;
 var
-  LProperty: TMCPMultiEnumSchema;
+  LProperty: TMCPSetSchema;
   LJson, LItems: TJSONObject;
   LDefault: TJSONArray;
 begin
-  LProperty := FSchema.AddMultiEnum('tags', 'Tags', ['a', 'b', 'c']);
+  LProperty := FSchema.AddSet<TTestPerms>('perms', 'Permissions');
   LProperty.MinItems := 1;
   LProperty.MaxItems := 2;
-  LProperty.DefaultValue := ['a'];
+  LProperty.DefaultValue := ['read'];
 
-  LJson := PropertyJson('tags');
+  LJson := PropertyJson('perms');
   try
     Assert.AreEqual('array', LJson.GetValue<string>('type'));
 
@@ -352,13 +479,18 @@ begin
     Assert.IsNotNull(LItems);
     Assert.AreEqual('string', LItems.GetValue<string>('type'));
     Assert.AreEqual(3, (LItems.GetValue('enum') as TJSONArray).Count);
+    Assert.AreEqual('read', (LItems.GetValue('enum') as TJSONArray).Items[0].Value);
+
+    // Neon's own set schema carries "uniqueItems"; the primitive schema family
+    // has no room for it
+    Assert.IsNull(LJson.GetValue('uniqueItems'));
 
     Assert.AreEqual(1, LJson.GetValue<Integer>('minItems'));
     Assert.AreEqual(2, LJson.GetValue<Integer>('maxItems'));
 
     LDefault := LJson.GetValue('default') as TJSONArray;
     Assert.IsNotNull(LDefault);
-    Assert.AreEqual('a', LDefault.Items[0].Value);
+    Assert.AreEqual('read', LDefault.Items[0].Value);
   finally
     LJson.Free;
   end;
@@ -369,7 +501,7 @@ var
   LJson, LItems, LEntry: TJSONObject;
   LAnyOf: TJSONArray;
 begin
-  FSchema.AddMultiEnum('perms', 'Permissions', []).AddOption('r', 'Read').AddOption('w', 'Write');
+  FSchema.AddSet<TTestPerms>('perms', 'Permissions').Shape := TMCPChoiceShape.Titled;
 
   LJson := PropertyJson('perms');
   try
@@ -377,22 +509,46 @@ begin
 
     LItems := LJson.GetValue('items') as TJSONObject;
     Assert.IsNull(LItems.GetValue('enum'), 'A titled multi-select renders items.anyOf');
+    Assert.IsNull(LItems.GetValue('type'), 'A titled option carries its own "const"');
 
     LAnyOf := LItems.GetValue('anyOf') as TJSONArray;
     Assert.IsNotNull(LAnyOf);
-    Assert.AreEqual(2, LAnyOf.Count);
+    Assert.AreEqual(3, LAnyOf.Count);
 
     LEntry := LAnyOf.Items[1] as TJSONObject;
-    Assert.AreEqual('w', LEntry.GetValue<string>('const'));
-    Assert.AreEqual('Write', LEntry.GetValue<string>('title'));
+    Assert.AreEqual('write', LEntry.GetValue<string>('const'));
+    Assert.AreEqual('write', LEntry.GetValue<string>('title'));
   finally
     LJson.Free;
   end;
 end;
 
-procedure TMCPPrimitiveSchemaTest.TestEnumWithoutOptions_Raises;
+procedure TMCPPrimitiveSchemaTest.TestChoiceNeedsAnEnumType_Raises;
 begin
-  FSchema.AddEnum('empty', 'Empty', []);
+  // The wrong kind of type is the call site's mistake, so it is refused there
+  Assert.WillRaise(
+    procedure
+    begin
+      FSchema.AddEnum<Integer>('nope', 'Nope');
+    end,
+    EMCPException, 'A choice takes its options from an enumerated type');
+end;
+
+procedure TMCPPrimitiveSchemaTest.TestMultiChoiceNeedsASetType_Raises;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      FSchema.AddSet<TTestLang>('nope', 'Nope');
+    end,
+    EMCPException, 'A multiple choice takes its options from a set type');
+end;
+
+procedure TMCPPrimitiveSchemaTest.TestTypeWithoutOptions_Raises;
+begin
+  // A Boolean is an enumeration to the compiler but a boolean to Neon, so it
+  // offers no options - which only shows when the schema renders
+  FSchema.AddEnum<Boolean>('empty', 'Empty');
 
   Assert.WillRaise(
     procedure
@@ -402,7 +558,171 @@ begin
       LJson := FSchema.Find('empty').ToJSON;
       LJson.Free;
     end,
-    EMCPException, 'An enum with no options cannot render a valid schema');
+    EMCPException, 'A choice with no options cannot render a valid schema');
+end;
+
+{ TMCPTypeSchemaTest }
+
+function TMCPTypeSchemaTest.SchemaOf<T>: TJSONObject;
+var
+  LSchema: TMCPTypeSchema;
+begin
+  LSchema := TMCPTypeSchema.From<T>;
+  try
+    Result := LSchema.ToJSON;
+  finally
+    LSchema.Free;
+  end;
+end;
+
+function TMCPTypeSchemaTest.MemberOf(AJson: TJSONObject; const AName: string): TJSONObject;
+var
+  LProperties: TJSONObject;
+begin
+  LProperties := AJson.GetValue('properties') as TJSONObject;
+  Assert.IsNotNull(LProperties);
+
+  Result := LProperties.GetValue(AName) as TJSONObject;
+  Assert.IsNotNull(Result, 'Member [' + AName + '] should be in the schema');
+end;
+
+procedure TMCPTypeSchemaTest.TestRecordIsAFlatObjectSchema;
+var
+  LJson: TJSONObject;
+begin
+  LJson := SchemaOf<TTestSignup>;
+  try
+    Assert.AreEqual('object', LJson.GetValue<string>('type'));
+    Assert.AreEqual(5, (LJson.GetValue('properties') as TJSONObject).Count);
+
+    // The member names are Neon's, which is what the answer comes back under
+    Assert.AreEqual('string', MemberOf(LJson, 'name').GetValue<string>('type'));
+    Assert.AreEqual('integer', MemberOf(LJson, 'age').GetValue<string>('type'));
+    Assert.AreEqual('boolean', MemberOf(LJson, 'subscribe').GetValue<string>('type'));
+  finally
+    LJson.Free;
+  end;
+end;
+
+procedure TMCPTypeSchemaTest.TestMemberKeywordsComeFromTheAttribute;
+var
+  LJson, LMember: TJSONObject;
+begin
+  LJson := SchemaOf<TTestSignup>;
+  try
+    LMember := MemberOf(LJson, 'name');
+    Assert.AreEqual('Your name', LMember.GetValue<string>('title'));
+    Assert.AreEqual('As on your badge', LMember.GetValue<string>('description'));
+    Assert.AreEqual(2, LMember.GetValue<Integer>('minLength'));
+
+    // Neon writes a tag bound as a number, fraction and all ("minimum": 0.0),
+    // where the hand-built TMCPNumberSchema trims it for an integer property.
+    // Both validate the same instances, so the value is asserted, not the text
+    LMember := MemberOf(LJson, 'age');
+    Assert.AreEqual(0.0, LMember.GetValue<Double>('minimum'), 0.0001);
+    Assert.AreEqual(130.0, LMember.GetValue<Double>('maximum'), 0.0001);
+  finally
+    LJson.Free;
+  end;
+end;
+
+procedure TMCPTypeSchemaTest.TestRequiredComesFromTheAttribute;
+var
+  LJson: TJSONObject;
+  LRequired: TJSONArray;
+begin
+  LJson := SchemaOf<TTestSignup>;
+  try
+    LRequired := LJson.GetValue('required') as TJSONArray;
+    Assert.IsNotNull(LRequired);
+    Assert.AreEqual(1, LRequired.Count, 'Only the member whose tag says "required"');
+    Assert.AreEqual('name', LRequired.Items[0].Value);
+  finally
+    LJson.Free;
+  end;
+end;
+
+procedure TMCPTypeSchemaTest.TestEnumMemberIsASingleChoice;
+var
+  LJson, LMember: TJSONObject;
+  LEnum: TJSONArray;
+begin
+  LJson := SchemaOf<TTestSignup>;
+  try
+    LMember := MemberOf(LJson, 'lang');
+    Assert.AreEqual('string', LMember.GetValue<string>('type'));
+
+    LEnum := LMember.GetValue('enum') as TJSONArray;
+    Assert.IsNotNull(LEnum);
+    Assert.AreEqual(3, LEnum.Count);
+    Assert.AreEqual('delphi', LEnum.Items[0].Value);
+  finally
+    LJson.Free;
+  end;
+end;
+
+procedure TMCPTypeSchemaTest.TestSetMemberIsAMultipleChoice;
+var
+  LJson, LMember, LItems: TJSONObject;
+begin
+  LJson := SchemaOf<TTestSignup>;
+  try
+    LMember := MemberOf(LJson, 'perms');
+    Assert.AreEqual('array', LMember.GetValue<string>('type'));
+
+    LItems := LMember.GetValue('items') as TJSONObject;
+    Assert.IsNotNull(LItems);
+    Assert.AreEqual('read', (LItems.GetValue('enum') as TJSONArray).Items[0].Value);
+  finally
+    LJson.Free;
+  end;
+end;
+
+procedure TMCPTypeSchemaTest.TestClassIsAskedForLikeARecord;
+var
+  LJson: TJSONObject;
+begin
+  LJson := SchemaOf<TTestSignupClass>;
+  try
+    Assert.AreEqual('object', LJson.GetValue<string>('type'));
+    Assert.AreEqual('Your name', MemberOf(LJson, 'name').GetValue<string>('title'));
+  finally
+    LJson.Free;
+  end;
+end;
+
+procedure TMCPTypeSchemaTest.TestNestedStructure_Raises;
+begin
+  // A client renders a flat form: a nested object is not something it could ask
+  // the user for, so the schema is refused here rather than sent
+  Assert.WillRaise(
+    procedure
+    begin
+      SchemaOf<TTestNested>.Free;
+    end,
+    EMCPException, 'A nested structure is not a primitive an elicitation may ask for');
+end;
+
+procedure TMCPTypeSchemaTest.TestNullableMember_Raises;
+begin
+  // A Nullable renders as ["string","null"], and no primitive schema is a union:
+  // optionality is declared by leaving the member out of "required"
+  Assert.WillRaise(
+    procedure
+    begin
+      SchemaOf<TTestNullableAsk>.Free;
+    end,
+    EMCPException, 'A union of types is not a primitive schema');
+end;
+
+procedure TMCPTypeSchemaTest.TestNonStructType_Raises;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      TMCPTypeSchema.From<Integer>.Free;
+    end,
+    EMCPException, 'A form is generated from a record or a class');
 end;
 
 { TMCPElicitationSchemaTest }
@@ -546,6 +866,24 @@ begin
     end;
   finally
     LSchema.Free;
+  end;
+end;
+
+procedure TMCPElicitRequestTest.TestFormOfType_SetsModeAndSchema;
+var
+  LParams: TElicitRequestParams;
+  LProperties: TJSONObject;
+begin
+  LParams := TMCPElicitRequest.Form<TTestSignup>('Tell us about yourself');
+  try
+    Assert.AreEqual('Tell us about yourself', LParams.Message);
+    Assert.AreEqual(MCP_ELICIT_MODE_FORM, LParams.Mode.Value);
+
+    LProperties := LParams.RequestedSchema.GetValue('properties') as TJSONObject;
+    Assert.IsNotNull(LProperties);
+    Assert.AreEqual(5, LProperties.Count);
+  finally
+    LParams.Free;
   end;
 end;
 

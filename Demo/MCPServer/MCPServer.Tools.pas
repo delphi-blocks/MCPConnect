@@ -115,6 +115,19 @@ type
     TaskId: Integer;
   end;
 
+  /// <summary>
+  ///   What delete_task asks the user for. The form the client renders is
+  ///   generated from this record's RTTI, and the answer reads straight back
+  ///   into it - so the [JsonSchema] tags here are what the user sees, and
+  ///   nothing spells the member names twice.
+  /// </summary>
+  TDeleteAsk = record
+    [JsonSchema('title=Delete the task?, description=This cannot be undone, required')]
+    Confirm: Boolean;
+    [JsonSchema('title=Reason, description=Kept in the server log, maxLength=80')]
+    Reason: string;
+  end;
+
 { TTaskItem }
 
 constructor TTaskItem.Create(AId: Integer; const ATitle, ADescription: string);
@@ -330,10 +343,11 @@ var
   LTask: TTaskItem;
   LTitle, LResult: string;
   LContext: TDeleteContext;
+  LAnswer: TDeleteAsk;
 begin
   // Deleting is destructive, so the first call asks rather than deletes: the
-  // context travels as the requestState, and the client retries with the
-  // user's answer under the key this server chose for it
+  // form is TDeleteAsk, the context travels as the requestState, and the client
+  // retries with the user's answer under the key this server chose for it
   if FParams.InputResponses.Outcome(SElicitationDeleteKey) = TElicitationOutcome.Absent then
   begin
     LContext := TDeleteContext.Create;
@@ -341,7 +355,7 @@ begin
       LContext.TaskId := ATaskId;
       Exit(TMCPResponse<string>.Needs(
         TMCPInput.New(TMCPRequestState.Encode(LContext))
-          .Confirm(SElicitationDeleteKey, Format('Delete task #%d?', [ATaskId]))));
+          .Ask<TDeleteAsk>(SElicitationDeleteKey, Format('Delete task #%d?', [ATaskId]))));
     finally
       LContext.Free;
     end;
@@ -361,8 +375,15 @@ begin
   end;
   LContext.Free;
 
-  if FParams.InputResponses.Outcome(SElicitationDeleteKey) <> TElicitationOutcome.Accepted then
+  // The record that asked is the record that answers. A decline or a cancel
+  // carries no content, so it reads as an empty TDeleteAsk - Confirm False, and
+  // nothing is deleted - which is the same answer as an explicit "no"
+  LAnswer := FParams.InputResponses.StructAs<TDeleteAsk>(SElicitationDeleteKey);
+  if not LAnswer.Confirm then
     Exit(TMCPResponse<string>.Value(Format('Task #%d was not deleted', [ATaskId])));
+
+  if LAnswer.Reason <> '' then
+    Logger.Log(Format('Task #%d deleted because: %s', [ATaskId, LAnswer.Reason]), TLogLevel.Info);
 
   TodoStore.Lock();
   try

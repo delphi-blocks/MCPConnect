@@ -26,6 +26,9 @@ uses
   System.Generics.Collections,
   DUnitX.TestFramework,
 
+  Neon.Core.Attributes,
+  Neon.Core.Persistence.JSON.Schema,
+
   MCPConnect.Configuration.MCP,
   MCPConnect.MCP.Response,
   MCPConnect.MCP.Server,
@@ -48,6 +51,25 @@ type
   TBoxedRow = record
     Id: Integer;
     Name: string;
+  end;
+
+  [NeonEnumNames('a,b,c')]
+  TTestTag = (TagA, TagB, TagC);
+
+  /// <summary>The multiple choice a form asks for, and its answer reads into.</summary>
+  TTestTags = set of TTestTag;
+
+  /// <summary>
+  ///   What a form asks for, declared once: TMCPInput.Ask generates the schema
+  ///   from this RTTI and TInputResponses.StructAs reads the answer back into it.
+  /// </summary>
+  TTestAsk = record
+    [JsonSchema('title=Name, required')]
+    Name: string;
+    [JsonSchema('title=Tags')]
+    Tags: TTestTags;
+    [JsonSchema('title=Age')]
+    Age: Integer;
   end;
 
   /// <summary>The context a delete carries through its requestState.</summary>
@@ -82,6 +104,8 @@ type
     procedure TestNeedsConsumesTheBuilder();
     [Test]
     procedure TestAskMethodsFillTheSchema();
+    [Test]
+    procedure TestAskGeneratesTheSchemaOfTheType();
   end;
 
   /// <summary>
@@ -96,9 +120,9 @@ type
     [Test]
     procedure TestUnwrapLeavesAPlainValueAlone();
     [Test]
-    procedure TestPayloadTypeInfoIsT();
+    procedure TestPayloadTypeIsT();
     [Test]
-    procedure TestBarePayloadTypeInfoIsNil();
+    procedure TestBarePayloadTypeIsNil();
     [Test]
     procedure TestReadyRefusesNil();
     [Test]
@@ -199,6 +223,10 @@ type
     procedure TestScalarReadersCoerceAndDefault();
     [Test]
     procedure TestMultiValueAndTriReaders();
+    [Test]
+    procedure TestTypedFieldReadsTheChoicesBack();
+    [Test]
+    procedure TestStructReadsTheWholeAnswerBack();
   end;
 
   /// <summary>The typed requestState codec.</summary>
@@ -501,12 +529,36 @@ begin
   LResult := TMCPInput.New
     .AskInteger('age', 'How old?', 'age', 'Age')
     .AskNumber('score', 'Score?', 'score', 'Score')
-    .AskMultiChoice('tags', 'Tags?', 'tags', 'Tags', ['a', 'b'])
+    .AskChoice<TTestTag>('tag', 'Which tag?', 'tag', 'Tag')
+    .AskMultiChoice<TTestTags>('tags', 'Tags?', 'tags', 'Tags')
     .Build;
   try
-    Assert.AreEqual(3, LResult.InputRequests.Count);
+    Assert.AreEqual(4, LResult.InputRequests.Count);
     Assert.AreEqual(MCP_INPUT_ELICITATION, LResult.InputRequests.MethodOf('age'));
     Assert.AreEqual(MCP_INPUT_ELICITATION, LResult.InputRequests.MethodOf('tags'));
+  finally
+    LResult.Free;
+  end;
+end;
+
+procedure TMCPInputBuilderTest.TestAskGeneratesTheSchemaOfTheType;
+var
+  LResult: TInputRequiredResult;
+  LParams: TElicitRequestParams;
+  LProperties: TJSONObject;
+begin
+  LResult := TMCPInput.New('state').Ask<TTestAsk>('form', 'Tell us').Build;
+  try
+    Assert.AreEqual(MCP_INPUT_ELICITATION, LResult.InputRequests.MethodOf('form'));
+    LParams := LResult.InputRequests['form'].Elicitation;
+    Assert.IsNotNull(LParams, 'Ask<T> asks for an elicitation');
+
+    // The schema is Neon's, generated from the record the method named
+    LProperties := LParams.RequestedSchema.GetValue('properties') as TJSONObject;
+    Assert.IsNotNull(LProperties);
+    Assert.AreEqual(3, LProperties.Count);
+    Assert.IsNotNull(LProperties.GetValue('name'));
+    Assert.AreEqual('array', (LProperties.GetValue('tags') as TJSONObject).GetValue<string>('type'));
   finally
     LResult.Free;
   end;
@@ -534,15 +586,15 @@ begin
   Assert.AreEqual('plain', LValue.AsString);
 end;
 
-procedure TMCPResponseBoxTest.TestPayloadTypeInfoIsT;
+procedure TMCPResponseBoxTest.TestPayloadTypeIsT;
 begin
-  Assert.IsTrue(TMCPResponse<string>.PayloadTypeInfo = TypeInfo(string));
-  Assert.IsTrue(TMCPResponse<TBoxedRow>.PayloadTypeInfo = TypeInfo(TBoxedRow));
+  Assert.IsTrue(TMCPResponse<string>.PayloadType.Handle = TypeInfo(string));
+  Assert.IsTrue(TMCPResponse<TBoxedRow>.PayloadType.Handle = TypeInfo(TBoxedRow));
 end;
 
-procedure TMCPResponseBoxTest.TestBarePayloadTypeInfoIsNil;
+procedure TMCPResponseBoxTest.TestBarePayloadTypeIsNil;
 begin
-  Assert.IsTrue(TMCPResponse.PayloadTypeInfo = nil,
+  Assert.IsTrue(TMCPResponse.PayloadType = nil,
     'The bare box says nothing about what it holds');
 end;
 
@@ -590,7 +642,7 @@ var
 begin
   LBox := TMCPResponse<string>.Ok('inferred');
   try
-    Assert.IsTrue(LBox.PayloadTypeInfo = TypeInfo(string));
+    Assert.IsTrue(LBox.PayloadType.Handle = TypeInfo(string));
     Assert.AreEqual('inferred', LBox.Payload.AsString);
   finally
     LBox.Free;
@@ -1081,6 +1133,60 @@ begin
     Assert.IsTrue(LResponses.TryFieldAsString('form', 'one', LText));
     Assert.AreEqual('x', LText);
     Assert.IsFalse(LResponses.TryFieldAsInteger('form', 'missing', LNumber));
+  finally
+    LResponses.Free;
+  end;
+end;
+
+procedure TMCPInputResponsesTest.TestTypedFieldReadsTheChoicesBack;
+var
+  LResponses: TInputResponses;
+  LTag: TTestTag;
+  LTags: TTestTags;
+begin
+  LResponses := TInputResponses.Create([doOwnsValues]);
+  try
+    AddResponse(LResponses, 'form',
+      '{"action":"accept","content":{"tag":"b","tags":["a","c"],"junk":"nope"}}');
+
+    // The way back from a choice: Neon reads the value it wrote the schema for
+    Assert.AreEqual(TTestTag.TagB, LResponses.FieldAs<TTestTag>('form', 'tag'));
+
+    LTags := LResponses.FieldAs<TTestTags>('form', 'tags');
+    Assert.IsTrue(TTestTag.TagA in LTags);
+    Assert.IsTrue(TTestTag.TagC in LTags);
+    Assert.IsFalse(TTestTag.TagB in LTags);
+
+    // Forgiving like the scalar readers: a value of the wrong shape and a
+    // missing member both read as the default
+    Assert.IsFalse(LResponses.TryFieldAs<TTestTag>('form', 'junk', LTag));
+    Assert.IsFalse(LResponses.TryFieldAs<TTestTag>('form', 'missing', LTag));
+    Assert.IsFalse(LResponses.TryFieldAs<TTestTag>('absent', 'tag', LTag));
+  finally
+    LResponses.Free;
+  end;
+end;
+
+procedure TMCPInputResponsesTest.TestStructReadsTheWholeAnswerBack;
+var
+  LResponses: TInputResponses;
+  LAnswer: TTestAsk;
+begin
+  LResponses := TInputResponses.Create([doOwnsValues]);
+  try
+    AddResponse(LResponses, 'form',
+      '{"action":"accept","content":{"name":"Ada","tags":["a"],"age":36}}');
+    AddResponse(LResponses, 'declined', '{"action":"decline"}');
+
+    // The record that asked is the record that answers
+    LAnswer := LResponses.StructAs<TTestAsk>('form');
+    Assert.AreEqual('Ada', LAnswer.Name);
+    Assert.AreEqual(36, LAnswer.Age);
+    Assert.IsTrue(TTestTag.TagA in LAnswer.Tags);
+
+    Assert.IsFalse(LResponses.TryStructAs<TTestAsk>('declined', LAnswer),
+      'A decline carries no content to read');
+    Assert.IsFalse(LResponses.TryStructAs<TTestAsk>('missing', LAnswer));
   finally
     LResponses.Free;
   end;

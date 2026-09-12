@@ -70,6 +70,7 @@ MCPConnect handles the serialization, routing, and context management required f
 - 🚛 **Transports** - Built-in HTTP (WebBroker, Indy) and STDIO transports for both stateless and persistent connections.
 - 🔐 **OAuth 2.1** — Built-in support for OAuth 2.1 bearer-token authentication following the MCP Authorization specification, with pluggable token validators, JWKS key management, and a metadata proxy for providers that don't fully advertise PKCE support.
 - ⚡ **Low boilerplate** - mcp-connect generates all the MCP endpoints for you apart from your tools, prompts and resources.
+- 🙋 **Ask the user mid-call** — a tool, resource or prompt can answer with a question instead of a result (MCP's multi round-trip requests). Declare a Delphi record, ask for it, and read the answer back into the same record when the client retries: the form the user sees is generated from its RTTI.
 
 -----
 

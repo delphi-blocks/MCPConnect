@@ -14,19 +14,13 @@ uses
   JRPC.Classes,
 
   MCPConnect.Transport.Base,
+  MCPConnect.MCP.Response,
   MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Tools,
   MCPConnect.MCP.Types.Mrtr,
   MCPConnect.MCP.Attributes;
 
 type
-  TConfirm = class
-  private
-    FValue: Boolean;
-  public
-    property Value: Boolean read FValue write FValue;
-  end;
-
   TTaskStatus = (Pending, Completed);
 
   TTaskItem = class
@@ -84,13 +78,15 @@ type
       [McpParam('task_id', 'ID of the task to complete')] ATaskId: Integer
     ): string;
 
-    [McpTool('delete_task', 'Delete a task from the todo list')]
+    /// <summary>
+    ///   Asks the user before it deletes anything: the first call answers with
+    ///   an elicitation (MRTR), the retry carries the answer and does the work.
+    /// </summary>
+    [McpTool('delete_task', 'Delete a task from the todo list', 'destructive')]
     function DeleteTask(
       [McpParam('task_id', 'ID of the task to delete')] ATaskId: Integer
-    ): TBaseResult;
+    ): TMCPResponse<string>;
 
-    [McpTool('metrics_report', 'Harvests the metrics the demo collects on each todo tool call')]
-    function MetricsReport(): string;
   end;
 
 var
@@ -99,13 +95,25 @@ var
 implementation
 
 uses
-  System.Diagnostics,
-
-  MCPConnect.Metrics,
-  MCPConnect.Metrics.Exporters;
+  System.Diagnostics;
 
 const
   STaskNotFound = 'Task with ID %d not found';
+
+  /// <summary>The key delete_task asks its confirmation under.</summary>
+  SElicitationDeleteKey = 'delete';
+
+type
+  /// <summary>
+  ///   What the delete round trip carries in its requestState: which task the
+  ///   user was asked about. TMCPRequestState writes it as Neon JSON and reads
+  ///   it back on the retry, so the answer cannot be replayed against another
+  ///   task.
+  /// </summary>
+  TDeleteContext = class
+  public
+    TaskId: Integer;
+  end;
 
 { TTaskItem }
 
@@ -286,11 +294,6 @@ var
   LTask: TTaskItem;
   LWatch: TStopwatch;
 begin
-  // One-liner measurements: a counter with a label, a duration histogram...
-  TMetrics
-    .Counter('todo.tool.calls', 'Todo tool invocations', 'calls')
-    .Add(1, ['tool', 'add_task']);
-
   LWatch := TStopwatch.StartNew;
   try
     LTask := TodoStore.Add(ATitle, ADescription);
@@ -298,28 +301,11 @@ begin
     LWatch.Stop;
   end;
 
-  TMetrics
-    .Histogram('todo.tool.duration_ms', 'Todo tool duration', 'ms')
-    .Observe(LWatch.Elapsed.TotalMilliseconds, ['tool', 'add_task']);
-
-  // ...and a gauge keeping the current list size
-  TMetrics
-    .Gauge('todo.tasks.total', 'Tasks currently in the list', 'tasks')
-    .SetValue(TodoStore.CountTasks());
-
   Result := Format('Task #%d "%s" added successfully', [LTask.Id, LTask.Title]);
 end;
 
 function TTodoTool.ListTasks(): string;
 begin
-  TMetrics
-    .Counter('todo.tool.calls', 'Todo tool invocations', 'calls')
-    .Add(1, ['tool', 'list_tasks']);
-
-  TMetrics
-    .Gauge('todo.tasks.total', 'Tasks currently in the list', 'tasks')
-    .SetValue(TodoStore.CountTasks());
-
   Result := TodoStore.ToText();
 end;
 
@@ -327,10 +313,6 @@ function TTodoTool.CompleteTask(ATaskId: Integer): string;
 var
   LTask: TTaskItem;
 begin
-  TMetrics
-    .Counter('todo.tool.calls', 'Todo tool invocations', 'calls')
-    .Add(1, ['tool', 'complete_task']);
-
   TodoStore.Lock();
   try
     LTask := TodoStore.FindById(ATaskId);
@@ -343,31 +325,44 @@ begin
   end;
 end;
 
-function TTodoTool.DeleteTask(ATaskId: Integer): TBaseResult;
+function TTodoTool.DeleteTask(ATaskId: Integer): TMCPResponse<string>;
 var
   LTask: TTaskItem;
-  LTitle: string;
+  LTitle, LResult: string;
+  LContext: TDeleteContext;
 begin
-  if FParams.InputResponses.Count > 0 then
-    Logger.Log('User response for a previous Input Request', TLogLevel.Debug);
+  // Deleting is destructive, so the first call asks rather than deletes: the
+  // context travels as the requestState, and the client retries with the
+  // user's answer under the key this server chose for it
+  if FParams.InputResponses.Outcome(SElicitationDeleteKey) = TElicitationOutcome.Absent then
+  begin
+    LContext := TDeleteContext.Create;
+    try
+      LContext.TaskId := ATaskId;
+      Exit(TMCPResponse<string>.Needs(
+        TMCPInput.New(TMCPRequestState.Encode(LContext))
+          .Confirm(SElicitationDeleteKey, Format('Delete task #%d?', [ATaskId]))));
+    finally
+      LContext.Free;
+    end;
+  end;
 
-  TMetrics
-    .Counter('todo.tool.calls', 'Todo tool invocations', 'calls')
-    .Add(1, ['tool', 'delete_task']);
+  Logger.Log('User response for a previous Input Request', TLogLevel.Debug);
 
-//  if AParams.RequestState <> 'TEST' then
-//  begin
-//    var LParams := TElicitRequestParams.Create;
-//    LParams.RequestedSchema := TNeonSchemaGenerator.ClassToJSONSchema(TConfirm);
-//    LParams.Message := 'Sei sicuro?';
-//
-//    var LRequiredResult := TInputRequiredResult.Create;
-//    LRequiredResult.RequestState := 'TEST';
-//    LRequiredResult.InputRequests.AddElicitation('123', LParams);
-//    Exit(LRequiredResult);
-//  end;
-//
-  var LResult := '';
+  // An answer given to another question says nothing about this one: the state
+  // is decoded back into the context rather than compared as text. Encode and
+  // decode it with a secret when the context can influence authorization, so
+  // a client cannot edit it.
+  if not FParams.TryStateAs<TDeleteContext>(LContext) or (LContext.TaskId <> ATaskId) then
+  begin
+    LContext.Free;
+    Exit(TMCPResponse<string>.Ready(
+      TCallToolReply.Fail('This confirmation belongs to another request')));
+  end;
+  LContext.Free;
+
+  if FParams.InputResponses.Outcome(SElicitationDeleteKey) <> TElicitationOutcome.Accepted then
+    Exit(TMCPResponse<string>.Value(Format('Task #%d was not deleted', [ATaskId])));
 
   TodoStore.Lock();
   try
@@ -384,27 +379,7 @@ begin
   else
     LResult := Format(STaskNotFound, [ATaskId]);
 
-  var LToolCallResult := TCallToolResult.Create;
-  LToolCallResult.Content.AddText(LResult);
-  Exit(LToolCallResult);
-end;
-
-function TTodoTool.MetricsReport(): string;
-var
-  LTarget: TStringList;
-  LExporter: IMetricExporter;
-begin
-  // Harvesting "later": everything the tools recorded since the server
-  // started is rendered through the sample text exporter and returned as a
-  // report any MCP client can ask for.
-  LTarget := TStringList.Create();
-  try
-    LExporter := TMetricTextExporter.Create(LTarget);
-    LExporter.Export(TMetrics.Collect);
-    Result := LTarget.Text;
-  finally
-    LTarget.Free();
-  end;
+  Result := TMCPResponse<string>.Value(LResult);
 end;
 
 initialization

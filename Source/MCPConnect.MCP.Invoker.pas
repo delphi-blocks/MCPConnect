@@ -35,7 +35,8 @@ uses
   MCPConnect.MCP.Types.Prompts,
   MCPConnect.MCP.Types.Resources,
   MCPConnect.MCP.Types.Completion,
-  MCPConnect.MCP.Types.Mrtr;
+  MCPConnect.MCP.Types.Mrtr,
+  MCPConnect.MCP.Response;
 
 type
   TMCPInvoker = class
@@ -338,20 +339,29 @@ begin
   LMethodResult := FTool.Method.Invoke(FInstance, LArgs);
   Logger.LogDebug('[PERF] Tool [%s] Method.Invoke (business logic): %d ms', [FTool.Name, LStopwatch.ElapsedMilliseconds]);
 
-  if LMethodResult.IsType<TCallToolResult> then
+  // A TMCPResponse is a box, not an answer: opened first, what it holds takes
+  // whichever of the paths below its own shape asks for
+  TMCPResponse.Unwrap(LMethodResult);
+
+  // An empty payload (a method that returned nil) matches every type under
+  // IsType's default, so refuse it before the first branch can claim it
+  if LMethodResult.IsEmpty then
+    raise EMCPException.Create(SMCPResponseNoPayload);
+
+  if LMethodResult.IsType<TCallToolResult>(False) then
   begin
     Result := TCallToolResult(LMethodResult.AsObject);
     Exit;
   end;
 
   // A tool that cannot finish yet answers with the requests it needs filled
-  if LMethodResult.IsType<TInputRequiredResult> then
+  if LMethodResult.IsType<TInputRequiredResult>(False) then
   begin
     Result := TInputRequiredResult(LMethodResult.AsObject);
     Exit;
   end;
 
-  if LMethodResult.IsType<TContentList> then
+  if LMethodResult.IsType<TContentList>(False) then
   begin
     Result := TCallToolResult.Create(TContentList(LMethodResult.AsObject));
     Exit;
@@ -386,17 +396,24 @@ begin
   LMethodResult := FResource.Method.Invoke(FInstance, []);
   Logger.LogDebug('[PERF] Resource [%s] Method.Invoke (business logic): %d ms', [FResource.Uri, LStopwatch.ElapsedMilliseconds]);
 
+  // A TMCPResponse is a box, not an answer: opened first, what it holds takes
+  // whichever of the paths below its own shape asks for
+  TMCPResponse.Unwrap(LMethodResult);
+
+  if LMethodResult.IsEmpty then
+    raise EMCPException.Create(SMCPResponseNoPayload);
+
   // If the result is already a TReadResourceResult just assign it
-  if LMethodResult.IsType<TReadResourceResult> then
+  if LMethodResult.IsType<TReadResourceResult>(False) then
     Exit(LMethodResult.AsObject as TReadResourceResult);
 
   // If the result is already a TResourceContents just assign it
-  if LMethodResult.IsType<TResourceContents> then
+  if LMethodResult.IsType<TResourceContents>(False) then
     Exit(TReadResourceResult.Create(LMethodResult.AsObject as TResourceContentsList));
 
   // A resource that cannot be served without more input answers with the
   // requests it needs filled (MRTR)
-  if LMethodResult.IsType<TInputRequiredResult> then
+  if LMethodResult.IsType<TInputRequiredResult>(False) then
     Exit(TInputRequiredResult(LMethodResult.AsObject));
 
   FGC.Add(LMethodResult);
@@ -579,17 +596,24 @@ begin
   LResult := FTemplate.Method.Invoke(FInstance, LArgs);
   Logger.LogDebug('[PERF] Template [%s] Method.Invoke (business logic): %d ms', [FTemplate.UriTemplate.Value, LStopwatch.ElapsedMilliseconds]);
 
+  // A TMCPResponse is a box, not an answer: opened first, what it holds takes
+  // whichever of the paths below its own shape asks for
+  TMCPResponse.Unwrap(LResult);
+
+  if LResult.IsEmpty then
+    raise EMCPException.Create(SMCPResponseNoPayload);
+
   // If the result is already a TReadResourceResult just assign it
-  if LResult.IsType<TReadResourceResult> then
+  if LResult.IsType<TReadResourceResult>(False) then
     Exit(LResult.AsObject as TReadResourceResult);
 
   // If the result is already a TContentList just use it
-  if LResult.IsType<TResourceContentsList> then
+  if LResult.IsType<TResourceContentsList>(False) then
     Exit(TReadResourceResult.Create(LResult.AsObject as TResourceContentsList));
 
   // A template that cannot be served without more input answers with the
   // requests it needs filled (MRTR)
-  if LResult.IsType<TInputRequiredResult> then
+  if LResult.IsType<TInputRequiredResult>(False) then
     Exit(TInputRequiredResult(LResult.AsObject));
 
   FGC.Add(LResult);
@@ -744,17 +768,24 @@ begin
   LMethodResult := FPrompt.Method.Invoke(FInstance, LArgs);
   Logger.LogDebug('[PERF] Prompt [%s] Method.Invoke (business logic): %d ms', [FPrompt.Name, LStopwatch.ElapsedMilliseconds]);
 
+  // A TMCPResponse is a box, not an answer: opened first, what it holds takes
+  // whichever of the paths below its own shape asks for
+  TMCPResponse.Unwrap(LMethodResult);
+
+  if LMethodResult.IsEmpty then
+    raise EMCPException.Create(SMCPResponseNoPayload);
+
   // If the result is already a TGetPromptResult just assign it
-  if LMethodResult.IsType<TGetPromptResult> then
+  if LMethodResult.IsType<TGetPromptResult>(False) then
     Exit(LMethodResult.AsObject as TGetPromptResult);
 
   // If the result is already a TPromptMessages just use it
-  if LMethodResult.IsType<TPromptMessages> then
+  if LMethodResult.IsType<TPromptMessages>(False) then
     Exit(TGetPromptResult.Create(LMethodResult.AsObject as TPromptMessages));
 
   // A prompt that cannot be built without more input answers with the
   // requests it needs filled (MRTR)
-  if LMethodResult.IsType<TInputRequiredResult> then
+  if LMethodResult.IsType<TInputRequiredResult>(False) then
     Exit(TInputRequiredResult(LMethodResult.AsObject));
 
   FGC.Add(LMethodResult);

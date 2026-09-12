@@ -70,6 +70,7 @@ nul
 # VSCode
 *.vsdcache.*
 /Demo/*.log
+/Demo/*.jsonl
 /Demo/.env
 /Tests/Bin
 /Demo/MCPServerSession_MemoryManager_EventLog.txt

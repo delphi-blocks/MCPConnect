@@ -37,6 +37,7 @@ uses
   MCPConnect.MCP.Types.Resources,
   MCPConnect.MCP.Types.Completion,
   MCPConnect.MCP.Attributes,
+  MCPConnect.MCP.Response,
 
   MCPConnect.Content.Writers,
   MCPConnect.Configuration.Core;
@@ -47,6 +48,7 @@ resourcestring
   SToolParamNotFoundFmt = 'Param [%s] for Tool [%s] not found';
   SMethodInClassNotFoundFmt = 'Method [%s] in class [%s] not found';
   SToolMustBeFunction = 'Tool must be a function';
+  SToolResponseNeedsPayloadFmt = 'Tool [%s] asks for structured output but answers with a bare TMCPResponse: declare TMCPResponse<T>, so that the outputSchema has a type to describe';
   SNonConfiguredParamsNotPermitted = 'Non-configured params are not permitted';
   SParamHasNoConfigurationFmt = 'The [%s] parameter has no configuration';
   SNonAnnotatedParamsNotPermitted = 'Non-annotated params are not permitted';
@@ -1498,10 +1500,23 @@ procedure TMCPToolsConfig.WriteOutputSchema(ATool: TMCPTool);
 var
   LJSONObj: TJSONObject;
   LType: TRttiType;
+  LPayload: PTypeInfo;
 begin
   LType := ATool.Method.ReturnType;
   if not Assigned(LType) then
     raise EMCPException.Create(SToolMustBeFunction);
+
+  // A tool answering through a TMCPResponse<T> describes T: the box is a
+  // carrier the invoker opens, and never reaches the client. The bare
+  // TMCPResponse says nothing about what it holds, so a tool that asks for a
+  // schema while using it is asking for a schema of nothing
+  if (LType.TypeKind = tkClass) and LType.AsInstance.MetaclassType.InheritsFrom(TMCPResponse) then
+  begin
+    LPayload := TMCPResponseClass(LType.AsInstance.MetaclassType).PayloadTypeInfo;
+    if not Assigned(LPayload) then
+      raise EMCPException.CreateFmt(SToolResponseNeedsPayloadFmt, [ATool.Name]);
+    LType := TRttiUtils.Context.GetType(LPayload);
+  end;
 
   // Any JSON Schema 2020-12 will do here since SEP-2106: an outputSchema
   // describes whatever the tool answers with, and that is no longer required to

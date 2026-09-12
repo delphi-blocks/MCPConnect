@@ -16,7 +16,8 @@ This document explains:
 5. Concurrency and lifetimes.
 6. Harvesting: `Collect`, `Harvest`, and the `TMetricPoint` shape.
 7. The sample exporters (`MCPConnect.Metrics.Exporters`) and how to write your own.
-8. Using it inside an MCP server (the demo's `metrics_report` tool, and a resource variant).
+8. Using it inside an MCP server (the demo's `metrics_report` tool, a resource variant, and the
+   full `Demo/MCPServerMetrics` showcase).
 9. Limitations and design notes.
 
 The code lives in `Source/MCPConnect.Metrics.pas` (core: the RTL plus `Neon.Core.Attributes`,
@@ -516,6 +517,19 @@ begin
   Result := MetricsToJson(TMetrics.Collect);
 end;
 ```
+
+### 7.3 The full showcase: Demo/MCPServerMetrics
+
+`Demo/MCPServerMetrics/` is a self-contained demo that turns everything on this page into a
+running tour: four meters of instruments (protocol telemetry recorded by middleware, application
+metrics recorded by the tools, host gauges sampled on a timer, and the subsystem's own harvest
+metrics), seven exporters (both shipped file sinks and the sample renderers, plus four custom
+ones), delta and cumulative harvesting side by side, an in-process snapshot store, a slowest-
+histograms view, and MCP tools, a resource and a prompt over the snapshot - including the
+cardinality budget and a second provider. Its `README.md` is the guided tour; the code is
+`Server.Metrics.pas` (the hub, `TServerMetrics`), `Server.Metrics.Middleware.pas`,
+`Server.Metrics.Features.pas`, and `Server.Dashboard.pas` + `.dfm` - the dashboard is an
+ordinary VCL frame, all controls in the DFM, so the screen can be edited in the IDE designer.
 
 ## 8. Limitations and design notes
 

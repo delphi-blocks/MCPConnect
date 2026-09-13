@@ -80,6 +80,8 @@ type
     [Test]
     procedure TestRegister_IsAcceptedAsATokenValidator;
     [Test]
+    procedure TestRegister_DeclaresThatItVerifiesSignatures;
+    [Test]
     procedure TestCertificateToPEM_IsWrappedInArmourAtSixtyFourColumns;
     [Test]
     procedure TestCertificateToPEM_PreservesTheCertificate;
@@ -180,6 +182,16 @@ begin
   FConfig.SetTokenValidatorClass(TJoseTokenValidator);
 
   Assert.IsTrue(FServer.GetConfiguration<TOAuthConfig>.TokenValidatorClass = TJoseTokenValidator);
+end;
+
+procedure TJoseTokenValidatorTest.TestRegister_DeclaresThatItVerifiesSignatures;
+begin
+  // What keeps this one out of the startup warning that TClaimsTokenValidator earns:
+  // it is the validator in this library that actually verifies a signature, and it
+  // has to say so where the configuration can read it.
+  Assert.IsTrue(TJoseTokenValidator.VerifiesSignature);
+  Assert.IsFalse(TClaimsTokenValidator.VerifiesSignature,
+    'The base it derives from checks no signature and must not claim to');
 end;
 
 procedure TJoseTokenValidatorTest.TestCertificateToPEM_IsWrappedInArmourAtSixtyFourColumns;

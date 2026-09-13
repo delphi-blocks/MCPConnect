@@ -146,9 +146,31 @@ type
     /// </summary>
     function GetOAuthConfig(AContext: TJRPCContext): TOAuthConfig;
   public
+    /// <summary>
+    ///   Whether this validator proves that a token was signed with the key its
+    ///   issuer published - the check that makes every other one mean something.
+    /// </summary>
+    /// <remarks>
+    ///   False here and on every validator in this unit: verifying a signature needs
+    ///   a crypto library the core package deliberately does not depend on, so
+    ///   <see cref="TClaimsTokenValidator.CheckSignature" /> accepts whatever it is
+    ///   given. A validator that does verify says so by overriding this, and the OAuth
+    ///   configuration warns at startup about a registered validator that does not:
+    ///   TClaimsTokenValidator checks issuer, audience, expiry and scopes, so it looks
+    ///   like the real thing while accepting any token that copies those claims from
+    ///   a genuine one.
+    ///   It declares the property rather than creating it, so override it together
+    ///   with CheckSignature and never on its own. A validator that implements
+    ///   ITokenValidator without deriving from here declares nothing and is not
+    ///   warned about - what it verifies is its own author's business.
+    /// </remarks>
+    class function VerifiesSignature: Boolean; virtual;
+
     function Validate(AContext: TJRPCContext; const AToken: string;
       AAccessToken: TMCPAccessToken): TTokenValidationResult; virtual; abstract;
   end;
+
+  TTokenValidatorBaseClass = class of TTokenValidatorBase;
 
   /// <summary>
   ///   Decodes the token payload and accepts it, without verifying the signature, the
@@ -387,6 +409,11 @@ begin
 end;
 
 { TTokenValidatorBase }
+
+class function TTokenValidatorBase.VerifiesSignature: Boolean;
+begin
+  Result := False;
+end;
 
 function TTokenValidatorBase.GetOAuthConfig(AContext: TJRPCContext): TOAuthConfig;
 begin

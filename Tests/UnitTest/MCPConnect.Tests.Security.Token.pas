@@ -25,7 +25,9 @@ uses
   MCPConnect.Configuration.Auth,
   MCPConnect.MCP.Types.Base,
   MCPConnect.Security.Jwks,
-  MCPConnect.Security.Token;
+  MCPConnect.Security.Token,
+  MCPConnect.Logging.Memory,
+  Logify;
 
 type
   /// <summary>
@@ -95,6 +97,13 @@ type
   TNotAValidator = class(TObject);
 
   /// <summary>
+  ///   A validator built on TClaimsTokenValidator that never overrides the signature
+  ///   hook - the accident the startup warning exists to catch, one level down from
+  ///   registering TClaimsTokenValidator itself.
+  /// </summary>
+  TForgetfulValidator = class(TClaimsTokenValidator);
+
+  /// <summary>
   ///   Stands in for a real validator: overrides the signature hook, records what it
   ///   was handed and rejects or accepts on demand.
   /// </summary>
@@ -108,6 +117,9 @@ type
     function CheckSignature(const AHeader, APayload, ASignature: string;
       const AKey: TOAuthJsonWebKey): TTokenValidationResult; override;
   public
+    /// <summary>Declared alongside the override, the way a real validator does.</summary>
+    class function VerifiesSignature: Boolean; override;
+
     class procedure Reset(AAccept: Boolean); static;
 
     class property Calls: Integer read FCalls;
@@ -356,6 +368,42 @@ type
     procedure TestClockSkew_AcceptsNoToleranceAtAll;
   end;
 
+  /// <summary>
+  ///   What SetTokenValidatorClass says at startup about a validator that does not
+  ///   prove who is calling. A misconfiguration nobody is told about is the one that
+  ///   reaches production, and TClaimsTokenValidator is the plausible mistake: it
+  ///   checks issuer, audience and expiry, so it reads as a complete configuration.
+  /// </summary>
+  [TestFixture]
+  TOAuthValidatorWarningTest = class(TObject)
+  private const
+    FactoryName = 'oauth-validator-warning-test';
+  private
+    FStore: TMCPMemoryLog;
+    FFactory: TLogifyAdapterMemoryFactory;
+    FServer: TMCPServer;
+    FConfig: IOAuthConfig;
+
+    /// <summary>Whether a warning mentioning AFragment was logged.</summary>
+    function WarnedAbout(const AFragment: string): Boolean;
+  public
+    [Setup]
+    procedure Setup;
+    [TearDown]
+    procedure TearDown;
+
+    [Test]
+    procedure TestClaimsValidator_IsWarnedAbout;
+    [Test]
+    procedure TestADescendantThatNeverVerifies_IsWarnedAboutToo;
+    [Test]
+    procedure TestAVerifyingValidator_IsNotWarnedAbout;
+    [Test]
+    procedure TestDecodeOnlyValidator_KeepsItsOwnWarning;
+    [Test]
+    procedure TestAValidatorOfSomeoneElses_IsNotWarnedAbout;
+  end;
+
   [TestFixture]
   TOAuthMetadataProviderTest = class(TObject)
   private const
@@ -577,6 +625,11 @@ begin
 end;
 
 { TSignatureCheckingValidator }
+
+class function TSignatureCheckingValidator.VerifiesSignature: Boolean;
+begin
+  Result := True;
+end;
 
 class procedure TSignatureCheckingValidator.Reset(AAccept: Boolean);
 begin
@@ -1654,6 +1707,89 @@ begin
   Assert.AreEqual(0, GetOAuthConfig.ClockSkewSeconds);
 end;
 
+{ TOAuthValidatorWarningTest }
+
+procedure TOAuthValidatorWarningTest.Setup;
+begin
+  // A store of its own rather than the process-wide one: the default store keeps no
+  // raw lines, and a fixture that shared it would read another one's warnings.
+  FStore := TMCPMemoryLog.Create(16, 16);
+  FFactory := TLogifyAdapterMemoryFactory.CreateAdapterFactory(
+    FactoryName, TLogLevel.Trace, FStore);
+  TLoggerAdapterRegistry.Instance.RegisterFactory(FFactory);
+
+  FServer := TMCPServer.Create(nil);
+  FConfig := FServer.Plugin.Configure<IOAuthConfig>;
+end;
+
+procedure TOAuthValidatorWarningTest.TearDown;
+begin
+  FConfig := nil;
+  FServer.Free;
+
+  // The adapter has to go before the store it writes into
+  TLoggerAdapterRegistry.Instance.UnregisterFactory(FFactory);
+  FFactory := nil;
+  FreeAndNil(FStore);
+end;
+
+function TOAuthValidatorWarningTest.WarnedAbout(const AFragment: string): Boolean;
+var
+  LEntry: TMCPLogEntry;
+begin
+  for LEntry in FStore.LogEntries do
+    if (LEntry.Level = TLogLevel.Warning) and LEntry.Text.Contains(AFragment) then
+      Exit(True);
+
+  Result := False;
+end;
+
+procedure TOAuthValidatorWarningTest.TestClaimsValidator_IsWarnedAbout;
+begin
+  FConfig.SetTokenValidatorClass(TClaimsTokenValidator);
+
+  Assert.IsTrue(WarnedAbout('TClaimsTokenValidator'),
+    'Registering a validator that verifies no signature must say so at startup');
+  Assert.IsTrue(WarnedAbout('does not'), 'The warning must say what is missing');
+end;
+
+procedure TOAuthValidatorWarningTest.TestADescendantThatNeverVerifies_IsWarnedAboutToo;
+begin
+  // Checking the exact class would have let this through, and it is the same hole:
+  // the inherited CheckSignature accepts whatever it is handed.
+  FConfig.SetTokenValidatorClass(TForgetfulValidator);
+
+  Assert.IsTrue(WarnedAbout('TForgetfulValidator'));
+end;
+
+procedure TOAuthValidatorWarningTest.TestAVerifyingValidator_IsNotWarnedAbout;
+begin
+  FConfig.SetTokenValidatorClass(TSignatureCheckingValidator);
+
+  Assert.IsFalse(WarnedAbout('TSignatureCheckingValidator'),
+    'A validator that declares it verifies signatures must not be warned about');
+end;
+
+procedure TOAuthValidatorWarningTest.TestDecodeOnlyValidator_KeepsItsOwnWarning;
+begin
+  // It verifies nothing at all, and the warning that already existed for it says
+  // more than the general one would.
+  FConfig.SetTokenValidatorClass(TDecodeOnlyTokenValidator);
+
+  Assert.IsTrue(WarnedAbout('decode-only'));
+  Assert.IsFalse(WarnedAbout('TDecodeOnlyTokenValidator declares'),
+    'One warning per registration, and the specific one wins');
+end;
+
+procedure TOAuthValidatorWarningTest.TestAValidatorOfSomeoneElses_IsNotWarnedAbout;
+begin
+  // Implements ITokenValidator and derives from nothing of ours, so it declares
+  // nothing either way: warning about it would be guessing at someone else''s code.
+  FConfig.SetTokenValidatorClass(TStandaloneValidator);
+
+  Assert.IsFalse(WarnedAbout('TStandaloneValidator'));
+end;
+
 { TOAuthMetadataProviderTest }
 
 procedure TOAuthMetadataProviderTest.Setup;
@@ -2018,6 +2154,7 @@ initialization
   TDUnitX.RegisterTestFixture(TClaimsTokenValidatorTest);
   TDUnitX.RegisterTestFixture(TTokenValidatorContractTest);
   TDUnitX.RegisterTestFixture(TOAuthConfigValidationTest);
+  TDUnitX.RegisterTestFixture(TOAuthValidatorWarningTest);
   TDUnitX.RegisterTestFixture(TOAuthMetadataProviderTest);
 
 end.

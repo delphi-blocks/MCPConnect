@@ -77,6 +77,12 @@ type
 
     function CheckSignature(const AHeader, APayload, ASignature: string;
       const AKey: TOAuthJsonWebKey): TTokenValidationResult; override;
+  public
+    /// <summary>
+    ///   True: this is the validator that does verify, which is what the OAuth
+    ///   configuration reads to tell a real validator from a plausible-looking one.
+    /// </summary>
+    class function VerifiesSignature: Boolean; override;
   end;
 
 {$ENDIF}
@@ -99,6 +105,11 @@ const
   PEM_CERTIFICATE_END = '-----END CERTIFICATE-----';
 
 { TJoseTokenValidator }
+
+class function TJoseTokenValidator.VerifiesSignature: Boolean;
+begin
+  Result := True;
+end;
 
 class function TJoseTokenValidator.CertificateToPEM(const ACertificate: string): string;
 var

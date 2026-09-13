@@ -158,7 +158,9 @@ Two things follow from this, and both matter before exposing a server:
   - `TClaimsTokenValidator` — checks `iss`, `aud`, `exp`/`nbf`, the required scopes, rejects
     `"alg": "none"`, and verifies that the `kid` names a key the issuer actually publishes. It stops
     expired, foreign and unsigned tokens, but **not** a forged one: its `CheckSignature` hook is
-    empty.
+    empty. Registering it logs a warning at startup, because it validates enough to look like the
+    real thing while accepting any token that copies `iss`, `aud`, `kid` and a future `exp` from a
+    genuine one.
   - `TDecodeOnlyTokenValidator` — decodes the payload and verifies nothing. Local development only.
 
 The framework supplies the pieces around the signature check too: an `IOAuthMetadataProvider` that
@@ -166,6 +168,12 @@ fetches and caches the authorization server's discovery document and JWKS (with 
 refresh and stale-if-error), the issuer/audience/scope/clock-skew options, and the `401` challenge
 plumbing. See [`token-validation.md`](token-validation.md) for the full design and for how to write
 a validator.
+
+A validator declares whether it proves anything through `TTokenValidatorBase.VerifiesSignature`,
+which is `False` unless overridden — so anything built on `TClaimsTokenValidator` that does not
+override `CheckSignature` earns the same warning. Override the two together. A class that
+implements `ITokenValidator` without deriving from `TTokenValidatorBase` declares nothing and is
+never warned about.
 
 ### 3.3 CORS
 

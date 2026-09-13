@@ -32,6 +32,11 @@ resourcestring
     'are not verified. Development use only.';
   SOAuthValidatorClassInvalidFmt = 'Class [%s] cannot be used as a token validator: ' +
     'it does not implement ITokenValidator';
+  SOAuthUnverifiedSignatureWarningFmt = 'Token validator [%s] declares that it does not ' +
+    'verify token signatures: every claim it checks - issuer, audience, expiration, ' +
+    'scopes - is read from the token itself, so a forged token copying those values ' +
+    'from a genuine one is accepted. Register TJoseTokenValidator, or override ' +
+    'CheckSignature and have VerifiesSignature return True.';
   SOAuthKeyCacheTTLInvalidFmt = 'A key cache TTL of %d seconds cannot be used: a cached ' +
     'key set is expired once it is that old, so at zero or less it is expired the moment ' +
     'it is stored and every token validated refetches the JWKS. Pass a positive number ' +
@@ -676,6 +681,19 @@ begin
   Result := Self;
 end;
 
+/// <summary>
+///   Whether a validator class declares that it verifies token signatures. A class
+///   that implements ITokenValidator without deriving from TTokenValidatorBase makes
+///   no such declaration, and is taken at its word rather than warned about.
+/// </summary>
+function ValidatorVerifiesSignature(AClass: TClass): Boolean;
+begin
+  if not AClass.InheritsFrom(TTokenValidatorBase) then
+    Exit(True);
+
+  Result := TTokenValidatorBaseClass(AClass).VerifiesSignature;
+end;
+
 function TOAuthConfig.SetTokenValidatorClass(AClass: TClass): IOAuthConfig;
 begin
   // The class reference is untyped, so what the compiler used to guarantee is
@@ -685,8 +703,14 @@ begin
 
   FTokenValidatorClass := AClass;
 
-  if Assigned(AClass) and AClass.InheritsFrom(TDecodeOnlyTokenValidator) then
-    Logger.LogWarning(SOAuthDecodeOnlyValidatorWarning);
+  // Said once, at startup, about the two ways of running without proof of who is
+  // calling. The second is the quiet one: TClaimsTokenValidator does check issuer,
+  // audience and expiry, so registering it looks like a complete configuration.
+  if Assigned(AClass) then
+    if AClass.InheritsFrom(TDecodeOnlyTokenValidator) then
+      Logger.LogWarning(SOAuthDecodeOnlyValidatorWarning)
+    else if not ValidatorVerifiesSignature(AClass) then
+      Logger.LogWarning(SOAuthUnverifiedSignatureWarningFmt, [AClass.ClassName]);
 
   Result := Self;
 end;

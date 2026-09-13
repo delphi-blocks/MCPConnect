@@ -40,7 +40,7 @@ interface
 {$I MCPConnect.inc}
 
 uses
-  System.SysUtils, System.SyncObjs,
+  System.SysUtils, System.SyncObjs, System.Generics.Collections,
 
   MCPConnect.JRPC.Middleware;
 
@@ -70,26 +70,48 @@ type
     end;
 
     /// <summary>
-    ///   The upstream metadata document, kept for a while. Per process, not per
-    ///   request: every client of the server asks for the same document, and it
+    ///   The upstream metadata documents, kept for a while. Per process, not per
+    ///   request: every client of one server asks for the same document, and it
     ///   changes about never.
     /// </summary>
+    /// <remarks>
+    ///   Keyed, because "per process" is wider than "per server": two TMCPServers
+    ///   with the metadata proxy on would otherwise read one another's document,
+    ///   foreign issuer, foreign jwks_uri and all. The key is the pair that decides
+    ///   what a stored document says - the upstream it was fetched from, and the
+    ///   proxy URL its "issuer" was rewritten to - so two servers sharing an upstream
+    ///   but publishing at different URLs still keep their own copy.
+    ///   Bounded: a key is built from configuration and never from anything a client
+    ///   sends, so the cap is a safety net rather than a defence.
+    /// </remarks>
     TProxyCache = class
     private
       FLock: TCriticalSection;
-      FEntry: TProxyCacheEntry;
+      FEntries: TObjectDictionary<string, TProxyCacheEntry>;
       FTTLSeconds: Integer;
+      FMaxEntries: Integer;
+      function IsFresh(AEntry: TProxyCacheEntry): Boolean;
+      procedure MakeRoom;
     public
-      constructor Create(ATTLSeconds: Integer);
+      constructor Create(ATTLSeconds, AMaxEntries: Integer);
       destructor Destroy; override;
-      function TryGet(out AContent: string): Boolean;
-      procedure Store(const AContent: string);
+      class function KeyFor(const AUpstream, AProxyUrl: string): string; static;
+      function TryGet(const AKey: string; out AContent: string): Boolean;
+      procedure Store(const AKey, AContent: string);
+      procedure Clear;
     end;
   private
     class var FProxyCache: TProxyCache;
     class constructor Create;
     class destructor Destroy;
   public
+    /// <summary>
+    ///   Drops every cached upstream metadata document, so the next request for one
+    ///   fetches it again. For a host that reconfigures its authorization servers
+    ///   while running, and for tests, which would otherwise depend on their order.
+    /// </summary>
+    class procedure ClearProxyCache;
+
     /// <summary>
     ///   Just inside the static token check: both identify the caller, and the
     ///   two are alternatives more often than not, but a server running both
@@ -124,45 +146,125 @@ resourcestring
     'ITokenValidator: the request is rejected';
 
 const
-  /// <summary>How long the proxied upstream metadata document is kept, in seconds.</summary>
+  /// <summary>How long a proxied upstream metadata document is kept, in seconds.</summary>
   ProxyCacheTTL = 300;
+
+  /// <summary>
+  ///   How many of them at once. One per proxying server in the process, so this is
+  ///   far more than a process will use; past it the stale entries go first, then the
+  ///   oldest.
+  /// </summary>
+  ProxyCacheMaxEntries = 16;
+
+  /// <summary>Joins the two halves of a cache key; neither half can contain it.</summary>
+  ProxyCacheKeySeparator = #10;
 
 { TOAuthMiddleware.TProxyCache }
 
-constructor TOAuthMiddleware.TProxyCache.Create(ATTLSeconds: Integer);
+constructor TOAuthMiddleware.TProxyCache.Create(ATTLSeconds, AMaxEntries: Integer);
 begin
   inherited Create;
   FLock := TCriticalSection.Create;
+  FEntries := TObjectDictionary<string, TProxyCacheEntry>.Create([doOwnsValues]);
   FTTLSeconds := ATTLSeconds;
+  FMaxEntries := AMaxEntries;
 end;
 
 destructor TOAuthMiddleware.TProxyCache.Destroy;
 begin
-  FEntry.Free;
+  FEntries.Free;
   FLock.Free;
   inherited;
 end;
 
-function TOAuthMiddleware.TProxyCache.TryGet(out AContent: string): Boolean;
+class function TOAuthMiddleware.TProxyCache.KeyFor(const AUpstream,
+  AProxyUrl: string): string;
+begin
+  // Both halves: the upstream is where the document came from, the proxy URL is the
+  // "issuer" it was rewritten to carry. A stored document is reusable only for a
+  // request that would have produced the same pair.
+  Result := AUpstream + ProxyCacheKeySeparator + AProxyUrl;
+end;
+
+function TOAuthMiddleware.TProxyCache.IsFresh(AEntry: TProxyCacheEntry): Boolean;
+begin
+  Result := Assigned(AEntry) and (SecondsBetween(Now, AEntry.FetchedAt) < FTTLSeconds);
+end;
+
+procedure TOAuthMiddleware.TProxyCache.MakeRoom;
+var
+  LStale: TArray<string>;
+  LOldestKey: string;
+  LOldestAt: TDateTime;
+  LPair: TPair<string, TProxyCacheEntry>;
+  LKey: string;
+begin
+  // Called under the lock, with the cap reached. The expired entries are dead weight,
+  // so they go first; only if there were none does a live one have to.
+  LStale := [];
+  for LPair in FEntries do
+    if not IsFresh(LPair.Value) then
+      LStale := LStale + [LPair.Key];
+
+  for LKey in LStale do
+    FEntries.Remove(LKey);
+
+  if FEntries.Count < FMaxEntries then
+    Exit;
+
+  LOldestKey := '';
+  LOldestAt := 0;
+  for LPair in FEntries do
+    if (LOldestKey = '') or (LPair.Value.FetchedAt < LOldestAt) then
+    begin
+      LOldestKey := LPair.Key;
+      LOldestAt := LPair.Value.FetchedAt;
+    end;
+
+  if LOldestKey <> '' then
+    FEntries.Remove(LOldestKey);
+end;
+
+function TOAuthMiddleware.TProxyCache.TryGet(const AKey: string; out AContent: string): Boolean;
+var
+  LEntry: TProxyCacheEntry;
 begin
   FLock.Enter;
   try
-    Result := Assigned(FEntry) and (SecondsBetween(Now, FEntry.FetchedAt) < FTTLSeconds);
+    Result := FEntries.TryGetValue(AKey, LEntry) and IsFresh(LEntry);
     if Result then
-      AContent := FEntry.Content;
+      AContent := LEntry.Content;
   finally
     FLock.Leave;
   end;
 end;
 
-procedure TOAuthMiddleware.TProxyCache.Store(const AContent: string);
+procedure TOAuthMiddleware.TProxyCache.Store(const AKey, AContent: string);
+var
+  LEntry: TProxyCacheEntry;
 begin
   FLock.Enter;
   try
-    if not Assigned(FEntry) then
-      FEntry := TProxyCacheEntry.Create;
-    FEntry.Content := AContent;
-    FEntry.FetchedAt := Now;
+    if not FEntries.TryGetValue(AKey, LEntry) then
+    begin
+      if FEntries.Count >= FMaxEntries then
+        MakeRoom;
+      LEntry := TProxyCacheEntry.Create;
+      FEntries.Add(AKey, LEntry);
+    end;
+
+    LEntry.Content := AContent;
+    LEntry.FetchedAt := Now;
+  finally
+    FLock.Leave;
+  end;
+end;
+
+procedure TOAuthMiddleware.TProxyCache.Clear;
+begin
+  FLock.Enter;
+  try
+    FEntries.Clear;
   finally
     FLock.Leave;
   end;
@@ -172,12 +274,17 @@ end;
 
 class constructor TOAuthMiddleware.Create;
 begin
-  FProxyCache := TProxyCache.Create(ProxyCacheTTL);
+  FProxyCache := TProxyCache.Create(ProxyCacheTTL, ProxyCacheMaxEntries);
 end;
 
 class destructor TOAuthMiddleware.Destroy;
 begin
   FProxyCache.Free;
+end;
+
+class procedure TOAuthMiddleware.ClearProxyCache;
+begin
+  FProxyCache.Clear;
 end;
 
 class function TOAuthMiddleware.DefaultPriority: Integer;
@@ -285,21 +392,27 @@ var
   begin
     LResponse.ContentType := TMediaType.APPLICATION_JSON;
 
-    var LCached: string;
-    if FProxyCache.TryGet(LCached) then
-    begin
-      LResponse.Code := HTTP_CODE_OK;
-      LResponse.Content := LCached;
-      Exit;
-    end;
-
-    var LHttp := THTTPClient.Create;
+    // Inside the handler that answers 502: reading the key needs the resource URL,
+    // and a configuration that cannot produce one is an upstream this request has no
+    // way to reach, not a bug in the request.
     try
-      LHttp.ConnectionTimeout := RequestTimeoutMs;
-      LHttp.ResponseTimeout := RequestTimeoutMs;
-      LHttp.HandleRedirects := False;
+      var LUpstream := LConfig.MetadataProxyUpstream.TrimRight(['/']);
+      var LCacheKey := TProxyCache.KeyFor(LUpstream, LConfig.MetadataProxyUrl);
+
+      var LCached: string;
+      if FProxyCache.TryGet(LCacheKey, LCached) then
+      begin
+        LResponse.Code := HTTP_CODE_OK;
+        LResponse.Content := LCached;
+        Exit;
+      end;
+
+      var LHttp := THTTPClient.Create;
       try
-        var LUpstream := LConfig.MetadataProxyUpstream.TrimRight(['/']);
+        LHttp.ConnectionTimeout := RequestTimeoutMs;
+        LHttp.ResponseTimeout := RequestTimeoutMs;
+        LHttp.HandleRedirects := False;
+
         var LUpstreamUrl := LUpstream + '/.well-known/openid-configuration';
         var LUpstreamResponse := LHttp.Get(LUpstreamUrl);
 
@@ -366,19 +479,19 @@ var
 
           LResponse.Code := HTTP_CODE_OK;
           LResponse.Content := LJSON.ToJSON;
-          FProxyCache.Store(LResponse.Content);
+          FProxyCache.Store(LCacheKey, LResponse.Content);
         finally
           LJSON.Free;
         end;
-      except
-        on E: Exception do
-        begin
-          LResponse.Code := HTTP_CODE_BADGATEWAY;
-          LResponse.Content := ErrorBody(E.Message);
-        end;
+      finally
+        LHttp.Free;
       end;
-    finally
-      LHttp.Free;
+    except
+      on E: Exception do
+      begin
+        LResponse.Code := HTTP_CODE_BADGATEWAY;
+        LResponse.Content := ErrorBody(E.Message);
+      end;
     end;
   end;
 

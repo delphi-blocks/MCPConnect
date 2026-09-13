@@ -32,6 +32,8 @@ uses
   System.SysUtils, System.Classes, System.JSON, System.Generics.Collections,
   DUnitX.TestFramework,
 
+  IdContext, IdHTTPServer, IdCustomHTTPServer,
+
   MCPConnect.Configuration.MCP,
   MCPConnect.Configuration.Auth,
   MCPConnect.Security.Token,
@@ -75,6 +77,37 @@ type
   public
     function Validate(AContext: TJRPCContext; const AToken: string;
       AAccessToken: TMCPAccessToken): TTokenValidationResult;
+  end;
+
+  /// <summary>
+  ///   A loopback HTTP server standing in for an authorization server. It publishes
+  ///   one OIDC discovery document per path, so a single process can host two
+  ///   upstreams that are told apart by what they say - which is what the proxy
+  ///   cache has to keep separate.
+  /// </summary>
+  TFakeUpstream = class
+  private
+    FServer: TIdHTTPServer;
+    FDocuments: TDictionary<string, string>;
+    FHits: Integer;
+    procedure CommandGet(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo;
+      AResponseInfo: TIdHTTPResponseInfo);
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    /// <summary>The issuer URL of an authorization server hosted under APath.</summary>
+    function BaseUrl(const APath: string): string;
+
+    /// <summary>
+    ///   Publishes the discovery document of the authorization server at APath. Every
+    ///   endpoint in it names its own base URL, so a document served for the wrong
+    ///   upstream is recognisable at a glance.
+    /// </summary>
+    procedure PublishIssuer(const APath: string);
+
+    /// <summary>How many requests have reached it: what tells a cache hit apart.</summary>
+    property Hits: Integer read FHits;
   end;
 
   [TestFixture]
@@ -143,7 +176,45 @@ type
     procedure TestStaticToken_LowercaseHeaderName_IsAccepted;
   end;
 
+  /// <summary>
+  ///   The metadata proxy: what it republishes, and - the point of the fixture -
+  ///   that the document it caches belongs to the server that fetched it. The cache
+  ///   is per process, so two servers proxying different authorization servers are
+  ///   the case that has to work.
+  /// </summary>
+  [TestFixture]
+  TTransportOAuthProxyTest = class(TObject)
+  private const
+    Resource = 'https://mcp.example.com/api/mcp';
+    ProxyUrl = '/oauth-proxy/.well-known/openid-configuration';
+  private
+    FUpstream: TFakeUpstream;
+
+    /// <summary>
+    ///   Builds a server proxying the upstream hosted at APath and asks it for the
+    ///   proxied document, exactly as a client reading discovery would.
+    /// </summary>
+    function ProxyDocumentOf(const AUpstreamPath: string): TTransportOutcome;
+  public
+    [Setup]
+    procedure Setup;
+    [TearDown]
+    procedure TearDown;
+
+    [Test]
+    procedure TestProxy_RepublishesTheUpstreamDocumentUnderItsOwnIssuer;
+    [Test]
+    procedure TestProxy_ASecondUpstreamIsNotServedTheFirstsDocument;
+    [Test]
+    procedure TestProxy_TheSameUpstreamIsFetchedOnce;
+  end;
+
 implementation
+
+uses
+  System.SyncObjs, IdSocketHandle,
+
+  MCPConnect.MCP.Middleware.OAuth;
 
 { TStubTransportWriter }
 
@@ -198,6 +269,100 @@ begin
     'the stub validator did not accept this token');
 end;
 
+/// <summary>
+///   Drives one request through a server the way a transport does: one handler, a
+///   request converter in, a response converter out. Shared by both fixtures.
+/// </summary>
+function ExecuteOn(AServer: TMCPServer; const AMethod, AUrl, AHeaderName,
+  AHeaderValue: string; AProtocol: TTransportProtocol): TTransportOutcome;
+var
+  LHandler: IMCPTransportHandler;
+  LOutcome: TTransportOutcome;
+begin
+  LOutcome := Default(TTransportOutcome);
+
+  LHandler := TMCPTransportHandler.Create(AServer, TStubTransportWriter.Create);
+  LHandler.ProcessRequest(
+    procedure (ARequest: TMCPTransportRequest)
+    begin
+      ARequest.Url := AUrl;
+      ARequest.Command := AMethod;
+      ARequest.Protocol := AProtocol;
+      if AHeaderValue <> '' then
+        ARequest.SetHeader(AHeaderName, AHeaderValue);
+    end,
+    procedure (AResponse: TMCPTransportResponse)
+    begin
+      LOutcome.Code := AResponse.Code;
+      LOutcome.Content := AResponse.Content;
+      LOutcome.ContentType := AResponse.ContentType;
+      LOutcome.Challenge := AResponse.GetHeader('WWW-Authenticate');
+      LOutcome.HasChallenge := LOutcome.Challenge <> '';
+    end
+  );
+
+  Result := LOutcome;
+end;
+
+{ TFakeUpstream }
+
+constructor TFakeUpstream.Create;
+var
+  LBinding: TIdSocketHandle;
+begin
+  inherited Create;
+  FDocuments := TDictionary<string, string>.Create;
+
+  FServer := TIdHTTPServer.Create(nil);
+  FServer.OnCommandGet := CommandGet;
+
+  // Loopback and an ephemeral port: nothing outside the machine can reach it, and
+  // two test runs at once do not collide over a number.
+  LBinding := FServer.Bindings.Add;
+  LBinding.IP := '127.0.0.1';
+  LBinding.Port := 0;
+  FServer.Active := True;
+end;
+
+destructor TFakeUpstream.Destroy;
+begin
+  FServer.Active := False;
+  FServer.Free;
+  FDocuments.Free;
+  inherited;
+end;
+
+function TFakeUpstream.BaseUrl(const APath: string): string;
+begin
+  Result := Format('http://127.0.0.1:%d%s', [FServer.Bindings[0].Port, APath]);
+end;
+
+procedure TFakeUpstream.PublishIssuer(const APath: string);
+begin
+  // "issuer" has to be the URL the document was fetched from or the proxy refuses it
+  // (RFC 8414 3.3), which is also what makes each document identify its own upstream.
+  FDocuments.AddOrSetValue(APath + '/.well-known/openid-configuration', Format(
+    '{"issuer":"%0:s","authorization_endpoint":"%0:s/authorize",' +
+    '"token_endpoint":"%0:s/token","jwks_uri":"%0:s/keys"}', [BaseUrl(APath)]));
+end;
+
+procedure TFakeUpstream.CommandGet(AContext: TIdContext;
+  ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
+var
+  LDocument: string;
+begin
+  TInterlocked.Increment(FHits);
+
+  if FDocuments.TryGetValue(ARequestInfo.Document, LDocument) then
+  begin
+    AResponseInfo.ResponseNo := 200;
+    AResponseInfo.ContentType := 'application/json';
+    AResponseInfo.ContentText := LDocument;
+  end
+  else
+    AResponseInfo.ResponseNo := 404;
+end;
+
 { TTransportOAuthTest }
 
 procedure TTransportOAuthTest.Setup;
@@ -241,34 +406,9 @@ end;
 
 function TTransportOAuthTest.Execute(const AMethod, AUrl, AHeaderName, AHeaderValue: string;
   AProtocol: TTransportProtocol): TTransportOutcome;
-var
-  LHandler: IMCPTransportHandler;
-  LOutcome: TTransportOutcome;
 begin
-  LOutcome := Default(TTransportOutcome);
-
   // One handler per request, built exactly as every transport builds it.
-  LHandler := TMCPTransportHandler.Create(FServer, TStubTransportWriter.Create);
-  LHandler.ProcessRequest(
-    procedure (ARequest: TMCPTransportRequest)
-    begin
-      ARequest.Url := AUrl;
-      ARequest.Command := AMethod;
-      ARequest.Protocol := AProtocol;
-      if AHeaderValue <> '' then
-        ARequest.SetHeader(AHeaderName, AHeaderValue);
-    end,
-    procedure (AResponse: TMCPTransportResponse)
-    begin
-      LOutcome.Code := AResponse.Code;
-      LOutcome.Content := AResponse.Content;
-      LOutcome.ContentType := AResponse.ContentType;
-      LOutcome.Challenge := AResponse.GetHeader('WWW-Authenticate');
-      LOutcome.HasChallenge := LOutcome.Challenge <> '';
-    end
-  );
-
-  Result := LOutcome;
+  Result := ExecuteOn(FServer, AMethod, AUrl, AHeaderName, AHeaderValue, AProtocol);
 end;
 
 procedure TTransportOAuthTest.TestMetadata_IsServedAtThePathInsertionUrl;
@@ -529,7 +669,125 @@ begin
   Assert.AreNotEqual(403, LOutcome.Code, 'Lowercase "authorization" header must be accepted for static tokens');
 end;
 
+{ TTransportOAuthProxyTest }
+
+procedure TTransportOAuthProxyTest.Setup;
+begin
+  FUpstream := TFakeUpstream.Create;
+  FUpstream.PublishIssuer('/idp-a');
+  FUpstream.PublishIssuer('/idp-b');
+
+  // The cache outlives a server, so a fixture that did not drop it would pass or
+  // fail on the order its tests happened to run in.
+  TOAuthMiddleware.ClearProxyCache;
+end;
+
+procedure TTransportOAuthProxyTest.TearDown;
+begin
+  TOAuthMiddleware.ClearProxyCache;
+  FUpstream.Free;
+end;
+
+function TTransportOAuthProxyTest.ProxyDocumentOf(
+  const AUpstreamPath: string): TTransportOutcome;
+var
+  LServer: TMCPServer;
+begin
+  LServer := TMCPServer.Create(nil);
+  try
+    LServer.Plugin.Configure<IMCPConfig>
+      .Server
+        .SetName('proxy-test')
+        .SetVersion('1.0.0')
+      .BackToMCP
+    .ApplyConfig;
+
+    LServer.Plugin.Configure<IOAuthConfig>
+      .SetResource(Resource)
+      .EnableMetadataProxy(FUpstream.BaseUrl(AUpstreamPath))
+      .SetTokenValidatorClass(TStubTokenValidator)
+    .ApplyConfig;
+
+    Result := ExecuteOn(LServer, 'GET', ProxyUrl, '', '',
+      TTransportProtocol.StreamableHTTP);
+  finally
+    LServer.Free;
+  end;
+end;
+
+procedure TTransportOAuthProxyTest.TestProxy_RepublishesTheUpstreamDocumentUnderItsOwnIssuer;
+var
+  LOutcome: TTransportOutcome;
+  LJSON: TJSONObject;
+begin
+  LOutcome := ProxyDocumentOf('/idp-a');
+
+  Assert.AreEqual(200, LOutcome.Code, LOutcome.Content);
+
+  LJSON := TJSONObject.ParseJSONValue(LOutcome.Content) as TJSONObject;
+  try
+    Assert.IsNotNull(LJSON, 'The proxied document must be JSON');
+
+    // The issuer is this proxy, the endpoints are still the upstream's, and S256 is
+    // injected for the clients that insist on reading it.
+    Assert.AreEqual('https://mcp.example.com/oauth-proxy',
+      LJSON.GetValue<string>('issuer'));
+    Assert.AreEqual(FUpstream.BaseUrl('/idp-a') + '/authorize',
+      LJSON.GetValue<string>('authorization_endpoint'));
+    Assert.AreEqual('S256',
+      LJSON.GetValue<TJSONArray>('code_challenge_methods_supported').Items[0].Value);
+  finally
+    LJSON.Free;
+  end;
+end;
+
+procedure TTransportOAuthProxyTest.TestProxy_ASecondUpstreamIsNotServedTheFirstsDocument;
+var
+  LFirst, LSecond: TTransportOutcome;
+
+  function AuthorizationEndpointOf(const AOutcome: TTransportOutcome): string;
+  var
+    LJSON: TJSONObject;
+  begin
+    LJSON := TJSONObject.ParseJSONValue(AOutcome.Content) as TJSONObject;
+    try
+      Assert.IsNotNull(LJSON, 'The proxied document must be JSON');
+      Result := LJSON.GetValue<string>('authorization_endpoint');
+    finally
+      LJSON.Free;
+    end;
+  end;
+
+begin
+  // Two servers in one process, each proxying its own authorization server: the
+  // cache is shared between them, so it has to be keyed by what it holds. Served
+  // from one slot, the second server republishes the first one's endpoints - and
+  // sends its clients to someone else's identity provider.
+  LFirst := ProxyDocumentOf('/idp-a');
+  LSecond := ProxyDocumentOf('/idp-b');
+
+  Assert.AreEqual(200, LFirst.Code, LFirst.Content);
+  Assert.AreEqual(200, LSecond.Code, LSecond.Content);
+
+  Assert.AreEqual(FUpstream.BaseUrl('/idp-a') + '/authorize',
+    AuthorizationEndpointOf(LFirst));
+  Assert.AreEqual(FUpstream.BaseUrl('/idp-b') + '/authorize',
+    AuthorizationEndpointOf(LSecond),
+    'The second server was served the first one''s cached document');
+end;
+
+procedure TTransportOAuthProxyTest.TestProxy_TheSameUpstreamIsFetchedOnce;
+begin
+  // Keying the cache must not turn it off: the same upstream asked for twice is one
+  // fetch, which is the whole reason the cache is there.
+  Assert.AreEqual(200, ProxyDocumentOf('/idp-a').Code);
+  Assert.AreEqual(200, ProxyDocumentOf('/idp-a').Code);
+
+  Assert.AreEqual(1, FUpstream.Hits);
+end;
+
 initialization
   TDUnitX.RegisterTestFixture(TTransportOAuthTest);
+  TDUnitX.RegisterTestFixture(TTransportOAuthProxyTest);
 
 end.

@@ -340,6 +340,20 @@ type
     [Test]
     procedure TestApplyConfig_WithoutAResourceRaises;
     [Test]
+    procedure TestApplyConfig_WithARelativeResourceRaises;
+    [Test]
+    procedure TestApplyConfig_WithASchemeOnlyResourceRaises;
+    [Test]
+    procedure TestAddAuthorizationServer_IgnoresEmptyValues;
+    [Test]
+    procedure TestAddAuthorizationServer_RefusesAValueThatIsNotAUrl;
+    [Test]
+    procedure TestAddScopesSupported_RefusesASpaceDelimitedList;
+    [Test]
+    procedure TestAddRequiredScope_RefusesASpaceDelimitedList;
+    [Test]
+    procedure TestScopes_AreTrimmed;
+    [Test]
     procedure TestApplyConfig_WithoutAuthorizationServersAcceptsAnythingElse;
     [Test]
     procedure TestSameUri_FoldsTheAuthorityButNotThePath;
@@ -1539,13 +1553,14 @@ end;
 procedure TOAuthConfigValidationTest.TestResourceMetadata_RequiresAResource;
 begin
   // There is no metadata URL to advertise without one, and guessing would put the
-  // wrong host in every challenge.
+  // wrong host in every challenge. EJRPCException rather than a bare one, because
+  // this is reached from a request and the JSON-RPC layer is what reports it.
   Assert.WillRaise(
     procedure
     begin
       GetOAuthConfig.ResourceMetadata;
     end,
-    Exception);
+    EJRPCException);
 end;
 
 procedure TOAuthConfigValidationTest.TestApplyConfig_WithoutAResourceRaises;
@@ -1561,6 +1576,106 @@ begin
       FConfig.ApplyConfig;
     end,
     EJRPCException);
+end;
+
+procedure TOAuthConfigValidationTest.TestApplyConfig_WithARelativeResourceRaises;
+begin
+  // ResourceMetadata and MetadataProxyUrl are both built through TURI.Create on it,
+  // so a value that is not an absolute URL fails on the request that needs it - a 500
+  // raised from inside the handler writing a 401. Said here instead.
+  Assert.WillRaise(
+    procedure
+    begin
+      FConfig
+        .SetResource('/mcp')
+        .AddAuthorizationServer('https://idp.example.com')
+      .ApplyConfig;
+    end,
+    EJRPCException);
+end;
+
+procedure TOAuthConfigValidationTest.TestApplyConfig_WithASchemeOnlyResourceRaises;
+begin
+  // Parses, and has no host: every URL derived from it would name nothing.
+  Assert.WillRaise(
+    procedure
+    begin
+      FConfig
+        .SetResource('https://')
+        .AddAuthorizationServer('https://idp.example.com')
+      .ApplyConfig;
+    end,
+    EJRPCException);
+end;
+
+procedure TOAuthConfigValidationTest.TestAddAuthorizationServer_IgnoresEmptyValues;
+begin
+  // Usually an environment variable that was not set. Registered, it would turn
+  // enforcement on - the count is what does that - while naming a server nothing can
+  // discover, so the server starts and refuses every request it is given.
+  FConfig
+    .SetResource('https://mcp.example.com/mcp')
+    .AddAuthorizationServer('')
+    .AddAuthorizationServer('   ');
+
+  Assert.AreEqual(0, Length(GetOAuthConfig.AuthorizationServers));
+end;
+
+procedure TOAuthConfigValidationTest.TestAddAuthorizationServer_RefusesAValueThatIsNotAUrl;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      FConfig.AddAuthorizationServer('idp.example.com');
+    end,
+    EJRPCException, 'An authorization server with no scheme can never be discovered');
+
+  Assert.AreEqual(0, Length(GetOAuthConfig.AuthorizationServers),
+    'A refused value must not have been registered');
+end;
+
+procedure TOAuthConfigValidationTest.TestAddScopesSupported_RefusesASpaceDelimitedList;
+begin
+  // How scopes travel everywhere else in OAuth, which is what makes it the mistake
+  // worth catching: it would be advertised as one scope of that name.
+  Assert.WillRaise(
+    procedure
+    begin
+      FConfig.AddScopesSupported('openid profile');
+    end,
+    EJRPCException);
+
+  Assert.AreEqual(0, Length(GetOAuthConfig.ScopesSupported));
+end;
+
+procedure TOAuthConfigValidationTest.TestAddRequiredScope_RefusesASpaceDelimitedList;
+begin
+  // Worse here than in the advertised list: a required scope no token can carry
+  // rejects every request with "insufficient_scope".
+  Assert.WillRaise(
+    procedure
+    begin
+      FConfig.AddRequiredScope('mcp.read mcp.write');
+    end,
+    EJRPCException);
+
+  Assert.AreEqual(0, Length(GetOAuthConfig.RequiredScopes));
+end;
+
+procedure TOAuthConfigValidationTest.TestScopes_AreTrimmed;
+var
+  LConfig: TOAuthConfig;
+begin
+  // Surrounding whitespace is a typo rather than a different scope, and a scope is
+  // compared literally against what the token carries.
+  FConfig
+    .AddScopesSupported('  openid  ')
+    .AddRequiredScope('  mcp.read  ');
+
+  LConfig := GetOAuthConfig;
+
+  Assert.AreEqual('openid', LConfig.ScopesSupported[0]);
+  Assert.AreEqual('mcp.read', LConfig.RequiredScopes[0]);
 end;
 
 procedure TOAuthConfigValidationTest.TestApplyConfig_WithoutAuthorizationServersAcceptsAnythingElse;

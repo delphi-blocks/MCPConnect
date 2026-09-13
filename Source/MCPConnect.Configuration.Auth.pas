@@ -44,6 +44,15 @@ resourcestring
   SOAuthClockSkewInvalidFmt = 'A clock skew of %d seconds cannot be used: the tolerance ' +
     'on "exp" and "nbf" widens the window a token is accepted in, it cannot narrow it. ' +
     'Pass zero or more seconds.';
+  SOAuthResourceInvalidFmt = 'The OAuth resource "%s" is not an absolute URL: %s. The ' +
+    'protected resource metadata URL, the metadata proxy URL and the default audience are ' +
+    'all built from it, so pass the full public URL clients connect to - scheme and host ' +
+    'included.';
+  SOAuthAuthServerInvalidFmt = 'The authorization server "%s" is not an absolute URL: %s. ' +
+    'Its metadata could never be discovered, so no token it issued could be validated.';
+  SOAuthScopeInvalidFmt = 'The scope "%s" is not a single scope token: RFC 6749 section 3.3 ' +
+    'allows visible ASCII other than space, double quote and backslash. Call the method ' +
+    'once per scope rather than passing a space-delimited list.';
   SOAuthResourceRequired = 'OAuth is enabled but no resource URL is configured: call ' +
     'IOAuthConfig.SetResource with the public URL clients connect to. Without it there is no ' +
     'metadata URL to advertise in a challenge and no default audience to validate tokens against.';
@@ -147,14 +156,36 @@ type
   IOAuthConfig =  interface(IJRPCConfiguration)
     ['{00A0F0C3-5865-43DF-A710-782815D3989E}']
     function SetRealm(const ARealm: string): IOAuthConfig;
+
+    /// <summary>
+    ///   The canonical, public URL clients connect to (the "resource" of RFC 8707).
+    ///   ApplyConfig refuses a value that is not an absolute URL.
+    /// </summary>
     function SetResource(const AUrl: string): IOAuthConfig;
+
+    /// <summary>
+    ///   Registers an authorization server whose tokens this resource accepts, and
+    ///   turns OAuth enforcement on. Can be called multiple times.
+    /// </summary>
+    /// <remarks>
+    ///   An empty or whitespace value is ignored rather than registered: it would
+    ///   enable enforcement while naming a server that can never be discovered. A
+    ///   non-empty value that is not an absolute URL raises.
+    /// </remarks>
     function AddAuthorizationServer(const AAuthorizationServer: string): IOAuthConfig;
+
+    /// <summary>
+    ///   Advertises one supported OAuth scope in the protected resource metadata.
+    ///   Can be called multiple times; one scope per call, and a value that is not a
+    ///   single scope token raises.
+    /// </summary>
     function AddScopesSupported(const AScopesSupported: string): IOAuthConfig;
 
     /// <summary>
     ///   Enables a local proxy for the authorization server's metadata document
-    ///   (RFC 8414 / OIDC Discovery). The server will fetch
-    ///   "&lt;AUpstreamIssuer&gt;/.well-known/openid-configuration", inject
+    ///   (RFC 8414 / OIDC Discovery). The server will fetch the upstream document from
+    ///   the first of the three well-known URLs the MCP authorization specification
+    ///   prescribes that answers for AUpstreamIssuer, inject
     ///   "code_challenge_methods_supported": ["S256"] when the upstream document
     ///   does not advertise it, rewrite "issuer" to the local proxy URL, and
     ///   republish the result on a local well-known path. That local path is
@@ -235,7 +266,8 @@ type
 
     /// <summary>
     ///   Adds a scope the token must carry. A token missing any of them is rejected
-    ///   with "insufficient_scope". Can be called multiple times.
+    ///   with "insufficient_scope". Can be called multiple times; one scope per call,
+    ///   and a value that is not a single scope token raises.
     /// </summary>
     function AddRequiredScope(const AScope: string): IOAuthConfig;
 
@@ -364,6 +396,23 @@ type
     ///   doing while developing.
     /// </summary>
     class function IsLoopbackUrl(const AUrl: string): Boolean; static;
+
+    /// <summary>
+    ///   Whether AUrl is an absolute URL: one TURI can parse, carrying both a scheme
+    ///   and a host. AReason says what was wrong with it when it is not.
+    /// </summary>
+    /// <remarks>
+    ///   Every URL this configuration holds is built on rather than merely stored -
+    ///   the resource becomes a metadata URL, a proxy URL and an audience - so one
+    ///   that cannot be parsed is a startup error and not a request-time surprise.
+    /// </remarks>
+    class function IsAbsoluteUrl(const AUrl: string; out AReason: string): Boolean; static;
+
+    /// <summary>
+    ///   Whether AValue is a single RFC 6749 section 3.3 scope token: one or more
+    ///   visible ASCII characters other than space, double quote and backslash.
+    /// </summary>
+    class function IsScopeToken(const AValue: string): Boolean; static;
 
     /// <summary>
     ///   The authorization server whose published keys verify a token issued by
@@ -528,9 +577,22 @@ function TOAuthConfig.AddAuthorizationServer(
   const AAuthorizationServer: string): IOAuthConfig;
 var
   LMiddleware: TMiddlewareList;
+  LReason: string;
 begin
-  FAuthorizationServers := FAuthorizationServers + [AAuthorizationServer];
   Result := Self;
+
+  // Ignored rather than registered, the way AddTrustedIssuer already treats one: an
+  // empty entry is enough to turn enforcement on - the count is what does that - while
+  // naming a server nothing could ever discover, so the server would start and refuse
+  // every request. Usually an environment variable that was not set.
+  if AAuthorizationServer.Trim = '' then
+    Exit;
+
+  if not IsAbsoluteUrl(AAuthorizationServer, LReason) then
+    raise EJRPCException.CreateFmt(SOAuthAuthServerInvalidFmt,
+      [AAuthorizationServer, LReason]);
+
+  FAuthorizationServers := FAuthorizationServers + [AAuthorizationServer.Trim];
 
   // An authorization server is what turns OAuth on - everything else here
   // (resource, validator, proxy) configures an enforcement that without one
@@ -546,7 +608,13 @@ end;
 function TOAuthConfig.AddScopesSupported(
   const AScopesSupported: string): IOAuthConfig;
 begin
-  FScopesSupported := FScopesSupported + [AScopesSupported];
+  // A space-delimited list is the plausible mistake here, since that is how scopes
+  // travel everywhere else in OAuth. It would be advertised as one scope of that
+  // name, which no authorization server can grant.
+  if not IsScopeToken(AScopesSupported.Trim) then
+    raise EJRPCException.CreateFmt(SOAuthScopeInvalidFmt, [AScopesSupported]);
+
+  FScopesSupported := FScopesSupported + [AScopesSupported.Trim];
   Result := Self;
 end;
 
@@ -585,7 +653,7 @@ function TOAuthConfig.ApplyConfig: IJRPCApplication;
   end;
 
 var
-  LUrl: string;
+  LUrl, LReason: string;
 begin
   Result := inherited ApplyConfig;
 
@@ -602,6 +670,13 @@ begin
   // are certain, so there is nothing to be gained by starting.
   if Resource = '' then
     raise EJRPCException.Create(SOAuthResourceRequired);
+
+  // Parsed once, here, rather than on the first request that needs it: ResourceMetadata
+  // and MetadataProxyUrl are both built through TURI.Create(Resource), so a value TURI
+  // cannot read becomes a 500 raised from inside the handler writing a 401 - at the
+  // worst moment, and with nothing in it pointing back at the line that set it.
+  if not IsAbsoluteUrl(Resource, LReason) then
+    raise EJRPCException.CreateFmt(SOAuthResourceInvalidFmt, [Resource, LReason]);
 
   if not Assigned(TokenValidatorClass) then
     Logger.LogWarning(SOAuthNoValidatorWarning);
@@ -620,8 +695,11 @@ end;
 
 function TOAuthConfig.GetResourceMetadata: string;
 begin
+  // EJRPCException rather than a bare one: this is reached from a request, where the
+  // JSON-RPC layer is what decides how an exception is reported. ApplyConfig makes it
+  // unreachable on a server that started, which is where the real answer to it is.
   if FResource = '' then
-    raise Exception.Create(SOAuthResourceNotSpecified);
+    raise EJRPCException.Create(SOAuthResourceNotSpecified);
 
   var LURI := TURI.Create(FResource);
 
@@ -648,7 +726,7 @@ end;
 function TOAuthConfig.GetMetadataProxyUrl: string;
 begin
   if FResource = '' then
-    raise Exception.Create(SOAuthResourceNotSpecified);
+    raise EJRPCException.Create(SOAuthResourceNotSpecified);
 
   var LURI := TURI.Create(FResource);
   LURI.Path := MetadataProxyPath;
@@ -735,7 +813,12 @@ end;
 
 function TOAuthConfig.AddRequiredScope(const AScope: string): IOAuthConfig;
 begin
-  FRequiredScopes := FRequiredScopes + [AScope];
+  // The same rule as AddScopesSupported, and here it costs more: a required scope no
+  // token can carry rejects every request with "insufficient_scope".
+  if not IsScopeToken(AScope.Trim) then
+    raise EJRPCException.CreateFmt(SOAuthScopeInvalidFmt, [AScope]);
+
+  FRequiredScopes := FRequiredScopes + [AScope.Trim];
   Result := Self;
 end;
 
@@ -846,6 +929,57 @@ begin
   Split(B.Trim.TrimRight(['/']), LAuthorityB, LRestB);
 
   Result := SameText(LAuthorityA, LAuthorityB) and (LRestA = LRestB);
+end;
+
+class function TOAuthConfig.IsAbsoluteUrl(const AUrl: string;
+  out AReason: string): Boolean;
+var
+  LUri: TURI;
+begin
+  AReason := '';
+
+  if AUrl.Trim = '' then
+  begin
+    AReason := 'it is empty';
+    Exit(False);
+  end;
+
+  try
+    LUri := TURI.Create(AUrl);
+  except
+    // TURI is the parser every other use of this URL goes through, so whether it can
+    // read the value is the question worth asking - not whether it looks like a URL.
+    on E: Exception do
+    begin
+      AReason := E.Message;
+      Exit(False);
+    end;
+  end;
+
+  if LUri.Scheme = '' then
+    AReason := 'it has no scheme'
+  else if LUri.Host = '' then
+    AReason := 'it has no host';
+
+  Result := AReason = '';
+end;
+
+class function TOAuthConfig.IsScopeToken(const AValue: string): Boolean;
+var
+  LChar: Char;
+begin
+  if AValue = '' then
+    Exit(False);
+
+  // The charset RFC 6749 section 3.3 defines: %x21 / %x23-5B / %x5D-7E. A space is
+  // what separates two scopes, so one inside a value means two scopes arrived where
+  // the API takes one; the quote and the backslash are excluded because a scope is
+  // also sent inside the quoted-string of a WWW-Authenticate challenge.
+  for LChar in AValue do
+    if (LChar < #$21) or (LChar > #$7E) or (LChar = '"') or (LChar = '\') then
+      Exit(False);
+
+  Result := True;
 end;
 
 class function TOAuthConfig.IsLoopbackUrl(const AUrl: string): Boolean;

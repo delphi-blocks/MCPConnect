@@ -71,14 +71,14 @@ AServer
 
 | Method | Purpose |
 |---|---|
-| `SetResource(AUrl)` | The canonical, public URL of this MCP server (the `resource` in RFC 8707 terms). **Must be called first** — other methods derive URLs from it. |
+| `SetResource(AUrl)` | The canonical, public URL of this MCP server (the `resource` in RFC 8707 terms). **Must be called first** — other methods derive URLs from it. `ApplyConfig` refuses a value that is not an absolute URL, since every one of those derived URLs would be wrong. |
 | `SetRealm(ARealm)` | The `realm` value sent in the `WWW-Authenticate` header. Defaults to `'mcp'`. |
-| `AddAuthorizationServer(AUrl)` | Registers an external authorization server. Can be called multiple times; all are listed in the protected resource metadata. |
-| `AddScopesSupported(AScope)` | Advertises a supported OAuth scope. Can be called multiple times. |
+| `AddAuthorizationServer(AUrl)` | Registers an external authorization server, and turns enforcement on. Can be called multiple times; all are listed in the protected resource metadata. An empty or whitespace value is ignored rather than registered — an unset environment variable would otherwise enable OAuth while naming a server nothing can discover. A non-empty value that is not an absolute URL raises. |
+| `AddScopesSupported(AScope)` | Advertises a supported OAuth scope. Can be called multiple times — **one scope per call**: a space-delimited list raises, since it would be advertised as a single scope of that name. |
 | `EnableMetadataProxy(AUpstreamIssuer)` | See [Section 4](#4-the-metadata-proxy). Registers a local proxy URL as the authorization server instead of `AUpstreamIssuer` directly. |
 | `SetTokenValidatorClass(AClass)` | Registers the class that validates bearer tokens. Without it the server rejects every bearer token — see [Section 3.2](#32-token-validation). |
 | `SetAudience(AAudience)` | Value the token's `aud` claim must contain. Defaults to `SetResource`. |
-| `AddRequiredScope(AScope)` | Scope the token must carry, else `insufficient_scope`. Can be called multiple times. |
+| `AddRequiredScope(AScope)` | Scope the token must carry, else `insufficient_scope`. Can be called multiple times, one scope per call; a space-delimited list raises, as no token could ever carry it. |
 | `SetClockSkew(ASeconds)` | Tolerance on `exp`/`nbf`, in seconds. Defaults to 60. Zero is allowed; a negative value raises, since a tolerance can only widen the window a token is accepted in. |
 | `SetKeyCacheTTL(ASeconds)` | Lifetime of the cached JWKS, in seconds. Defaults to 3600. Works in either order with `SetMetadataProvider` — a provider installed afterwards is told the same value, while one installed without the TTL ever being set keeps its own. Zero or less raises: an entry that old is already expired, so every token validated would refetch the JWKS. |
 

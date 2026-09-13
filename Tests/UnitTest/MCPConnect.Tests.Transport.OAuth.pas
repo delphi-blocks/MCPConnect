@@ -100,9 +100,17 @@ type
     function BaseUrl(const APath: string): string;
 
     /// <summary>
-    ///   Publishes the discovery document of the authorization server at APath. Every
-    ///   endpoint in it names its own base URL, so a document served for the wrong
-    ///   upstream is recognisable at a glance.
+    ///   Publishes a discovery document at ADocumentPath declaring AIssuer. Every
+    ///   endpoint in it names that issuer, so a document served for the wrong upstream
+    ///   is recognisable at a glance. The two are separate arguments because which URL
+    ///   a document is published at, and which issuer it claims, are exactly what the
+    ///   discovery walk and the RFC 8414 section 3.3 check are about.
+    /// </summary>
+    procedure Publish(const ADocumentPath, AIssuer: string);
+
+    /// <summary>
+    ///   Publishes the discovery document of the authorization server at APath, under
+    ///   the OpenID Connect path-appending URL.
     /// </summary>
     procedure PublishIssuer(const APath: string);
 
@@ -207,6 +215,10 @@ type
     procedure TestProxy_ASecondUpstreamIsNotServedTheFirstsDocument;
     [Test]
     procedure TestProxy_TheSameUpstreamIsFetchedOnce;
+    [Test]
+    procedure TestProxy_FindsAnAuthorizationServerWithNoOidcDocument;
+    [Test]
+    procedure TestProxy_RefusesAnIssuerDifferingOnlyInPathCase;
   end;
 
 implementation
@@ -337,13 +349,20 @@ begin
   Result := Format('http://127.0.0.1:%d%s', [FServer.Bindings[0].Port, APath]);
 end;
 
+procedure TFakeUpstream.Publish(const ADocumentPath, AIssuer: string);
+begin
+  FDocuments.AddOrSetValue(ADocumentPath, Format(
+    '{"issuer":"%0:s","authorization_endpoint":"%0:s/authorize",' +
+    '"token_endpoint":"%0:s/token","jwks_uri":"%0:s/keys"}', [AIssuer]));
+end;
+
 procedure TFakeUpstream.PublishIssuer(const APath: string);
 begin
-  // "issuer" has to be the URL the document was fetched from or the proxy refuses it
-  // (RFC 8414 3.3), which is also what makes each document identify its own upstream.
-  FDocuments.AddOrSetValue(APath + '/.well-known/openid-configuration', Format(
-    '{"issuer":"%0:s","authorization_endpoint":"%0:s/authorize",' +
-    '"token_endpoint":"%0:s/token","jwks_uri":"%0:s/keys"}', [BaseUrl(APath)]));
+  // The last of the three candidates the proxy tries, so a document found here says
+  // the whole walk happened. "issuer" has to be the URL it was fetched for or the
+  // proxy refuses it (RFC 8414 3.3), which is also what makes each document identify
+  // its own upstream.
+  Publish(APath + '/.well-known/openid-configuration', BaseUrl(APath));
 end;
 
 procedure TFakeUpstream.CommandGet(AContext: TIdContext;
@@ -777,13 +796,69 @@ begin
 end;
 
 procedure TTransportOAuthProxyTest.TestProxy_TheSameUpstreamIsFetchedOnce;
+var
+  LAfterFirst: Integer;
 begin
-  // Keying the cache must not turn it off: the same upstream asked for twice is one
-  // fetch, which is the whole reason the cache is there.
+  // Keying the cache must not turn it off: the same upstream asked for a second time
+  // does not reach it at all, which is the whole reason the cache is there. Counted
+  // as a delta rather than as a total, because how many requests the first answer
+  // costs is the discovery walk's business - this upstream publishes at the last of
+  // the three URLs it tries.
   Assert.AreEqual(200, ProxyDocumentOf('/idp-a').Code);
+  LAfterFirst := FUpstream.Hits;
+  Assert.IsTrue(LAfterFirst > 0, 'The first answer must have been fetched');
+
   Assert.AreEqual(200, ProxyDocumentOf('/idp-a').Code);
 
+  Assert.AreEqual(LAfterFirst, FUpstream.Hits,
+    'The second request must have been served from the cache');
+end;
+
+procedure TTransportOAuthProxyTest.TestProxy_FindsAnAuthorizationServerWithNoOidcDocument;
+var
+  LOutcome: TTransportOutcome;
+  LJSON: TJSONObject;
+begin
+  // An OAuth 2.1 authorization server that is not an OpenID Connect provider: it
+  // publishes the RFC 8414 document and nothing else. Asking only for the OpenID
+  // Connect URL answered 502 with the upstream working perfectly well.
+  FUpstream.Publish('/.well-known/oauth-authorization-server/idp-c',
+    FUpstream.BaseUrl('/idp-c'));
+
+  LOutcome := ProxyDocumentOf('/idp-c');
+
+  Assert.AreEqual(200, LOutcome.Code, LOutcome.Content);
+
+  LJSON := TJSONObject.ParseJSONValue(LOutcome.Content) as TJSONObject;
+  try
+    Assert.IsNotNull(LJSON, 'The proxied document must be JSON');
+    Assert.AreEqual(FUpstream.BaseUrl('/idp-c') + '/authorize',
+      LJSON.GetValue<string>('authorization_endpoint'));
+  finally
+    LJSON.Free;
+  end;
+
+  // The RFC 8414 form is the first candidate, so nothing else was asked for.
   Assert.AreEqual(1, FUpstream.Hits);
+end;
+
+procedure TTransportOAuthProxyTest.TestProxy_RefusesAnIssuerDifferingOnlyInPathCase;
+var
+  LOutcome: TTransportOutcome;
+begin
+  // The path of an issuer is case sensitive - RFC 3986 makes only the scheme and the
+  // authority insensitive - so "/IDP-D" is a different authorization server from
+  // "/idp-d". That is the rule TOAuthConfig.SameUri applies everywhere else, and the
+  // one a comparison that lowercased the whole URL quietly broke here.
+  FUpstream.Publish('/idp-d/.well-known/openid-configuration',
+    FUpstream.BaseUrl('/IDP-D'));
+
+  LOutcome := ProxyDocumentOf('/idp-d');
+
+  Assert.AreEqual(502, LOutcome.Code,
+    'A document declaring another issuer must not be republished');
+  Assert.Contains(LOutcome.Content, '/IDP-D',
+    'The refusal must say which issuer the document declared');
 end;
 
 initialization

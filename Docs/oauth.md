@@ -259,7 +259,13 @@ At runtime, when a client requests the authorization server's metadata (trying a
 well-known URL shapes a spec-compliant client may use — path-insertion or path-appending, for
 both `oauth-authorization-server` and `openid-configuration`), MCPConnect:
 
-1. Fetches `<upstream-issuer>/.well-known/openid-configuration` server-side.
+1. Fetches the upstream document server-side, trying the three URLs the MCP authorization
+   specification prescribes in its order — RFC 8414 path-insertion, OpenID Connect Discovery
+   path-insertion, then OpenID Connect Discovery path-appending — and using the first that
+   answers with a document declaring the issuer it was asked for (RFC 8414 §3.3). This is the
+   same walk signing-key discovery does. A document declaring a different issuer is refused,
+   the path compared case-exactly: only the scheme and the authority are case-insensitive
+   (RFC 3986), so `/tenant` and `/Tenant` are two different authorization servers.
 2. If `code_challenge_methods_supported` is missing or empty, adds `["S256"]`.
 3. Rewrites `issuer` to the local proxy URL — see [the trade-off](#41-the-issuer-rewrite) below.
 4. Passes everything else through untouched — `authorization_endpoint`, `token_endpoint` and every
@@ -303,9 +309,8 @@ local proxy URL.
 - This is deliberately a "just patch the document" proxy, not a full reverse proxy of the OAuth
   flow. If the upstream server is unreachable or returns a non-200 response, MCPConnect returns
   `502 Bad Gateway`.
-- The upstream document is fetched from `openid-configuration` only. An authorization server that
-  publishes solely the RFC 8414 `oauth-authorization-server` document cannot currently be proxied
-  (signing-key discovery, which is a separate path, does try both).
+- If every candidate URL fails, the `502` body lists each one with the reason it was rejected —
+  a status code, a document that is not JSON, or the issuer it declared.
 - On WebBroker, the `.well-known` paths need a route of their own — see
   [Section 3.4](#34-webbroker-routing).
 

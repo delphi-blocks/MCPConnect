@@ -135,6 +135,7 @@ uses
 
   MCPConnect.MCP.Types.Base,
   MCPConnect.Configuration.Auth,
+  MCPConnect.Security.Jwks,
   MCPConnect.Security.Token,
   MCPConnect.Transport.MediaType,
   MCPConnect.Transport.Base;
@@ -158,6 +159,76 @@ const
 
   /// <summary>Joins the two halves of a cache key; neither half can contain it.</summary>
   ProxyCacheKeySeparator = #10;
+
+/// <summary>
+///   Fetches one authorization server metadata candidate and answers it only if it
+///   is usable: 200, inside the size limit, a JSON object, and declaring the issuer
+///   it was asked for. Otherwise nil, with AError saying which of those failed.
+///   The caller owns what comes back.
+/// </summary>
+/// <remarks>
+///   The issuer check is RFC 8414 section 3.3, and it is what ties the document
+///   about to be republished back to the configured upstream: without it, whatever
+///   answers at a well-known URL decides where this proxy sends its clients to
+///   authorize. Applied to every candidate, so trying more of them cannot widen what
+///   is accepted. TOAuthConfig.SameIssuer is the one comparator for this across the
+///   OAuth code: it folds the authority case (RFC 3986) and leaves the path exact,
+///   because two paths differing in case are two different authorization servers.
+/// </remarks>
+function TryFetchDiscoveryDocument(AHttp: THTTPClient; const AUrl, AIssuer: string; out AError: string): TJSONObject;
+const
+  MaxDocumentLength = 1024 * 1024;
+var
+  LResponse: IHTTPResponse;
+  LBody, LDocIssuer: string;
+  LValue: TJSONValue;
+begin
+  Result := nil;
+  AError := '';
+
+  try
+    LResponse := AHttp.Get(AUrl);
+  except
+    // Unreachable is this candidate failing, not the search: an upstream that
+    // publishes at one of the other two shapes is still discoverable.
+    on E: Exception do
+    begin
+      AError := E.Message;
+      Exit;
+    end;
+  end;
+
+  if LResponse.StatusCode <> HTTP_CODE_OK then
+  begin
+    AError := Format('HTTP %d', [LResponse.StatusCode]);
+    Exit;
+  end;
+
+  LBody := LResponse.ContentAsString;
+  if LBody.Length > MaxDocumentLength then
+  begin
+    AError := 'the document exceeds the 1 MB size limit';
+    Exit;
+  end;
+
+  LValue := TJSONObject.ParseJSONValue(LBody, True, True);
+  if not (LValue is TJSONObject) then
+  begin
+    LValue.Free;
+    AError := 'the document is not a JSON object';
+    Exit;
+  end;
+
+  if not TJSONObject(LValue).TryGetValue<string>('issuer', LDocIssuer) or
+     not TOAuthConfig.SameIssuer(LDocIssuer, AIssuer) then
+  begin
+    LValue.Free;
+    AError := Format('it declares the issuer "%s"', [LDocIssuer]);
+    Exit;
+  end;
+
+  Result := TJSONObject(LValue);
+end;
 
 { TOAuthMiddleware.TProxyCache }
 
@@ -413,42 +484,36 @@ var
         LHttp.ResponseTimeout := RequestTimeoutMs;
         LHttp.HandleRedirects := False;
 
-        var LUpstreamUrl := LUpstream + '/.well-known/openid-configuration';
-        var LUpstreamResponse := LHttp.Get(LUpstreamUrl);
+        // The three URLs the MCP authorization specification prescribes, in its
+        // order, which is what the key path already walks (DiscoveryUrlsFor): asking
+        // only for the OpenID Connect document left an authorization server that is
+        // OAuth 2.1 and not OpenID Connect unproxyable, answering 502 to a client
+        // whose identity provider was working perfectly well.
+        var LJSON: TJSONObject := nil;
+        var LReport: TArray<string> := [];
+        var LError := '';
 
-        if LUpstreamResponse.StatusCode <> HTTP_CODE_OK then
+        for var LCandidate in TOAuthMetadataProvider.DiscoveryUrlsFor(LUpstream) do
         begin
+          LJSON := TryFetchDiscoveryDocument(LHttp, LCandidate, LUpstream, LError);
+          if Assigned(LJSON) then
+            Break;
+
+          LReport := LReport + [Format('%s (%s)', [LCandidate, LError])];
+        end;
+
+        if not Assigned(LJSON) then
+        begin
+          // Every candidate that failed, and why: with three shapes in play, one
+          // status code leaves an operator guessing which URL was even asked for.
           LResponse.Code := HTTP_CODE_BADGATEWAY;
           LResponse.Content := ErrorBody(Format(
-            'Failed to fetch upstream authorization server metadata (HTTP %d)',
-            [LUpstreamResponse.StatusCode]));
+            'No usable authorization server metadata for "%s": %s',
+            [LUpstream, string.Join('; ', LReport)]));
           Exit;
         end;
 
-        var LBody := LUpstreamResponse.ContentAsString;
-        if LBody.Length > 1024 * 1024 then
-        begin
-          LResponse.Code := HTTP_CODE_BADGATEWAY;
-          LResponse.Content := ErrorBody('Upstream metadata document exceeds 1 MB size limit');
-          Exit;
-        end;
-
-        var LJSON := TJSONObject.ParseJSONValue(LBody, True, True) as TJSONObject;
         try
-          // RFC 8414 §3.3: verify that the upstream document's issuer matches the
-          // configured upstream URL before trusting anything else in the document.
-          // Without this, a compromised or redirected upstream can point
-          // authorization_endpoint / jwks_uri anywhere it likes.
-          var LDocIssuer: string;
-          if not LJSON.TryGetValue<string>('issuer', LDocIssuer)
-             or (LDocIssuer.Trim.TrimRight(['/']).ToLower <> LUpstream.ToLower) then
-          begin
-            LResponse.Code := HTTP_CODE_BADGATEWAY;
-            LResponse.Content := ErrorBody(Format(
-              'Upstream metadata issuer mismatch: expected "%s"', [LUpstream]));
-            Exit;
-          end;
-
           var LMethods: TJSONArray;
           if not (LJSON.TryGetValue<TJSONArray>('code_challenge_methods_supported', LMethods) and (LMethods.Count > 0)) then
           begin

@@ -32,6 +32,13 @@ resourcestring
     'are not verified. Development use only.';
   SOAuthValidatorClassInvalidFmt = 'Class [%s] cannot be used as a token validator: ' +
     'it does not implement ITokenValidator';
+  SOAuthKeyCacheTTLInvalidFmt = 'A key cache TTL of %d seconds cannot be used: a cached ' +
+    'key set is expired once it is that old, so at zero or less it is expired the moment ' +
+    'it is stored and every token validated refetches the JWKS. Pass a positive number ' +
+    'of seconds.';
+  SOAuthClockSkewInvalidFmt = 'A clock skew of %d seconds cannot be used: the tolerance ' +
+    'on "exp" and "nbf" widens the window a token is accepted in, it cannot narrow it. ' +
+    'Pass zero or more seconds.';
   SOAuthResourceRequired = 'OAuth is enabled but no resource URL is configured: call ' +
     'IOAuthConfig.SetResource with the public URL clients connect to. Without it there is no ' +
     'metadata URL to advertise in a challenge and no default audience to validate tokens against.';
@@ -231,6 +238,10 @@ type
     ///   Tolerance applied to the "exp" and "nbf" claims, in seconds (default 60),
     ///   to absorb the clock drift between this server and the authorization server.
     /// </summary>
+    /// <remarks>
+    ///   Zero means no tolerance at all, which is a choice. A negative value is not:
+    ///   a tolerance can only widen the window a token is accepted in, so it raises.
+    /// </remarks>
     function SetClockSkew(ASeconds: Integer): IOAuthConfig;
 
     /// <summary>
@@ -238,6 +249,16 @@ type
     ///   rotation is picked up before this expires, through a rate-limited refresh
     ///   triggered by an unknown key id.
     /// </summary>
+    /// <remarks>
+    ///   Belongs to the configuration rather than to whichever provider is installed
+    ///   when it is called, so this and SetMetadataProvider work in either order: a
+    ///   provider that arrives afterwards is told the same value. A provider that does
+    ///   not cache - one that does not implement IOAuthCacheableMetadataProvider - has
+    ///   nothing to be told and is left alone, and so is a provider installed by a
+    ///   caller who never asked for a TTL.
+    ///   Zero or less raises: an entry that old is already expired, so the key set
+    ///   would be refetched for every token validated.
+    /// </remarks>
     function SetKeyCacheTTL(ASeconds: Integer): IOAuthConfig;
   end;
 
@@ -265,7 +286,9 @@ type
     FRequiredScopes: TArray<string>;
     FClockSkewSeconds: Integer;
     FKeyCacheTTL: Integer;
+    FKeyCacheTTLConfigured: Boolean;
     FMetadataProvider: IOAuthMetadataProvider;
+    procedure ApplyKeyCacheTTL;
     function GetResourceMetadata: string;
     function GetResourcePath: string;
     function GetMetadataProxyUrl: string;
@@ -410,6 +433,13 @@ type
     property ClockSkewSeconds: Integer read FClockSkewSeconds;
 
     /// <summary>
+    ///   The key cache lifetime this configuration asks of its metadata provider.
+    ///   What a provider actually uses is its own - one installed with a TTL of its
+    ///   own keeps it unless SetKeyCacheTTL was called.
+    /// </summary>
+    property KeyCacheTTL: Integer read FKeyCacheTTL;
+
+    /// <summary>
     ///   Shared, thread-safe source of the authorization server metadata and public
     ///   keys, owned by this configuration.
     /// </summary>
@@ -525,7 +555,11 @@ begin
   FExtraTrustedIssuers := [];
   FTokenValidatorClass := nil;
   FClockSkewSeconds := DefaultClockSkew;
+
+  // The default the provider below starts at, reported rather than imposed: until
+  // SetKeyCacheTTL is called this configuration asks nothing of any provider.
   FKeyCacheTTL := OAUTH_KEYS_TTL_DEFAULT;
+  FKeyCacheTTLConfigured := False;
 
   // Built here, and not on first use (simple and thread-safe)
   FMetadataProvider := TOAuthMetadataProvider.Create;
@@ -661,7 +695,10 @@ function TOAuthConfig.SetMetadataProvider(const AProvider: IOAuthMetadataProvide
 begin
   // Ignored when nil: a validator must always find a provider in the configuration.
   if Assigned(AProvider) then
+  begin
     FMetadataProvider := AProvider;
+    ApplyKeyCacheTTL;
+  end;
 
   Result := Self;
 end;
@@ -680,17 +717,45 @@ end;
 
 function TOAuthConfig.SetClockSkew(ASeconds: Integer): IOAuthConfig;
 begin
+  // A negative tolerance is not a stricter server, it is a mistake: it moves "exp"
+  // earlier and "nbf" later, rejecting tokens both endpoints consider current, and
+  // whoever wrote it meant to widen the window rather than narrow it.
+  if ASeconds < 0 then
+    raise EJRPCException.CreateFmt(SOAuthClockSkewInvalidFmt, [ASeconds]);
+
   FClockSkewSeconds := ASeconds;
   Result := Self;
 end;
 
+procedure TOAuthConfig.ApplyKeyCacheTTL;
+var
+  LSettings: IOAuthCacheableMetadataProvider;
+begin
+  // Only what this configuration was actually asked for travels: a provider built and
+  // tuned by the caller keeps its own lifetime, and installing it must not quietly
+  // reset that to our default.
+  if not FKeyCacheTTLConfigured then
+    Exit;
+
+  if Supports(FMetadataProvider, IOAuthCacheableMetadataProvider, LSettings) then
+    LSettings.KeysTTL := FKeyCacheTTL;
+end;
+
 function TOAuthConfig.SetKeyCacheTTL(ASeconds: Integer): IOAuthConfig;
 begin
-  FKeyCacheTTL := ASeconds;
+  // TOAuthMetadataProvider.IsExpired asks whether the entry is at least TTL seconds
+  // old, so zero and below are expired on arrival: the JWKS would be fetched again
+  // for every token validated, which is how a server gets itself rate-limited by its
+  // own identity provider.
+  if ASeconds <= 0 then
+    raise EJRPCException.CreateFmt(SOAuthKeyCacheTTLInvalidFmt, [ASeconds]);
 
-  var LSettings: IOAuthCacheableMetadataProvider;
-  if Supports(FMetadataProvider, IOAuthCacheableMetadataProvider, LSettings) then
-    LSettings.KeysTTL := ASeconds;
+  FKeyCacheTTL := ASeconds;
+  FKeyCacheTTLConfigured := True;
+
+  // Told to the provider installed now, and to any installed later: the two calls
+  // used to work in one order only, and silently in the other.
+  ApplyKeyCacheTTL;
 
   Result := Self;
 end;

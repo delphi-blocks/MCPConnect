@@ -71,8 +71,8 @@ AServer
 | `SetTokenValidatorClass(AClass)` | Registers the class that validates bearer tokens. Without it the server rejects every bearer token — see [Section 3.2](#32-token-validation). |
 | `SetAudience(AAudience)` | Value the token's `aud` claim must contain. Defaults to `SetResource`. |
 | `AddRequiredScope(AScope)` | Scope the token must carry, else `insufficient_scope`. Can be called multiple times. |
-| `SetClockSkew(ASeconds)` | Tolerance on `exp`/`nbf`, in seconds. Defaults to 60. |
-| `SetKeyCacheTTL(ASeconds)` | Lifetime of the cached JWKS, in seconds. Defaults to 3600. |
+| `SetClockSkew(ASeconds)` | Tolerance on `exp`/`nbf`, in seconds. Defaults to 60. Zero is allowed; a negative value raises, since a tolerance can only widen the window a token is accepted in. |
+| `SetKeyCacheTTL(ASeconds)` | Lifetime of the cached JWKS, in seconds. Defaults to 3600. Works in either order with `SetMetadataProvider` — a provider installed afterwards is told the same value, while one installed without the TTL ever being set keeps its own. Zero or less raises: an entry that old is already expired, so every token validated would refetch the JWKS. |
 
 If `AuthorizationServers` is empty, OAuth enforcement is fully disabled — `TOAuthMiddleware` steps aside
 and every request is allowed through, regardless of `Authorization` headers. This lets you enable

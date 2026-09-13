@@ -29,6 +29,20 @@ uses
 
 type
   /// <summary>
+  ///   A provider that implements IOAuthMetadataProvider and nothing more: it knows
+  ///   no documents and caches nothing, so it is what a configuration setting aimed
+  ///   at a cache has to cope with finding.
+  /// </summary>
+  TNonCachingMetadataProvider = class(TInterfacedObject, IOAuthMetadataProvider)
+  public
+    function GetServerMetadata(const AIssuer: string): TOAuthServerMetadata;
+    function GetKeys(const AIssuer: string): TArray<TOAuthJsonWebKey>;
+    function TryGetKey(const AIssuer, AKeyId: string;
+      out AKey: TOAuthJsonWebKey): Boolean;
+    procedure Invalidate(const AIssuer: string);
+  end;
+
+  /// <summary>
   ///   Metadata provider serving canned documents instead of hitting the network,
   ///   counting the fetches so that the caching rules can be observed.
   /// </summary>
@@ -325,6 +339,21 @@ type
     procedure TestSetMetadataProvider_ReplacesTheDefaultOne;
     [Test]
     procedure TestSetMetadataProvider_IgnoresNil;
+
+    [Test]
+    procedure TestKeyCacheTTL_ReachesAProviderInstalledBeforeIt;
+    [Test]
+    procedure TestKeyCacheTTL_ReachesAProviderInstalledAfterIt;
+    [Test]
+    procedure TestKeyCacheTTL_LeavesAProviderItWasNeverAskedAboutAlone;
+    [Test]
+    procedure TestKeyCacheTTL_RefusesAValueThatExpiresOnArrival;
+    [Test]
+    procedure TestKeyCacheTTL_AcceptsANonCachingProvider;
+    [Test]
+    procedure TestClockSkew_RefusesANegativeTolerance;
+    [Test]
+    procedure TestClockSkew_AcceptsNoToleranceAtAll;
   end;
 
   [TestFixture]
@@ -448,6 +477,31 @@ end;
 function UnixNow: Int64;
 begin
   Result := DateTimeToUnix(TTimeZone.Local.ToUniversalTime(Now), True);
+end;
+
+{ TNonCachingMetadataProvider }
+
+function TNonCachingMetadataProvider.GetServerMetadata(
+  const AIssuer: string): TOAuthServerMetadata;
+begin
+  Result := Default(TOAuthServerMetadata);
+end;
+
+function TNonCachingMetadataProvider.GetKeys(
+  const AIssuer: string): TArray<TOAuthJsonWebKey>;
+begin
+  Result := [];
+end;
+
+function TNonCachingMetadataProvider.TryGetKey(const AIssuer, AKeyId: string;
+  out AKey: TOAuthJsonWebKey): Boolean;
+begin
+  AKey := Default(TOAuthJsonWebKey);
+  Result := False;
+end;
+
+procedure TNonCachingMetadataProvider.Invalidate(const AIssuer: string);
+begin
 end;
 
 { TFakeMetadataProvider }
@@ -1503,6 +1557,101 @@ begin
 
   Assert.IsTrue(GetOAuthConfig.MetadataProvider = LBefore,
     'A validator must always find a provider: nil cannot remove it');
+end;
+
+procedure TOAuthConfigValidationTest.TestKeyCacheTTL_ReachesAProviderInstalledBeforeIt;
+var
+  LProvider: TFakeMetadataProvider;
+begin
+  LProvider := TFakeMetadataProvider.Create;
+  FConfig
+    .SetMetadataProvider(LProvider)
+    .SetKeyCacheTTL(120);
+
+  Assert.AreEqual(120, LProvider.KeysTTL);
+  Assert.AreEqual(120, GetOAuthConfig.KeyCacheTTL);
+end;
+
+procedure TOAuthConfigValidationTest.TestKeyCacheTTL_ReachesAProviderInstalledAfterIt;
+var
+  LProvider: TFakeMetadataProvider;
+begin
+  // The order that used to lose the value: the TTL was handed to whichever provider
+  // happened to be installed at the time, and the one that replaced it never heard.
+  LProvider := TFakeMetadataProvider.Create;
+  FConfig
+    .SetKeyCacheTTL(120)
+    .SetMetadataProvider(LProvider);
+
+  Assert.AreEqual(120, LProvider.KeysTTL,
+    'A provider installed after SetKeyCacheTTL must still be told the TTL');
+end;
+
+procedure TOAuthConfigValidationTest.TestKeyCacheTTL_LeavesAProviderItWasNeverAskedAboutAlone;
+var
+  LProvider: TFakeMetadataProvider;
+begin
+  // Carrying the TTL to a later provider must not mean stamping a default over one
+  // the caller tuned themselves: nothing was asked for, so nothing is imposed.
+  LProvider := TFakeMetadataProvider.Create;
+  LProvider.KeysTTL := 300;
+
+  FConfig.SetMetadataProvider(LProvider);
+
+  Assert.AreEqual(300, LProvider.KeysTTL);
+end;
+
+procedure TOAuthConfigValidationTest.TestKeyCacheTTL_RefusesAValueThatExpiresOnArrival;
+begin
+  // IsExpired is ">= TTL seconds old", so zero and below mean "already expired": the
+  // JWKS would be fetched again for every token validated.
+  Assert.WillRaise(
+    procedure
+    begin
+      FConfig.SetKeyCacheTTL(0);
+    end, EJRPCException);
+
+  Assert.WillRaise(
+    procedure
+    begin
+      FConfig.SetKeyCacheTTL(-1);
+    end, EJRPCException);
+
+  Assert.AreEqual(OAUTH_KEYS_TTL_DEFAULT, GetOAuthConfig.KeyCacheTTL,
+    'A refused value must not have been stored');
+end;
+
+procedure TOAuthConfigValidationTest.TestKeyCacheTTL_AcceptsANonCachingProvider;
+begin
+  // A provider that does not cache has nothing to be told, which is not an error:
+  // the value stays in the configuration and nobody is asked to honour it.
+  FConfig
+    .SetMetadataProvider(TNonCachingMetadataProvider.Create)
+    .SetKeyCacheTTL(120);
+
+  Assert.AreEqual(120, GetOAuthConfig.KeyCacheTTL);
+end;
+
+procedure TOAuthConfigValidationTest.TestClockSkew_RefusesANegativeTolerance;
+begin
+  // A tolerance widens the window a token is accepted in; a negative one moves "exp"
+  // earlier and "nbf" later, which is never what the caller meant.
+  Assert.WillRaise(
+    procedure
+    begin
+      FConfig.SetClockSkew(-30);
+    end, EJRPCException);
+
+  Assert.AreEqual(TOAuthConfig.DefaultClockSkew, GetOAuthConfig.ClockSkewSeconds,
+    'A refused value must not have been stored');
+end;
+
+procedure TOAuthConfigValidationTest.TestClockSkew_AcceptsNoToleranceAtAll;
+begin
+  // Zero is a choice, not a mistake: a server whose clock it trusts.
+  FConfig.SetClockSkew(0);
+
+  Assert.AreEqual(0, GetOAuthConfig.ClockSkewSeconds);
 end;
 
 { TOAuthMetadataProviderTest }

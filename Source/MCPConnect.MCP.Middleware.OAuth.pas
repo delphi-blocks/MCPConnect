@@ -145,6 +145,7 @@ resourcestring
     'registered: the request is rejected. See IOAuthConfig.SetTokenValidatorClass.';
   SOAuthValidatorNotSupportedFmt = 'The registered token validator [%s] does not expose ' +
     'ITokenValidator: the request is rejected';
+  SOAuthEmptyBearerToken = 'The Bearer scheme was used with no token behind it';
 
 const
   /// <summary>How long a proxied upstream metadata document is kept, in seconds.</summary>
@@ -159,6 +160,13 @@ const
 
   /// <summary>Joins the two halves of a cache key; neither half can contain it.</summary>
   ProxyCacheKeySeparator = #10;
+
+  /// <summary>
+  ///   How long a client may reuse the protected resource metadata document, in
+  ///   seconds. It is built from configuration that does not change while the server
+  ///   runs, and a client reads it before every authorization it starts.
+  /// </summary>
+  ResourceMetadataCacheSeconds = 3600;
 
 /// <summary>
 ///   Fetches one authorization server metadata candidate and answers it only if it
@@ -418,7 +426,8 @@ var
   begin
     LResponse.Code := HTTP_CODE_UNAUTHORIZED;
     LResponse.SetHeader('WWW-Authenticate',
-      BuildBearerChallenge(LConfig.Realm, LConfig.ResourceMetadata, AResult));
+      BuildBearerChallenge(LConfig.Realm, LConfig.ResourceMetadata, AResult,
+        LConfig.RequiredScopes));
   end;
 
   procedure SendProtectedResourceMetadata;
@@ -427,12 +436,21 @@ var
   begin
     LResponse.Code := HTTP_CODE_OK;
     LResponse.ContentType := TMediaType.APPLICATION_JSON;
+    LResponse.SetHeader('Cache-Control',
+      Format('public, max-age=%d', [ResourceMetadataCacheSeconds]));
 
     LMetadata := TOAuthProtectedResourceMetadata.Create;
     try
       LMetadata.Resource := LConfig.Resource;
       LMetadata.AuthorizationServers := LConfig.AuthorizationServers;
       LMetadata.ScopesSupported := LConfig.ScopesSupported;
+
+      // RFC 9728 section 2 makes this optional and the MCP specification tells a
+      // client to assume "header" without it - but assuming is what it would be
+      // doing. TOAuthMiddleware reads a token from the Authorization header and from
+      // nowhere else, so one member says it instead.
+      LMetadata.BearerMethodsSupported := ['header'];
+
       LResponse.Content := TNeon.ObjectToJSONString(LMetadata, TNeonConfiguration.Snake);
     finally
       LMetadata.Free;
@@ -462,6 +480,10 @@ var
 
   begin
     LResponse.ContentType := TMediaType.APPLICATION_JSON;
+
+    // The same lifetime this server keeps the document for: telling a client to hold
+    // it longer than the upstream is re-read would only make the two disagree.
+    LResponse.SetHeader('Cache-Control', Format('public, max-age=%d', [ProxyCacheTTL]));
 
     // Inside the handler that answers 502: reading the key needs the resource URL,
     // and a configuration that cannot produce one is an upstream this request has no
@@ -602,7 +624,19 @@ begin
     Exit;
   end;
 
-  var LResult := ValidateAccessToken(LAuthHeader.Substring(Length(BearerPrefix)).Trim);
+  var LToken := LAuthHeader.Substring(Length(BearerPrefix)).Trim;
+  if LToken = '' then
+  begin
+    // RFC 6750 section 3.1 invalid_request: the scheme was named and no credentials
+    // came with it, so there is nothing to have rejected. Not the bare challenge a
+    // request carrying no Authorization header gets - this client did try, and has
+    // to be told the attempt was unusable rather than left to guess at its token.
+    SendUnauthorized(TTokenValidationResult.Fail(
+      TTokenValidationErrorCode.InvalidRequest, SOAuthEmptyBearerToken));
+    Exit;
+  end;
+
+  var LResult := ValidateAccessToken(LToken);
   if not LResult.Success then
   begin
     SendUnauthorized(LResult);

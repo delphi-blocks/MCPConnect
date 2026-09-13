@@ -61,6 +61,7 @@ type
     ContentType: string;
     Challenge: string;
     HasChallenge: Boolean;
+    CacheControl: string;
 
     /// <summary>The value of an auth-param of the challenge, without its quotes.</summary>
     function ChallengeParam(const AName: string): string;
@@ -152,6 +153,13 @@ type
     procedure TestMetadata_NeedsNoToken;
     [Test]
     procedure TestMetadata_IsNotServedForPost;
+    [Test]
+    procedure TestMetadata_AdvertisesTheHeaderBearerMethod;
+    [Test]
+    procedure TestMetadata_IsCacheable;
+
+    [Test]
+    procedure TestBearerWithNoToken_IsAMalformedRequest;
 
     [Test]
     procedure TestRequestWithoutAToken_IsChallenged;
@@ -219,6 +227,8 @@ type
     procedure TestProxy_FindsAnAuthorizationServerWithNoOidcDocument;
     [Test]
     procedure TestProxy_RefusesAnIssuerDifferingOnlyInPathCase;
+    [Test]
+    procedure TestProxy_IsCacheableByTheClientToo;
   end;
 
 implementation
@@ -310,6 +320,7 @@ begin
       LOutcome.ContentType := AResponse.ContentType;
       LOutcome.Challenge := AResponse.GetHeader('WWW-Authenticate');
       LOutcome.HasChallenge := LOutcome.Challenge <> '';
+      LOutcome.CacheControl := AResponse.GetHeader('Cache-Control');
     end
   );
 
@@ -503,6 +514,60 @@ begin
   LOutcome := Execute('POST', MetadataPath);
 
   Assert.AreEqual(401, LOutcome.Code, 'Only GET retrieves the document');
+end;
+
+procedure TTransportOAuthTest.TestMetadata_AdvertisesTheHeaderBearerMethod;
+var
+  LOutcome: TTransportOutcome;
+  LJSON: TJSONObject;
+  LMethods: TJSONArray;
+begin
+  // RFC 9728 leaves it optional and MCP clients assume "header" without it - but
+  // assuming is what they would be doing, and this server does read the token from
+  // the Authorization header and nowhere else.
+  EnableOAuth;
+
+  LOutcome := Execute('GET', MetadataPath);
+
+  LJSON := TJSONObject.ParseJSONValue(LOutcome.Content) as TJSONObject;
+  try
+    Assert.IsNotNull(LJSON, 'The metadata document must be JSON');
+    LMethods := LJSON.GetValue<TJSONArray>('bearer_methods_supported');
+    Assert.AreEqual(1, LMethods.Count);
+    Assert.AreEqual('header', LMethods.Items[0].Value);
+  finally
+    LJSON.Free;
+  end;
+end;
+
+procedure TTransportOAuthTest.TestMetadata_IsCacheable;
+var
+  LOutcome: TTransportOutcome;
+begin
+  // Built from configuration that cannot change while the server runs, and read
+  // before every authorization a client starts: without the header every one of
+  // those is a round trip, and each client decides for itself what to do about it.
+  EnableOAuth;
+
+  LOutcome := Execute('GET', MetadataPath);
+
+  Assert.IsTrue(LOutcome.CacheControl.Contains('max-age='), LOutcome.CacheControl);
+  Assert.IsTrue(LOutcome.CacheControl.Contains('public'), LOutcome.CacheControl);
+end;
+
+procedure TTransportOAuthTest.TestBearerWithNoToken_IsAMalformedRequest;
+var
+  LOutcome: TTransportOutcome;
+begin
+  // RFC 6750 section 3.1: the scheme named with no credentials behind it is a
+  // malformed request, not a rejected token - there was nothing to reject. The bare
+  // challenge would be wrong the other way: this client did try to authenticate.
+  EnableOAuth;
+
+  LOutcome := Execute('POST', ResourcePath, 'Bearer   ');
+
+  Assert.AreEqual(401, LOutcome.Code);
+  Assert.AreEqual('invalid_request', LOutcome.ChallengeParam('error'), LOutcome.Challenge);
 end;
 
 procedure TTransportOAuthTest.TestRequestWithoutAToken_IsChallenged;
@@ -812,6 +877,18 @@ begin
 
   Assert.AreEqual(LAfterFirst, FUpstream.Hits,
     'The second request must have been served from the cache');
+end;
+
+procedure TTransportOAuthProxyTest.TestProxy_IsCacheableByTheClientToo;
+var
+  LOutcome: TTransportOutcome;
+begin
+  // The lifetime this server holds it for, so that the copy a client keeps and the
+  // copy this one keeps go stale together rather than drifting apart.
+  LOutcome := ProxyDocumentOf('/idp-a');
+
+  Assert.AreEqual(200, LOutcome.Code, LOutcome.Content);
+  Assert.IsTrue(LOutcome.CacheControl.Contains('max-age=300'), LOutcome.CacheControl);
 end;
 
 procedure TTransportOAuthProxyTest.TestProxy_FindsAnAuthorizationServerWithNoOidcDocument;

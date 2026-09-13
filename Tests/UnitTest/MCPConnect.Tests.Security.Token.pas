@@ -156,6 +156,12 @@ type
     procedure TestChallenge_OmitsAnEmptyDescription;
     [Test]
     procedure TestChallenge_DescriptionCannotEndTheQuotedString;
+    [Test]
+    procedure TestChallenge_InsufficientScopeNamesTheScopesRequired;
+    [Test]
+    procedure TestChallenge_ScopeIsOnlySentForInsufficientScope;
+    [Test]
+    procedure TestChallenge_OmitsTheScopeWhenNoneIsRequired;
   end;
 
   [TestFixture]
@@ -763,6 +769,44 @@ begin
   Assert.AreEqual(8, QuoteCount(LChallenge), LChallenge);
   Assert.IsFalse(LChallenge.Contains(#13), 'A challenge is a single header line');
   Assert.IsFalse(LChallenge.Contains(#10), 'A challenge is a single header line');
+end;
+
+procedure TBearerChallengeTest.TestChallenge_InsufficientScopeNamesTheScopesRequired;
+var
+  LChallenge: string;
+begin
+  // RFC 6750 section 3: a client told its token is not enough can only ask for a
+  // better one if it is told what "enough" is. Space delimited, in one parameter.
+  LChallenge := BuildBearerChallenge(Realm, Metadata,
+    TTokenValidationResult.Fail(TTokenValidationErrorCode.InsufficientScope, 'needs more'),
+    ['mcp.read', 'mcp.write']);
+
+  Assert.IsTrue(LChallenge.Contains('scope="mcp.read mcp.write"'), LChallenge);
+end;
+
+procedure TBearerChallengeTest.TestChallenge_ScopeIsOnlySentForInsufficientScope;
+var
+  LChallenge: string;
+begin
+  // On any other outcome the required scopes answer a question nobody asked, and
+  // would read as the reason the token was refused.
+  LChallenge := BuildBearerChallenge(Realm, Metadata,
+    TTokenValidationResult.Fail(TTokenValidationErrorCode.InvalidToken, 'expired'),
+    ['mcp.read']);
+
+  Assert.IsFalse(LChallenge.Contains('scope='), LChallenge);
+end;
+
+procedure TBearerChallengeTest.TestChallenge_OmitsTheScopeWhenNoneIsRequired;
+var
+  LChallenge: string;
+begin
+  // A server requiring no scope has nothing to name, and an empty scope="" would be
+  // a claim that the required scope is the empty one.
+  LChallenge := BuildBearerChallenge(Realm, Metadata,
+    TTokenValidationResult.Fail(TTokenValidationErrorCode.InsufficientScope, 'needs more'));
+
+  Assert.IsFalse(LChallenge.Contains('scope='), LChallenge);
 end;
 
 { TDecodeOnlyTokenValidatorTest }

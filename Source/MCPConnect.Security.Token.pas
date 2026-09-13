@@ -55,7 +55,11 @@ type
   TTokenValidationErrorCode = (
     /// <summary>No error, or no error worth naming (e.g. a missing Authorization header).</summary>
     None,
-    /// <summary>The request itself is malformed, e.g. more than one authentication scheme.</summary>
+    /// <summary>
+    ///   The request itself is malformed rather than its token rejected - the Bearer
+    ///   scheme with nothing behind it, or whatever else a validator recognises as
+    ///   unusable before there is a token to judge.
+    /// </summary>
     InvalidRequest,
     /// <summary>The token is missing, malformed, forged, expired or otherwise unusable.</summary>
     InvalidToken,
@@ -315,6 +319,13 @@ function TokenValidationErrorCodeToString(AErrorCode: TTokenValidationErrorCode)
 ///   realm, the URL of this resource's metadata document, and - once validation has
 ///   actually rejected something - the RFC 6750 error and its description.
 /// </summary>
+/// <param name="ARequiredScopes">
+///   The scopes this resource requires. Sent as the RFC 6750 section 3 "scope"
+///   parameter, and only on an "insufficient_scope" refusal, where it is the answer
+///   to the question the refusal raises: a client told its token is not enough can
+///   ask for what would be, instead of reading it out of a description meant for a
+///   human. Meaningless on any other outcome, so it is left out of those.
+/// </param>
 /// <remarks>
 ///   Every parameter value is quoted and sanitized, so no configured or validator
 ///   supplied string can produce a malformed header. Lives here, rather than in the
@@ -322,7 +333,8 @@ function TokenValidationErrorCodeToString(AErrorCode: TTokenValidationErrorCode)
 ///   <see cref="TTokenValidationResult" /> and belongs with the vocabulary it uses.
 /// </remarks>
 function BuildBearerChallenge(const ARealm, AResourceMetadata: string;
-  const AResult: TTokenValidationResult): string;
+  const AResult: TTokenValidationResult;
+  const ARequiredScopes: TArray<string> = nil): string;
 
 implementation
 
@@ -357,7 +369,8 @@ begin
 end;
 
 function BuildBearerChallenge(const ARealm, AResourceMetadata: string;
-  const AResult: TTokenValidationResult): string;
+  const AResult: TTokenValidationResult;
+  const ARequiredScopes: TArray<string>): string;
 
   // Values travel inside a quoted-string, so a quote or a line break in one would end
   // it early: truncating the challenge, or letting the value inject parameters - or a
@@ -389,6 +402,14 @@ begin
   if AResult.ErrorDescription <> '' then
     Result := Result + Format(', error_description="%s"',
       [Sanitize(AResult.ErrorDescription)]);
+
+  // RFC 6750 section 3: the scope this resource requires, sent only where it says
+  // something - on the one refusal that is about scopes. Space delimited, and the
+  // scopes are configuration rather than anything the request carried.
+  if (AResult.ErrorCode = TTokenValidationErrorCode.InsufficientScope) and
+     (Length(ARequiredScopes) > 0) then
+    Result := Result + Format(', scope="%s"',
+      [Sanitize(string.Join(' ', ARequiredScopes))]);
 end;
 
 { TTokenValidationResult }

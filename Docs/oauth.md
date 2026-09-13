@@ -25,8 +25,16 @@ When OAuth is enabled, MCPConnect's HTTP transport (`TMCPTransportHandler` in
   resource's path, so `SetResource('https://mcp.example.com/mcp')` publishes at
   `GET /.well-known/oauth-protected-resource/mcp`. A resource that is just an origin publishes at
   the bare `/.well-known/oauth-protected-resource`, which is also still served as a fallback.
+  The document declares `bearer_methods_supported: ["header"]` — the only place this server
+  reads a token from — and both discovery responses carry a `Cache-Control` a client can
+  reuse them under.
 - Rejects unauthenticated requests with `401 Unauthorized` and a `WWW-Authenticate: Bearer
-  realm="...", resource_metadata="..."` header, per the MCP Authorization spec.
+  realm="...", resource_metadata="..."` header, per the MCP Authorization spec. A request that
+  failed validation also gets the RFC 6750 `error` and `error_description`; on
+  `insufficient_scope` the challenge adds `scope="..."` naming the scopes `AddRequiredScope`
+  asks for, so a client can request a token that would work instead of guessing. The Bearer
+  scheme sent with no token behind it is `error="invalid_request"` — a malformed request
+  rather than a rejected token.
 - Accepts requests carrying `Authorization: Bearer <token>` **when a registered token validator
   accepts them** (see [Section 3.2](#32-token-validation)), and injects the validated claims into the
   request context as `TMCPAccessToken`.

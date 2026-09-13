@@ -39,6 +39,16 @@ type
   TJoseValidatorAccess = class(TJoseTokenValidator);
 
   /// <summary>
+  ///   A validator whose key material always reaches the JOSE layer: the public key
+  ///   is handed over as armoured bytes JOSE holds as a key and cannot verify with,
+  ///   so the failure happens inside the library rather than before it.
+  /// </summary>
+  TUnprocessableKeyValidator = class(TJoseTokenValidator)
+  protected
+    function PublicKeyFrom(const AKey: TOAuthJsonWebKey): TBytes; override;
+  end;
+
+  /// <summary>
   ///   What can be verified without OpenSSL on the machine running the suite: the
   ///   PEM assembly, which of the published members a key is read from, and that a key
   ///   which cannot yield a public key is rejected rather than waved through. The
@@ -59,6 +69,7 @@ type
     FAccessToken: TMCPAccessToken;
 
     procedure PublishKey(const AKeyJSON: string);
+    function ValidateValidTokenWith(AValidatorClass: TClass): TTokenValidationResult;
     function ValidateValidToken: TTokenValidationResult;
   public
     [Setup]
@@ -78,6 +89,8 @@ type
     procedure TestValidate_KeyWithBareComponentsReachesTheSignatureCheck;
     [Test]
     procedure TestValidate_UnreadableCertificateIsRejected;
+    [Test]
+    procedure TestValidate_KeyTheJoseLayerCannotProcessIsRejectedNotRaised;
   end;
 
 {$ENDIF}
@@ -94,6 +107,18 @@ begin
   Result := TNetEncoding.Base64.EncodeBytesToString(TEncoding.UTF8.GetBytes(AValue));
   Result := Result.Replace(#13, '').Replace(#10, '')
     .Replace('+', '-').Replace('/', '_').TrimRight(['=']);
+end;
+
+{ TUnprocessableKeyValidator }
+
+function TUnprocessableKeyValidator.PublicKeyFrom(const AKey: TOAuthJsonWebKey): TBytes;
+begin
+  // PEM armour around bytes that are not a public key: enough to get past the
+  // "no key material" rejection and reach TJOSE.Verify, never enough to verify with.
+  Result := TEncoding.ANSI.GetBytes(
+    '-----BEGIN PUBLIC KEY-----'#13#10 +
+    'bm90LWEtcHVibGljLWtleQ=='#13#10 +
+    '-----END PUBLIC KEY-----'#13#10);
 end;
 
 { TJoseTokenValidatorTest }
@@ -130,7 +155,8 @@ begin
   FFake.SetDocument(Issuer + '/keys', Format('{"keys":[%s]}', [AKeyJSON]));
 end;
 
-function TJoseTokenValidatorTest.ValidateValidToken: TTokenValidationResult;
+function TJoseTokenValidatorTest.ValidateValidTokenWith(
+  AValidatorClass: TClass): TTokenValidationResult;
 var
   LToken: string;
 begin
@@ -141,7 +167,12 @@ begin
       [Issuer, Audience, DateTimeToUnix(TTimeZone.Local.ToUniversalTime(Now), True) + 3600])) + '.' +
     Base64UrlEncode('not-a-real-signature');
 
-  Result := RunValidator(TJoseTokenValidator, FContext, LToken, FAccessToken);
+  Result := RunValidator(AValidatorClass, FContext, LToken, FAccessToken);
+end;
+
+function TJoseTokenValidatorTest.ValidateValidToken: TTokenValidationResult;
+begin
+  Result := ValidateValidTokenWith(TJoseTokenValidator);
 end;
 
 procedure TJoseTokenValidatorTest.TestRegister_IsAcceptedAsATokenValidator;
@@ -242,6 +273,31 @@ begin
 
   Assert.IsFalse(LResult.Success);
   Assert.AreEqual(SJoseKeyUnreadable, LResult.ErrorDescription);
+  Assert.AreEqual('', FAccessToken.Subject);
+end;
+
+procedure TJoseTokenValidatorTest.TestValidate_KeyTheJoseLayerCannotProcessIsRejectedNotRaised;
+var
+  LResult: TTokenValidationResult;
+begin
+  // TJOSE.Verify does not raise when verification fails inside the library: it frees
+  // the token, swallows the exception and answers nil. A validator that read the
+  // result of that unguarded would raise an access violation where its contract
+  // promises a record - and a host calling a validator outside the OAuth middleware
+  // has no blanket "except" to turn that back into a rejection.
+  PublishKey(Format('{"kid":"%s","kty":"RSA","use":"sig","n":"AQIDBAUG","e":"AQAB"}', [KeyId]));
+
+  try
+    LResult := ValidateValidTokenWith(TUnprocessableKeyValidator);
+  except
+    on E: Exception do
+      raise Exception.CreateFmt(
+        'Validate must answer a failure record, not raise %s: %s', [E.ClassName, E.Message]);
+  end;
+
+  Assert.IsFalse(LResult.Success);
+  Assert.IsTrue(LResult.ErrorCode = TTokenValidationErrorCode.InvalidToken);
+  Assert.AreEqual(SJoseSignatureInvalid, LResult.ErrorDescription);
   Assert.AreEqual('', FAccessToken.Subject);
 end;
 

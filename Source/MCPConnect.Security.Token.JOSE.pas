@@ -199,6 +199,16 @@ begin
       end;
     end;
 
+    // TJOSE.Verify answers nil rather than raising when the JOSE layer fails inside
+    // the verification itself (key material PublicKeyFrom produced but the provider
+    // rejects, an algorithm OpenSSL cannot do here): the library frees the token and
+    // swallows the exception. Unguarded, that would be an access violation below
+    // instead of the rejection it is.
+    if not Assigned(LJWT) then
+      Exit(Reject(TTokenValidationErrorCode.InvalidToken, SJoseSignatureInvalid,
+        Format('a signature made with key "%s"', [AKey.Kid]),
+        'one the JOSE library could not process'));
+
     try
       if not LJWT.Verified then
         Exit(Reject(TTokenValidationErrorCode.InvalidToken, SJoseSignatureInvalid,

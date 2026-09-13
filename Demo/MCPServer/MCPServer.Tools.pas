@@ -7,6 +7,7 @@ uses
   System.JSON,
 
   Logify,
+  Neon.Core.Attributes,
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
   Neon.Core.Persistence.JSON.Schema,
@@ -62,7 +63,10 @@ type
 
   TTodoTool = class
   private
+    class var FDontAskAgain: Boolean;
+  private
     [Context] FParams: TCallToolRequestParams;
+    function DoDeleteTask(ATaskId: Integer): string;
   public
     [McpTool('add_task', 'Add a new task to the todo list')]
     function AddTask(
@@ -97,12 +101,6 @@ implementation
 uses
   System.Diagnostics;
 
-const
-  STaskNotFound = 'Task with ID %d not found';
-
-  /// <summary>The key delete_task asks its confirmation under.</summary>
-  SElicitationDeleteKey = 'delete';
-
 type
   /// <summary>
   ///   What the delete round trip carries in its requestState: which task the
@@ -114,6 +112,15 @@ type
     TaskId: Integer;
   end;
 
+  [NeonEnumNames('Undefined,Duplicate,No longer needed,Created by mistake,Other')]
+  TDeleteReason = (
+    Undefined,
+    Duplicate,
+    NoLongerNeeded,
+    CreatedByMistake,
+    Other
+  );
+
   /// <summary>
   ///   What delete_task asks the user for. The form the client renders is
   ///   generated from this record's RTTI, and the answer reads straight back
@@ -121,10 +128,14 @@ type
   ///   nothing spells the member names twice.
   /// </summary>
   TDeleteAsk = record
-    [JsonSchema('title=Delete the task?, description=This cannot be undone, required')]
-    Confirm: Boolean;
-    [JsonSchema('title=Reason, description=Kept in the server log, maxLength=80')]
-    Reason: string;
+    [JsonSchema('title=Reason,description=Reason to delete the task')]
+    Reason: TDeleteReason;
+    [JsonSchema('title=Other reason,description=Custom reason, used when Reason is Other')]
+    OtherReason: string;
+    [JsonSchema('title=Don''t ask again,description=Skip the confirmation for future delete requests')]
+    DontAskAgain: Boolean;
+
+    function FullReason: string;
   end;
 
 { TTaskItem }
@@ -329,7 +340,7 @@ begin
   try
     LTask := TodoStore.FindById(ATaskId);
     if LTask = nil then
-      Exit(Format(STaskNotFound, [ATaskId]));
+      Exit(Format('Task with ID %d not found', [ATaskId]));
     LTask.Status := TTaskStatus.Completed;
     Result := Format('Task #%d "%s" marked as completed', [LTask.Id, LTask.Title]);
   finally
@@ -338,21 +349,31 @@ begin
 end;
 
 function TTodoTool.DeleteTask(ATaskId: Integer): TMCPResponse<string>;
+const
+  // Elicitation key (each response is under a different key)
+  ElicitationDeleteKey = 'delete';
 var
-  LTask: TTaskItem;
-  LTitle, LResult: string;
   LContext: TDeleteContext;
   LAnswer: TDeleteAsk;
+  LOutcome: TElicitationOutcome;
 begin
+  if FDontAskAgain then
+  begin
+    Result := TMCPResponse<string>.Value(DoDeleteTask(ATaskId));
+    Exit;
+  end;
+
+  LOutcome := FParams.InputResponses.Outcome(ElicitationDeleteKey);
+
   // Deleting is destructive, so the first call asks rather than deletes: the
   // form is TDeleteAsk, the context travels as the requestState, and the client
   // retries with the user's answer under the key this server chose for it
-  if FParams.InputResponses.Outcome(SElicitationDeleteKey) = TElicitationOutcome.Absent then
+  if LOutcome = TElicitationOutcome.Absent then
   begin
     LContext.TaskId := ATaskId;
     Exit(TMCPResponse<string>.Needs(
       TMCPInput.New(TMCPRequestState.EncodeStruct<TDeleteContext>(LContext))
-        .Ask<TDeleteAsk>(SElicitationDeleteKey, Format('Delete task #%d?', [ATaskId]))));
+        .Ask<TDeleteAsk>(ElicitationDeleteKey, Format('Delete task #%d?', [ATaskId]))));
   end;
 
   Logger.Log('User response for a previous Input Request', TLogLevel.Debug);
@@ -365,32 +386,43 @@ begin
     Exit(TMCPResponse<string>.Ready(
       TCallToolReply.Fail('This confirmation belongs to another request')));
 
-  // The record that asked is the record that answers. A decline or a cancel
-  // carries no content, so it reads as an empty TDeleteAsk - Confirm False, and
-  // nothing is deleted - which is the same answer as an explicit "no"
-  LAnswer := FParams.InputResponses.StructAs<TDeleteAsk>(SElicitationDeleteKey);
-  if not LAnswer.Confirm then
-    Exit(TMCPResponse<string>.Value(Format('Task #%d was not deleted', [ATaskId])));
-
-  if LAnswer.Reason <> '' then
-    Logger.Log(Format('Task #%d deleted because: %s', [ATaskId, LAnswer.Reason]), TLogLevel.Info);
-
-  TodoStore.Lock();
-  try
-    LTask := TodoStore.FindById(ATaskId);
-    if LTask = nil then
-      raise Exception.CreateFmt(STaskNotFound, [ATaskId]);
-    LTitle := LTask.Title;
-  finally
-    TodoStore.Unlock();
+  // A decline or a cancel: the user refused, so nothing is deleted
+  if LOutcome <> TElicitationOutcome.Accepted then
+  begin
+    Exit(TMCPResponse<string>.Value('Operation aborted by the user!'));
   end;
 
-  if TodoStore.Remove(ATaskId) then
-    LResult := Format('Task #%d "%s" deleted', [ATaskId, LTitle])
-  else
-    LResult := Format(STaskNotFound, [ATaskId]);
+  LAnswer := FParams.InputResponses.StructAs<TDeleteAsk>(ElicitationDeleteKey);
+  FDontAskAgain := LAnswer.DontAskAgain;
+  Logger.Log(Format('Task #%d deleted because: %s', [ATaskId, LAnswer.FullReason]), TLogLevel.Info);
 
-  Result := TMCPResponse<string>.Value(LResult);
+  Result := TMCPResponse<string>.Value(DoDeleteTask(ATaskId));
+end;
+
+function TTodoTool.DoDeleteTask(ATaskId: Integer): string;
+begin
+  if TodoStore.Remove(ATaskId) then
+    Result := Format('Task #%d deleted', [ATaskId])
+  else
+    Result := Format('Task with ID %d not found', [ATaskId]);
+end;
+
+{ TDeleteAsk }
+
+function TDeleteAsk.FullReason: string;
+begin
+  case Reason of
+    TDeleteReason.Undefined: Result := 'undefined';
+    TDeleteReason.Duplicate: Result := 'duplicate';
+    TDeleteReason.NoLongerNeeded: Result := 'no longer needed';
+    TDeleteReason.CreatedByMistake: Result := 'created by mistake';
+    TDeleteReason.Other: Result := '';
+  else
+    Result := '';
+  end;
+
+  if not OtherReason.IsEmpty then
+    Result := Result + ': ' + OtherReason;
 end;
 
 initialization

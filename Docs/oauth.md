@@ -77,7 +77,8 @@ AServer
 | `AddScopesSupported(AScope)` | Advertises a supported OAuth scope. Can be called multiple times — **one scope per call**: a space-delimited list raises, since it would be advertised as a single scope of that name. |
 | `EnableMetadataProxy(AUpstreamIssuer)` | See [Section 4](#4-the-metadata-proxy). Registers a local proxy URL as the authorization server instead of `AUpstreamIssuer` directly. |
 | `SetTokenValidatorClass(AClass)` | Registers the class that validates bearer tokens. Without it the server rejects every bearer token — see [Section 3.2](#32-token-validation). |
-| `SetAudience(AAudience)` | Value the token's `aud` claim must contain. Defaults to `SetResource`. |
+| `SetAudience(AAudience)` | Value the token's `aud` claim must contain. Defaults to `SetResource`; an empty value restores that default. Replaces whatever was configured before. |
+| `AddAudience(AAudience)` | Another accepted `aud` value, on top of `SetAudience` or the default — for a server reachable under more than one identifier. A token matching any of them is accepted. |
 | `AddRequiredScope(AScope)` | Scope the token must carry, else `insufficient_scope`. Can be called multiple times, one scope per call; a space-delimited list raises, as no token could ever carry it. |
 | `SetClockSkew(ASeconds)` | Tolerance on `exp`/`nbf`, in seconds. Defaults to 60. Zero is allowed; a negative value raises, since a tolerance can only widen the window a token is accepted in. |
 | `SetKeyCacheTTL(ASeconds)` | Lifetime of the cached JWKS, in seconds. Defaults to 3600. Works in either order with `SetMetadataProvider` — a provider installed afterwards is told the same value, while one installed without the TTL ever being set keeps its own. Zero or less raises: an entry that old is already expired, so every token validated would refetch the JWKS. |
@@ -163,13 +164,18 @@ Two things follow from this, and both matter before exposing a server:
     against the key the identity provider publishes. This is the one to register in production. It
     needs the JOSE library at compile time (under `Libs\JWT`, switched by the `DELPHI_JOSE_JWT`
     define in `Source/MCPConnect.inc`) and the OpenSSL libraries at run time.
-  - `TClaimsTokenValidator` — checks `iss`, `aud`, `exp`/`nbf`, the required scopes, rejects
+  - `TClaimsTokenValidator` — checks `iss`, `aud` (against every value `SetAudience`/`AddAudience`
+    accept), `exp`/`nbf`, the required scopes, rejects
     `"alg": "none"`, and verifies that the `kid` names a key the issuer actually publishes. It stops
     expired, foreign and unsigned tokens, but **not** a forged one: its `CheckSignature` hook is
     empty. Registering it logs a warning at startup, because it validates enough to look like the
     real thing while accepting any token that copies `iss`, `aud`, `kid` and a future `exp` from a
     genuine one.
   - `TDecodeOnlyTokenValidator` — decodes the payload and verifies nothing. Local development only.
+
+Scopes are read from the `scope` claim, falling back to `scp` — string or array — which is what
+Microsoft Entra ID mints. Token segments are decoded with a strict base64url decoder: a segment
+with anything outside the RFC 7515 alphabet in it is refused rather than silently skipped over.
 
 The framework supplies the pieces around the signature check too: an `IOAuthMetadataProvider` that
 fetches and caches the authorization server's discovery document and JWKS (with TTLs, key-rotation

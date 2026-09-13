@@ -183,7 +183,10 @@ begin
   except
     on E: Exception do
     begin
-      Logger.LogError('Cannot read the public key of key "%s": %s', [AKey.Kid, E.Message]);
+      // The key id comes off the identity provider's JWKS and the message off a
+      // library, so neither is this server's own text to put on a log line unchecked.
+      Logger.LogError('Cannot read the public key of key "%s": %s',
+        [SanitizeForLog(AKey.Kid), SanitizeForLog(E.Message)]);
       Exit(Reject(TTokenValidationErrorCode.InvalidToken, SJoseKeyUnreadable,
         'a readable public key', AKey.Kid));
     end;
@@ -204,7 +207,8 @@ begin
       // a reason to let a token through.
       on E: Exception do
       begin
-        Logger.LogError('Signature verification failed for key "%s": %s', [AKey.Kid, E.Message]);
+        Logger.LogError('Signature verification failed for key "%s": %s',
+          [SanitizeForLog(AKey.Kid), SanitizeForLog(E.Message)]);
         Exit(Reject(TTokenValidationErrorCode.InvalidToken, SJoseSignatureInvalid,
           'a verifiable signature', E.ClassName));
       end;

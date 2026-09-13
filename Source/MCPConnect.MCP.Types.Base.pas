@@ -250,6 +250,18 @@ type
     destructor Destroy; override;
 
     procedure FromString(const AJsonString :string);
+
+    /// <summary>
+    ///   Replaces this token's claims with a copy of ASource's.
+    /// </summary>
+    /// <remarks>
+    ///   A validator builds the claims into a token of its own and hands them over only
+    ///   once every check has passed. Copying the payload is what that hand-over is;
+    ///   going through JSON and back would cost two passes over it and put whatever the
+    ///   writer normalises between the claims that were checked and the claims a tool
+    ///   is given.
+    /// </remarks>
+    procedure Assign(ASource: TMCPAccessToken);
     function ToString: string; override;
 
     /// <summary>Raw decoded JWT payload (all claims), for direct access to non-wrapped claims.</summary>
@@ -1595,6 +1607,23 @@ begin
   end;
 end;
 
+procedure TMCPAccessToken.Assign(ASource: TMCPAccessToken);
+begin
+  if not Assigned(ASource) or (ASource = Self) then
+    Exit;
+
+  // The same swap FromString does: the new payload is built before the old one is
+  // let go, so a failure leaves the token holding what it held.
+  var LPayload := ASource.Payload.Clone as TJSONObject;
+  try
+    var LTempPayload := FPayload;
+    FPayload := LPayload;
+    LPayload := LTempPayload;
+  finally
+    LPayload.Free;
+  end;
+end;
+
 function TMCPAccessToken.GetEMail: string;
 begin
   Result := FPayload.GetValue<string>('email', '');
@@ -1611,8 +1640,32 @@ begin
 end;
 
 function TMCPAccessToken.GetScope: string;
+var
+  LValue: TJSONValue;
+  LItem: TJSONValue;
+  LScopes: TArray<string>;
 begin
   Result := FPayload.GetValue<string>('scope', '');
+  if Result <> '' then
+    Exit;
+
+  // "scope" is what RFC 8693 and RFC 9068 name, and what most authorization servers
+  // mint. Microsoft Entra ID uses "scp" instead - a space delimited string in a v2.0
+  // token, an array in a v1.0 one - so a server reading only the first name refuses
+  // its tokens for want of a scope the token is carrying. The value is not owned here.
+  LValue := FPayload.FindValue('scp');
+  if not Assigned(LValue) then
+    Exit;
+
+  if LValue is TJSONArray then
+  begin
+    LScopes := [];
+    for LItem in TJSONArray(LValue) do
+      LScopes := LScopes + [LItem.Value];
+    Result := string.Join(' ', LScopes);
+  end
+  else if LValue is TJSONString then
+    Result := LValue.Value;
 end;
 
 function TMCPAccessToken.GetEmailVerified: Boolean;

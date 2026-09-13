@@ -40,7 +40,7 @@ interface
 {$I MCPConnect.inc}
 
 uses
-  System.SysUtils, System.SyncObjs, System.Generics.Collections,
+  System.SysUtils, System.Classes, System.SyncObjs, System.Generics.Collections,
 
   MCPConnect.JRPC.Middleware;
 
@@ -66,7 +66,8 @@ type
   private type
     TProxyCacheEntry = class
       Content: string;
-      FetchedAt: TDateTime;
+      /// <summary>Monotonic tick, not wall time - see IsFresh.</summary>
+      FetchedAt: UInt64;
     end;
 
     /// <summary>
@@ -267,7 +268,10 @@ end;
 
 function TOAuthMiddleware.TProxyCache.IsFresh(AEntry: TProxyCacheEntry): Boolean;
 begin
-  Result := Assigned(AEntry) and (SecondsBetween(Now, AEntry.FetchedAt) < FTTLSeconds);
+  // Age, measured with a clock that only goes forward. The wall clock is not one: an
+  // NTP correction backwards would extend every entry's life by however far it moved.
+  Result := Assigned(AEntry) and
+    ((TThread.GetTickCount64 - AEntry.FetchedAt) < UInt64(FTTLSeconds) * 1000);
 end;
 
 procedure TOAuthMiddleware.TProxyCache.MakeRoom;
@@ -333,7 +337,7 @@ begin
     end;
 
     LEntry.Content := AContent;
-    LEntry.FetchedAt := Now;
+    LEntry.FetchedAt := TThread.GetTickCount64;
   finally
     FLock.Leave;
   end;

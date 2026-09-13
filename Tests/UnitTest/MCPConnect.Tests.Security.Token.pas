@@ -140,6 +140,32 @@ type
     procedure TestErrorCodeToString_UsesRFC6750Names;
   end;
 
+  /// <summary>
+  ///   The two things done to a string that came off a token before it is trusted to
+  ///   be what it looks like: decoded, and written to a log.
+  /// </summary>
+  [TestFixture]
+  TTokenEncodingTest = class(TObject)
+  public
+    [Test]
+    procedure TestDecode_ReadsACanonicalSegment;
+    [Test]
+    procedure TestDecode_RefusesACharacterOutsideTheAlphabet;
+    [Test]
+    procedure TestDecode_RefusesEmbeddedWhitespace;
+    [Test]
+    procedure TestDecode_RefusesAnImpossibleLength;
+    [Test]
+    procedure TestDecode_RefusesStandardBase64Padding;
+
+    [Test]
+    procedure TestSanitize_RemovesTheCharactersThatEndALogLine;
+    [Test]
+    procedure TestSanitize_TruncatesALongValue;
+    [Test]
+    procedure TestSanitize_LeavesAnOrdinaryValueAlone;
+  end;
+
   [TestFixture]
   TBearerChallengeTest = class(TObject)
   private const
@@ -256,6 +282,16 @@ type
     [Test]
     procedure TestValidate_GrantedRequiredScopeIsAccepted;
     [Test]
+    procedure TestValidate_ScopeIsReadFromScpWhenScopeIsAbsent;
+    [Test]
+    procedure TestValidate_ScopeIsReadFromAnScpArray;
+    [Test]
+    procedure TestValidate_ScopeWinsOverScp;
+    [Test]
+    procedure TestValidate_TokenIsAcceptedForASecondConfiguredAudience;
+    [Test]
+    procedure TestValidate_AcceptedClaimsReachTheRequestToken;
+    [Test]
     procedure TestValidate_RejectedTokenLeavesClaimsEmpty;
     [Test]
     procedure TestValidate_WithoutTrustedIssuersEverythingIsRejected;
@@ -361,6 +397,12 @@ type
     procedure TestAudience_DefaultsToResource;
     [Test]
     procedure TestAudience_CanBeOverridden;
+    [Test]
+    procedure TestAudience_AddWidensTheAcceptedSet;
+    [Test]
+    procedure TestAudience_SetReplacesWhatWasThere;
+    [Test]
+    procedure TestAudience_DefaultsToTheResourceAsASet;
     [Test]
     procedure TestRequiredScopesAndClockSkew_AreStored;
     [Test]
@@ -703,6 +745,88 @@ begin
   Assert.AreEqual('invalid_request', TokenValidationErrorCodeToString(TTokenValidationErrorCode.InvalidRequest));
   Assert.AreEqual('invalid_token', TokenValidationErrorCodeToString(TTokenValidationErrorCode.InvalidToken));
   Assert.AreEqual('insufficient_scope', TokenValidationErrorCodeToString(TTokenValidationErrorCode.InsufficientScope));
+end;
+
+{ TTokenEncodingTest }
+
+procedure TTokenEncodingTest.TestDecode_ReadsACanonicalSegment;
+begin
+  // "-" and "_" in place of "+" and "/", and no padding: RFC 7515 section 2.
+  Assert.AreEqual('{"a":"b"}', Base64UrlDecode('eyJhIjoiYiJ9'));
+end;
+
+procedure TTokenEncodingTest.TestDecode_RefusesACharacterOutsideTheAlphabet;
+begin
+  // The RTL decoder skips what it does not recognise, so this used to decode to the
+  // same claims as the segment without the quote - two different tokens carrying one
+  // set of claims, only one of which is the string a signature was checked over.
+  Assert.WillRaise(
+    procedure
+    begin
+      Base64UrlDecode('eyJhIjoi"YiJ9');
+    end, EBase64UrlError);
+end;
+
+procedure TTokenEncodingTest.TestDecode_RefusesEmbeddedWhitespace;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      Base64UrlDecode('eyJhIjoi'#13#10'YiJ9');
+    end, EBase64UrlError);
+end;
+
+procedure TTokenEncodingTest.TestDecode_RefusesAnImpossibleLength;
+begin
+  // Base64 encodes three bytes as four characters, so a group of one is not something
+  // any input produces.
+  Assert.WillRaise(
+    procedure
+    begin
+      Base64UrlDecode('eyJhIjoiYiJ9Z');
+    end, EBase64UrlError);
+end;
+
+procedure TTokenEncodingTest.TestDecode_RefusesStandardBase64Padding;
+begin
+  // base64url is unpadded, and a segment carrying "=" was written by something that
+  // is not following RFC 7515.
+  Assert.WillRaise(
+    procedure
+    begin
+      Base64UrlDecode('eyJhIjoiYiJ9==');
+    end, EBase64UrlError);
+end;
+
+procedure TTokenEncodingTest.TestSanitize_RemovesTheCharactersThatEndALogLine;
+var
+  LLine: string;
+begin
+  // Logify is line oriented: a carriage return inside a claim would end the line and
+  // let the rest of the claim be read back as an entry of its own.
+  LLine := SanitizeForLog('https://idp'#13#10'WARN forged line');
+
+  Assert.IsFalse(LLine.Contains(#13), LLine);
+  Assert.IsFalse(LLine.Contains(#10), LLine);
+  Assert.IsTrue(LLine.Contains('https://idp'), LLine);
+end;
+
+procedure TTokenEncodingTest.TestSanitize_TruncatesALongValue;
+var
+  LLine: string;
+begin
+  // How much of the log one rejected token occupies is not the sender's decision.
+  LLine := SanitizeForLog(StringOfChar('x', 4000), 120);
+
+  Assert.IsTrue(Length(LLine) <= 123, Format('%d characters', [Length(LLine)]));
+  Assert.IsTrue(LLine.EndsWith('...'), LLine);
+end;
+
+procedure TTokenEncodingTest.TestSanitize_LeavesAnOrdinaryValueAlone;
+begin
+  // The point is to keep the log readable, not to mangle what an operator came for.
+  Assert.AreEqual('https://idp.example.com/tenant',
+    SanitizeForLog('https://idp.example.com/tenant'));
 end;
 
 { TBearerChallengeTest }
@@ -1232,6 +1356,89 @@ begin
   Assert.IsTrue(LResult.Success, LResult.ErrorDescription);
 end;
 
+procedure TClaimsTokenValidatorTest.TestValidate_ScopeIsReadFromScpWhenScopeIsAbsent;
+var
+  LResult: TTokenValidationResult;
+begin
+  // Microsoft Entra ID mints "scp" rather than "scope" in a v2.0 access token, so a
+  // server reading only the first name refused its tokens for want of a scope the
+  // token was carrying all along.
+  FConfig.AddRequiredScope('mcp.read');
+
+  LResult := Validate(BuildToken(
+    Format('{"alg":"RS256","kid":"%s"}', [KeyId]),
+    Format('{"iss":"%s","aud":"%s","scp":"openid mcp.read","exp":%d}',
+      [Issuer, Audience, UnixNow + 3600])));
+
+  Assert.IsTrue(LResult.Success, LResult.ErrorDescription);
+end;
+
+procedure TClaimsTokenValidatorTest.TestValidate_ScopeIsReadFromAnScpArray;
+var
+  LResult: TTokenValidationResult;
+begin
+  // The v1.0 shape of the same claim.
+  FConfig.AddRequiredScope('mcp.read');
+
+  LResult := Validate(BuildToken(
+    Format('{"alg":"RS256","kid":"%s"}', [KeyId]),
+    Format('{"iss":"%s","aud":"%s","scp":["openid","mcp.read"],"exp":%d}',
+      [Issuer, Audience, UnixNow + 3600])));
+
+  Assert.IsTrue(LResult.Success, LResult.ErrorDescription);
+end;
+
+procedure TClaimsTokenValidatorTest.TestValidate_ScopeWinsOverScp;
+var
+  LResult: TTokenValidationResult;
+begin
+  // "scope" is the registered name, so a token carrying both is read the standard
+  // way and the fallback stays a fallback.
+  FConfig.AddRequiredScope('mcp.read');
+
+  LResult := Validate(BuildToken(
+    Format('{"alg":"RS256","kid":"%s"}', [KeyId]),
+    Format('{"iss":"%s","aud":"%s","scope":"nothing","scp":"mcp.read","exp":%d}',
+      [Issuer, Audience, UnixNow + 3600])));
+
+  Assert.IsFalse(LResult.Success);
+  Assert.IsTrue(LResult.ErrorCode = TTokenValidationErrorCode.InsufficientScope);
+end;
+
+procedure TClaimsTokenValidatorTest.TestValidate_TokenIsAcceptedForASecondConfiguredAudience;
+var
+  LResult: TTokenValidationResult;
+begin
+  // This server answers under two identifiers, and which one a token names depends on
+  // which one its client asked for.
+  FConfig.AddAudience('https://internal.example.com/mcp');
+
+  LResult := Validate(BuildToken(
+    Format('{"alg":"RS256","kid":"%s"}', [KeyId]),
+    Format('{"iss":"%s","aud":"https://internal.example.com/mcp","sub":"user-42",' +
+      '"exp":%d}', [Issuer, UnixNow + 3600])));
+
+  Assert.IsTrue(LResult.Success, LResult.ErrorDescription);
+end;
+
+procedure TClaimsTokenValidatorTest.TestValidate_AcceptedClaimsReachTheRequestToken;
+var
+  LResult: TTokenValidationResult;
+begin
+  // The claims are checked on a token of the validator's own and copied over only
+  // once every check has passed, so the copy is what a tool is injected with - every
+  // claim of it, not only the ones with a property.
+  LResult := Validate(BuildToken(
+    Format('{"alg":"RS256","kid":"%s"}', [KeyId]),
+    Format('{"iss":"%s","aud":"%s","sub":"user-42","email":"a@example.com",' +
+      '"custom_claim":"kept","exp":%d}', [Issuer, Audience, UnixNow + 3600])));
+
+  Assert.IsTrue(LResult.Success, LResult.ErrorDescription);
+  Assert.AreEqual('user-42', FAccessToken.Subject);
+  Assert.AreEqual('a@example.com', FAccessToken.EMail);
+  Assert.AreEqual('kept', FAccessToken.Payload.GetValue<string>('custom_claim', ''));
+end;
+
 procedure TClaimsTokenValidatorTest.TestValidate_RejectedTokenLeavesClaimsEmpty;
 begin
   Validate(BuildToken(
@@ -1717,6 +1924,50 @@ begin
     .SetAudience('api://custom-audience');
 
   Assert.AreEqual('api://custom-audience', GetOAuthConfig.Audience);
+end;
+
+procedure TOAuthConfigValidationTest.TestAudience_AddWidensTheAcceptedSet;
+var
+  LAudiences: TArray<string>;
+begin
+  // A server reachable under more than one identifier: which one a token names depends
+  // on which one its client asked for, and both are this server.
+  FConfig
+    .SetResource('https://mcp.example.com/mcp')
+    .AddAudience('https://internal.example.com/mcp');
+
+  LAudiences := GetOAuthConfig.Audiences;
+
+  Assert.AreEqual(1, Length(LAudiences));
+  Assert.AreEqual('https://internal.example.com/mcp', LAudiences[0]);
+
+  FConfig.AddAudience('https://legacy.example.com/mcp');
+  Assert.AreEqual(2, Length(GetOAuthConfig.Audiences));
+end;
+
+procedure TOAuthConfigValidationTest.TestAudience_SetReplacesWhatWasThere;
+begin
+  // A setter replaces; only AddAudience widens.
+  FConfig
+    .SetResource('https://mcp.example.com/mcp')
+    .AddAudience('https://internal.example.com/mcp')
+    .SetAudience('https://only.example.com/mcp');
+
+  Assert.AreEqual(1, Length(GetOAuthConfig.Audiences));
+  Assert.AreEqual('https://only.example.com/mcp', GetOAuthConfig.Audience);
+end;
+
+procedure TOAuthConfigValidationTest.TestAudience_DefaultsToTheResourceAsASet;
+var
+  LAudiences: TArray<string>;
+begin
+  FConfig.SetResource('https://mcp.example.com/mcp');
+
+  LAudiences := GetOAuthConfig.Audiences;
+
+  // Never empty: RFC 8707 resource indicators put the resource URL in "aud".
+  Assert.AreEqual(1, Length(LAudiences));
+  Assert.AreEqual('https://mcp.example.com/mcp', LAudiences[0]);
 end;
 
 procedure TOAuthConfigValidationTest.TestRequiredScopesAndClockSkew_AreStored;
@@ -2308,6 +2559,7 @@ end;
 
 initialization
   TDUnitX.RegisterTestFixture(TTokenValidationResultTest);
+  TDUnitX.RegisterTestFixture(TTokenEncodingTest);
   TDUnitX.RegisterTestFixture(TBearerChallengeTest);
   TDUnitX.RegisterTestFixture(TDecodeOnlyTokenValidatorTest);
   TDUnitX.RegisterTestFixture(TClaimsTokenValidatorTest);

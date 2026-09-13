@@ -144,6 +144,7 @@ type
     [NeonIgnore]
     Raw: string;
 
+    /// <summary>True when no document has been read into this record.</summary>
     function IsEmpty: Boolean;
 
     class function FromJSON(AJSON: TJSONObject): TOAuthServerMetadata; static;
@@ -242,13 +243,14 @@ type
       Metadata: TOAuthServerMetadata;
       /// <summary>The candidate URL this document actually came from.</summary>
       DiscoveryUrl: string;
-      FetchedAt: TDateTime;
+      /// <summary>Monotonic tick, not wall time - see IsExpired.</summary>
+      FetchedAt: UInt64;
     end;
 
     TKeysEntry = class
       Keys: TArray<TOAuthJsonWebKey>;
-      FetchedAt: TDateTime;
-      LastAttemptAt: TDateTime;
+      FetchedAt: UInt64;
+      LastAttemptAt: UInt64;
     end;
   private
     FLock: TCriticalSection;
@@ -260,7 +262,9 @@ type
     FRequestTimeout: Integer;
 
     class function NormalizeIssuer(const AIssuer: string): string; static;
-    class function IsExpired(const AFetchedAt: TDateTime; ATTLSeconds: Integer): Boolean; static;
+    /// <summary>Milliseconds since this process started; never goes backwards.</summary>
+    class function Ticks: UInt64; static;
+    class function IsExpired(AFetchedAt: UInt64; ATTLSeconds: Integer): Boolean; static;
 
     function FetchMetadata(const AIssuer: string; out ADiscoveryUrl: string): TOAuthServerMetadata;
     function TryFetchMetadataFrom(const AIssuer, AUrl: string; out AMetadata: TOAuthServerMetadata; out AError: string): Boolean;
@@ -476,10 +480,20 @@ begin
     Result := LTrimmed.ToLower;
 end;
 
-class function TOAuthMetadataProvider.IsExpired(const AFetchedAt: TDateTime;
+class function TOAuthMetadataProvider.Ticks: UInt64;
+begin
+  Result := TThread.GetTickCount64;
+end;
+
+class function TOAuthMetadataProvider.IsExpired(AFetchedAt: UInt64;
   ATTLSeconds: Integer): Boolean;
 begin
-  Result := SecondsBetween(Now, AFetchedAt) >= ATTLSeconds;
+  // A monotonic tick rather than the wall clock. An entry is trusted for as long as
+  // its age says, and the wall clock is not a measure of age: an NTP correction or a
+  // daylight saving change moves it, and moving it backwards extends the life of every
+  // cached key set by however far it went - exactly the wrong direction for a cache
+  // whose whole purpose is to stop holding a key the issuer has retired.
+  Result := (Ticks - AFetchedAt) >= UInt64(ATTLSeconds) * 1000;
 end;
 
 function TOAuthMetadataProvider.FetchDocument(const AUrl: string): string;
@@ -717,7 +731,7 @@ begin
     end;
     LEntry.Metadata := AMetadata;
     LEntry.DiscoveryUrl := ADiscoveryUrl;
-    LEntry.FetchedAt := Now;
+    LEntry.FetchedAt := Ticks;
   finally
     FLock.Leave;
   end;
@@ -735,8 +749,8 @@ begin
       FKeysCache.Add(AKey, LEntry);
     end;
     LEntry.Keys := AKeys;
-    LEntry.FetchedAt := Now;
-    LEntry.LastAttemptAt := Now;
+    LEntry.FetchedAt := Ticks;
+    LEntry.LastAttemptAt := Ticks;
   finally
     FLock.Leave;
   end;
@@ -828,14 +842,14 @@ begin
         // An unknown key id may mean the identity provider rotated its keys, but a
         // client sending random key ids must not be able to make this server issue
         // one request to the identity provider per incoming request.
-        LNeedFetch := SecondsBetween(Now, LEntry.LastAttemptAt) >= KeysRefreshInterval
+        LNeedFetch := (Ticks - LEntry.LastAttemptAt) >= UInt64(KeysRefreshInterval) * 1000
       else
         LNeedFetch := IsExpired(LEntry.FetchedAt, KeysTTL);
 
       // The attempt is booked while still holding the lock, so that concurrent
       // requests cannot all get past the rate limit at the same time.
       if LNeedFetch then
-        LEntry.LastAttemptAt := Now;
+        LEntry.LastAttemptAt := Ticks;
     end;
   finally
     FLock.Leave;

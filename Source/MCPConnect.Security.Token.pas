@@ -26,6 +26,7 @@ uses
 {$SCOPEDENUMS ON}
 
 resourcestring
+  STokenSegmentNotBase64Url = 'A token segment is not canonical base64url';
   STokenMalformed = 'The access token is not a well-formed JWT';
   STokenPayloadInvalid = 'The access token payload is not a valid JSON object';
   STokenAlgorithmNotAllowed = 'The token signing algorithm is not allowed';
@@ -52,6 +53,12 @@ type
   ///   Error codes of RFC 6750 §3.1, reported back to the client in the
   ///   "WWW-Authenticate" challenge of a 401 response.
   /// </summary>
+  /// <summary>
+  ///   A token segment that is not canonical base64url. Raised by Base64UrlDecode
+  ///   and turned into an "invalid token" result by the validators that catch it.
+  /// </summary>
+  EBase64UrlError = class(Exception);
+
   TTokenValidationErrorCode = (
     /// <summary>No error, or no error worth naming (e.g. a missing Authorization header).</summary>
     None,
@@ -135,7 +142,14 @@ type
     function SplitToken(const AToken: string; out AHeader, APayload, ASignature: string): Boolean;
 
     /// <summary>Decodes a base64url segment of the token into its JSON text.</summary>
+    /// <exception cref="EBase64UrlError">The segment is not canonical base64url.</exception>
     function DecodeSegment(const ASegment: string): string;
+
+    /// <summary>
+    ///   Decodes a segment, answering False instead of raising when it cannot be read.
+    ///   For the places that have an "unreadable" answer of their own to give.
+    /// </summary>
+    function TryDecodeSegment(const ASegment: string; out AText: string): Boolean;
 
     /// <summary>
     ///   Reads the "kid" of the token header. Returns an empty string when the header
@@ -306,7 +320,32 @@ type
 ///   Decodes a base64url encoded string (RFC 4648 §5) into its UTF-8 text,
 ///   restoring the padding the encoding strips.
 /// </summary>
+/// <exception cref="EBase64UrlError">
+///   The input is not canonical base64url: a character outside the alphabet, or a
+///   length no unpadded encoding can produce.
+/// </exception>
+/// <remarks>
+///   Strict on purpose. The RTL decoder skips what it does not recognise rather than
+///   refusing it, so a segment with junk spliced through it decodes to the same
+///   claims as the clean one - two different tokens carrying one set of claims, only
+///   one of which is the string whose signature was verified. Not a bypass on its own,
+///   since verification covers the raw segments, but nothing downstream should have to
+///   know that.
+/// </remarks>
 function Base64UrlDecode(const AInput: string): string;
+
+/// <summary>
+///   Renders a value for a single log line: control characters removed and the result
+///   truncated. For the parts of a rejected token an operator needs to see.
+/// </summary>
+/// <remarks>
+///   Everything a token carries is written by whoever sent it. Logify is line
+///   oriented, so a carriage return inside a claim would end the line and let the rest
+///   of the claim be read as a log entry of its own - one an attacker chooses the text
+///   of. The length cap is the other half: a claim is not a place to let a caller
+///   decide how much of the log it occupies.
+/// </remarks>
+function SanitizeForLog(const AValue: string; AMaxLength: Integer = 120): string;
 
 /// <summary>
 ///   Returns the RFC 6750 name of an error code ('invalid_token', ...), or an empty
@@ -344,15 +383,60 @@ uses
   Logify;
 
 function Base64UrlDecode(const AInput: string): string;
+const
+  Base64UrlAlphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz' +
+    '0123456789-_';
 var
+  LChar: Char;
   LValue: string;
 begin
+  // Checked before anything is decoded: RFC 7515 section 2 admits this alphabet and
+  // no padding, so a "+", a "=" or a line break is not a segment this server wrote or
+  // one any client should be sending.
+  for LChar in AInput do
+    if Base64UrlAlphabet.IndexOf(LChar) < 0 then
+      raise EBase64UrlError.Create(STokenSegmentNotBase64Url);
+
+  // One character over a group of four cannot be produced by any input: base64
+  // encodes in groups of three bytes, which is two, three or four characters.
+  if Length(AInput) mod 4 = 1 then
+    raise EBase64UrlError.Create(STokenSegmentNotBase64Url);
+
   LValue := AInput.Replace('-', '+').Replace('_', '/');
   case Length(LValue) mod 4 of
     2: LValue := LValue + '==';
     3: LValue := LValue + '=';
   end;
   Result := TEncoding.UTF8.GetString(TNetEncoding.Base64.DecodeStringToBytes(LValue));
+end;
+
+function SanitizeForLog(const AValue: string; AMaxLength: Integer): string;
+var
+  LChar: Char;
+  LBuilder: TStringBuilder;
+begin
+  LBuilder := TStringBuilder.Create;
+  try
+    for LChar in AValue do
+    begin
+      if LBuilder.Length >= AMaxLength then
+      begin
+        LBuilder.Append('...');
+        Break;
+      end;
+
+      // Anything below a space ends or reshapes a log line; DEL and the C1 range do
+      // the same to a terminal reading it back.
+      if (LChar < ' ') or ((LChar >= #$7F) and (LChar <= #$9F)) then
+        LBuilder.Append(' ')
+      else
+        LBuilder.Append(LChar);
+    end;
+
+    Result := LBuilder.ToString;
+  finally
+    LBuilder.Free;
+  end;
 end;
 
 function TokenValidationErrorCodeToString(AErrorCode: TTokenValidationErrorCode): string;
@@ -475,13 +559,33 @@ begin
   Result := Base64UrlDecode(ASegment);
 end;
 
+function TTokenValidatorBase.TryDecodeSegment(const ASegment: string;
+  out AText: string): Boolean;
+begin
+  AText := '';
+  try
+    AText := Base64UrlDecode(ASegment);
+    Result := True;
+  except
+    on EBase64UrlError do
+      Result := False;
+  end;
+end;
+
 function TTokenValidatorBase.GetKeyId(const AHeaderSegment: string): string;
 var
   LJSON: TJSONValue;
+  LHeader: string;
 begin
   Result := '';
 
-  LJSON := TJSONObject.ParseJSONValue(DecodeSegment(AHeaderSegment));
+  // A header this server cannot decode has no key id, which is what the caller does
+  // with an unreadable one anyway. Answering rather than raising keeps the validator
+  // contract: the outcomes of a bad token are records.
+  if not TryDecodeSegment(AHeaderSegment, LHeader) then
+    Exit;
+
+  LJSON := TJSONObject.ParseJSONValue(LHeader);
   try
     if LJSON is TJSONObject then
       Result := (LJSON as TJSONObject).GetValue<string>('kid', '');
@@ -552,10 +656,16 @@ end;
 function TClaimsTokenValidator.GetAlgorithm(const AHeaderSegment: string): string;
 var
   LJSON: TJSONValue;
+  LHeader: string;
 begin
   Result := '';
 
-  LJSON := TJSONObject.ParseJSONValue(DecodeSegment(AHeaderSegment));
+  // As in GetKeyId: no algorithm rather than an exception, and an empty one is
+  // refused by IsAlgorithmAllowed a few lines later.
+  if not TryDecodeSegment(AHeaderSegment, LHeader) then
+    Exit;
+
+  LJSON := TJSONObject.ParseJSONValue(LHeader);
   try
     if LJSON is TJSONObject then
       Result := (LJSON as TJSONObject).GetValue<string>('alg', '');
@@ -586,13 +696,16 @@ end;
 function TClaimsTokenValidator.AudienceMatches(AConfig: TOAuthConfig;
   const AAudience: TArray<string>): Boolean;
 var
-  LValue: string;
+  LValue, LConfigured: string;
 begin
   // Compared as a URI, so that the case of the path counts: "aud" names the resource a
   // token may be spent at, and two paths differing only in case are two resources.
+  // Both sides are lists: a token may be minted for several resources, and a server
+  // may answer for several identifiers, so any one pair matching is enough.
   for LValue in AAudience do
-    if TOAuthConfig.SameUri(LValue, AConfig.Audience) then
-      Exit(True);
+    for LConfigured in AConfig.Audiences do
+      if TOAuthConfig.SameUri(LValue, LConfigured) then
+        Exit(True);
 
   Result := False;
 end;
@@ -630,8 +743,11 @@ end;
 function TClaimsTokenValidator.Reject(AErrorCode: TTokenValidationErrorCode;
   const ADescription, AExpected, AFound: string): TTokenValidationResult;
 begin
+  // AExpected is this server describing itself, but AFound is routinely a claim off
+  // the token - an issuer, a key id, a scope - and so is written by whoever sent it.
+  // Both go through the same rendering rather than only the one that needs it today.
   Logger.LogWarning('Token rejected - %s (expected: %s, found: %s)',
-    [ADescription, AExpected, AFound]);
+    [ADescription, SanitizeForLog(AExpected), SanitizeForLog(AFound)]);
 
   Result := TTokenValidationResult.Fail(AErrorCode, ADescription);
 end;
@@ -792,7 +908,10 @@ begin
     if not Result.Success then
       Exit;
 
-    AAccessToken.FromString(LClaims.ToString);
+    // Copied, not round-tripped through its own JSON: re-serializing and re-parsing
+    // cost two passes over the payload and put whatever the writer normalises between
+    // the claims that were checked and the claims a tool is given.
+    AAccessToken.Assign(LClaims);
   finally
     LClaims.Free;
   end;

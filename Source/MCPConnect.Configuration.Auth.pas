@@ -261,8 +261,21 @@ type
     /// <summary>
     ///   Value the "aud" claim of the token must contain. Defaults to the resource URL
     ///   set with SetResource, which is what RFC 8707 resource indicators produce.
+    ///   Replaces whatever was configured before; an empty value restores the default.
     /// </summary>
     function SetAudience(const AAudience: string): IOAuthConfig;
+
+    /// <summary>
+    ///   Adds another value the "aud" claim may contain, on top of the one SetAudience
+    ///   set or the default. A token matching any of them is accepted.
+    /// </summary>
+    /// <remarks>
+    ///   For a server reachable under more than one identifier - an internal hostname
+    ///   beside the public one, an old URL kept alive through a migration - where the
+    ///   audience a token carries depends on which one the client asked for. Empty
+    ///   values are ignored, and it can be called multiple times.
+    /// </remarks>
+    function AddAudience(const AAudience: string): IOAuthConfig;
 
     /// <summary>
     ///   Adds a scope the token must carry. A token missing any of them is rejected
@@ -319,7 +332,7 @@ type
     FMetadataProxyUpstream: string;
     FTokenValidatorClass: TClass;
     FExtraTrustedIssuers: TArray<string>;
-    FAudience: string;
+    FAudiences: TArray<string>;
     FRequiredScopes: TArray<string>;
     FClockSkewSeconds: Integer;
     FKeyCacheTTL: Integer;
@@ -333,6 +346,7 @@ type
     function GetDiscoveryIssuers: TArray<string>;
     function GetTrustedIssuers: TArray<string>;
     function GetAudience: string;
+    function GetAudiences: TArray<string>;
     function GetMetadataProvider: IOAuthMetadataProvider;
   public
     function SetRealm(const ARealm: string): IOAuthConfig;
@@ -344,6 +358,7 @@ type
     function SetMetadataProvider(const AProvider: IOAuthMetadataProvider): IOAuthConfig;
     function AddTrustedIssuer(const AIssuer: string): IOAuthConfig;
     function SetAudience(const AAudience: string): IOAuthConfig;
+    function AddAudience(const AAudience: string): IOAuthConfig;
     function AddRequiredScope(const AScope: string): IOAuthConfig;
     function SetClockSkew(ASeconds: Integer): IOAuthConfig;
     function SetKeyCacheTTL(ASeconds: Integer): IOAuthConfig;
@@ -478,7 +493,18 @@ type
     ///   resource URL. The fallback lives here, and not in every validator, so that
     ///   the rule cannot be reimplemented differently by each of them.
     /// </summary>
+    /// <summary>
+    ///   The first accepted audience - the one SetAudience set, or the resource URL.
+    ///   Audiences is what a validator should read; this stays for the single-value
+    ///   case, which is nearly every server.
+    /// </summary>
     property Audience: string read GetAudience;
+
+    /// <summary>
+    ///   Every value the "aud" claim of a token may contain. Never empty: with nothing
+    ///   configured it is the resource URL, which is what RFC 8707 puts there.
+    /// </summary>
+    property Audiences: TArray<string> read GetAudiences;
 
     /// <summary>Scopes a token must all carry, else "insufficient_scope".</summary>
     property RequiredScopes: TArray<string> read FRequiredScopes;
@@ -624,6 +650,7 @@ begin
   FRealm := DefaultRealm;
   FAuthorizationServers := [];
   FScopesSupported := [];
+  FAudiences := [];
   FRequiredScopes := [];
   FExtraTrustedIssuers := [];
   FTokenValidatorClass := nil;
@@ -807,7 +834,21 @@ end;
 
 function TOAuthConfig.SetAudience(const AAudience: string): IOAuthConfig;
 begin
-  FAudience := AAudience;
+  // Replaces rather than adds, which is what a setter says. An empty value clears
+  // the list back to the resource URL, as it did when there was one value to clear.
+  if AAudience.Trim = '' then
+    FAudiences := []
+  else
+    FAudiences := [AAudience.Trim];
+
+  Result := Self;
+end;
+
+function TOAuthConfig.AddAudience(const AAudience: string): IOAuthConfig;
+begin
+  if AAudience.Trim <> '' then
+    FAudiences := FAudiences + [AAudience.Trim];
+
   Result := Self;
 end;
 
@@ -1054,15 +1095,20 @@ begin
     Result := '';
 end;
 
-function TOAuthConfig.GetAudience: string;
+function TOAuthConfig.GetAudiences: TArray<string>;
 begin
   // The resource URL is what RFC 8707 resource indicators put in "aud", so it is the
-  // right default and SetAudience is only needed when an authorization server mints
-  // something else.
-  if FAudience <> '' then
-    Result := FAudience
+  // right default and the setters are only needed when an authorization server mints
+  // something else - or when this server answers under more than one identifier.
+  if Length(FAudiences) > 0 then
+    Result := FAudiences
   else
-    Result := Resource;
+    Result := [Resource];
+end;
+
+function TOAuthConfig.GetAudience: string;
+begin
+  Result := Audiences[0];
 end;
 
 function TOAuthConfig.GetMetadataProvider: IOAuthMetadataProvider;

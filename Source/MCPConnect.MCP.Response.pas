@@ -263,7 +263,9 @@ type
     FPayload: TValue;
     FOwnsPayload: Boolean;
   protected
-    /// <summary>Boxes AValue, owned until the box is opened.</summary>
+    /// <summary>
+    ///   Boxes AValue, owned until the box is opened.
+    /// </summary>
     procedure Box(const AValue: TValue; AOwnsValue: Boolean);
 
     /// <summary>
@@ -291,10 +293,14 @@ type
     /// </summary>
     class function Unwrap(var AValue: TValue): Boolean; static;
 
-    /// <summary>Boxes any value: a record, an entity, a number, a string.</summary>
+    /// <summary>
+    ///   Boxes any value: a record, an entity, a number, a string.
+    /// </summary>
     class function Value(const AValue: TValue): TMCPResponse;
 
-    /// <summary>Alias of Value, for the one-liners that read better with it.</summary>
+    /// <summary>
+    ///   Alias of Value, for the one-liners that read better with it.
+    /// </summary>
     class function Ok(const AValue: TValue): TMCPResponse;
 
     /// <summary>
@@ -314,13 +320,19 @@ type
     /// </summary>
     class function Ready(AResult: TObject): TMCPResponse;
 
-    /// <summary>Boxes the input requests built with AInput.</summary>
+    /// <summary>
+    ///   Boxes the input requests built with AInput.
+    /// </summary>
     class function Needs(const AInput: TMCPInput): TMCPResponse; overload;
 
-    /// <summary>Boxes a hand-built input_required result.</summary>
+    /// <summary>
+    ///   Boxes a hand-built input_required result.
+    /// </summary>
     class function Needs(const AResult: TInputRequiredResult): TMCPResponse; overload;
 
-    /// <summary>What the box holds, for a middleware that looks inside.</summary>
+    /// <summary>
+    ///   What the box holds, for a middleware that looks inside.
+    /// </summary>
     property Payload: TValue read FPayload;
   end;
 
@@ -353,10 +365,14 @@ type
   public
     class function PayloadType: TRttiType; override;
 
-    /// <summary>Boxes the normal answer.</summary>
+    /// <summary>
+    ///   Boxes the normal answer.
+    /// </summary>
     class function Value(const AValue: T): TMCPResponse<T>; reintroduce;
 
-    /// <summary>Alias of Value.</summary>
+    /// <summary>
+    ///   Alias of Value.
+    /// </summary>
     class function Ok(const AValue: T): TMCPResponse<T>; reintroduce;
 
     class function Ready(AResult: TObject): TMCPResponse<T>; reintroduce;
@@ -440,6 +456,7 @@ type
     ///   The accepted content object under AKey, or nil.
     /// </summary>
     function AcceptedContent(const AKey: string): TJSONObject;
+
     /// <summary>
     ///   The member of the accepted content under AKey, or nil.
     /// </summary>
@@ -459,13 +476,13 @@ type
     ///   Whether the user answered yes to the Confirm asked under AKey. False
     ///   for every other outcome: declined, cancelled, never asked.
     /// </summary>
-    function Confirmed(const AKey: string;
-      const AProperty: string = MCP_CONFIRM_PROPERTY): Boolean;
+    function Confirmed(const AKey: string; const AProperty: string = MCP_CONFIRM_PROPERTY): Boolean;
 
     function FieldAsString(const AKey, AProperty: string; const ADefault: string = ''): string;
     function FieldAsInteger(const AKey, AProperty: string; ADefault: Integer = 0): Integer;
     function FieldAsDouble(const AKey, AProperty: string; ADefault: Double = 0): Double;
     function FieldAsBoolean(const AKey, AProperty: string; ADefault: Boolean = False): Boolean;
+
     /// <summary>
     ///   A multi-value answer - the fields of a multi-select form, or a single
     ///   scalar read as a one-element array.
@@ -566,10 +583,14 @@ type
     class function DecodePayload<T: class, constructor>(const APayload: string;
       AConfig: INeonConfiguration): T; static;
 
-    /// <summary>The state AJson travels as, unsigned.</summary>
+    /// <summary>
+    ///   The state AJson travels as, unsigned.
+    /// </summary>
     class function WrapUnsigned(const AJson: string): string; static;
 
-    /// <summary>The state AJson travels as, with its HMAC appended.</summary>
+    /// <summary>
+    ///   The state AJson travels as, with its HMAC appended.
+    /// </summary>
     class function WrapSigned(const AJson, ASecret: string): string; static;
 
     /// <summary>
@@ -658,11 +679,15 @@ type
     class function TryDecodeStruct<T>(const AState, ASecret: string; out AValue: T;
       AConfig: INeonConfiguration = nil): Boolean; overload;
 
-    /// <summary>As the unsigned TryDecodeStruct, raising when it fails.</summary>
+    /// <summary>
+    ///   As the unsigned TryDecodeStruct, raising when it fails.
+    /// </summary>
     class function DecodeStruct<T>(const AState: string;
       AConfig: INeonConfiguration = nil): T; overload;
 
-    /// <summary>As the signed TryDecodeStruct, raising when it fails.</summary>
+    /// <summary>
+    ///   As the signed TryDecodeStruct, raising when it fails.
+    /// </summary>
     class function DecodeStruct<T>(const AState, ASecret: string;
       AConfig: INeonConfiguration = nil): T; overload;
   end;

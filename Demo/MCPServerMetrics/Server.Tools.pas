@@ -1,4 +1,4 @@
-unit MCPServer.Tools;
+unit Server.Tools;
 
 interface
 
@@ -7,7 +7,6 @@ uses
   System.JSON,
 
   Logify,
-  Neon.Core.Attributes,
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
   Neon.Core.Persistence.JSON.Schema,
@@ -63,10 +62,7 @@ type
 
   TTodoTool = class
   private
-    class var FDontAskAgain: Boolean;
-  private
     [Context] FParams: TCallToolRequestParams;
-    function DoDeleteTask(ATaskId: Integer): string;
   public
     [McpTool('add_task', 'Add a new task to the todo list')]
     function AddTask(
@@ -82,15 +78,13 @@ type
       [McpParam('task_id', 'ID of the task to complete')] ATaskId: Integer
     ): string;
 
-    /// <summary>
-    ///   Asks the user before it deletes anything: the first call answers with
-    ///   an elicitation (MRTR), the retry carries the answer and does the work.
-    /// </summary>
     [McpTool('delete_task', 'Delete a task from the todo list', 'destructive')]
     function DeleteTask(
       [McpParam('task_id', 'ID of the task to delete')] ATaskId: Integer
     ): TMCPResponse<string>;
 
+    [McpTool('metrics_report', 'Harvests the metrics the demo collects on each todo tool call')]
+    function MetricsReport(): string;
   end;
 
 var
@@ -99,45 +93,24 @@ var
 implementation
 
 uses
-  System.Diagnostics;
+  System.Diagnostics,
+
+  MCPConnect.Metrics,
+  MCPConnect.Metrics.Exporters;
+
+const
+  STaskNotFound = 'Task with ID %d not found';
 
 type
   /// <summary>
   ///   What the delete round trip carries in its requestState: which task the
-  ///   user was asked about. TMCPRequestState writes it as Neon JSON and reads
+  ///   user was asked about. TMCPRequestState write it as Neon JSON and reads
   ///   it back on the retry, so the answer cannot be replayed against another
-  ///   task. A record, so the round trip owns nothing.
+  ///   task.
   /// </summary>
-  TDeleteContext = record
+  TDeleteContext = class
+  public
     TaskId: Integer;
-  end;
-
-  [NeonEnumNames('Undefined,Duplicate,No longer needed,Created by mistake,Other')]
-  TDeleteReason = (
-    Undefined,
-    Duplicate,
-    NoLongerNeeded,
-    CreatedByMistake,
-    Other
-  );
-
-  /// <summary>
-  ///   What delete_task asks the user for. The form the client renders is
-  ///   generated from this record's RTTI, and the answer reads straight back
-  ///   into it - so the [JsonSchema] tags here are what the user sees, and
-  ///   nothing spells the member names twice.
-  /// </summary>
-  TDeleteAsk = record
-    [JsonSchema('title=Reason,description=Reason to delete the task')]
-    Reason: TDeleteReason;
-
-    [JsonSchema('title=Other reason,description=Custom reason, used when Reason is Other')]
-    OtherReason: string;
-
-    [JsonSchema('title=Don''t ask again,description=Skip the confirmation for future delete requests')]
-    DontAskAgain: Boolean;
-
-    function FullReason: string;
   end;
 
 { TTaskItem }
@@ -319,6 +292,11 @@ var
   LTask: TTaskItem;
   LWatch: TStopwatch;
 begin
+  // One-liner measurements: a counter with a label, a duration histogram...
+  TMetrics
+    .Counter('todo.tool.calls', 'Todo tool invocations', 'calls')
+    .Add(1, ['tool', 'add_task']);
+
   LWatch := TStopwatch.StartNew;
   try
     LTask := TodoStore.Add(ATitle, ADescription);
@@ -326,11 +304,28 @@ begin
     LWatch.Stop;
   end;
 
+  TMetrics
+    .Histogram('todo.tool.duration_ms', 'Todo tool duration', 'ms')
+    .Observe(LWatch.Elapsed.TotalMilliseconds, ['tool', 'add_task']);
+
+  // ...and a gauge keeping the current list size
+  TMetrics
+    .Gauge('todo.tasks.total', 'Tasks currently in the list', 'tasks')
+    .SetValue(TodoStore.CountTasks());
+
   Result := Format('Task #%d "%s" added successfully', [LTask.Id, LTask.Title]);
 end;
 
 function TTodoTool.ListTasks(): string;
 begin
+  TMetrics
+    .Counter('todo.tool.calls', 'Todo tool invocations', 'calls')
+    .Add(1, ['tool', 'list_tasks']);
+
+  TMetrics
+    .Gauge('todo.tasks.total', 'Tasks currently in the list', 'tasks')
+    .SetValue(TodoStore.CountTasks());
+
   Result := TodoStore.ToText();
 end;
 
@@ -338,11 +333,15 @@ function TTodoTool.CompleteTask(ATaskId: Integer): string;
 var
   LTask: TTaskItem;
 begin
+  TMetrics
+    .Counter('todo.tool.calls', 'Todo tool invocations', 'calls')
+    .Add(1, ['tool', 'complete_task']);
+
   TodoStore.Lock();
   try
     LTask := TodoStore.FindById(ATaskId);
     if LTask = nil then
-      Exit(Format('Task with ID %d not found', [ATaskId]));
+      Exit(Format(STaskNotFound, [ATaskId]));
     LTask.Status := TTaskStatus.Completed;
     Result := Format('Task #%d "%s" marked as completed', [LTask.Id, LTask.Title]);
   finally
@@ -352,94 +351,77 @@ end;
 
 function TTodoTool.DeleteTask(ATaskId: Integer): TMCPResponse<string>;
 const
-  // Elicitation key (each response is under a different key)
-  DelKey = 'delete';
+  DELETE_KEY = 'delete';
+var
+  LTask: TTaskItem;
+  LTitle: string;
+  LContext: TDeleteContext;
 begin
-  // The user ticked "do not ask again" on an earlier call, so skip the form
-  if FDontAskAgain then
-    Exit(TMCPResponse<string>.Value(DoDeleteTask(ATaskId)));
-
-  // The round-trip context: filled in below when asking, decoded back
-  // out of the requestState when the answer returns
-  var LContext := Default(TDeleteContext);
-
-  // The client answered already? Absent on the first call, accepted /
-  // declined / cancelled on the retry that carries the form back
-  var LOutcome := FParams.InputResponses.Outcome(DelKey);
-
   // Deleting is destructive, so the first call asks rather than deletes: the
-  // form is TDeleteAsk, the context travels as the requestState, and the client
-  // retries with the user's answer under the key this server chose for it
-  if LOutcome = TElicitationOutcome.Absent then
+  // context travels as the requestState, and the client retries with the
+  // user's answer under the key the server chose for it
+  if FParams.InputResponses.Outcome(DELETE_KEY) = TElicitationOutcome.Absent then
   begin
-    // What this round trip is about: the task the answer will have to match
-    LContext.TaskId := ATaskId;
-
-    // Neon-serialized and Base64-encoded into the opaque token the client echoes back
-    var LRequestState := TMCPRequestState.EncodeStruct<TDeleteContext>(LContext);
-
-    // The builder of the interim result, carrying that state along
-    var LInput := TMCPInput.New(LRequestState);
-
-    // One form, its schema generated from the TDeleteAsk record, filed under DelKey
-    LInput.Ask<TDeleteAsk>(DelKey, Format('Delete task #%d?', [ATaskId]));
-
-    // Answer with the input-required result instead of a value: nothing is deleted yet
-    Exit(TMCPResponse<string>.Needs(LInput));
+    LContext := TDeleteContext.Create;
+    try
+      LContext.TaskId := ATaskId;
+      Exit(TMCPResponse<string>.Needs(
+        TMCPInput.New(TMCPRequestState.Encode(LContext))
+          .Confirm(DELETE_KEY, Format('Delete task #%d?', [ATaskId]))));
+    finally
+      LContext.Free;
+    end;
   end;
 
-  Logger.Log('User response for a previous InputRequest', TLogLevel.Debug);
+  Logger.Log('User response for a previous Input Request', TLogLevel.Debug);
 
   // An answer given to another question says nothing about this one: the state
   // is decoded back into the context rather than compared as text. Encode and
   // decode it with a secret when the context can influence authorization, so
   // a client cannot edit it.
-  if not FParams.TryStateAsStruct<TDeleteContext>(LContext) or (LContext.TaskId <> ATaskId) then
+  if not FParams.TryStateAs<TDeleteContext>(LContext) or (LContext.TaskId <> ATaskId) then
+  begin
+    LContext.Free;
     Exit(TMCPResponse<string>.Ready(
       TCallToolReply.Fail('This confirmation belongs to another request')));
+  end;
+  LContext.Free;
 
-  // A decline or a cancel: the user refused, so nothing is deleted
-  if LOutcome <> TElicitationOutcome.Accepted then
-    Exit(TMCPResponse<string>.Value('Operation aborted by the user!'));
+  if FParams.InputResponses.Outcome(DELETE_KEY) <> TElicitationOutcome.Accepted then
+    Exit(TMCPResponse<string>.Ok(Format('Task #%d was not deleted', [ATaskId])));
 
-  // The accepted answer, read back into the very record whose RTTI shaped the form
-  var LAnswer := FParams.InputResponses.StructAs<TDeleteAsk>(DelKey);
-
-  // The checkbox on that form: a class var, since the tool is built per call, so
-  // later deletions skip the question for as long as the server runs
-  FDontAskAgain := LAnswer.DontAskAgain;
-
-  Logger.Log(Format('Task #%d deleted because: %s', [ATaskId, LAnswer.FullReason]), TLogLevel.Info);
-
-  // Accepted, and about this very task: the deletion finally happens, answered
-  // with the plain string this tool normally returns
-  Result := TMCPResponse<string>.Value(DoDeleteTask(ATaskId));
-end;
-
-function TTodoTool.DoDeleteTask(ATaskId: Integer): string;
-begin
-  if TodoStore.Remove(ATaskId) then
-    Result := Format('Task #%d deleted', [ATaskId])
-  else
-    Result := Format('Task with ID %d not found', [ATaskId]);
-end;
-
-{ TDeleteAsk }
-
-function TDeleteAsk.FullReason: string;
-begin
-  case Reason of
-    TDeleteReason.Undefined: Result := 'undefined';
-    TDeleteReason.Duplicate: Result := 'duplicate';
-    TDeleteReason.NoLongerNeeded: Result := 'no longer needed';
-    TDeleteReason.CreatedByMistake: Result := 'created by mistake';
-    TDeleteReason.Other: Result := '';
-  else
-    Result := '';
+  TodoStore.Lock();
+  try
+    LTask := TodoStore.FindById(ATaskId);
+    if LTask = nil then
+      raise Exception.CreateFmt(STaskNotFound, [ATaskId]);
+    LTitle := LTask.Title;
+  finally
+    TodoStore.Unlock();
   end;
 
-  if not OtherReason.IsEmpty then
-    Result := Result + ': ' + OtherReason;
+  if TodoStore.Remove(ATaskId) then
+    Result := TMCPResponse<string>.Ok(Format('Task #%d "%s" deleted', [ATaskId, LTitle]))
+  else
+    Result := TMCPResponse<string>.Ok(Format(STaskNotFound, [ATaskId]));
+end;
+
+function TTodoTool.MetricsReport(): string;
+var
+  LTarget: TStringList;
+  LExporter: IMetricExporter;
+begin
+  // Harvesting "later": everything the tools recorded since the server
+  // started is rendered through the sample text exporter and returned as a
+  // report any MCP client can ask for.
+  LTarget := TStringList.Create();
+  try
+    LExporter := TMetricTextExporter.Create(LTarget);
+    LExporter.Export(TMetrics.Collect);
+    Result := LTarget.Text;
+  finally
+    LTarget.Free();
+  end;
 end;
 
 initialization

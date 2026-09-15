@@ -55,7 +55,6 @@ uses
   System.Generics.Collections, System.Generics.Defaults,
 
   Logify,
-
   JRPC.Core,
 
   MCPConnect.Metrics,
@@ -84,10 +83,16 @@ type
 
     procedure Export(const APoints: TArray<TMetricPoint>);
 
-    /// <summary>Copy of the points of the last harvest, oldest series first.</summary>
+    /// <summary>
+    ///   Copy of the points of the last harvest, oldest series first.
+    /// </summary>
     function Snapshot: TArray<TMetricPoint>;
+
     procedure Stats(out AHarvests: Int64; out ALastHarvest: TDateTime);
-    /// <summary>The series count of the last harvests, oldest first.</summary>
+
+    /// <summary>
+    ///   The series count of the last harvests, oldest first.
+    /// </summary>
     function HistoryText: string;
   end;
 
@@ -141,7 +146,9 @@ type
 /// </summary>
 function MetricSlowestReport(const APoints: TArray<TMetricPoint>; ATopN: Integer): string;
 
-/// <summary>"region=eu status=accepted", empty when unlabeled.</summary>
+/// <summary>
+///   "region=eu status=accepted", empty when unlabeled.
+/// </summary>
 function LabelsToString(const ALabels: TArray<TMetricLabel>): string;
 
 type
@@ -217,7 +224,10 @@ type
     destructor Destroy; override;
 
     class function Instance: TServerMetrics;
-    /// <summary>Releases the hub (called by the form on shutdown).</summary>
+
+    /// <summary>
+    ///   Releases the hub (called by the form on shutdown).
+    /// </summary>
     class procedure Release;
 
     /// <summary>
@@ -243,10 +253,17 @@ type
     procedure SimulateErrors(AOperations: Integer);
 
     { Harvesting }
-    /// <summary>Delta harvest: files get what happened since the previous one.</summary>
+
+    /// <summary>
+    ///   Delta harvest: files get what happened since the previous one.
+    /// </summary>
     procedure HarvestDelta;
-    /// <summary>Cumulative harvest: everything since the last reset.</summary>
+
+    /// <summary>
+    ///   Cumulative harvest: everything since the last reset.
+    /// </summary>
     procedure HarvestCumulative;
+
     /// <summary>
     ///   Pushes the current snapshot to the OpenTelemetry collector once and
     ///   describes the outcome. Not a harvest: nothing is reset and no other
@@ -283,13 +300,17 @@ uses
 
   MCPConnect.Metrics.Exporters.Files;
 
-/// <summary>Kernel+User time of a TFileTime as one 100 ns tick count.</summary>
+/// <summary>
+///   Kernel+User time of a TFileTime as one 100 ns tick count.
+/// </summary>
 function FileTimeToTicks(const ATime: TFileTime): UInt64;
 begin
   Result := (UInt64(ATime.dwHighDateTime) shl 32) or UInt64(ATime.dwLowDateTime);
 end;
 
-/// <summary>Splits "eu, us, apac" into trimmed non-empty names; falls back to eu.</summary>
+/// <summary>
+///   Splits "eu, us, apac" into trimmed non-empty names; falls back to eu.
+/// </summary>
 function SplitRegions(const ARegions: string): TArray<string>;
 var
   LParts: TArray<string>;

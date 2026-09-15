@@ -59,27 +59,51 @@ uses
   System.SyncObjs,
   System.Generics.Collections,
 
+  Neon.Core.Attributes,
+  Neon.Core.Nullables,
+
   MCPConnect.Metrics;
 
 const
-  /// <summary>Where a local collector listens for OTLP/HTTP metrics.</summary>
+  /// <summary>
+  ///   Where a local collector listens for OTLP/HTTP metrics.
+  /// </summary>
   OTLP_DEFAULT_ENDPOINT = 'http://localhost:4318/v1/metrics';
-  /// <summary>The signal path appended to OTEL_EXPORTER_OTLP_ENDPOINT.</summary>
+
+  /// <summary>
+  ///   The signal path appended to OTEL_EXPORTER_OTLP_ENDPOINT.
+  /// </summary>
   OTLP_METRICS_PATH = '/v1/metrics';
-  /// <summary>Scope name of the default meter, whose own name is empty.</summary>
+
+  /// <summary>
+  ///   Scope name of the default meter, whose own name is empty.
+  /// </summary>
   OTLP_DEFAULT_SCOPE = 'MCPConnect.Metrics';
-  /// <summary>Connection and response timeout, in milliseconds.</summary>
+
+  /// <summary>
+  ///   Connection and response timeout, in milliseconds.
+  /// </summary>
   OTLP_DEFAULT_TIMEOUT = 10000;
-  /// <summary>AggregationTemporality.AGGREGATION_TEMPORALITY_CUMULATIVE.</summary>
+
+  /// <summary>
+  ///   AggregationTemporality.AGGREGATION_TEMPORALITY_CUMULATIVE.
+  /// </summary>
   OTLP_TEMPORALITY_CUMULATIVE = 2;
-  /// <summary>Longest Retry-After honoured, in seconds.</summary>
+
+  /// <summary>
+  ///   Longest Retry-After honoured, in seconds.
+  /// </summary>
   OTLP_MAX_RETRY_AFTER = 3600;
 
 type
-  /// <summary>Raised on configuration errors (never on a failed export).</summary>
+  /// <summary>
+  ///   Raised on configuration errors (never on a failed export).
+  /// </summary>
   EOtlpExporterError = class(EMetricsError);
 
-  /// <summary>One HTTP header sent with every export.</summary>
+  /// <summary>
+  ///   One HTTP header sent with every export.
+  /// </summary>
   TOtlpHeader = record
     Name: string;
     Value: string;
@@ -89,7 +113,9 @@ type
   TOtlpHttpResponse = record
     StatusCode: Integer;
     Body: string;
-    /// <summary>The raw Retry-After header, '' when absent.</summary>
+    /// <summary>
+    ///   The raw Retry-After header, '' when absent.
+    /// </summary>
     RetryAfter: string;
   end;
 
@@ -113,6 +139,124 @@ type
   public
     function Post(const AUrl: string; const AHeaders: TArray<TOtlpHeader>;
       const ABody: TBytes; ATimeoutMs: Integer): TOtlpHttpResponse;
+  end;
+
+  { OTLP entities -------------------------------------------------------------
+
+    The subset of opentelemetry.proto.collector.metrics.v1 this exporter
+    sends, as records Neon serializes with the camelCase field names of the
+    OTLP JSON encoding. int64/fixed64 fields are strings, as that encoding
+    writes them; enums are integers. }
+
+  /// <summary>
+  ///   A double that serializes NaN and the infinities as the proto3 JSON
+  ///   strings ("NaN", "Infinity", "-Infinity") instead of invalid numbers.
+  /// </summary>
+  TOtlpDouble = type Double;
+
+  /// <summary>
+  ///   AnyValue, restricted to the string case (labels are strings).
+  /// </summary>
+  TOtlpAnyValue = record
+    StringValue: string;
+  end;
+
+  /// <summary>
+  ///   KeyValue: one attribute.
+  /// </summary>
+  TOtlpKeyValue = record
+    Key: string;
+    Value: TOtlpAnyValue;
+    class function Create(const AKey, AValue: string): TOtlpKeyValue; static;
+  end;
+
+  TOtlpAttributes = TArray<TOtlpKeyValue>;
+
+  /// <summary>
+  ///   NumberDataPoint, as a double (counters and gauges).
+  /// </summary>
+  TOtlpNumberDataPoint = record
+
+    [NeonInclude(IncludeIf.NotEmpty)] Attributes: TOtlpAttributes;
+
+    /// <summary>
+    ///   Absent on a gauge: an instantaneous reading has no window.
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)] StartTimeUnixNano: string;
+
+    TimeUnixNano: string;
+    AsDouble: TOtlpDouble;
+  end;
+
+  /// <summary>
+  ///   HistogramDataPoint.
+  /// </summary>
+  TOtlpHistogramDataPoint = record
+    [NeonInclude(IncludeIf.NotEmpty)] Attributes: TOtlpAttributes;
+    StartTimeUnixNano: string;
+    TimeUnixNano: string;
+    Count: string;
+    Sum: TOtlpDouble;
+    /// <summary>
+    ///   One entry more than ExplicitBounds.
+    /// </summary>
+    BucketCounts: TArray<string>;
+    ExplicitBounds: TArray<Double>;
+    Min: TOtlpDouble;
+    Max: TOtlpDouble;
+  end;
+
+  TOtlpSum = record
+    AggregationTemporality: Integer;
+    IsMonotonic: Boolean;
+    DataPoints: TArray<TOtlpNumberDataPoint>;
+  end;
+
+  TOtlpGauge = record
+    DataPoints: TArray<TOtlpNumberDataPoint>;
+  end;
+
+  TOtlpHistogram = record
+    AggregationTemporality: Integer;
+    DataPoints: TArray<TOtlpHistogramDataPoint>;
+  end;
+
+  /// <summary>
+  ///   Metric. Exactly one of Sum, Gauge and Histogram has a value (the
+  ///   protobuf oneof "data"); the others are left out of the JSON.
+  /// </summary>
+  TOtlpMetric = record
+    Name: string;
+    [NeonInclude(IncludeIf.NotEmpty)] Description: string;
+    [NeonProperty('unit'), NeonInclude(IncludeIf.NotEmpty)] UnitName: string;
+    [NeonInclude(IncludeIf.NotNull)] Sum: Nullable<TOtlpSum>;
+    [NeonInclude(IncludeIf.NotNull)] Gauge: Nullable<TOtlpGauge>;
+    [NeonInclude(IncludeIf.NotNull)] Histogram: Nullable<TOtlpHistogram>;
+  end;
+
+  TOtlpInstrumentationScope = record
+    Name: string;
+  end;
+
+  TOtlpScopeMetrics = record
+    Scope: TOtlpInstrumentationScope;
+    Metrics: TArray<TOtlpMetric>;
+  end;
+
+  TOtlpResource = record
+    Attributes: TOtlpAttributes;
+  end;
+
+  TOtlpResourceMetrics = record
+    Resource: TOtlpResource;
+    ScopeMetrics: TArray<TOtlpScopeMetrics>;
+  end;
+
+  /// <summary>
+  ///   ExportMetricsServiceRequest: the body of POST /v1/metrics.
+  /// </summary>
+  TOtlpExportMetricsServiceRequest = record
+    ResourceMetrics: TArray<TOtlpResourceMetrics>;
   end;
 
   /// <summary>
@@ -151,8 +295,7 @@ type
 
     function Accumulate(const APoints: TArray<TMetricPoint>; AReset: Boolean): TArray<TMetricPoint>;
     function BuildHeaders: TArray<TOtlpHeader>;
-    function HandleResponse(const AUrl: string; const AResponse: TOtlpHttpResponse;
-      const ATime: TDateTime): string;
+    function HandleResponse(const AUrl: string; const AResponse: TOtlpHttpResponse; const ATime: TDateTime): string;
     function RecordFailure(const AMessage: string): string;
     procedure NotifyError(const AMessage: string);
     function GetSentCount: Int64;
@@ -167,7 +310,10 @@ type
     ///   service.name to unknown_service:&lt;executable&gt;, as OpenTelemetry does.
     /// </summary>
     constructor Create(const AEndpoint: string = OTLP_DEFAULT_ENDPOINT); overload;
-    /// <summary>Same, with the transport replaced.</summary>
+
+    /// <summary>
+    ///   Same, with the transport replaced.
+    /// </summary>
     constructor Create(const AEndpoint: string; const ASender: IOtlpHttpSender); overload;
     destructor Destroy; override;
 
@@ -178,6 +324,7 @@ type
     ///   OTEL_RESOURCE_ATTRIBUTES. Raises EOtlpExporterError on another protocol.
     /// </summary>
     class function FromEnvironment: TOtlpMetricExporter; overload;
+
     /// <summary>
     ///   Same, reading the variables through AGetVariable (which returns ''
     ///   for an unset one).
@@ -185,24 +332,39 @@ type
     class function FromEnvironment(const AGetVariable: TFunc<string, string>;
       const ASender: IOtlpHttpSender = nil): TOtlpMetricExporter; overload;
 
-    /// <summary>Adds a header, replacing one of the same name (case-insensitive).</summary>
+    /// <summary>
+    ///   Adds a header, replacing one of the same name (case-insensitive).
+    /// </summary>
     function AddHeader(const AName, AValue: string): TOtlpMetricExporter;
-    /// <summary>Adds a resource attribute, replacing one with the same key.</summary>
+
+    /// <summary>
+    ///   Adds a resource attribute, replacing one with the same key.
+    /// </summary>
     function AddResourceAttribute(const AKey, AValue: string): TOtlpMetricExporter;
 
     { IMetricExporter: a harvest without info is taken as not resetting }
     procedure Export(const APoints: TArray<TMetricPoint>);
+
     { IMetricHarvestExporter }
-    procedure ExportHarvest(const APoints: TArray<TMetricPoint>;
-      const AInfo: TMetricHarvestInfo);
+    procedure ExportHarvest(const APoints: TArray<TMetricPoint>; const AInfo: TMetricHarvestInfo);
 
     property Endpoint: string read FEndpoint write FEndpoint;
-    /// <summary>Gzip the body (Content-Encoding: gzip). Off by default.</summary>
+
+    /// <summary>
+    ///   Gzip the body (Content-Encoding: gzip). Off by default.
+    /// </summary>
     property Compression: Boolean read FCompression write FCompression;
-    /// <summary>Connection and response timeout in milliseconds.</summary>
+
+    /// <summary>
+    ///   Connection and response timeout in milliseconds.
+    /// </summary>
     property Timeout: Integer read FTimeout write FTimeout;
-    /// <summary>Scope name given to the default meter ('').</summary>
+
+    /// <summary>
+    ///   Scope name given to the default meter ('').
+    /// </summary>
     property DefaultScopeName: string read FDefaultScope write FDefaultScope;
+
     /// <summary>
     ///   Called on the harvest thread with the description of a failed or
     ///   partially rejected export. An exception it raises is swallowed.
@@ -211,26 +373,45 @@ type
     property Headers: TArray<TOtlpHeader> read GetHeaders;
     property ResourceAttributes: TArray<TMetricLabel> read GetResourceAttributes;
 
-    /// <summary>Exports the collector accepted (partially or not).</summary>
+    /// <summary>
+    ///   Exports the collector accepted (partially or not).
+    /// </summary>
     property SentCount: Int64 read GetSentCount;
-    /// <summary>Exports that failed: transport error or non-2xx status.</summary>
+
+    /// <summary>
+    ///   Exports that failed: transport error or non-2xx status.
+    /// </summary>
     property FailedCount: Int64 read GetFailedCount;
-    /// <summary>Harvests not sent because a Retry-After had not elapsed.</summary>
+
+    /// <summary>
+    ///   Harvests not sent because a Retry-After had not elapsed.
+    /// </summary>
     property SkippedCount: Int64 read GetSkippedCount;
+
     property LastError: string read GetLastError;
   end;
 
 /// <summary>
-///   Renders the points as an OTLP ExportMetricsServiceRequest in the JSON
-///   encoding, every point as a cumulative data point. The points' FirstSeen
-///   (local time, as the subsystem records it) is the start time; ATimeUtc is
-///   the time of every data point.
+///   Builds the OTLP ExportMetricsServiceRequest for the points, every point as
+///   a cumulative data point. The points' FirstSeen (local time, as the
+///   subsystem records it) is the start time; ATimeUtc is the time of every
+///   data point. Meters become scopes, the default meter ('') ADefaultScope.
+/// </summary>
+function MetricsToOtlpRequest(const APoints: TArray<TMetricPoint>;
+  const AResource: TArray<TMetricLabel>; const ATimeUtc: TDateTime;
+  const ADefaultScope: string = OTLP_DEFAULT_SCOPE): TOtlpExportMetricsServiceRequest;
+
+/// <summary>
+///   MetricsToOtlpRequest serialized by Neon: the JSON body the exporter POSTs.
 /// </summary>
 function MetricsToOtlpJson(const APoints: TArray<TMetricPoint>;
   const AResource: TArray<TMetricLabel>; const ATimeUtc: TDateTime;
   const ADefaultScope: string = OTLP_DEFAULT_SCOPE): string;
 
-/// <summary>A UTC TDateTime as OTLP's fixed64 nanoseconds since the Unix epoch, as a string.</summary>
+/// <summary>
+///   A UTC TDateTime as OTLP's fixed64 nanoseconds since the Unix epoch, as a
+///   string.
+/// </summary>
 function OtlpUnixNano(const AUtcTime: TDateTime): string;
 
 implementation
@@ -238,12 +419,16 @@ implementation
 uses
   System.Math,
   System.JSON,
+  System.Rtti,
+  System.TypInfo,
   System.DateUtils,
   System.ZLib,
   System.Generics.Defaults,
   System.Net.URLClient,
   System.Net.HttpClient,
 
+  Neon.Core.Types,
+  Neon.Core.Persistence,
   Neon.Core.Persistence.JSON;
 
 { Local helpers ------------------------------------------------------------ }
@@ -269,31 +454,97 @@ begin
   end;
 end;
 
-/// <summary>A double, or the proto3 JSON string for NaN and the infinities.</summary>
-function JsonDouble(const AValue: Double): TJSONValue;
+type
+  /// <summary>
+  ///   Writes a TOtlpDouble as a JSON number, or as the proto3 JSON string for
+  ///   NaN and the infinities, which a JSON number cannot represent.
+  /// </summary>
+  TOtlpDoubleSerializer = class(TCustomSerializer)
+  protected
+    class function GetTargetInfo: PTypeInfo; override;
+    class function CanHandle(AType: PTypeInfo): Boolean; override;
+  public
+    function Serialize(const AValue: TValue; ANeonObject: TNeonRttiObject;
+      AContext: ISerializerContext): TJSONValue; override;
+    function Deserialize(AValue: TJSONValue; const AData: TValue;
+      ANeonObject: TNeonRttiObject; AContext: IDeserializerContext): TValue; override;
+  end;
+
+{ TOtlpDoubleSerializer }
+
+class function TOtlpDoubleSerializer.GetTargetInfo: PTypeInfo;
 begin
-  if IsNan(AValue) then
+  Result := TypeInfo(TOtlpDouble);
+end;
+
+class function TOtlpDoubleSerializer.CanHandle(AType: PTypeInfo): Boolean;
+begin
+  // By identity: TOtlpDouble is a distinct type, a plain Double is not handled
+  Result := AType = GetTargetInfo;
+end;
+
+function TOtlpDoubleSerializer.Serialize(const AValue: TValue;
+  ANeonObject: TNeonRttiObject; AContext: ISerializerContext): TJSONValue;
+var
+  LValue: Double;
+begin
+  LValue := AValue.AsExtended;
+  if IsNan(LValue) then
     Result := TJSONString.Create('NaN')
-  else if IsInfinite(AValue) then
+  else if IsInfinite(LValue) then
   begin
-    if AValue > 0 then
+    if LValue > 0 then
       Result := TJSONString.Create('Infinity')
     else
       Result := TJSONString.Create('-Infinity');
   end
   else
-    Result := TJSONNumber.Create(AValue);
+    Result := TJSONNumber.Create(LValue);
 end;
 
-function AttributesJson(const ALabels: TArray<TMetricLabel>): TJSONArray;
+function TOtlpDoubleSerializer.Deserialize(AValue: TJSONValue;
+  const AData: TValue; ANeonObject: TNeonRttiObject;
+  AContext: IDeserializerContext): TValue;
 var
-  LLabel: TMetricLabel;
+  LValue: TOtlpDouble;
 begin
-  Result := TJSONArray.Create;
-  for LLabel in ALabels do
-    Result.AddElement(TJSONObject.Create
-      .AddPair('key', LLabel.Key)
-      .AddPair('value', TJSONObject.Create.AddPair('stringValue', LLabel.Value)));
+  if AValue is TJSONNumber then
+    LValue := TJSONNumber(AValue).AsDouble
+  else if SameText(AValue.Value, 'Infinity') then
+    LValue := Infinity
+  else if SameText(AValue.Value, '-Infinity') then
+    LValue := NegInfinity
+  else
+    LValue := NaN;
+  Result := TValue.From<TOtlpDouble>(LValue);
+end;
+
+/// <summary>
+///   Neon settings of the OTLP entities: camelCase field names (the OTLP JSON
+///   names), fields rather than properties, TOtlpDouble for the special floats.
+/// </summary>
+function OtlpNeonConfig: INeonConfiguration;
+begin
+  Result := TNeonConfiguration.Camel
+    .SetMembers([TNeonMembers.Fields])
+    .RegisterSerializer(TOtlpDoubleSerializer);
+end;
+
+{ TOtlpKeyValue }
+
+class function TOtlpKeyValue.Create(const AKey, AValue: string): TOtlpKeyValue;
+begin
+  Result.Key := AKey;
+  Result.Value.StringValue := AValue;
+end;
+
+function ToAttributes(const ALabels: TArray<TMetricLabel>): TOtlpAttributes;
+var
+  I: Integer;
+begin
+  SetLength(Result, Length(ALabels));
+  for I := 0 to High(ALabels) do
+    Result[I] := TOtlpKeyValue.Create(ALabels[I].Key, ALabels[I].Value);
 end;
 
 function LabelsText(const ALabels: TArray<TMetricLabel>): string;
@@ -311,30 +562,77 @@ begin
     #2 + LabelsText(APoint.Labels);
 end;
 
-function DataPointJson(const APoint: TMetricPoint; const ATime: string): TJSONObject;
+function ToNumberDataPoint(const APoint: TMetricPoint; const AValue: Double;
+  const ATime: string): TOtlpNumberDataPoint;
 begin
-  Result := TJSONObject.Create;
-  if Length(APoint.Labels) > 0 then
-    Result.AddPair('attributes', AttributesJson(APoint.Labels));
+  Result := Default(TOtlpNumberDataPoint);
+  Result.Attributes := ToAttributes(APoint.Labels);
   // A gauge is an instantaneous reading: no aggregation window to start
   if APoint.Kind <> TMetricKind.Gauge then
-    Result.AddPair('startTimeUnixNano', OtlpUnixNano(LocalToUtc(APoint.FirstSeen)));
-  Result.AddPair('timeUnixNano', ATime);
+    Result.StartTimeUnixNano := OtlpUnixNano(LocalToUtc(APoint.FirstSeen));
+  Result.TimeUnixNano := ATime;
+  Result.AsDouble := AValue;
+end;
 
-  case APoint.Kind of
+function ToHistogramDataPoint(const APoint: TMetricPoint;
+  const ATime: string): TOtlpHistogramDataPoint;
+begin
+  Result := Default(TOtlpHistogramDataPoint);
+  Result.Attributes := ToAttributes(APoint.Labels);
+  Result.StartTimeUnixNano := OtlpUnixNano(LocalToUtc(APoint.FirstSeen));
+  Result.TimeUnixNano := ATime;
+  Result.Count := IntToStr(APoint.Count);
+  Result.Sum := APoint.Sum;
+  // No explicit bounds: one bucket, (-inf, +inf), holding every sample
+  Result.BucketCounts := [IntToStr(APoint.Count)];
+  Result.ExplicitBounds := nil;
+  Result.Min := APoint.Min;
+  Result.Max := APoint.Max;
+end;
+
+/// <summary>
+///   The metric of the adjacent points APoints[AFirst..ALast], which share
+///   meter, name and kind.
+/// </summary>
+function ToMetric(const APoints: TArray<TMetricPoint>; AFirst, ALast: Integer;
+  const ATime: string): TOtlpMetric;
+var
+  LFirst: TMetricPoint;
+  LSum: TOtlpSum;
+  LGauge: TOtlpGauge;
+  LHistogram: TOtlpHistogram;
+  I: Integer;
+begin
+  LFirst := APoints[AFirst];
+  Result := Default(TOtlpMetric);
+  Result.Name := LFirst.Name;
+  Result.Description := LFirst.Description;
+  Result.UnitName := LFirst.UnitName;
+
+  case LFirst.Kind of
     TMetricKind.Counter:
-      Result.AddPair('asDouble', JsonDouble(APoint.Sum));
+    begin
+      LSum.AggregationTemporality := OTLP_TEMPORALITY_CUMULATIVE;
+      LSum.IsMonotonic := True;
+      SetLength(LSum.DataPoints, ALast - AFirst + 1);
+      for I := AFirst to ALast do
+        LSum.DataPoints[I - AFirst] := ToNumberDataPoint(APoints[I], APoints[I].Sum, ATime);
+      Result.Sum := LSum;
+    end;
     TMetricKind.Gauge:
-      Result.AddPair('asDouble', JsonDouble(APoint.Last));
+    begin
+      SetLength(LGauge.DataPoints, ALast - AFirst + 1);
+      for I := AFirst to ALast do
+        LGauge.DataPoints[I - AFirst] := ToNumberDataPoint(APoints[I], APoints[I].Last, ATime);
+      Result.Gauge := LGauge;
+    end;
     TMetricKind.Histogram:
     begin
-      Result.AddPair('count', IntToStr(APoint.Count));
-      Result.AddPair('sum', JsonDouble(APoint.Sum));
-      // No explicit bounds: one bucket, (-inf, +inf), holding every sample
-      Result.AddPair('bucketCounts', TJSONArray.Create(TJSONString.Create(IntToStr(APoint.Count))));
-      Result.AddPair('explicitBounds', TJSONArray.Create);
-      Result.AddPair('min', JsonDouble(APoint.Min));
-      Result.AddPair('max', JsonDouble(APoint.Max));
+      LHistogram.AggregationTemporality := OTLP_TEMPORALITY_CUMULATIVE;
+      SetLength(LHistogram.DataPoints, ALast - AFirst + 1);
+      for I := AFirst to ALast do
+        LHistogram.DataPoints[I - AFirst] := ToHistogramDataPoint(APoints[I], ATime);
+      Result.Histogram := LHistogram;
     end;
   end;
 end;
@@ -342,14 +640,22 @@ end;
 function MetricsToOtlpJson(const APoints: TArray<TMetricPoint>;
   const AResource: TArray<TMetricLabel>; const ATimeUtc: TDateTime;
   const ADefaultScope: string): string;
+begin
+  Result := TNeon.ValueToJSONString(
+    TValue.From<TOtlpExportMetricsServiceRequest>(
+      MetricsToOtlpRequest(APoints, AResource, ATimeUtc, ADefaultScope)),
+    OtlpNeonConfig);
+end;
+
+function MetricsToOtlpRequest(const APoints: TArray<TMetricPoint>;
+  const AResource: TArray<TMetricLabel>; const ATimeUtc: TDateTime;
+  const ADefaultScope: string): TOtlpExportMetricsServiceRequest;
 var
   LPoints: TArray<TMetricPoint>;
-  LPoint: TMetricPoint;
-  LRoot, LResourceMetrics, LScopeMetrics, LMetric, LData: TJSONObject;
-  LScopes, LMetrics, LDataPoints: TJSONArray;
-  LTime, LScopeName: string;
-  LNewMetric: Boolean;
-  I: Integer;
+  LResourceMetrics: TOtlpResourceMetrics;
+  LScope: TOtlpScopeMetrics;
+  LTime: string;
+  I, J, K: Integer;
 begin
   // Ordinal ordering, so points of one meter and of one metric are adjacent
   LPoints := Copy(APoints);
@@ -366,75 +672,36 @@ begin
     end));
 
   LTime := OtlpUnixNano(ATimeUtc);
-  LMetrics := nil;
-  LDataPoints := nil;
 
-  LRoot := TJSONObject.Create;
-  try
-    LResourceMetrics := TJSONObject.Create;
-    LRoot.AddPair('resourceMetrics', TJSONArray.Create(LResourceMetrics));
-    LResourceMetrics.AddPair('resource',
-      TJSONObject.Create.AddPair('attributes', AttributesJson(AResource)));
-    LScopes := TJSONArray.Create;
-    LResourceMetrics.AddPair('scopeMetrics', LScopes);
+  LResourceMetrics := Default(TOtlpResourceMetrics);
+  LResourceMetrics.Resource.Attributes := ToAttributes(AResource);
 
-    for I := 0 to High(LPoints) do
+  // One scope per run of points sharing a meter, one metric per run sharing
+  // a name and kind within it
+  I := 0;
+  while I <= High(LPoints) do
+  begin
+    LScope := Default(TOtlpScopeMetrics);
+    LScope.Scope.Name := LPoints[I].Meter;
+    if LScope.Scope.Name = '' then
+      LScope.Scope.Name := ADefaultScope;
+
+    J := I;
+    while (J <= High(LPoints)) and (LPoints[J].Meter = LPoints[I].Meter) do
     begin
-      LPoint := LPoints[I];
-
-      if (I = 0) or (LPoint.Meter <> LPoints[I - 1].Meter) then
-      begin
-        LScopeName := LPoint.Meter;
-        if LScopeName = '' then
-          LScopeName := ADefaultScope;
-        LScopeMetrics := TJSONObject.Create;
-        LScopes.AddElement(LScopeMetrics);
-        LScopeMetrics.AddPair('scope', TJSONObject.Create.AddPair('name', LScopeName));
-        LMetrics := TJSONArray.Create;
-        LScopeMetrics.AddPair('metrics', LMetrics);
-        LNewMetric := True;
-      end
-      else
-        LNewMetric := (LPoint.Name <> LPoints[I - 1].Name) or
-          (LPoint.Kind <> LPoints[I - 1].Kind);
-
-      if LNewMetric then
-      begin
-        LMetric := TJSONObject.Create;
-        LMetrics.AddElement(LMetric);
-        LMetric.AddPair('name', LPoint.Name);
-        if LPoint.Description <> '' then
-          LMetric.AddPair('description', LPoint.Description);
-        if LPoint.UnitName <> '' then
-          LMetric.AddPair('unit', LPoint.UnitName);
-
-        LData := TJSONObject.Create;
-        case LPoint.Kind of
-          TMetricKind.Counter:
-          begin
-            LData.AddPair('aggregationTemporality', TJSONNumber.Create(OTLP_TEMPORALITY_CUMULATIVE));
-            LData.AddPair('isMonotonic', TJSONBool.Create(True));
-            LMetric.AddPair('sum', LData);
-          end;
-          TMetricKind.Gauge:
-            LMetric.AddPair('gauge', LData);
-          TMetricKind.Histogram:
-          begin
-            LData.AddPair('aggregationTemporality', TJSONNumber.Create(OTLP_TEMPORALITY_CUMULATIVE));
-            LMetric.AddPair('histogram', LData);
-          end;
-        end;
-        LDataPoints := TJSONArray.Create;
-        LData.AddPair('dataPoints', LDataPoints);
-      end;
-
-      LDataPoints.AddElement(DataPointJson(LPoint, LTime));
+      K := J + 1;
+      while (K <= High(LPoints)) and (LPoints[K].Meter = LPoints[J].Meter) and
+        (LPoints[K].Name = LPoints[J].Name) and (LPoints[K].Kind = LPoints[J].Kind) do
+        Inc(K);
+      LScope.Metrics := LScope.Metrics + [ToMetric(LPoints, J, K - 1, LTime)];
+      J := K;
     end;
 
-    Result := TNeon.Print(LRoot, False);
-  finally
-    LRoot.Free;
+    LResourceMetrics.ScopeMetrics := LResourceMetrics.ScopeMetrics + [LScope];
+    I := J;
   end;
+
+  Result.ResourceMetrics := [LResourceMetrics];
 end;
 
 function GzipBytes(const AData: TBytes): TBytes;

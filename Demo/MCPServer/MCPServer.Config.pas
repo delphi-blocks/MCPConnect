@@ -16,6 +16,7 @@ uses
 
   MCPConnect.Configuration.MCP,
   MCPConnect.Configuration.Auth,
+  MCPConnect.Configuration.Legacy,
 
   MCPConnect.Content.Writers.RTL
   {$IFDEF FRAMEWORK_VCL}
@@ -88,6 +89,14 @@ begin
 
     // .Plugin.Configure<IAuthTokenConfig>
     //   .SetToken('my-secret-token')
+
+    // Answer clients written against MCP 2025-06-18 too: serves the initialize
+    // handshake and relaxes the header/_meta validation to Lenient. Partial
+    // support - the results stay shaped as 2026-07-28 - which is what the
+    // warning it logs says.
+//     .Plugin.Configure<IMCPLegacyConfig>
+//       .SetEnabled(True)
+//     .ApplyConfig
   ;
 end;
 

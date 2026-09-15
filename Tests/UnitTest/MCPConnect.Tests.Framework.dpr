@@ -74,6 +74,7 @@ uses
   MCPConnect.Tests.MCP.Tools in 'MCPConnect.Tests.MCP.Tools.pas',
   MCPConnect.Tests.JRPC.Invoker in 'MCPConnect.Tests.JRPC.Invoker.pas',
   MCPConnect.Tests.Core.Utils in 'MCPConnect.Tests.Core.Utils.pas',
+  MCPConnect.Tests.Configuration.Legacy in 'MCPConnect.Tests.Configuration.Legacy.pas',
   MCPConnect.Tests.MCP.Configuration in 'MCPConnect.Tests.MCP.Configuration.pas',
   MCPConnect.Tests.MCP.Server.Api in 'MCPConnect.Tests.MCP.Server.Api.pas',
   MCPConnect.Tests.Security.Token in 'MCPConnect.Tests.Security.Token.pas',

@@ -177,6 +177,7 @@
         <DCCReference Include="MCPConnect.Tests.MCP.Tools.pas"/>
         <DCCReference Include="MCPConnect.Tests.JRPC.Invoker.pas"/>
         <DCCReference Include="MCPConnect.Tests.Core.Utils.pas"/>
+        <DCCReference Include="MCPConnect.Tests.Configuration.Legacy.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Configuration.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Server.Api.pas"/>
         <DCCReference Include="MCPConnect.Tests.Security.Token.pas"/>

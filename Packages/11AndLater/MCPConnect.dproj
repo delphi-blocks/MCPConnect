@@ -120,6 +120,7 @@
         <DCCReference Include="..\..\Libs\JRPC\Source\JRPC.Server.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.Auth.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.Core.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Configuration.Legacy.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.MCP.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.Neon.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Content.Writers.pas"/>

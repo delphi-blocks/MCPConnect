@@ -19,6 +19,7 @@ uses
   MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Tools,
   MCPConnect.MCP.Types.Mrtr,
+  MCPConnect.MCP.Types.Errors,
   MCPConnect.MCP.Attributes;
 
 type
@@ -66,7 +67,9 @@ type
     class var FDontAskAgain: Boolean;
   private
     [Context] FParams: TCallToolRequestParams;
+    [Context([TContextOption.Optional])] FCapabilities: TMCPDeclaredCapabilities;
     function DoDeleteTask(ATaskId: Integer): string;
+    function SupportElicitationForm: Boolean;
   public
     [McpTool('add_task', 'Add a new task to the todo list')]
     function AddTask(
@@ -334,6 +337,11 @@ begin
   Result := TodoStore.ToText();
 end;
 
+function TTodoTool.SupportElicitationForm: Boolean;
+begin
+  Result := Assigned(FCapabilities) and (TMCPClientCapability.ElicitationForm in FCapabilities.Declared);
+end;
+
 function TTodoTool.CompleteTask(ATaskId: Integer): string;
 var
   LTask: TTaskItem;
@@ -356,7 +364,7 @@ const
   DelKey = 'delete';
 begin
   // The user ticked "do not ask again" on an earlier call, so skip the form
-  if FDontAskAgain then
+  if FDontAskAgain or not SupportElicitationForm then
     Exit(TMCPResponse<string>.Value(DoDeleteTask(ATaskId)));
 
   // The round-trip context: filled in below when asking, decoded back

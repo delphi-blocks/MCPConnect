@@ -61,6 +61,7 @@ contains
   JRPC.Server in '..\..\Libs\JRPC\Source\JRPC.Server.pas',
   MCPConnect.Configuration.Auth in '..\..\Source\MCPConnect.Configuration.Auth.pas',
   MCPConnect.Configuration.Core in '..\..\Source\MCPConnect.Configuration.Core.pas',
+  MCPConnect.Configuration.Legacy in '..\..\Source\MCPConnect.Configuration.Legacy.pas',
   MCPConnect.Configuration.MCP in '..\..\Source\MCPConnect.Configuration.MCP.pas',
   MCPConnect.Configuration.Neon in '..\..\Source\MCPConnect.Configuration.Neon.pas',
   MCPConnect.Content.Writers in '..\..\Source\MCPConnect.Content.Writers.pas',

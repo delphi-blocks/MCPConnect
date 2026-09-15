@@ -216,6 +216,35 @@ type
   end;
 
   /// <summary>
+  ///   What a Harvest call tells an IMetricHarvestExporter besides the points.
+  /// </summary>
+  TMetricHarvestInfo = record
+    /// <summary>
+    ///   True when the provider clears its state right after this export
+    ///   (Harvest(True)): the next harvest's points start from zero.
+    /// </summary>
+    Reset: Boolean;
+
+    /// <summary>
+    ///   When the harvest was taken, in UTC. One timestamp for every point of
+    ///   the harvest, taken after they were collected.
+    /// </summary>
+    Time: TDateTime;
+  end;
+
+  /// <summary>
+  ///   An exporter that needs to know how the harvest was taken - typically
+  ///   one that keeps state across harvests and must tell a running total from
+  ///   a delta. Harvest calls ExportHarvest instead of Export on any exporter
+  ///   that supports this interface; everything said of Export (read only
+  ///   points, harvest thread, outside the provider's lock) holds for it too.
+  /// </summary>
+  IMetricHarvestExporter = interface(IMetricExporter)
+    ['{5B0E2C1A-8D7F-4E61-9A3B-2F4C6D8E1A07}']
+    procedure ExportHarvest(const APoints: TArray<TMetricPoint>; const AInfo: TMetricHarvestInfo);
+  end;
+
+  /// <summary>
   ///   A single instrument of any kind. Instruments are interfaces created by
   ///   an IMeter (or by the TMetrics facade) and cached by name, so the
   ///   same instrument is returned on every lookup. Record through the typed
@@ -1213,8 +1242,14 @@ var
   LPoints: TArray<TMetricPoint>;
   LExporters: TArray<IMetricExporter>;
   LExporter: IMetricExporter;
+  LHarvestExporter: IMetricHarvestExporter;
+  LInfo: TMetricHarvestInfo;
 begin
   LPoints := Collect;
+
+  // Taken after Collect, so no point was first seen after the harvest time
+  LInfo.Reset := AReset;
+  LInfo.Time := TTimeZone.Local.ToUniversalTime(Now);
 
   FLock.Enter;
   try
@@ -1225,7 +1260,10 @@ begin
 
   // Outside the lock: an exporter runs user code that may record more metrics
   for LExporter in LExporters do
-    LExporter.Export(LPoints);
+    if Supports(LExporter, IMetricHarvestExporter, LHarvestExporter) then
+      LHarvestExporter.ExportHarvest(LPoints, LInfo)
+    else
+      LExporter.Export(LPoints);
 
   if AReset then
     Clear;

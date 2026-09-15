@@ -33,6 +33,16 @@ type
     procedure Export(const APoints: TArray<TMetricPoint>);
   end;
 
+  /// <summary>Exporter that asks for the harvest info and keeps the last one.</summary>
+  THarvestInfoExporter = class(TInterfacedObject, IMetricExporter, IMetricHarvestExporter)
+  public
+    ExportCount: Integer;
+    HarvestCount: Integer;
+    LastInfo: TMetricHarvestInfo;
+    procedure Export(const APoints: TArray<TMetricPoint>);
+    procedure ExportHarvest(const APoints: TArray<TMetricPoint>; const AInfo: TMetricHarvestInfo);
+  end;
+
   /// <summary>Recording semantics of the three instrument kinds.</summary>
   [TestFixture]
   TMetricsInstrumentTest = class(TObject)
@@ -128,6 +138,10 @@ type
     procedure TestAddExporter_IgnoresDuplicates();
     [Test]
     procedure TestRemoveExporter_StopsDeliveries();
+    [Test]
+    procedure TestHarvest_PassesResetToHarvestExporters();
+    [Test]
+    procedure TestHarvest_PlainExportersStillGetExport();
   end;
 
   /// <summary>Concurrent recording keeps exact totals.</summary>
@@ -187,7 +201,8 @@ type
 implementation
 
 uses
-  System.Diagnostics;
+  System.Diagnostics,
+  System.DateUtils;
 
 { TCountingExporter }
 
@@ -195,6 +210,66 @@ procedure TCountingExporter.Export(const APoints: TArray<TMetricPoint>);
 begin
   Inc(Count);
   LastPoints := APoints;
+end;
+
+{ THarvestInfoExporter }
+
+procedure THarvestInfoExporter.Export(const APoints: TArray<TMetricPoint>);
+begin
+  Inc(ExportCount);
+end;
+
+procedure THarvestInfoExporter.ExportHarvest(const APoints: TArray<TMetricPoint>;
+  const AInfo: TMetricHarvestInfo);
+begin
+  Inc(HarvestCount);
+  LastInfo := AInfo;
+end;
+
+procedure TMetricsHarvestTest.TestHarvest_PassesResetToHarvestExporters();
+var
+  LExporter: THarvestInfoExporter;
+  LRef: IMetricExporter;
+  LBefore: TDateTime;
+begin
+  LExporter := THarvestInfoExporter.Create;
+  LRef := LExporter;
+  FProvider.AddExporter(LRef);
+  FProvider.GetMeter('m').Counter('c').Add(1);
+
+  LBefore := TTimeZone.Local.ToUniversalTime(Now);
+  FProvider.Harvest(True);
+  Assert.AreEqual(1, LExporter.HarvestCount);
+  Assert.AreEqual(0, LExporter.ExportCount, 'ExportHarvest replaces Export');
+  Assert.IsTrue(LExporter.LastInfo.Reset);
+  Assert.IsTrue(LExporter.LastInfo.Time >= IncSecond(LBefore, -1), 'harvest time is UTC');
+  Assert.IsTrue(LExporter.LastInfo.Time <= IncSecond(TTimeZone.Local.ToUniversalTime(Now), 1));
+
+  FProvider.Harvest(False);
+  Assert.AreEqual(2, LExporter.HarvestCount);
+  Assert.IsFalse(LExporter.LastInfo.Reset);
+end;
+
+procedure TMetricsHarvestTest.TestHarvest_PlainExportersStillGetExport();
+var
+  LPlain: TCountingExporter;
+  LPlainRef: IMetricExporter;
+  LInfo: THarvestInfoExporter;
+  LInfoRef: IMetricExporter;
+begin
+  LPlain := TCountingExporter.Create;
+  LPlainRef := LPlain;
+  LInfo := THarvestInfoExporter.Create;
+  LInfoRef := LInfo;
+  FProvider.AddExporter(LPlainRef);
+  FProvider.AddExporter(LInfoRef);
+  FProvider.GetMeter('m').Counter('c').Add(1);
+
+  FProvider.Harvest;
+
+  Assert.AreEqual(1, LPlain.Count);
+  Assert.AreEqual(1, Length(LPlain.LastPoints));
+  Assert.AreEqual(1, LInfo.HarvestCount);
 end;
 
 { TMetricsInstrumentTest }

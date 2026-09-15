@@ -171,6 +171,7 @@ type
     FLatestText: IMetricExporter;
     FLatestJson: IMetricExporter;
     FSlowest: IMetricExporter;
+    FOtlp: IMetricExporter;
     FExporterLines: TStringList;
 
     FTextTarget: TStrings;
@@ -263,7 +264,8 @@ uses
 
   Winapi.Windows,
 
-  MCPConnect.Metrics.Exporters.Files;
+  MCPConnect.Metrics.Exporters.Files,
+  MCPConnect.Metrics.Exporters.Otlp;
 
 /// <summary>Kernel+User time of a TFileTime as one 100 ns tick count.</summary>
 function FileTimeToTicks(const ATime: TFileTime): UInt64;
@@ -592,6 +594,8 @@ begin
 end;
 
 procedure TServerMetrics.AttachExporters;
+var
+  LOtlp: TOtlpMetricExporter;
 begin
   // A JSON-lines file next to the .exe: one delta per harvest.
   FFileJson := TMetricFileExporter.Create(
@@ -621,6 +625,30 @@ begin
   FLogify := TMetricLogifyExporter.Create;
   FExporterLines.Add('logify         - custom: one summary line per harvest');
 
+  // An OpenTelemetry collector, only when one is configured the OpenTelemetry
+  // way (otel\docker-compose.yml starts a local one). The exporter keeps its
+  // own running totals, so the delta and cumulative harvests this demo mixes
+  // still reach the collector as one cumulative stream.
+  if (GetEnvironmentVariable('OTEL_EXPORTER_OTLP_ENDPOINT') <> '') or
+     (GetEnvironmentVariable('OTEL_EXPORTER_OTLP_METRICS_ENDPOINT') <> '') then
+  begin
+    try
+      LOtlp := TOtlpMetricExporter.FromEnvironment;
+      FOtlp := LOtlp;
+      if GetEnvironmentVariable('OTEL_SERVICE_NAME') = '' then
+        LOtlp.AddResourceAttribute('service.name', 'mcpconnect-metrics-demo');
+      LOtlp.OnError :=
+        procedure(AMessage: string)
+        begin
+          Logger.Log('[metrics] ' + AMessage, TLogLevel.Warning);
+        end;
+      FExporterLines.Add('otlp           - TOtlpMetricExporter, POST to ' + LOtlp.Endpoint);
+    except
+      on E: Exception do
+        Logger.Log('[metrics] OTLP exporter not attached: ' + E.Message, TLogLevel.Error);
+    end;
+  end;
+
   TMetrics.AddExporter(FFileJson);
   TMetrics.AddExporter(FFileText);
   TMetrics.AddExporter(FSnapshot);
@@ -628,6 +656,8 @@ begin
   TMetrics.AddExporter(FLatestText);
   TMetrics.AddExporter(FLatestJson);
   TMetrics.AddExporter(FLogify);
+  if Assigned(FOtlp) then
+    TMetrics.AddExporter(FOtlp);
 end;
 
 procedure TServerMetrics.ReleaseExporters;
@@ -639,7 +669,9 @@ begin
   if Assigned(FLatestText) then TMetrics.RemoveExporter(FLatestText);
   if Assigned(FLatestJson) then TMetrics.RemoveExporter(FLatestJson);
   if Assigned(FLogify) then TMetrics.RemoveExporter(FLogify);
+  if Assigned(FOtlp) then TMetrics.RemoveExporter(FOtlp);
 
+  FOtlp := nil;
   FFileJson := nil;
   FFileText := nil;
   FSnapshot := nil;

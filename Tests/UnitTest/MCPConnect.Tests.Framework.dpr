@@ -108,7 +108,8 @@ uses
   MCPConnect.Tests.Transport.SSE in 'MCPConnect.Tests.Transport.SSE.pas',
   MCPConnect.Tests.MCP.Pagination in 'MCPConnect.Tests.MCP.Pagination.pas',
   MCPConnect.Tests.Logging.Memory in 'MCPConnect.Tests.Logging.Memory.pas',
-  MCPConnect.Tests.Metrics in 'MCPConnect.Tests.Metrics.pas';
+  MCPConnect.Tests.Metrics in 'MCPConnect.Tests.Metrics.pas',
+  MCPConnect.Tests.Metrics.Otlp in 'MCPConnect.Tests.Metrics.Otlp.pas';
 
 var
   runner : ITestRunner;

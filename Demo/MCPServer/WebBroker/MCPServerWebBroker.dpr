@@ -59,7 +59,8 @@ uses
   MCPServer.Config in '..\MCPServer.Config.pas',
   MCPServer.Notifications in '..\MCPServer.Notifications.pas',
   MCPServer.Prompts in '..\MCPServer.Prompts.pas',
-  MCPServer.Middleware in '..\MCPServer.Middleware.pas';
+  MCPServer.Middleware in '..\MCPServer.Middleware.pas',
+  MCPServer.Tools.Mrtr in '..\MCPServer.Tools.Mrtr.pas';
 
 {$R *.res}
 

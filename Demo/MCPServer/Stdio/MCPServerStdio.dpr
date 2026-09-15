@@ -63,7 +63,8 @@ uses
   MCPServer.Apps in '..\MCPServer.Apps.pas',
   MCPServer.Notifications in '..\MCPServer.Notifications.pas',
   MCPServer.Prompts in '..\MCPServer.Prompts.pas',
-  MCPServer.Middleware in '..\MCPServer.Middleware.pas';
+  MCPServer.Middleware in '..\MCPServer.Middleware.pas',
+  MCPServer.Tools.Mrtr in '..\MCPServer.Tools.Mrtr.pas';
 
 procedure StartServer;
 var

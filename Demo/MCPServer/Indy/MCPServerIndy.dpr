@@ -60,7 +60,8 @@ uses
   MCPConnect.MCP.Middleware in '..\..\..\Source\MCPConnect.MCP.Middleware.pas',
   MCPConnect.MCP.Server in '..\..\..\Source\MCPConnect.MCP.Server.pas',
   MCPConnect.MCP.Middleware.Default in '..\..\..\Source\MCPConnect.MCP.Middleware.Default.pas',
-  MCPConnect.Configuration.Legacy in '..\..\..\Source\MCPConnect.Configuration.Legacy.pas';
+  MCPConnect.Configuration.Legacy in '..\..\..\Source\MCPConnect.Configuration.Legacy.pas',
+  MCPServer.Tools.Mrtr in '..\MCPServer.Tools.Mrtr.pas';
 
 {$R *.res}
 

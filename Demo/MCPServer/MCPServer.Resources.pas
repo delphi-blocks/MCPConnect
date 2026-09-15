@@ -9,7 +9,7 @@ uses
   MCPConnect.MCP.Attributes;
 
 type
-  TTodoResource = class
+  TTodoResources = class
   public
     [McpResource('todo-summary', 'text://todo/summary', 'text/plain',
       'Returns a summary of the current todo list with counts by status')]
@@ -21,9 +21,9 @@ implementation
 uses
   MCPServer.Tools;
 
-{ TTodoResource }
+{ TTodoResources }
 
-function TTodoResource.GetSummary(): string;
+function TTodoResources.GetSummary(): string;
 begin
   Result := TodoStore.GetSummary();
 end;

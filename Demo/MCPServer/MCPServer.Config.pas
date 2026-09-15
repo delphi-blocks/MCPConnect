@@ -40,6 +40,7 @@ uses
 
   MCPServer.Resources,
   MCPServer.Tools,
+  MCPServer.Tools.Mrtr,
   MCPServer.Prompts,
   MCPServer.Middleware;
 
@@ -74,7 +75,7 @@ begin
       .BackToMCP
 
       .Resources
-        .RegisterClass(TTodoResource)
+        .RegisterClass(TTodoResources)
       .BackToMCP
 
       .Prompts
@@ -82,7 +83,8 @@ begin
       .BackToMCP
 
       .Tools
-        .RegisterClass(TTodoTool)
+        .RegisterClass(TTodoTools)
+        //.RegisterClass(TTodoMrtrTools)
       .BackToMCP
 
     .BackToApp
@@ -105,11 +107,12 @@ begin
   AServer.Plugin.Configure<IMCPConfig>
 
   .Tools
-    .UnregisterClass(TTodoTool)
+    .UnregisterClass(TTodoTools)
+    //.UnregisterClass(TTodoMrtrTools)
   .BackToMCP
 
   .Resources
-    .UnregisterClass(TTodoResource)
+    .UnregisterClass(TTodoResources)
   .BackToMCP
 
   .Prompts

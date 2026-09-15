@@ -89,7 +89,7 @@ object FrameMetricsDashboard: TFrameMetricsDashboard
         ExplicitHeight = 407
         object LabelHint: TLabel
           Left = 10
-          Top = 320
+          Top = 360
           Width = 208
           Height = 81
           AutoSize = False
@@ -179,6 +179,15 @@ object FrameMetricsDashboard: TFrameMetricsDashboard
           Caption = 'Separate provider demo'
           TabOrder = 8
           OnClick = BtnProviderClick
+        end
+        object BtnOtlp: TButton
+          Left = 10
+          Top = 320
+          Width = 208
+          Height = 26
+          Caption = 'Export to OTEL collector'
+          TabOrder = 9
+          OnClick = BtnOtlpClick
         end
       end
     end

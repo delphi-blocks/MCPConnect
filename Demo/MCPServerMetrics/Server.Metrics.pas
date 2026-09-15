@@ -59,7 +59,8 @@ uses
   JRPC.Core,
 
   MCPConnect.Metrics,
-  MCPConnect.Metrics.Exporters;
+  MCPConnect.Metrics.Exporters,
+  MCPConnect.Metrics.Exporters.Otlp;
 
 type
   /// <summary>
@@ -172,6 +173,10 @@ type
     FLatestJson: IMetricExporter;
     FSlowest: IMetricExporter;
     FOtlp: IMetricExporter;
+    // The same object as FOtlp, for its endpoint and counters; FOtlpAttached
+    // is True when it is registered on the provider (OTEL_* variables set)
+    FOtlpExporter: TOtlpMetricExporter;
+    FOtlpAttached: Boolean;
     FExporterLines: TStringList;
 
     FTextTarget: TStrings;
@@ -202,6 +207,11 @@ type
     procedure InitialiseInstruments;
     procedure AttachExporters;
     procedure ReleaseExporters;
+    /// <summary>
+    ///   Builds the OTLP exporter from the OTEL_* variables (the local
+    ///   collector at localhost:4318 when none is set) and keeps it in FOtlp.
+    /// </summary>
+    function CreateOtlpExporter: TOtlpMetricExporter;
     constructor Create;
   public
     destructor Destroy; override;
@@ -237,6 +247,13 @@ type
     procedure HarvestDelta;
     /// <summary>Cumulative harvest: everything since the last reset.</summary>
     procedure HarvestCumulative;
+    /// <summary>
+    ///   Pushes the current snapshot to the OpenTelemetry collector once and
+    ///   describes the outcome. Not a harvest: nothing is reset and no other
+    ///   exporter runs. Creates the OTLP exporter on first use when the OTEL_*
+    ///   variables did not attach one.
+    /// </summary>
+    function ExportToCollector: string;
 
     { Reports, all built from Collect so they never disturb the accumulation }
     function TextReport: string;
@@ -264,8 +281,7 @@ uses
 
   Winapi.Windows,
 
-  MCPConnect.Metrics.Exporters.Files,
-  MCPConnect.Metrics.Exporters.Otlp;
+  MCPConnect.Metrics.Exporters.Files;
 
 /// <summary>Kernel+User time of a TFileTime as one 100 ns tick count.</summary>
 function FileTimeToTicks(const ATime: TFileTime): UInt64;
@@ -633,15 +649,8 @@ begin
      (GetEnvironmentVariable('OTEL_EXPORTER_OTLP_METRICS_ENDPOINT') <> '') then
   begin
     try
-      LOtlp := TOtlpMetricExporter.FromEnvironment;
-      FOtlp := LOtlp;
-      if GetEnvironmentVariable('OTEL_SERVICE_NAME') = '' then
-        LOtlp.AddResourceAttribute('service.name', 'mcpconnect-metrics-demo');
-      LOtlp.OnError :=
-        procedure(AMessage: string)
-        begin
-          Logger.Log('[metrics] ' + AMessage, TLogLevel.Warning);
-        end;
+      LOtlp := CreateOtlpExporter;
+      FOtlpAttached := True;
       FExporterLines.Add('otlp           - TOtlpMetricExporter, POST to ' + LOtlp.Endpoint);
     except
       on E: Exception do
@@ -672,6 +681,8 @@ begin
   if Assigned(FOtlp) then TMetrics.RemoveExporter(FOtlp);
 
   FOtlp := nil;
+  FOtlpExporter := nil;
+  FOtlpAttached := False;
   FFileJson := nil;
   FFileText := nil;
   FSnapshot := nil;
@@ -933,6 +944,87 @@ begin
     Exit;
   TMetrics.Harvest(False);
   Logger.Log('[metrics] cumulative harvest written', TLogLevel.Debug);
+end;
+
+function TServerMetrics.CreateOtlpExporter: TOtlpMetricExporter;
+begin
+  Result := TOtlpMetricExporter.FromEnvironment;
+  FOtlp := Result;
+  FOtlpExporter := Result;
+  if GetEnvironmentVariable('OTEL_SERVICE_NAME') = '' then
+    Result.AddResourceAttribute('service.name', 'mcpconnect-metrics-demo');
+  Result.OnError :=
+    procedure(AMessage: string)
+    begin
+      Logger.Log('[metrics] ' + AMessage, TLogLevel.Warning);
+    end;
+end;
+
+function TServerMetrics.ExportToCollector: string;
+var
+  LPoints: TArray<TMetricPoint>;
+  LSent, LFailed, LSkipped: Int64;
+  LOutcome: string;
+begin
+  if not FOn then
+    Exit('The metrics showcase is not running.');
+
+  if not Assigned(FOtlpExporter) then
+  begin
+    try
+      CreateOtlpExporter;
+    except
+      on E: Exception do
+        Exit('Cannot create the OTLP exporter: ' + E.Message);
+    end;
+    FExporterLines.Add('otlp           - TOtlpMetricExporter, on demand, POST to ' +
+      FOtlpExporter.Endpoint);
+  end;
+
+  LPoints := TMetrics.Collect;
+  LSent := FOtlpExporter.SentCount;
+  LFailed := FOtlpExporter.FailedCount;
+  LSkipped := FOtlpExporter.SkippedCount;
+
+  // A snapshot handed to this one exporter, not a harvest: Export without
+  // harvest info counts as "no reset", so the running totals stay exact.
+  FOtlp.Export(LPoints);
+
+  if FOtlpExporter.SentCount > LSent then
+    LOutcome := 'accepted by the collector'
+  else if FOtlpExporter.FailedCount > LFailed then
+    LOutcome := 'FAILED - ' + FOtlpExporter.LastError
+  else if FOtlpExporter.SkippedCount > LSkipped then
+    LOutcome := 'skipped - the collector asked to retry later (Retry-After)'
+  else
+    LOutcome := 'nothing to send - no series recorded yet';
+
+  Logger.Log(Format('[metrics] OTLP export to %s: %s',
+    [FOtlpExporter.Endpoint, LOutcome]), TLogLevel.Info);
+
+  Result :=
+    'Export to the OpenTelemetry collector' + sLineBreak +
+    StringOfChar('-', 74) + sLineBreak +
+    Format('  endpoint        : %s', [FOtlpExporter.Endpoint]) + sLineBreak +
+    Format('  series in view  : %d', [Length(LPoints)]) + sLineBreak +
+    Format('  result          : %s', [LOutcome]) + sLineBreak +
+    Format('  sent / failed   : %d / %d since the exporter was created',
+      [FOtlpExporter.SentCount, FOtlpExporter.FailedCount]) + sLineBreak +
+    sLineBreak +
+    'Counters and histograms are sent as cumulative totals: the exporter keeps' + sLineBreak +
+    'its own running total, so the delta harvests that reset the provider do not' + sLineBreak +
+    'make the numbers the collector sees go down.' + sLineBreak +
+    sLineBreak;
+
+  if FOtlpAttached then
+    Result := Result +
+      'The exporter is also registered on the provider (OTEL_* variables are set),' + sLineBreak +
+      'so every harvest pushes to the collector as well.'
+  else
+    Result := Result +
+      'The exporter is not registered on the provider: only this button pushes.' + sLineBreak +
+      'Set OTEL_EXPORTER_OTLP_ENDPOINT before starting the demo to push on every' + sLineBreak +
+      'harvest, or to point it at a collector other than localhost:4318.';
 end;
 
 { Reports ------------------------------------------------------------------ }

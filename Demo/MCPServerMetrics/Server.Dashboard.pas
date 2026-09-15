@@ -66,6 +66,7 @@ type
     BtnErrors: TButton;
     BtnCardinality: TButton;
     BtnProvider: TButton;
+    BtnOtlp: TButton;
     LabelHint: TLabel;
     TabCases: TTabSheet;
     MemoCases: TMemo;
@@ -91,6 +92,7 @@ type
     procedure BtnErrorsClick(Sender: TObject);
     procedure BtnCardinalityClick(Sender: TObject);
     procedure BtnProviderClick(Sender: TObject);
+    procedure BtnOtlpClick(Sender: TObject);
   private
     FHub: TServerMetrics;
     FTicks: Integer;
@@ -342,6 +344,23 @@ begin
   if FHub = nil then
     Exit;
   ShowNarrative(FHub.SeparateProviderDemo);
+end;
+
+procedure TFrameMetricsDashboard.BtnOtlpClick(Sender: TObject);
+var
+  LReport: string;
+begin
+  if FHub = nil then
+    Exit;
+  // The POST runs on this thread and may take up to the exporter's timeout
+  Screen.Cursor := crHourGlass;
+  try
+    LReport := FHub.ExportToCollector;
+  finally
+    Screen.Cursor := crDefault;
+  end;
+  ShowNarrative(LReport);
+  RefreshExporters;
 end;
 
 end.

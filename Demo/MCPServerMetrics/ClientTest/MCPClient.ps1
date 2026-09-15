@@ -17,7 +17,13 @@
         metrics_cardinality, metrics_separate_provider
       * resources/read of resource://metrics/live
       * prompts/get of analyse-metrics
-      * the multi-round-trip (MRTR) delete_task flow: ask, then answer
+      * the multi-round-trip (MRTR) flows, one per kind of input request:
+        delete_task (elicitation), summarize_tasks (sampling), import_tasks
+        (roots, then an elicitation, three rounds) and draft_day_plan (roots and
+        sampling in a single interim result)
+
+    The sampling answers are canned: a real client would call its model where
+    this script fabricates a message. What the demo is about is the envelope.
 
     Start Demo/MCPServerMetrics first; see the README next to this file.
 
@@ -54,13 +60,22 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Net.Http -ErrorAction SilentlyContinue
 
 # Every POST carries the request metadata 2026-07-28 requires: the protocol
-# version and the capabilities this client declares. Declaring elicitation is
-# what lets an MRTR tool answer input_required instead of refusing with
-# -32021 MissingRequiredClientCapability (-32021 + HTTP 400).
+# version and the capabilities this client declares. The capabilities are what
+# let an MRTR tool answer input_required instead of refusing with -32021
+# MissingRequiredClientCapability (HTTP 400): the server checks what an interim
+# result asks for against this list before the result goes out.
+#
+# One entry per kind of request this script can answer - elicitation for
+# delete_task and import_tasks, sampling for summarize_tasks, roots for
+# import_tasks, and both for draft_day_plan. Declaring "sampling" bare says
+# nothing about its sub-capabilities: a request with includeContext or tools
+# would need "context" / "tools" declared inside it, and none of these send either.
 $meta = [ordered]@{
     'io.modelcontextprotocol/protocolVersion'    = $ProtocolVersion
     'io.modelcontextprotocol/clientCapabilities' = [ordered]@{
         elicitation = [ordered]@{}
+        sampling    = [ordered]@{}
+        roots       = [ordered]@{}
     }
 }
 
@@ -138,6 +153,89 @@ function Invoke-Tool([string]$Name, [System.Collections.IDictionary]$Arguments) 
         arguments = $Arguments
     })
 }
+
+function Invoke-ToolRetry {
+    <#
+      The second half of an MRTR call: the same tool with the same arguments,
+      plus the continuation token the server handed back and the answers to the
+      requests it made. Only the current round's answers travel - what has to
+      survive between rounds is in the requestState, which is the server's.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [System.Collections.IDictionary]$Arguments,
+        [string]$RequestState,
+        [Parameter(Mandatory)][System.Collections.IDictionary]$InputResponses
+    )
+
+    if ($null -eq $Arguments) { $Arguments = [ordered]@{} }
+
+    $params = [ordered]@{
+        name      = $Name
+        arguments = $Arguments
+    }
+
+    # A tool that needs nothing remembered issues no state, and a member that is
+    # not there is not the same as one that is there and null
+    if (-not [string]::IsNullOrEmpty($RequestState)) {
+        $params['requestState'] = $RequestState
+    }
+    $params['inputResponses'] = $InputResponses
+
+    Send-Mcp -Method 'tools/call' -Name $Name -Params $params
+}
+
+function Show-Ask($Response) {
+    <#
+      What an input_required result says: the continuation token, and the
+      request filed under each key. The method is what tells the client what to
+      do with it - render a form, call a model, or list its roots. Returns the
+      result, or $null when the call failed instead of asking.
+    #>
+    if ($null -eq $Response.Json) {
+        Write-Host $Response.Body -ForegroundColor DarkGray
+        return $null
+    }
+
+    if ($Response.Json.PSObject.Properties['error']) {
+        Write-Host ('error ' + $Response.Json.error.code + ': ' + $Response.Json.error.message) -ForegroundColor Red
+        return $null
+    }
+
+    $result = $Response.Json.result
+    Write-Host ('resultType   : ' + $result.resultType)
+
+    if ($result.requestState) {
+        $state = [string]$result.requestState
+        if ($state.Length -gt 56) { $state = $state.Substring(0, 56) + '...' }
+        Write-Host ('requestState : ' + $state)
+    }
+
+    if ($result.inputRequests) {
+        foreach ($request in $result.inputRequests.PSObject.Properties) {
+            Write-Host ('  key "' + $request.Name + '" -> ' + $request.Value.method)
+        }
+    }
+
+    return $result
+}
+
+function New-SamplingReply([string]$Text) {
+    <#
+      The answer to a sampling/createMessage request. A real client would call
+      its model here; the script fabricates the message, because what the demo
+      is about is the envelope: one message, plus which model produced it and
+      why it stopped.
+    #>
+    [ordered]@{
+        role       = 'assistant'
+        content    = [ordered]@{ type = 'text'; text = $Text }
+        model      = 'demo-canned-model'
+        stopReason = 'endTurn'
+    }
+}
+
 
 # --- server/discover ---------------------------------------------------------
 Write-Section 'server/discover'
@@ -242,6 +340,119 @@ if (-not $SkipMrtr) {
     })
     Write-Host (Tool-Text $done)
 }
+
+# --- MRTR: the other two request kinds ---------------------------------------
+# delete_task above asks the *user* something. The three calls below ask the
+# *client*: for its model (sampling/createMessage), for the folders it is
+# willing to expose (roots/list), and for both at once.
+if (-not $SkipMrtr) {
+
+    # The workspace this client is willing to expose. A real client would name
+    # the folders its user has opened; the script makes one so import_tasks has
+    # something to find.
+    $workspace = Join-Path ([IO.Path]::GetTempPath()) 'mcp-import-demo'
+    $null = New-Item -ItemType Directory -Path $workspace -Force
+    @(
+        '# Imported list',
+        '- Write the release notes',
+        '- [ ] Review the OAuth demo',
+        '* Update the README'
+    ) | Set-Content -Path (Join-Path $workspace 'todo-import.md') -Encoding UTF8
+
+    $rootUri = 'file:///' + [uri]::EscapeUriString(($workspace -replace '\\', '/'))
+
+    # --- sampling ------------------------------------------------------------
+    Write-Section 'MRTR: summarize_tasks asks the client to sample a model'
+
+    # Something to summarize: the tool answers a value rather than an input
+    # request when the list is empty, since a round trip costs the client a
+    # model call
+    Write-Host (Tool-Text (Invoke-Tool 'add_task' ([ordered]@{
+        title       = 'Draft the release notes'
+        description = 'Added so the sampling demo has something to summarize'
+    })))
+
+    $summaryArgs = [ordered]@{ style = 'two short bullet points' }
+    $ask = Invoke-Tool 'summarize_tasks' $summaryArgs
+    $askResult = Show-Ask $ask
+
+    if ($null -ne $askResult -and $askResult.inputRequests.summary) {
+        # What the server asked the model for. Everything here is advisory
+        # except maxTokens: the client picks the model and may ignore the lot.
+        $sampling = $askResult.inputRequests.summary.params
+        Write-Host ('systemPrompt : ' + $sampling.systemPrompt)
+        Write-Host ('maxTokens    : ' + $sampling.maxTokens + '   temperature: ' + $sampling.temperature)
+        Write-Host ('preferences  : hints=' + ((@($sampling.modelPreferences.hints) | ForEach-Object { $_.name }) -join ',') +
+                    '  speed=' + $sampling.modelPreferences.speedPriority +
+                    '  cost=' + $sampling.modelPreferences.costPriority +
+                    '  intelligence=' + $sampling.modelPreferences.intelligencePriority)
+        Write-Host ('includeContext: ' + $sampling.includeContext)
+
+        $done = Invoke-ToolRetry -Name 'summarize_tasks' -Arguments $summaryArgs `
+            -RequestState $askResult.requestState -InputResponses ([ordered]@{
+                summary = New-SamplingReply '- One task is waiting on a review. - The rest are new.'
+            })
+        Show-Text (Tool-Text $done)
+    }
+
+    # --- roots, then a form --------------------------------------------------
+    Write-Section 'MRTR: import_tasks - roots, then a form, then the import'
+    Write-Host ('workspace    : ' + $workspace)
+
+    # Round one: the server has nowhere to read from, so it asks
+    $ask = Invoke-Tool 'import_tasks'
+    $askResult = Show-Ask $ask
+
+    if ($null -ne $askResult) {
+        # Round two: the roots. Only this round's answer travels - what the
+        # server needs to remember is in the requestState it just handed back,
+        # signed, because it names the folder the next round will read.
+        $pick = Invoke-ToolRetry -Name 'import_tasks' -RequestState $askResult.requestState `
+            -InputResponses ([ordered]@{
+                where = [ordered]@{
+                    roots = @( [ordered]@{ uri = $rootUri; name = 'Demo workspace' } )
+                }
+            })
+        $pickResult = Show-Ask $pick
+
+        if ($null -ne $pickResult -and $pickResult.inputRequests.file) {
+            # The form the server built from what it found there: the question
+            # names the candidates, because the options were only known once
+            # the roots were in.
+            Write-Host ('question     : ' + $pickResult.inputRequests.file.params.message)
+
+            # Round three: the file name, as an ordinary elicitation answer
+            $done = Invoke-ToolRetry -Name 'import_tasks' -RequestState $pickResult.requestState `
+                -InputResponses ([ordered]@{
+                    file = [ordered]@{
+                        action  = 'accept'
+                        content = [ordered]@{ fileName = 'todo-import.md' }
+                    }
+                })
+            Write-Host (Tool-Text $done)
+        }
+    }
+
+    # --- both in one round trip ----------------------------------------------
+    Write-Section 'MRTR: draft_day_plan asks for roots and sampling in one result'
+
+    $ask = Invoke-Tool 'draft_day_plan'
+    $askResult = Show-Ask $ask
+
+    if ($null -ne $askResult) {
+        # Two requests, two answers, one retry: the keys are what pairs them up.
+        # No requestState here - this tool needs nothing remembered between the
+        # rounds, so it issued none.
+        $done = Invoke-ToolRetry -Name 'draft_day_plan' -InputResponses ([ordered]@{
+            where = [ordered]@{
+                roots = @( [ordered]@{ uri = $rootUri; name = 'Demo workspace' } )
+            }
+            draft = New-SamplingReply 'Start with the review, then the release notes, then the README.'
+        })
+        Show-Text (Tool-Text $done)
+    }
+}
+
 
 $script:Http.Dispose()
 Write-Host ''

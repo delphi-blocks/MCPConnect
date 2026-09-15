@@ -682,10 +682,17 @@ constructor TCreateMessageRequestParams.Create;
 begin
   inherited;
   Messages := TObjectList<TSamplingMessage>.Create(True);
+
+  // Owned like Messages, and built here so that a server can state a preference
+  // without first constructing one: the field is declared but nothing else
+  // assigns it, so a nil here is an access violation in every caller. One that
+  // states no preference renders as {} and IncludeIf.NotEmpty drops it.
+  ModelPreferences := TModelPreferences.Create;
 end;
 
 destructor TCreateMessageRequestParams.Destroy;
 begin
+  ModelPreferences.Free;
   Messages.Free;
   inherited;
 end;

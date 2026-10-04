@@ -51,6 +51,12 @@ const
   /// <summary>Scheme prefix of the "Authorization" header carrying an OAuth access token.</summary>
   BearerPrefix = 'Bearer ';
 
+  /// <summary>
+  ///   Scheme of the "WWW-Authenticate" challenge when the auth token travels in a custom
+  ///   header or cookie, for which no standard scheme exists.
+  /// </summary>
+  ApiKeyScheme = 'ApiKey';
+
 resourcestring
   SInvalidTokenLocation = 'Invalid token location';
   SErrorRetrievingMCPConfig = 'Error retrieving MCP configuration';
@@ -244,8 +250,9 @@ type
     procedure InjectCORS;
     function CheckOrigin: Boolean;
     class function MatchesOriginPattern(const AOrigin, APattern: string): Boolean; static;
-    class function ConstantTimeEquals(const A, B: string): Boolean; static;
+    function ExtractAuthToken: string;
     function CheckAuthorization: Boolean;
+    procedure RejectAuthorization;
     function CheckOAuth: Boolean;
     function ValidateAccessToken(const AToken: string): TTokenValidationResult;
     procedure SendUnauthorized(const AResult: TTokenValidationResult);
@@ -363,66 +370,77 @@ begin
   inherited;
 end;
 
-class function TMCPTransportHandler.ConstantTimeEquals(const A, B: string): Boolean;
+function TMCPTransportHandler.ExtractAuthToken: string;
 var
-  I, LMaxLen: Integer;
-  LDiff: Integer;
-  LCharA, LCharB: Word;
+  LAuthHeader: string;
 begin
-  // Compares the full length of both strings regardless of where they first differ,
-  // so the running time does not leak how many leading characters of a guessed
-  // token/secret matched (a classic side channel for '<>' / early-exit comparisons).
-  LMaxLen := Length(A);
-  if Length(B) > LMaxLen then
-    LMaxLen := Length(B);
+  case FAuthTokenConfig.Location of
+    TAuthTokenLocation.Bearer:
+    begin
+      LAuthHeader := FRequest.Authorization;
+      if LAuthHeader.StartsWith(BearerPrefix, True) then
+        Result := LAuthHeader.Substring(Length(BearerPrefix)).Trim
+      else
+        Result := '';
+    end;
 
-  LDiff := Length(A) xor Length(B);
-  for I := 1 to LMaxLen do
-  begin
-    if I <= Length(A) then LCharA := Word(A[I]) else LCharA := 0;
-    if I <= Length(B) then LCharB := Word(B[I]) else LCharB := 0;
-    LDiff := LDiff or (LCharA xor LCharB);
+    TAuthTokenLocation.Cookie:
+      Result := FRequest.GetCookie(FAuthTokenConfig.CustomHeader);
+
+    TAuthTokenLocation.Header:
+      Result := FRequest.GetHeader(FAuthTokenConfig.CustomHeader);
+
+  else
+    raise EJRPCException.Create(SInvalidTokenLocation);
   end;
-
-  Result := LDiff = 0;
 end;
 
 function TMCPTransportHandler.CheckAuthorization: Boolean;
 begin
-  Result := True;
-  if Assigned(FAuthTokenConfig) and (FAuthTokenConfig.Token <> '') then
-  begin
-    if SameText(FRequest.Command, 'OPTIONS') then
-      Exit;
-    if (Length(FOAuthConfig.AuthorizationServers) > 0) and
-       (IsProtectedResourceMetadataRequest or IsMetadataProxyRequest) then
-      Exit;
-    case FAuthTokenConfig.Location of
-      TAuthTokenLocation.Bearer:
-      begin
-        var LAuthHeader := FRequest.Authorization;
-        if not LAuthHeader.StartsWith('Bearer ', True) then
-          Exit(False);
-        if not ConstantTimeEquals(LAuthHeader.Substring(7), FAuthTokenConfig.Token) then
-          Exit(False);
-      end;
+  if not Assigned(FAuthTokenConfig) or not FAuthTokenConfig.Enabled then
+    Exit(True);
 
-      TAuthTokenLocation.Cookie:
-      begin
-        if not ConstantTimeEquals(FRequest.GetCookie(FAuthTokenConfig.CustomHeader), FAuthTokenConfig.Token) then
-          Exit(False);
-      end;
+  // Same reasoning as CheckOAuth: STDIO has no headers to carry a token, and a server
+  // spawned by its client already runs with that client's authority.
+  if FRequest.Protocol = TTransportProtocol.Stdio then
+    Exit(True);
 
-      TAuthTokenLocation.Header:
-      begin
-        if not ConstantTimeEquals(FRequest.GetHeader(FAuthTokenConfig.CustomHeader), FAuthTokenConfig.Token) then
-          Exit(False);
-      end;
+  if SameText(FRequest.Command, 'OPTIONS') then
+    Exit(True);
 
-    else
-      raise EJRPCException.Create(SInvalidTokenLocation);
+  if (Length(FOAuthConfig.AuthorizationServers) > 0) and
+     (IsProtectedResourceMetadataRequest or IsMetadataProxyRequest) then
+    Exit(True);
+
+  try
+    Result := FAuthTokenConfig.Validate(FContext, ExtractAuthToken, FAccessToken);
+  except
+    // A failing validator must look exactly like a rejected token: never a 500.
+    on E: Exception do
+    begin
+      Logger.LogError('Auth token validation failed with an exception: %s', [E.Message]);
+      Result := False;
     end;
   end;
+
+  // Never log the token itself: a near-miss is still most of a valid key.
+  if not Result then
+    Logger.LogWarning('Auth token missing or rejected [%s %s]', [FRequest.Command, FRequest.Url]);
+end;
+
+procedure TMCPTransportHandler.RejectAuthorization;
+var
+  LScheme: string;
+begin
+  // A 401 must carry a challenge (RFC 9110 §15.5.2). There is no registered scheme for
+  // an API key in a custom header or cookie, so those get a descriptive one.
+  if FAuthTokenConfig.Location = TAuthTokenLocation.Bearer then
+    LScheme := 'Bearer'
+  else
+    LScheme := ApiKeyScheme;
+
+  FResponse.SetHeader('WWW-Authenticate', Format('%s realm="%s"', [LScheme, FOAuthConfig.Realm]));
+  raise EMCPTransportException.Create(HTTP_CODE_UNAUTHORIZED, SAuthorizationCheckFailed);
 end;
 
 function TMCPTransportHandler.CheckOAuth: Boolean;
@@ -769,13 +787,11 @@ begin
       if not CheckOrigin then
         raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, SCrossOriginBlocked);
 
-      if not CheckAuthorization then
-        raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, SAuthorizationCheckFailed);
-
-      // Built before the OAuth check, and not after it, because the token validator
-      // receives this context: it is where it finds the server and, through it, the
-      // OAuth configuration. Requests that end in a 401 pay for a context they will
-      // not use, which is a cheaper price than handing the validator a half-built one.
+      // Built before the auth token and OAuth checks, and not after them, because the
+      // validators receive this context: it is where they find the server and, through
+      // it, their configuration, and where the identity they fill in is injected.
+      // Requests that end in a 401 pay for a context they will not use, which is a
+      // cheaper price than handing a validator a half-built one.
       FGarbage := TGarbageCollector.CreateInstance;
       FContext := TJRPCContext.Create;
 
@@ -783,6 +799,9 @@ begin
       FContext.AddContent(FGarbage);
       FContext.AddContent(FServer);
       FContext.AddContent(FAccessToken);
+
+      if not CheckAuthorization then
+        RejectAuthorization;
 
       if not CheckOAuth then
         Exit;

@@ -63,6 +63,7 @@ uses
   MCPConnect.Tests.Security.Token in 'MCPConnect.Tests.Security.Token.pas',
   MCPConnect.Tests.Security.Token.JOSE in 'MCPConnect.Tests.Security.Token.JOSE.pas',
   MCPConnect.Tests.Transport.OAuth in 'MCPConnect.Tests.Transport.OAuth.pas',
+  MCPConnect.Tests.Transport.AuthToken in 'MCPConnect.Tests.Transport.AuthToken.pas',
   MCPConnect.Tests.Transport.Headers in 'MCPConnect.Tests.Transport.Headers.pas';
 
 var

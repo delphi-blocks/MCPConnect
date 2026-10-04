@@ -52,6 +52,9 @@ type
   end;
 
   TTodoTool = class
+  private
+    [Context]
+    AccessToken: TMCPAccessToken;
   public
     [McpTool('add_task', 'Add a new task to the todo list')]
     function AddTask(

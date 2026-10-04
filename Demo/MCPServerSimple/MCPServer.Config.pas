@@ -77,6 +77,18 @@ begin
       .Tools
         .RegisterClass(TTodoTool)
       .BackToMCP
+
+    .ApplyConfig
+
+    .Plugin.Configure<IAuthTokenConfig>
+      .SetTokenValidator(
+        function(AContext: TJRPCContext; const AToken: string; AIdentity: TMCPAccessToken): Boolean
+        begin
+          Result := AToken.StartsWith('+');
+          AIdentity.Subject := AToken.Substring(1);
+        end
+      )
+    .ApplyConfig
   ;
 end;
 

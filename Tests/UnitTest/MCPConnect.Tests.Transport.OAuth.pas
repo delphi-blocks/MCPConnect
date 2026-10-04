@@ -514,7 +514,7 @@ begin
 
   LOutcome := Execute('POST', ResourcePath, 'bearer my-static-secret');
 
-  Assert.AreNotEqual(403, LOutcome.Code, 'Lowercase "bearer" must be accepted for static tokens');
+  Assert.AreNotEqual(401, LOutcome.Code, 'Lowercase "bearer" must be accepted for static tokens');
 end;
 
 procedure TTransportOAuthTest.TestStaticToken_LowercaseHeaderName_IsAccepted;
@@ -526,7 +526,7 @@ begin
   LOutcome := Execute('POST', ResourcePath, 'authorization',
     'Bearer my-static-secret', TTransportProtocol.StreamableHTTP);
 
-  Assert.AreNotEqual(403, LOutcome.Code, 'Lowercase "authorization" header must be accepted for static tokens');
+  Assert.AreNotEqual(401, LOutcome.Code, 'Lowercase "authorization" header must be accepted for static tokens');
 end;
 
 end.

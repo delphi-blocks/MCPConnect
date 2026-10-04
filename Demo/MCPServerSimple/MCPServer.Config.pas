@@ -80,15 +80,20 @@ begin
 
     .ApplyConfig
 
-    .Plugin.Configure<IAuthTokenConfig>
-      .SetTokenValidator(
-        function(AContext: TJRPCContext; const AToken: string; AIdentity: TMCPAccessToken): Boolean
-        begin
-          Result := AToken.StartsWith('+');
-          AIdentity.Subject := AToken.Substring(1);
-        end
-      )
-    .ApplyConfig
+//    .Plugin.Configure<IAuthTokenConfig>
+//      .SetTokenValidator(
+//        function(AContext: TJRPCContext; const AToken: string; AIdentity: TMCPAccessToken): Boolean
+//        var
+//          LCustomer: TCustomer;
+//        begin
+//          Result := MyKeyStore.TryFindCustomer(AToken, LCustomer);
+//          if not Result then
+//            Exit;
+//
+//          AIdentity.Subject := LCustomer.Id;
+//          AIdentity.Name := LCustomer.Name;
+//        end)
+//    .ApplyConfig
   ;
 end;
 

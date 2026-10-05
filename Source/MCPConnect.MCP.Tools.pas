@@ -131,6 +131,8 @@ type
     [NeonIgnore] Disabled: Boolean;
     [NeonIgnore] UI: TMCPUIApp;
     [NeonIgnore] Visibility: ToolVisibility;
+    /// <summary>Scopes the caller's token must all carry (see [McpRequiredScope]).</summary>
+    [NeonIgnore] RequiredScopes: TArray<string>;
   public
     /// <summary>
     /// The name of the tool

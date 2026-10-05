@@ -94,6 +94,8 @@ type
     [NeonIgnore] Category: string;
     [NeonIgnore] Disabled: Boolean;
     [NeonIgnore] MethodParams: TObjectList<TMCPPromptParam>;
+    /// <summary>Scopes the caller's token must all carry (see [McpRequiredScope]).</summary>
+    [NeonIgnore] RequiredScopes: TArray<string>;
   public
 
     /// <summary>
@@ -142,6 +144,7 @@ type
   {$ELSE}
   TMCPPromptRegistry = class(TObjectDictionary<string, TMCPPrompt>);
   {$ENDIF}
+  TMCPPromptFilterFunc = reference to function (APrompt: TMCPPrompt): Boolean;
 
 
   TGetPromptParams = class(TMetaClass)

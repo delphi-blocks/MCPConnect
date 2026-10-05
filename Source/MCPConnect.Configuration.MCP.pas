@@ -32,6 +32,7 @@ uses
   MCPConnect.MCP.Tools,
   MCPConnect.MCP.Prompts,
   MCPConnect.MCP.Resources,
+  MCPConnect.MCP.Authorization,
 
   MCPConnect.MCP.Attributes,
   MCPConnect.Content.Writers,
@@ -66,6 +67,9 @@ resourcestring
   SPromptParamNotFoundFmt = 'Param [%s] for Prompt [%s] not found';
   SNonConfiguredPromptParamsNotPermitted = 'Non-configured prompt params are not permitted';
   STemplateNotFoundFmt = 'Template [%s] not found';
+  SResourceOrTemplateNotFoundFmt = 'Resource or template [%s] not found';
+  SAuthorizerClassInvalidFmt = 'Class [%s] cannot be used as an MCP authorizer: ' +
+    'it does not implement IMCPAuthorizer';
 
 type
   /// <summary>
@@ -176,6 +180,12 @@ type
   TMCPBaseConfig = class
   protected
     FConfig: IMCPConfig;
+
+    /// <summary>
+    ///   Scopes required by [McpRequiredScope] on AClass and on AMethod (if any),
+    ///   merged together.
+    /// </summary>
+    class function GetRequiredScopes(AClass: TClass; AMethod: TRttiMethod): TArray<string>; static;
   public
     constructor Create(AConfig: IMCPConfig);
     function SetIcon(const ASrc: string; var AIcon: TMCPIcon): Boolean;
@@ -371,9 +381,13 @@ type
   end;
 
   /// <summary>
-  ///   Configuration for security settings like CORS.
+  ///   Configuration for security settings like CORS and the authorization of tools,
+  ///   resources and prompts.
   /// </summary>
   TMCPSecurityConfig = class(TMCPBaseConfig)
+  private
+    FAuthorizer: TMCPAuthorizerFunc;
+    FAuthorizerClass: TClass;
   public
     CORS: Boolean;
     AllowedMethods: TArray<string>;
@@ -396,6 +410,46 @@ type
     function SetCookieSecure(AEnable: Boolean): TMCPSecurityConfig;
     function SetExposeHeaders(const AHeaders: TArray<string>): TMCPSecurityConfig;
     function SetRequireOrigin(AEnable: Boolean): TMCPSecurityConfig;
+
+    /// <summary>
+    ///   Replaces the default authorizer (TMCPScopeAuthorizer, which checks the scopes
+    ///   declared with [McpRequiredScope]) with a custom rule, and any authorizer class
+    ///   registered before. Pass nil to go back to the default.
+    /// </summary>
+    /// <remarks>
+    ///   The rule decides alone: call TMCPScopeAuthorizer.Check inside it to keep the
+    ///   scope check as well.
+    /// </remarks>
+    /// <example>
+    ///   <code>
+    ///   .Security
+    ///     .SetAuthorizer(
+    ///       function (AContext: TJRPCContext; const AItem: TMCPAuthItem;
+    ///         AIdentity: TMCPAccessToken): Boolean
+    ///       begin
+    ///         Result := TMCPScopeAuthorizer.Check(AItem, AIdentity) and
+    ///           (not AItem.Tags.Exists('admin') or IsAdmin(AIdentity.Subject));
+    ///       end)
+    ///   .BackToMCP
+    ///   </code>
+    /// </example>
+    function SetAuthorizer(const AAuthorizer: TMCPAuthorizerFunc): TMCPSecurityConfig;
+
+    /// <summary>
+    ///   Replaces the default authorizer with a class implementing IMCPAuthorizer, and
+    ///   any authorizer function registered before. Pass nil to go back to the default.
+    /// </summary>
+    /// <exception cref="EMCPException">AClass does not implement IMCPAuthorizer.</exception>
+    function SetAuthorizerClass(AClass: TClass): TMCPSecurityConfig;
+
+    /// <summary>
+    ///   The authorizer to use for one request: the function, an instance of the
+    ///   class, or the default scope authorizer.
+    /// </summary>
+    function CreateAuthorizer: IMCPAuthorizer;
+
+    property Authorizer: TMCPAuthorizerFunc read FAuthorizer;
+    property AuthorizerClass: TClass read FAuthorizerClass;
   end;
 
   TMCPToolConfig = class(TMCPTool)
@@ -406,6 +460,13 @@ type
     destructor Destroy; override;
 
     function WithParam(const AParamName, AName, ADescription: string; const ATags: string = ''): TMCPToolConfig;
+
+    /// <summary>
+    ///   Adds scopes (separated by commas or semicolons) the caller's token must carry
+    ///   to see and call the tool. Same as [McpRequiredScope].
+    /// </summary>
+    function RequireScope(const AScopes: string): TMCPToolConfig;
+
     function EndTool: TMCPToolsConfig;
   end;
 
@@ -451,6 +512,13 @@ type
     /// </summary>
     function ClearAll: TMCPToolsConfig;
 
+    /// <summary>
+    ///   Adds scopes (separated by commas or semicolons) the caller's token must carry
+    ///   to see and call the tool AName, however it was registered. Raises
+    ///   EMCPException if no tool is registered under that name.
+    /// </summary>
+    function RequireScope(const AName, AScopes: string): TMCPToolsConfig;
+
     function SetSchemaNeonConfig(ANeonConfig: INeonConfiguration): TMCPToolsConfig;
 
     /// <summary>
@@ -463,7 +531,11 @@ type
     function CreateInstance(const ATool: string): TObject;
 
     function ListComplete: TListToolsResult;
-    function ListEnabled: TListToolsResult;
+
+    /// <summary>
+    ///   The tools not disabled and, when AFilter is given, accepted by it.
+    /// </summary>
+    function ListEnabled(const AFilter: TMCPToolFilterFunc = nil): TListToolsResult;
 
     procedure FilterList(AList: TListToolsResult; AFilter: TMCPToolFilterFunc);
     
@@ -525,6 +597,13 @@ type
     function ClearAll: TMCPPromptsConfig;
 
     /// <summary>
+    ///   Adds scopes (separated by commas or semicolons) the caller's token must carry
+    ///   to see and get the prompt AName, however it was registered. Raises
+    ///   EMCPException if no prompt is registered under that name.
+    /// </summary>
+    function RequireScope(const AName, AScopes: string): TMCPPromptsConfig;
+
+    /// <summary>
     ///   Creates an instance of a class by namespace.
     ///   Used internally by the framework to instantiate tools.
     /// </summary>
@@ -533,7 +612,10 @@ type
     /// <exception cref="EJRPCException">Raised if namespace not found</exception>
     function CreateInstance(const APrompt: string): TObject;
 
-    function ListComplete: TListPromptsResult;
+    /// <summary>
+    ///   All the prompts or, when AFilter is given, the ones it accepts.
+    /// </summary>
+    function ListComplete(const AFilter: TMCPPromptFilterFunc = nil): TListPromptsResult;
   end;
 
   /// <summary>
@@ -634,6 +716,14 @@ type
     /// </summary>
     function ClearAll: TMCPResourcesConfig;
 
+    /// <summary>
+    ///   Adds scopes (separated by commas or semicolons) the caller's token must carry
+    ///   to see and read the resource or App UI registered under AUri, or the template
+    ///   registered under that uri template, however it was registered. Raises
+    ///   EMCPException if neither is found.
+    /// </summary>
+    function RequireScope(const AUri, AScopes: string): TMCPResourcesConfig;
+
     function GetResource(const AUri: string): TMCPResource;
     function GetTemplate(const AUri: string): TMCPResourceTemplate;
 
@@ -647,8 +737,17 @@ type
     /// <exception cref="EJRPCException">Raised if namespace not found</exception>
     function CreateInstance(const AUri: string): TObject;
 
-    procedure ResourceList(AList: TListResourcesResult);
-    procedure TemplateList(AList: TListResourceTemplatesResult);
+    /// <summary>
+    ///   Adds to AList the resources not disabled and, when AFilter is given,
+    ///   accepted by it.
+    /// </summary>
+    procedure ResourceList(AList: TListResourcesResult; const AFilter: TMCPResourceFilterFunc = nil);
+
+    /// <summary>
+    ///   Adds to AList the templates not disabled and, when AFilter is given,
+    ///   accepted by it.
+    /// </summary>
+    procedure TemplateList(AList: TListResourceTemplatesResult; const AFilter: TMCPTemplateFilterFunc = nil);
   end;
 
   /// <summary>
@@ -796,11 +895,11 @@ begin
   Configs.Remove(AConfig);
 end;
 
-function TMCPToolsConfig.ListEnabled: TListToolsResult;
+function TMCPToolsConfig.ListEnabled(const AFilter: TMCPToolFilterFunc): TListToolsResult;
 begin
   Result := TListToolsResult.Create;
   for var pair in Registry do
-    if not pair.Value.Disabled then
+    if not pair.Value.Disabled and (not Assigned(AFilter) or AFilter(pair.Value)) then
       Result.Tools.Add(pair.Value);
 end;
 
@@ -832,6 +931,7 @@ begin
       LTool.Description := LToolAttr.Description;
       LTool.ToolClass := AClass;
       LTool.Method := LMethod;
+      LTool.RequiredScopes := GetRequiredScopes(AClass, LMethod);
 
       LAppAttr := TRttiUtils.FindAttribute<MCPAppAttribute>(LMethod);
       if Assigned(LAppAttr) then
@@ -890,6 +990,8 @@ begin
   Result.ToolClass := AClass;
   Result.MethodName := AMethodName;
   Result.Method := LMethod;
+  // Attributes are honored here too: leaving them out would open what they close
+  Result.RequiredScopes := GetRequiredScopes(AClass, LMethod);
 
   Result.Name := AName;
   Result.Description := ADescription;
@@ -924,6 +1026,17 @@ end;
 function TMCPToolsConfig.ClearAll: TMCPToolsConfig;
 begin
   Registry.Clear;
+  Result := Self;
+end;
+
+function TMCPToolsConfig.RequireScope(const AName, AScopes: string): TMCPToolsConfig;
+var
+  LTool: TMCPTool;
+begin
+  if not Registry.TryGetValue(AName, LTool) then
+    raise EMCPException.CreateFmt(SToolNotFoundFmt, [AName]);
+
+  LTool.RequiredScopes := TMCPScopeList.Merge(LTool.RequiredScopes, TMCPScopeList.Parse(AScopes));
   Result := Self;
 end;
 
@@ -1159,6 +1272,24 @@ begin
   FConfig := AConfig;
 end;
 
+class function TMCPBaseConfig.GetRequiredScopes(AClass: TClass; AMethod: TRttiMethod): TArray<string>;
+var
+  LAttr: McpRequiredScopeAttribute;
+begin
+  Result := [];
+
+  LAttr := TRttiUtils.FindAttribute<McpRequiredScopeAttribute>(TRttiUtils.Context.GetType(AClass));
+  if Assigned(LAttr) then
+    Result := LAttr.Scopes;
+
+  if not Assigned(AMethod) then
+    Exit;
+
+  LAttr := TRttiUtils.FindAttribute<McpRequiredScopeAttribute>(AMethod);
+  if Assigned(LAttr) then
+    Result := TMCPScopeList.Merge(Result, LAttr.Scopes);
+end;
+
 { TMCPResourcesConfig }
 
 function TMCPResourcesConfig.AddMimeType(AEncoding: TMimeEncoding; const AMime: string; const AExt: string): TMCPResourcesConfig;
@@ -1167,18 +1298,35 @@ begin
   Result := Self;
 end;
 
-procedure TMCPResourcesConfig.ResourceList(AList: TListResourcesResult);
+procedure TMCPResourcesConfig.ResourceList(AList: TListResourcesResult;
+  const AFilter: TMCPResourceFilterFunc);
 begin
   for var pair in Registry do
-    if not pair.Value.Disabled then
+    if not pair.Value.Disabled and (not Assigned(AFilter) or AFilter(pair.Value)) then
       AList.Resources.Add(pair.Value);
 end;
 
-procedure TMCPResourcesConfig.TemplateList(AList: TListResourceTemplatesResult);
+procedure TMCPResourcesConfig.TemplateList(AList: TListResourceTemplatesResult;
+  const AFilter: TMCPTemplateFilterFunc);
 begin
   for var pair in TemplateRegistry do
-    if not pair.Value.Disabled then
+    if not pair.Value.Disabled and (not Assigned(AFilter) or AFilter(pair.Value)) then
       AList.ResourceTemplates.Add(pair.Value);
+end;
+
+function TMCPResourcesConfig.RequireScope(const AUri, AScopes: string): TMCPResourcesConfig;
+var
+  LRes: TMCPResource;
+  LTpl: TMCPResourceTemplate;
+begin
+  if Registry.TryGetValue(AUri, LRes) then
+    LRes.RequiredScopes := TMCPScopeList.Merge(LRes.RequiredScopes, TMCPScopeList.Parse(AScopes))
+  else if TemplateRegistry.TryGetValue(AUri, LTpl) then
+    LTpl.RequiredScopes := TMCPScopeList.Merge(LTpl.RequiredScopes, TMCPScopeList.Parse(AScopes))
+  else
+    raise EMCPException.CreateFmt(SResourceOrTemplateNotFoundFmt, [AUri]);
+
+  Result := Self;
 end;
 
 constructor TMCPResourcesConfig.Create(AConfig: IMCPConfig);
@@ -1270,6 +1418,7 @@ begin
     LRes.Description := AAttr.Description;
     LRes.ResourceClass := AClass;
     LRes.Method := AMethod;
+    LRes.RequiredScopes := GetRequiredScopes(AClass, AMethod);
 
     Registry.Add(LRes.Uri, LRes);
   except
@@ -1296,6 +1445,7 @@ begin
     LRes.Description := AAttr.Description;
     LRes.ResourceClass := AClass;
     LRes.Method := AMethod;
+    LRes.RequiredScopes := GetRequiredScopes(AClass, AMethod);
     Registry.Add(LRes.Uri, LRes);
   except
     LRes.Free;
@@ -1363,6 +1513,7 @@ begin
   try
     LRes.ResourceClass := AClass;
     LRes.Method := LMethod;
+    LRes.RequiredScopes := GetRequiredScopes(AClass, LMethod);
     LRes.Name := AName;
     LRes.Uri := AUri;
     LRes.MimeType := AMime;
@@ -1434,6 +1585,7 @@ begin
   try
     LTpl.ResourceClass := AClass;
     LTpl.Method := LMethod;
+    LTpl.RequiredScopes := GetRequiredScopes(AClass, LMethod);
     LTpl.Name := AName;
     LTpl.UriTemplate := AUriTemplate;
     LTpl.MimeType := AMime;
@@ -1489,6 +1641,7 @@ begin
     LTpl.Description := AAttr.Description;
     LTpl.ResourceClass := AClass;
     LTpl.Method := AMethod;
+    LTpl.RequiredScopes := GetRequiredScopes(AClass, AMethod);
 
     for var par in AMethod.GetParameters do
     begin
@@ -1536,6 +1689,7 @@ begin
   try
     LApp.ResourceClass := AClass;
     LApp.Method := LMethod;
+    LApp.RequiredScopes := GetRequiredScopes(AClass, LMethod);
     LApp.Name := AName;
     LApp.Uri := AUri;
     LApp.MimeType := 'text/html;profile=mcp-app';
@@ -1728,11 +1882,12 @@ begin
   inherited;
 end;
 
-function TMCPPromptsConfig.ListComplete: TListPromptsResult;
+function TMCPPromptsConfig.ListComplete(const AFilter: TMCPPromptFilterFunc): TListPromptsResult;
 begin
   Result := TListPromptsResult.Create;
   for var pair in Registry do
-    Result.Prompts.Add(pair.Value);
+    if not Assigned(AFilter) or AFilter(pair.Value) then
+      Result.Prompts.Add(pair.Value);
 end;
 
 function TMCPPromptsConfig.RegisterClass(AClass: TClass): TMCPPromptsConfig;
@@ -1763,6 +1918,7 @@ begin
       LPrompt.Description := LPromptAttr.Description;
       LPrompt.PromptClass := AClass;
       LPrompt.Method := LMethod;
+      LPrompt.RequiredScopes := GetRequiredScopes(AClass, LMethod);
 
       for var tag in LPromptAttr.Tags.TagMap do
         LPrompt.Tags.TagMap.Add(tag.Key, tag.Value);
@@ -1817,6 +1973,7 @@ begin
   try
     LPrompt.PromptClass := AClass;
     LPrompt.Method := LMethod;
+    LPrompt.RequiredScopes := GetRequiredScopes(AClass, LMethod);
     LPrompt.Name := AName;
     LPrompt.Title := ATitle;
     LPrompt.Description := ADescription;
@@ -1877,6 +2034,17 @@ end;
 function TMCPPromptsConfig.ClearAll: TMCPPromptsConfig;
 begin
   Registry.Clear;
+  Result := Self;
+end;
+
+function TMCPPromptsConfig.RequireScope(const AName, AScopes: string): TMCPPromptsConfig;
+var
+  LPrompt: TMCPPrompt;
+begin
+  if not Registry.TryGetValue(AName, LPrompt) then
+    raise EMCPException.CreateFmt(SPromptNotFoundFmt, [AName]);
+
+  LPrompt.RequiredScopes := TMCPScopeList.Merge(LPrompt.RequiredScopes, TMCPScopeList.Parse(AScopes));
   Result := Self;
 end;
 
@@ -1948,6 +2116,42 @@ begin
   Result := Self;
 end;
 
+function TMCPSecurityConfig.SetAuthorizer(const AAuthorizer: TMCPAuthorizerFunc): TMCPSecurityConfig;
+begin
+  FAuthorizer := AAuthorizer;
+  FAuthorizerClass := nil;
+  Result := Self;
+end;
+
+function TMCPSecurityConfig.SetAuthorizerClass(AClass: TClass): TMCPSecurityConfig;
+begin
+  // Checked here, at configuration time, rather than on the first request
+  if Assigned(AClass) and (AClass.GetInterfaceEntry(IMCPAuthorizer) = nil) then
+    raise EMCPException.CreateFmt(SAuthorizerClassInvalidFmt, [AClass.ClassName]);
+
+  FAuthorizerClass := AClass;
+  FAuthorizer := nil;
+  Result := Self;
+end;
+
+function TMCPSecurityConfig.CreateAuthorizer: IMCPAuthorizer;
+var
+  LInstance: TObject;
+begin
+  if Assigned(FAuthorizer) then
+    Exit(TMCPFuncAuthorizer.Create(FAuthorizer));
+
+  if not Assigned(FAuthorizerClass) then
+    Exit(TMCPScopeAuthorizer.Create);
+
+  LInstance := TRttiUtils.CreateInstance(FAuthorizerClass);
+  if not Supports(LInstance, IMCPAuthorizer, Result) then
+  begin
+    LInstance.Free;
+    raise EMCPException.CreateFmt(SAuthorizerClassInvalidFmt, [FAuthorizerClass.ClassName]);
+  end;
+end;
+
 { TMCPMessageHandlingConfig }
 
 constructor TMCPMessageHandlingConfig.Create(AConfig: IMCPConfig);
@@ -2014,6 +2218,12 @@ function TMCPToolConfig.EndTool: TMCPToolsConfig;
 begin
   Parent.EndTool(Self);
   Result := Parent;
+end;
+
+function TMCPToolConfig.RequireScope(const AScopes: string): TMCPToolConfig;
+begin
+  RequiredScopes := TMCPScopeList.Merge(RequiredScopes, TMCPScopeList.Parse(AScopes));
+  Result := Self;
 end;
 
 function TMCPToolConfig.WithParam(const AParamName, AName, ADescription: string;

@@ -67,6 +67,7 @@ contains
   MCPConnect.JRPC.Invoker in '..\..\Source\MCPConnect.JRPC.Invoker.pas',
   MCPConnect.JRPC.Server in '..\..\Source\MCPConnect.JRPC.Server.pas',
   MCPConnect.MCP.Attributes in '..\..\Source\MCPConnect.MCP.Attributes.pas',
+  MCPConnect.MCP.Authorization in '..\..\Source\MCPConnect.MCP.Authorization.pas',
   MCPConnect.MCP.Config in '..\..\Source\MCPConnect.MCP.Config.pas',
   MCPConnect.MCP.Invoker in '..\..\Source\MCPConnect.MCP.Invoker.pas',
   MCPConnect.MCP.Prompts in '..\..\Source\MCPConnect.MCP.Prompts.pas',

@@ -22,10 +22,14 @@ uses
   MCPConnect.Configuration.MCP,
 
   MCPConnect.MCP.Types,
+  MCPConnect.MCP.Authorization,
   MCPConnect.MCP.Attributes,
   MCPConnect.MCP.Tools,
   MCPConnect.MCP.Resources,
   MCPConnect.MCP.Prompts;
+
+resourcestring
+  SMCPAccessDeniedLogFmt = 'Access to %s denied (required scopes: "%s", token scopes: "%s")';
 
 type
   [JRPC('tools')]
@@ -126,6 +130,35 @@ uses
   Neon.Core.Utils,
   MCPConnect.MCP.Invoker;
 
+function CreateAccessGuard(AContext: TJRPCContext; AConfig: TMCPConfig): TMCPAccessGuard;
+begin
+  Result := TMCPAccessGuard.Create(AContext, AConfig.Security.CreateAuthorizer);
+end;
+
+/// <summary>
+///   Raises the same "not found" error as an item that does not exist when the
+///   caller is not allowed to use AItem, so that its existence is not disclosed.
+///   The real reason goes to the log.
+/// </summary>
+procedure CheckAccess(AContext: TJRPCContext; AConfig: TMCPConfig;
+  const AItem: TMCPAuthItem; const ANotFoundFmt, AKey: string);
+var
+  LGuard: TMCPAccessGuard;
+begin
+  LGuard := CreateAccessGuard(AContext, AConfig);
+  try
+    if LGuard.IsAllowed(AItem) then
+      Exit;
+
+    Logger.LogWarning(SMCPAccessDeniedLogFmt,
+      [AItem.ToString, string.Join(' ', AItem.RequiredScopes), LGuard.Identity.Scope]);
+  finally
+    LGuard.Free;
+  end;
+
+  raise EMCPException.CreateFmt(ANotFoundFmt, [AKey]);
+end;
+
 { TMCPToolApi }
 
 function TMCPToolsApi.CallTool(AParams: TCallToolParams): TCallToolResult;
@@ -139,6 +172,8 @@ begin
   try
     if not MCPConfig.Tools.Registry.TryGetValue(AParams.Name, LTool) then
       raise EMCPException.CreateFmt(SMCPToolNotFound, [AParams.Name]);
+
+    CheckAccess(RPCContext, MCPConfig, TMCPAuthItem.FromTool(LTool), SMCPToolNotFound, AParams.Name);
 
     // Instance of the tool class
     LToolObj := TRttiUtils.CreateInstance(LTool.ToolClass);
@@ -171,10 +206,20 @@ end;
 function TMCPToolsApi.ToolsList: TListToolsResult;
 var
   LStopwatch: TStopwatch;
+  LGuard: TMCPAccessGuard;
 begin
   LStopwatch := TStopwatch.StartNew;
   try
-    Result := MCPConfig.Tools.ListEnabled;
+    LGuard := CreateAccessGuard(RPCContext, MCPConfig);
+    try
+      Result := MCPConfig.Tools.ListEnabled(
+        function (ATool: TMCPTool): Boolean
+        begin
+          Result := LGuard.IsAllowed(TMCPAuthItem.FromTool(ATool));
+        end);
+    finally
+      LGuard.Free;
+    end;
   finally
     Logger.LogDebug('[PERF] ToolsList total: %d ms', [LStopwatch.ElapsedMilliseconds]);
   end;
@@ -320,9 +365,15 @@ begin
     end;
 
     if Assigned(LRes) then
-      Result := InternalReadResource(AParams, LRes)
+    begin
+      CheckAccess(RPCContext, MCPConfig, TMCPAuthItem.FromResource(LRes), SMCPResourceNotFound, AParams.Uri);
+      Result := InternalReadResource(AParams, LRes);
+    end
     else
+    begin
+      CheckAccess(RPCContext, MCPConfig, TMCPAuthItem.FromTemplate(LTpl, AParams.Uri), SMCPResourceNotFound, AParams.Uri);
       Result := InternalReadTemplate(AParams, LTpl);
+    end;
   finally
     Logger.LogDebug('[PERF] ReadResource [%s] total: %d ms', [AParams.Uri, LStopwatch.ElapsedMilliseconds]);
   end;
@@ -331,12 +382,22 @@ end;
 function TMCPResourcesApi.ResourcesList: TListResourcesResult;
 var
   LStopwatch: TStopwatch;
+  LGuard: TMCPAccessGuard;
 begin
   LStopwatch := TStopwatch.StartNew;
   try
     Result := TListResourcesResult.Create;
     try
-      MCPConfig.Resources.ResourceList(Result);
+      LGuard := CreateAccessGuard(RPCContext, MCPConfig);
+      try
+        MCPConfig.Resources.ResourceList(Result,
+          function (AResource: TMCPResource): Boolean
+          begin
+            Result := LGuard.IsAllowed(TMCPAuthItem.FromResource(AResource));
+          end);
+      finally
+        LGuard.Free;
+      end;
     except
       Result.Free;
       raise;
@@ -347,10 +408,21 @@ begin
 end;
 
 function TMCPResourcesApi.TemplatesList: TListResourceTemplatesResult;
+var
+  LGuard: TMCPAccessGuard;
 begin
   Result := TListResourceTemplatesResult.Create;
   try
-    MCPConfig.Resources.TemplateList(Result);
+    LGuard := CreateAccessGuard(RPCContext, MCPConfig);
+    try
+      MCPConfig.Resources.TemplateList(Result,
+        function (ATemplate: TMCPResourceTemplate): Boolean
+        begin
+          Result := LGuard.IsAllowed(TMCPAuthItem.FromTemplate(ATemplate));
+        end);
+    finally
+      LGuard.Free;
+    end;
   except
     Result.Free;
     raise;
@@ -378,10 +450,20 @@ end;
 function TMCPPromptsApi.PromptList: TListPromptsResult;
 var
   LStopwatch: TStopwatch;
+  LGuard: TMCPAccessGuard;
 begin
   LStopwatch := TStopwatch.StartNew;
   try
-    Result := MCPConfig.Prompts.ListComplete;
+    LGuard := CreateAccessGuard(RPCContext, MCPConfig);
+    try
+      Result := MCPConfig.Prompts.ListComplete(
+        function (APrompt: TMCPPrompt): Boolean
+        begin
+          Result := LGuard.IsAllowed(TMCPAuthItem.FromPrompt(APrompt));
+        end);
+    finally
+      LGuard.Free;
+    end;
   finally
     Logger.LogDebug('[PERF] PromptList total: %d ms', [LStopwatch.ElapsedMilliseconds]);
   end;
@@ -398,6 +480,8 @@ begin
   try
     if not MCPConfig.Prompts.Registry.TryGetValue(AParams.Name, LPrompt) then
       raise EMCPException.CreateFmt(SMCPPromptNotFound, [AParams.Name]);
+
+    CheckAccess(RPCContext, MCPConfig, TMCPAuthItem.FromPrompt(LPrompt), SMCPPromptNotFound, AParams.Name);
 
     // Create an instance of the tool class
     LPromptObj := TRttiUtils.CreateInstance(LPrompt.PromptClass);

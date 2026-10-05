@@ -91,6 +91,9 @@ type
   /// Represents a known resource that the server is capable of reading.
   /// </summary>
   TMCPResourceBase = class(TMetaClass)
+    /// <summary>Scopes the caller's token must all carry (see [McpRequiredScope]).</summary>
+    [NeonIgnore] RequiredScopes: TArray<string>;
+
     [NeonInclude(IncludeIf.NotEmpty)] Annotations: TMCPAnnotation;
 
     /// <summary>

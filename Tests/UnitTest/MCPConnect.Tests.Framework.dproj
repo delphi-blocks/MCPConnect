@@ -175,6 +175,7 @@
         <DCCReference Include="MCPConnect.Tests.MCP.Middleware.pas"/>
         <DCCReference Include="MCPConnect.Tests.Transport.Middleware.pas"/>
         <DCCReference Include="MCPConnect.Tests.Transport.DefaultMiddleware.pas"/>
+        <DCCReference Include="MCPConnect.Tests.MCP.AccessToken.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Tools.pas"/>
         <DCCReference Include="MCPConnect.Tests.JRPC.Invoker.pas"/>
         <DCCReference Include="MCPConnect.Tests.Core.Utils.pas"/>

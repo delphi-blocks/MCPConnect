@@ -103,11 +103,14 @@ end;
 
 ### 2.2 Combining with token/cookie authentication
 
-`IOAuthConfig` and `IAuthTokenConfig` (simple static-token / cookie authentication) are independent
+`IOAuthConfig` and `IAuthTokenConfig` (API key authentication: a static token, or keys checked by a
+validator of the application, in a header, a cookie or the `Authorization` header) are independent
 plugins and can coexist, but are generally alternatives for different deployment scenarios — most
-servers will use one or the other.
+servers will use one or the other. Both fill in the same `TMCPAccessToken`, so a tool reading the
+caller through `[Context]` works with either.
 
-Both are transport middleware: `IAuthTokenConfig.SetToken` registers `TAuthTokenMiddleware` and
+Both are transport middleware: `IAuthTokenConfig.SetToken` (or `SetTokenValidator` /
+`SetTokenValidatorClass`) registers `TAuthTokenMiddleware` and
 `IOAuthConfig.AddAuthorizationServer` registers `TOAuthMiddleware` (`MCPConnect.MCP.Middleware.OAuth`), which also serves
 the discovery endpoints described below. The static check runs first, OAuth inside it, both inside CORS. See
 [Middleware](./middleware#middleware-that-ships-with-mcpconnect).

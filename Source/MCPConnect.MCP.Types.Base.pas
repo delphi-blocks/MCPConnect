@@ -228,7 +228,29 @@ type
   ///   Holds the decoded payload (claims) of the OAuth access token.
   ///   Always instantiated and injected into the request context.
   /// </summary>
+  /// <remarks>
+  ///   The setters let a validator that is not decoding a JWT (an API key validator,
+  ///   typically) describe the caller in the same terms. Setting an empty string, an
+  ///   empty array or a zero date removes the claim, which reads back as the default.
+  /// </remarks>
   TMCPAccessToken = class
+  public const
+    ClaimSubject = 'sub';
+    ClaimName = 'name';
+    ClaimEMail = 'email';
+    ClaimScope = 'scope';
+    ClaimEntraScope = 'scp';
+    ClaimEmailVerified = 'email_verified';
+    ClaimPreferredUsername = 'preferred_username';
+    ClaimGivenName = 'given_name';
+    ClaimFamilyName = 'family_name';
+    ClaimIssuer = 'iss';
+    ClaimAudience = 'aud';
+    ClaimClientId = 'client_id';
+    ClaimAuthorizedParty = 'azp';
+    ClaimExpiration = 'exp';
+    ClaimIssuedAt = 'iat';
+    ClaimNotBefore = 'nbf';
   private
     FPayload: TJSONObject;
     function GetName: string;
@@ -245,6 +267,29 @@ type
     function GetExpiration: TDateTime;
     function GetIssuedAt: TDateTime;
     function GetNotBefore: TDateTime;
+    procedure SetName(const AValue: string);
+    procedure SetEMail(const AValue: string);
+    procedure SetSubject(const AValue: string);
+    procedure SetScope(const AValue: string);
+    procedure SetEmailVerified(const AValue: Boolean);
+    procedure SetPreferredUsername(const AValue: string);
+    procedure SetGivenName(const AValue: string);
+    procedure SetFamilyName(const AValue: string);
+    procedure SetIssuer(const AValue: string);
+    procedure SetAudience(const AValue: TArray<string>);
+    procedure SetClientId(const AValue: string);
+    procedure SetExpiration(const AValue: TDateTime);
+    procedure SetIssuedAt(const AValue: TDateTime);
+    procedure SetNotBefore(const AValue: TDateTime);
+
+    /// <summary>
+    ///   Replaces the claim AName with AValue (taking ownership of it), or removes it
+    ///   when AValue is nil. TJSONObject.AddPair alone would add a duplicate key.
+    /// </summary>
+    procedure SetClaim(const AName: string; AValue: TJSONValue);
+    procedure SetStringClaim(const AName, AValue: string);
+    function GetDateClaim(const AName: string): TDateTime;
+    procedure SetDateClaim(const AName: string; const AValue: TDateTime);
   public
     constructor Create;
     destructor Destroy; override;
@@ -268,34 +313,43 @@ type
     property Payload: TJSONObject read FPayload;
 
     /// <summary>Subject ("sub"): the unique identifier of the authenticated user/entity.</summary>
-    property Subject: string read GetSubject;
+    property Subject: string read GetSubject write SetSubject;
     /// <summary>Display name of the user ("name").</summary>
-    property Name: string read GetName;
+    property Name: string read GetName write SetName;
     /// <summary>User's email address ("email").</summary>
-    property EMail: string read GetEMail;
-    /// <summary>Space-delimited authorized scopes ("scope").</summary>
-    property Scope: string read GetScope;
+    property EMail: string read GetEMail write SetEMail;
+    /// <summary>
+    ///   Space-delimited authorized scopes ("scope", falling back to Entra ID's "scp").
+    ///   Written to "scope".
+    /// </summary>
+    property Scope: string read GetScope write SetScope;
     /// <summary>Whether the user's email address has been verified ("email_verified").</summary>
-    property EmailVerified: Boolean read GetEmailVerified;
+    property EmailVerified: Boolean read GetEmailVerified write SetEmailVerified;
     /// <summary>Preferred username claim ("preferred_username").</summary>
-    property PreferredUsername: string read GetPreferredUsername;
+    property PreferredUsername: string read GetPreferredUsername write SetPreferredUsername;
     /// <summary>User's given (first) name ("given_name").</summary>
-    property GivenName: string read GetGivenName;
+    property GivenName: string read GetGivenName write SetGivenName;
     /// <summary>User's family (last) name ("family_name").</summary>
-    property FamilyName: string read GetFamilyName;
+    property FamilyName: string read GetFamilyName write SetFamilyName;
 
     /// <summary>Token issuer ("iss"): must match the authorization server's issuer.</summary>
-    property Issuer: string read GetIssuer;
-    /// <summary>Token audience ("aud"): must include this resource server's canonical URI (RFC 8707).</summary>
-    property Audience: TArray<string> read GetAudience;
-    /// <summary>Authorized client/party ("client_id", falling back to "azp").</summary>
-    property ClientId: string read GetClientId;
-    /// <summary>Expiration time ("exp"); 0 if the claim is absent.</summary>
-    property Expiration: TDateTime read GetExpiration;
-    /// <summary>Issued-at time ("iat"); 0 if the claim is absent.</summary>
-    property IssuedAt: TDateTime read GetIssuedAt;
-    /// <summary>Not-before time ("nbf"); 0 if the claim is absent.</summary>
-    property NotBefore: TDateTime read GetNotBefore;
+    property Issuer: string read GetIssuer write SetIssuer;
+    /// <summary>
+    ///   Token audience ("aud"): must include this resource server's canonical URI
+    ///   (RFC 8707). Written as a JSON array.
+    /// </summary>
+    property Audience: TArray<string> read GetAudience write SetAudience;
+    /// <summary>
+    ///   Authorized client/party ("client_id", falling back to "azp"). Written to
+    ///   "client_id".
+    /// </summary>
+    property ClientId: string read GetClientId write SetClientId;
+    /// <summary>Expiration time ("exp", UTC); 0 if the claim is absent.</summary>
+    property Expiration: TDateTime read GetExpiration write SetExpiration;
+    /// <summary>Issued-at time ("iat", UTC); 0 if the claim is absent.</summary>
+    property IssuedAt: TDateTime read GetIssuedAt write SetIssuedAt;
+    /// <summary>Not-before time ("nbf", UTC); 0 if the claim is absent.</summary>
+    property NotBefore: TDateTime read GetNotBefore write SetNotBefore;
   end;
 
   /// <summary>
@@ -1624,19 +1678,54 @@ begin
   end;
 end;
 
+procedure TMCPAccessToken.SetClaim(const AName: string; AValue: TJSONValue);
+begin
+  FPayload.RemovePair(AName).Free;
+
+  if Assigned(AValue) then
+    FPayload.AddPair(AName, AValue);
+end;
+
+procedure TMCPAccessToken.SetStringClaim(const AName, AValue: string);
+begin
+  if AValue = '' then
+    SetClaim(AName, nil)
+  else
+    SetClaim(AName, TJSONString.Create(AValue));
+end;
+
+function TMCPAccessToken.GetDateClaim(const AName: string): TDateTime;
+var
+  LSeconds: Int64;
+begin
+  LSeconds := FPayload.GetValue<Int64>(AName, 0);
+  if LSeconds = 0 then
+    Result := 0
+  else
+    Result := UnixToDateTime(LSeconds);
+end;
+
+procedure TMCPAccessToken.SetDateClaim(const AName: string; const AValue: TDateTime);
+begin
+  if AValue = 0 then
+    SetClaim(AName, nil)
+  else
+    SetClaim(AName, TJSONNumber.Create(DateTimeToUnix(AValue)));
+end;
+
 function TMCPAccessToken.GetEMail: string;
 begin
-  Result := FPayload.GetValue<string>('email', '');
+  Result := FPayload.GetValue<string>(ClaimEMail, '');
 end;
 
 function TMCPAccessToken.GetName: string;
 begin
-  Result := FPayload.GetValue<string>('name', '');
+  Result := FPayload.GetValue<string>(ClaimName, '');
 end;
 
 function TMCPAccessToken.GetSubject: string;
 begin
-  Result := FPayload.GetValue<string>('sub', '');
+  Result := FPayload.GetValue<string>(ClaimSubject, '');
 end;
 
 function TMCPAccessToken.GetScope: string;
@@ -1645,7 +1734,7 @@ var
   LItem: TJSONValue;
   LScopes: TArray<string>;
 begin
-  Result := FPayload.GetValue<string>('scope', '');
+  Result := FPayload.GetValue<string>(ClaimScope, '');
   if Result <> '' then
     Exit;
 
@@ -1653,7 +1742,7 @@ begin
   // mint. Microsoft Entra ID uses "scp" instead - a space delimited string in a v2.0
   // token, an array in a v1.0 one - so a server reading only the first name refuses
   // its tokens for want of a scope the token is carrying. The value is not owned here.
-  LValue := FPayload.FindValue('scp');
+  LValue := FPayload.FindValue(ClaimEntraScope);
   if not Assigned(LValue) then
     Exit;
 
@@ -1670,27 +1759,27 @@ end;
 
 function TMCPAccessToken.GetEmailVerified: Boolean;
 begin
-  Result := FPayload.GetValue<Boolean>('email_verified', False);
+  Result := FPayload.GetValue<Boolean>(ClaimEmailVerified, False);
 end;
 
 function TMCPAccessToken.GetPreferredUsername: string;
 begin
-  Result := FPayload.GetValue<string>('preferred_username', '');
+  Result := FPayload.GetValue<string>(ClaimPreferredUsername, '');
 end;
 
 function TMCPAccessToken.GetGivenName: string;
 begin
-  Result := FPayload.GetValue<string>('given_name', '');
+  Result := FPayload.GetValue<string>(ClaimGivenName, '');
 end;
 
 function TMCPAccessToken.GetFamilyName: string;
 begin
-  Result := FPayload.GetValue<string>('family_name', '');
+  Result := FPayload.GetValue<string>(ClaimFamilyName, '');
 end;
 
 function TMCPAccessToken.GetIssuer: string;
 begin
-  Result := FPayload.GetValue<string>('iss', '');
+  Result := FPayload.GetValue<string>(ClaimIssuer, '');
 end;
 
 function TMCPAccessToken.GetAudience: TArray<string>;
@@ -1699,7 +1788,7 @@ var
   LValue: string;
 begin
   // "aud" is either a single string or a JSON array of strings per the JWT spec
-  if FPayload.TryGetValue<TJSONArray>('aud', LArray) then
+  if FPayload.TryGetValue<TJSONArray>(ClaimAudience, LArray) then
   begin
     SetLength(Result, LArray.Count);
     for var I := 0 to LArray.Count - 1 do
@@ -1707,7 +1796,7 @@ begin
   end
   else
   begin
-    LValue := FPayload.GetValue<string>('aud', '');
+    LValue := FPayload.GetValue<string>(ClaimAudience, '');
     if LValue <> '' then
       Result := [LValue]
     else
@@ -1717,43 +1806,114 @@ end;
 
 function TMCPAccessToken.GetClientId: string;
 begin
-  Result := FPayload.GetValue<string>('client_id', '');
+  Result := FPayload.GetValue<string>(ClaimClientId, '');
   if Result = '' then
     // Some IdPs (e.g. Keycloak, Auth0) put the client id in "azp" (authorized party) instead
-    Result := FPayload.GetValue<string>('azp', '');
+    Result := FPayload.GetValue<string>(ClaimAuthorizedParty, '');
 end;
 
 function TMCPAccessToken.GetExpiration: TDateTime;
-var
-  LSeconds: Int64;
 begin
-  LSeconds := FPayload.GetValue<Int64>('exp', 0);
-  if LSeconds = 0 then
-    Result := 0
-  else
-    Result := UnixToDateTime(LSeconds);
+  Result := GetDateClaim(ClaimExpiration);
 end;
 
 function TMCPAccessToken.GetIssuedAt: TDateTime;
-var
-  LSeconds: Int64;
 begin
-  LSeconds := FPayload.GetValue<Int64>('iat', 0);
-  if LSeconds = 0 then
-    Result := 0
-  else
-    Result := UnixToDateTime(LSeconds);
+  Result := GetDateClaim(ClaimIssuedAt);
 end;
 
 function TMCPAccessToken.GetNotBefore: TDateTime;
-var
-  LSeconds: Int64;
 begin
-  LSeconds := FPayload.GetValue<Int64>('nbf', 0);
-  if LSeconds = 0 then
-    Result := 0
-  else
-    Result := UnixToDateTime(LSeconds);
+  Result := GetDateClaim(ClaimNotBefore);
+end;
+
+procedure TMCPAccessToken.SetSubject(const AValue: string);
+begin
+  SetStringClaim(ClaimSubject, AValue);
+end;
+
+procedure TMCPAccessToken.SetName(const AValue: string);
+begin
+  SetStringClaim(ClaimName, AValue);
+end;
+
+procedure TMCPAccessToken.SetEMail(const AValue: string);
+begin
+  SetStringClaim(ClaimEMail, AValue);
+end;
+
+procedure TMCPAccessToken.SetScope(const AValue: string);
+begin
+  // The getter falls back to "scp": a stale one must not resurface once "scope"
+  // is cleared or replaced.
+  SetClaim(ClaimEntraScope, nil);
+  SetStringClaim(ClaimScope, AValue);
+end;
+
+procedure TMCPAccessToken.SetEmailVerified(const AValue: Boolean);
+begin
+  SetClaim(ClaimEmailVerified, TJSONBool.Create(AValue));
+end;
+
+procedure TMCPAccessToken.SetPreferredUsername(const AValue: string);
+begin
+  SetStringClaim(ClaimPreferredUsername, AValue);
+end;
+
+procedure TMCPAccessToken.SetGivenName(const AValue: string);
+begin
+  SetStringClaim(ClaimGivenName, AValue);
+end;
+
+procedure TMCPAccessToken.SetFamilyName(const AValue: string);
+begin
+  SetStringClaim(ClaimFamilyName, AValue);
+end;
+
+procedure TMCPAccessToken.SetIssuer(const AValue: string);
+begin
+  SetStringClaim(ClaimIssuer, AValue);
+end;
+
+procedure TMCPAccessToken.SetAudience(const AValue: TArray<string>);
+var
+  LArray: TJSONArray;
+  LItem: string;
+begin
+  if Length(AValue) = 0 then
+  begin
+    SetClaim(ClaimAudience, nil);
+    Exit;
+  end;
+
+  LArray := TJSONArray.Create;
+  for LItem in AValue do
+    LArray.Add(LItem);
+
+  SetClaim(ClaimAudience, LArray);
+end;
+
+procedure TMCPAccessToken.SetClientId(const AValue: string);
+begin
+  // The getter falls back to "azp": a stale one must not resurface once
+  // "client_id" is cleared or replaced.
+  SetClaim(ClaimAuthorizedParty, nil);
+  SetStringClaim(ClaimClientId, AValue);
+end;
+
+procedure TMCPAccessToken.SetExpiration(const AValue: TDateTime);
+begin
+  SetDateClaim(ClaimExpiration, AValue);
+end;
+
+procedure TMCPAccessToken.SetIssuedAt(const AValue: TDateTime);
+begin
+  SetDateClaim(ClaimIssuedAt, AValue);
+end;
+
+procedure TMCPAccessToken.SetNotBefore(const AValue: TDateTime);
+begin
+  SetDateClaim(ClaimNotBefore, AValue);
 end;
 
 function TMCPAccessToken.ToString: string;

@@ -155,6 +155,33 @@ type
     procedure TestPreflightNeedsNoToken();
     [Test]
     procedure TestRefusalStillCarriesTheCORSHeaders();
+    [Test]
+    procedure TestRefusalCarriesABearerChallenge();
+    [Test]
+    procedure TestRefusalOutsideTheAuthorizationHeaderIsAnApiKeyChallenge();
+    [Test]
+    procedure TestStdioNeedsNoToken();
+    [Test]
+    procedure TestCustomLocationWithoutANameIsRefusedAtStartup();
+
+    [Test]
+    procedure TestSetTokenValidatorRegistersTheMiddleware();
+    [Test]
+    procedure TestSetTokenValidatorClassRegistersTheMiddleware();
+    [Test]
+    procedure TestValidatorDecides();
+    [Test]
+    procedure TestValidatorTakesPrecedenceOverTheStaticToken();
+    [Test]
+    procedure TestValidatorDescribesTheCaller();
+    [Test]
+    procedure TestRefusingValidatorLeavesNoIdentity();
+    [Test]
+    procedure TestValidatorExceptionIsARefusal();
+    [Test]
+    procedure TestValidatorClassDecides();
+    [Test]
+    procedure TestValidatorClassWithoutTheInterfaceIsRefused();
   end;
 
   [TestFixture]
@@ -179,6 +206,8 @@ type
 implementation
 
 uses
+  JRPC.Core,
+
   MCPConnect.MCP.Attributes;
 
 type
@@ -191,6 +220,49 @@ type
 function TDemoTools.Ping: string;
 begin
   Result := 'pong';
+end;
+
+type
+  /// <summary>
+  ///   Sits after the token check and records the identity the request carries
+  ///   from there on, which is what tools reading TMCPAccessToken are given.
+  /// </summary>
+  TIdentityProbeMiddleware = class(TMiddleware, ITransportMiddleware)
+  public
+    class var Subject: string;
+    class var Reached: Boolean;
+    procedure Handle(AContext: TMiddlewareContext; const AChain: TMiddlewareChain);
+  end;
+
+  /// <summary>Accepts the one key it knows, and names its owner.</summary>
+  TKnownKeyValidator = class(TInterfacedObject, IAuthTokenValidator)
+  public
+    function Validate(AContext: TJRPCContext; const AToken: string;
+      AIdentity: TMCPAccessToken): Boolean;
+  end;
+
+const
+  KnownKey = 'known-key';
+  KnownOwner = 'customer-42';
+
+procedure TIdentityProbeMiddleware.Handle(AContext: TMiddlewareContext;
+  const AChain: TMiddlewareChain);
+var
+  LIdentity: TMCPAccessToken;
+begin
+  Reached := True;
+  if AContext.TryFind<TMCPAccessToken>(LIdentity) then
+    Subject := LIdentity.Subject;
+
+  AChain.Next(AContext);
+end;
+
+function TKnownKeyValidator.Validate(AContext: TJRPCContext; const AToken: string;
+  AIdentity: TMCPAccessToken): Boolean;
+begin
+  Result := AToken = KnownKey;
+  if Result then
+    AIdentity.Subject := KnownOwner;
 end;
 
 const
@@ -644,7 +716,7 @@ begin
 
   LAnswer := SendWithHeader('Authorization', 'Bearer not-the-token');
 
-  Assert.AreEqual(HTTP_CODE_FORBIDDEN, LAnswer.Code);
+  Assert.AreEqual(HTTP_CODE_UNAUTHORIZED, LAnswer.Code);
   Assert.DoesNotContain(LAnswer.Content, '"result"');
 end;
 
@@ -653,7 +725,7 @@ begin
   ConfigureServer();
   EnableToken(TAuthTokenLocation.Bearer);
 
-  Assert.AreEqual(HTTP_CODE_FORBIDDEN, SendWithHeader('', '').Code);
+  Assert.AreEqual(HTTP_CODE_UNAUTHORIZED, SendWithHeader('', '').Code);
 end;
 
 procedure TAuthTokenMiddlewareTest.TestTokenInACustomHeader;
@@ -662,10 +734,10 @@ begin
   EnableToken(TAuthTokenLocation.Header, CustomName);
 
   Assert.AreEqual(HTTP_CODE_OK, SendWithHeader(CustomName, Token).Code);
-  Assert.AreEqual(HTTP_CODE_FORBIDDEN, SendWithHeader(CustomName, 'wrong').Code);
+  Assert.AreEqual(HTTP_CODE_UNAUTHORIZED, SendWithHeader(CustomName, 'wrong').Code);
 
   // The right value in the wrong place is no better than the wrong value.
-  Assert.AreEqual(HTTP_CODE_FORBIDDEN,
+  Assert.AreEqual(HTTP_CODE_UNAUTHORIZED,
     SendWithHeader('Authorization', 'Bearer ' + Token).Code);
 end;
 
@@ -675,7 +747,7 @@ begin
   EnableToken(TAuthTokenLocation.Cookie, 'SessionId');
 
   Assert.AreEqual(HTTP_CODE_OK, SendWithHeader('Cookie', 'SessionId=' + Token).Code);
-  Assert.AreEqual(HTTP_CODE_FORBIDDEN, SendWithHeader('Cookie', 'SessionId=wrong').Code);
+  Assert.AreEqual(HTTP_CODE_UNAUTHORIZED, SendWithHeader('Cookie', 'SessionId=wrong').Code);
 end;
 
 procedure TAuthTokenMiddlewareTest.TestPreflightNeedsNoToken;
@@ -696,6 +768,9 @@ begin
   FServer.Plugin.Configure<IMCPConfig>
     .Security
       .SetCORS(True)
+      // Named, so that the origin check lets it through and what this test
+      // observes is the token refusal rather than the origin one
+      .SetAllowedOrigins(['https://app.example.com'])
     .BackToMCP
   .ApplyConfig;
   EnableToken(TAuthTokenLocation.Bearer);
@@ -709,9 +784,219 @@ begin
 
   // CORS wraps authentication, whatever order the two are configured in:
   // without the headers on the refusal the browser reports a CORS failure
-  // instead of the 403.
-  Assert.AreEqual(HTTP_CODE_FORBIDDEN, LAnswer.Code);
+  // instead of the 401.
+  Assert.AreEqual(HTTP_CODE_UNAUTHORIZED, LAnswer.Code);
   Assert.AreEqual('https://app.example.com', LAnswer.AllowOrigin);
+end;
+
+procedure TAuthTokenMiddlewareTest.TestRefusalCarriesABearerChallenge;
+var
+  LAnswer: TTransportAnswer;
+begin
+  ConfigureServer();
+  EnableToken(TAuthTokenLocation.Bearer);
+
+  LAnswer := SendWithHeader('Authorization', 'Bearer not-the-token');
+
+  Assert.AreEqual(HTTP_CODE_UNAUTHORIZED, LAnswer.Code);
+  Assert.AreEqual('Bearer realm="mcp"', LAnswer.Challenge);
+end;
+
+procedure TAuthTokenMiddlewareTest.TestRefusalOutsideTheAuthorizationHeaderIsAnApiKeyChallenge;
+var
+  LAnswer: TTransportAnswer;
+begin
+  ConfigureServer();
+  EnableToken(TAuthTokenLocation.Header, CustomName);
+
+  LAnswer := SendWithHeader(CustomName, 'wrong');
+
+  // There is no registered scheme for a key in a header of its own, and calling
+  // it "Bearer" would send a client looking in the wrong place.
+  Assert.AreEqual(HTTP_CODE_UNAUTHORIZED, LAnswer.Code);
+  Assert.AreEqual('ApiKey realm="mcp"', LAnswer.Challenge);
+end;
+
+procedure TAuthTokenMiddlewareTest.TestStdioNeedsNoToken;
+var
+  LAnswer: TTransportAnswer;
+begin
+  ConfigureServer();
+  EnableToken(TAuthTokenLocation.Bearer);
+
+  // A server spawned over STDIO runs with the authority of the client that
+  // spawned it, and the transport has no headers to carry a token in.
+  LAnswer := Send(
+    procedure (ARequest: TMCPTransportRequest)
+    begin
+      ARequest.Protocol := TTransportProtocol.Stdio;
+    end);
+
+  Assert.AreNotEqual(HTTP_CODE_UNAUTHORIZED, LAnswer.Code);
+  Assert.Contains(LAnswer.Content, '"result"');
+end;
+
+procedure TAuthTokenMiddlewareTest.TestCustomLocationWithoutANameIsRefusedAtStartup;
+begin
+  ConfigureServer();
+
+  // Without a name to read the token from, every request would be refused
+  // with nothing saying why: the configuration is refused instead.
+  Assert.WillRaise(
+    procedure
+    begin
+      FServer.Plugin.Configure<IAuthTokenConfig>
+        .SetToken(Token)
+        .SetTokenLocation(TAuthTokenLocation.Header)
+      .ApplyConfig;
+    end,
+    EJRPCException);
+end;
+
+procedure TAuthTokenMiddlewareTest.TestSetTokenValidatorRegistersTheMiddleware;
+begin
+  ConfigureServer();
+
+  FServer.Plugin.Configure<IAuthTokenConfig>
+    .SetTokenValidator(
+      function (AContext: TJRPCContext; const AToken: string;
+        AIdentity: TMCPAccessToken): Boolean
+      begin
+        Result := True;
+      end)
+  .ApplyConfig;
+
+  Assert.AreEqual(1, Registered(TAuthTokenMiddleware));
+end;
+
+procedure TAuthTokenMiddlewareTest.TestSetTokenValidatorClassRegistersTheMiddleware;
+begin
+  ConfigureServer();
+
+  FServer.Plugin.Configure<IAuthTokenConfig>
+    .SetTokenValidatorClass(TKnownKeyValidator)
+  .ApplyConfig;
+
+  Assert.AreEqual(1, Registered(TAuthTokenMiddleware));
+end;
+
+procedure TAuthTokenMiddlewareTest.TestValidatorDecides;
+begin
+  ConfigureServer();
+  FServer.Plugin.Configure<IAuthTokenConfig>
+    .SetTokenValidator(
+      function (AContext: TJRPCContext; const AToken: string;
+        AIdentity: TMCPAccessToken): Boolean
+      begin
+        Result := AToken = KnownKey;
+      end)
+  .ApplyConfig;
+
+  Assert.AreEqual(HTTP_CODE_OK, SendWithHeader('Authorization', 'Bearer ' + KnownKey).Code);
+  Assert.AreEqual(HTTP_CODE_UNAUTHORIZED, SendWithHeader('Authorization', 'Bearer other').Code);
+
+  // The validator is never asked about an empty token
+  Assert.AreEqual(HTTP_CODE_UNAUTHORIZED, SendWithHeader('', '').Code);
+end;
+
+procedure TAuthTokenMiddlewareTest.TestValidatorTakesPrecedenceOverTheStaticToken;
+begin
+  ConfigureServer();
+  FServer.Plugin.Configure<IAuthTokenConfig>
+    .SetToken(Token)
+    .SetTokenValidator(
+      function (AContext: TJRPCContext; const AToken: string;
+        AIdentity: TMCPAccessToken): Boolean
+      begin
+        Result := AToken = KnownKey;
+      end)
+  .ApplyConfig;
+
+  Assert.AreEqual(HTTP_CODE_OK, SendWithHeader('Authorization', 'Bearer ' + KnownKey).Code);
+  Assert.AreEqual(HTTP_CODE_UNAUTHORIZED, SendWithHeader('Authorization', 'Bearer ' + Token).Code,
+    'with a validator registered the static token is ignored');
+end;
+
+procedure TAuthTokenMiddlewareTest.TestValidatorDescribesTheCaller;
+begin
+  ConfigureServer();
+  FServer.Middleware.Add(TIdentityProbeMiddleware);
+  FServer.Plugin.Configure<IAuthTokenConfig>
+    .SetTokenValidatorClass(TKnownKeyValidator)
+  .ApplyConfig;
+
+  TIdentityProbeMiddleware.Subject := '';
+  Assert.AreEqual(HTTP_CODE_OK, SendWithHeader('Authorization', 'Bearer ' + KnownKey).Code);
+
+  Assert.AreEqual(KnownOwner, TIdentityProbeMiddleware.Subject,
+    'what the validator wrote is the identity of the request');
+end;
+
+procedure TAuthTokenMiddlewareTest.TestRefusingValidatorLeavesNoIdentity;
+begin
+  ConfigureServer();
+  FServer.Middleware.Add(TIdentityProbeMiddleware);
+  FServer.Plugin.Configure<IAuthTokenConfig>
+    .SetTokenValidator(
+      function (AContext: TJRPCContext; const AToken: string;
+        AIdentity: TMCPAccessToken): Boolean
+      begin
+        AIdentity.Subject := 'half-written';
+        Result := False;
+      end)
+  .ApplyConfig;
+
+  TIdentityProbeMiddleware.Reached := False;
+  Assert.AreEqual(HTTP_CODE_UNAUTHORIZED, SendWithHeader('Authorization', 'Bearer x').Code);
+  Assert.IsFalse(TIdentityProbeMiddleware.Reached, 'a refused request goes no further');
+end;
+
+procedure TAuthTokenMiddlewareTest.TestValidatorExceptionIsARefusal;
+var
+  LAnswer: TTransportAnswer;
+begin
+  ConfigureServer();
+  FServer.Plugin.Configure<IAuthTokenConfig>
+    .SetTokenValidator(
+      function (AContext: TJRPCContext; const AToken: string;
+        AIdentity: TMCPAccessToken): Boolean
+      begin
+        raise Exception.Create('key store unreachable');
+      end)
+  .ApplyConfig;
+
+  LAnswer := SendWithHeader('Authorization', 'Bearer ' + KnownKey);
+
+  // Never a 500, and never the message: a client must not tell a bug from a
+  // rejected key.
+  Assert.AreEqual(HTTP_CODE_UNAUTHORIZED, LAnswer.Code);
+  Assert.DoesNotContain(LAnswer.Content, 'key store unreachable');
+end;
+
+procedure TAuthTokenMiddlewareTest.TestValidatorClassDecides;
+begin
+  ConfigureServer();
+  FServer.Plugin.Configure<IAuthTokenConfig>
+    .SetTokenLocation(TAuthTokenLocation.Header)
+    .SetTokenCustomHeader(CustomName)
+    .SetTokenValidatorClass(TKnownKeyValidator)
+  .ApplyConfig;
+
+  Assert.AreEqual(HTTP_CODE_OK, SendWithHeader(CustomName, KnownKey).Code);
+  Assert.AreEqual(HTTP_CODE_UNAUTHORIZED, SendWithHeader(CustomName, 'other').Code);
+end;
+
+procedure TAuthTokenMiddlewareTest.TestValidatorClassWithoutTheInterfaceIsRefused;
+begin
+  ConfigureServer();
+
+  Assert.WillRaise(
+    procedure
+    begin
+      FServer.Plugin.Configure<IAuthTokenConfig>
+        .SetTokenValidatorClass(TObject);
+    end,
+    EJRPCException);
 end;
 
 { TOAuthMiddlewareTest }

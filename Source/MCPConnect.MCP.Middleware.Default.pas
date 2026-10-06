@@ -107,29 +107,31 @@ type
   end;
 
   /// <summary>
-  ///   The static token check: one token, configured on the server, that every
-  ///   request has to carry. Refuses with 403 when it does not match.
+  ///   The token check (an API key, typically) that every request has to pass:
+  ///   compared with the token configured on the server, or handed to the
+  ///   validator the application registered. Refuses with 401 and a
+  ///   WWW-Authenticate challenge when the token is missing or not accepted.
   /// </summary>
   /// <remarks>
   ///   A transport middleware, because what it looks at is the request of the
   ///   transport - a header, a cookie - and because a request it refuses must
   ///   not be parsed, let alone dispatched. IAuthTokenConfig says where the
-  ///   token is read from and what it is; with no token configured the
-  ///   middleware does nothing.
+  ///   token is read from and how it is checked; with neither a token nor a
+  ///   validator configured the middleware does nothing.
+  ///
+  ///   A validator describes the caller into an identity of its own, copied
+  ///   into the TMCPAccessToken of the request only once the token is accepted:
+  ///   a refusal, or an exception, leaves nothing behind.
   ///
   ///   It is not OAuth: that is a different mechanism, enforced further in by
   ///   the transport itself, and the two are configured apart. A preflight is
   ///   let through - it carries no credentials by definition - and so are the
   ///   OAuth metadata endpoints when an authorization server is configured,
-  ///   since a client has to read those before it has anything to send.
+  ///   since a client has to read those before it has anything to send. STDIO
+  ///   carries no headers, and a server spawned by its client already runs with
+  ///   that client's authority, so there the check is skipped.
   /// </remarks>
   TAuthTokenMiddleware = class(TMiddleware, ITransportMiddleware)
-  private
-    /// <summary>
-    ///   Compares two strings in time that does not depend on where they first
-    ///   differ, so that the comparison of a guessed token leaks nothing.
-    /// </summary>
-    class function ConstantTimeEquals(const A, B: string): Boolean; static;
   public
     /// <summary>
     ///   Identifies the caller, so it sits where authentication belongs: inside
@@ -157,6 +159,14 @@ resourcestring
   SErrorRetrievingMCPConfig = 'Error retrieving MCP configuration';
   SInvalidTokenLocation = 'Invalid token location';
   SAuthorizationCheckFailed = 'Authorization check failed';
+  SAuthTokenValidatorFailed = 'Auth token validation failed with an exception: %s';
+  SAuthTokenRejected = 'Auth token missing or rejected [%s %s]';
+
+const
+  // The scheme of the challenge when the token travels outside the Authorization
+  // header: there is no registered one for that, and "Bearer" would be a lie.
+  ApiKeyScheme = 'ApiKey';
+  BearerScheme = 'Bearer';
 
 { TCORSMiddleware }
 
@@ -399,30 +409,6 @@ begin
   Result := MW_PRIORITY_AUTHENTICATION;
 end;
 
-class function TAuthTokenMiddleware.ConstantTimeEquals(const A, B: string): Boolean;
-var
-  I, LMaxLen: Integer;
-  LDiff: Integer;
-  LCharA, LCharB: Word;
-begin
-  // Compares the full length of both strings regardless of where they first differ,
-  // so the running time does not leak how many leading characters of a guessed
-  // token/secret matched (a classic side channel for '<>' / early-exit comparisons).
-  LMaxLen := Length(A);
-  if Length(B) > LMaxLen then
-    LMaxLen := Length(B);
-
-  LDiff := Length(A) xor Length(B);
-  for I := 1 to LMaxLen do
-  begin
-    if I <= Length(A) then LCharA := Word(A[I]) else LCharA := 0;
-    if I <= Length(B) then LCharB := Word(B[I]) else LCharB := 0;
-    LDiff := LDiff or (LCharA xor LCharB);
-  end;
-
-  Result := LDiff = 0;
-end;
-
 procedure TAuthTokenMiddleware.Handle(AContext: TMiddlewareContext;
   const AChain: TMiddlewareChain);
 var
@@ -444,53 +430,104 @@ var
       LOAuthConfig.IsMetadataProxyUrl(LRequest.Url);
   end;
 
-  function TokenMatches: Boolean;
+  function ExtractToken: string;
+  var
+    LAuthHeader: string;
   begin
-    Result := True;
     case LTokenConfig.Location of
       TAuthTokenLocation.Bearer:
       begin
-        var LAuthHeader := LRequest.Authorization;
-        if not LAuthHeader.StartsWith(BearerPrefix, True) then
-          Exit(False);
-        if not ConstantTimeEquals(LAuthHeader.Substring(Length(BearerPrefix)),
-             LTokenConfig.Token) then
-          Exit(False);
+        LAuthHeader := LRequest.Authorization;
+        if LAuthHeader.StartsWith(BearerPrefix, True) then
+          Result := LAuthHeader.Substring(Length(BearerPrefix)).Trim
+        else
+          Result := '';
       end;
 
       TAuthTokenLocation.Cookie:
-      begin
-        if not ConstantTimeEquals(LRequest.GetCookie(LTokenConfig.CustomHeader),
-             LTokenConfig.Token) then
-          Exit(False);
-      end;
+        Result := LRequest.GetCookie(LTokenConfig.CustomHeader);
 
       TAuthTokenLocation.Header:
-      begin
-        if not ConstantTimeEquals(LRequest.GetHeader(LTokenConfig.CustomHeader),
-             LTokenConfig.Token) then
-          Exit(False);
-      end;
+        Result := LRequest.GetHeader(LTokenConfig.CustomHeader);
 
     else
       raise EJRPCException.Create(SInvalidTokenLocation);
     end;
   end;
 
+  function TokenAccepted: Boolean;
+  var
+    LIdentity: TMCPAccessToken;
+    LTarget: TMCPAccessToken;
+  begin
+    // The validator writes into an identity of its own: only an accepted token
+    // gets to hand it to the request, so that a validator which fills in the
+    // caller and then refuses, or raises halfway, leaves nothing behind.
+    LIdentity := TMCPAccessToken.Create;
+    try
+      try
+        Result := LTokenConfig.Validate(AContext.RPCContext, ExtractToken, LIdentity);
+      except
+        // A failing validator must look exactly like a rejected token: never a
+        // 500, and never a message telling the client which of the two it hit.
+        on E: Exception do
+        begin
+          Logger.LogError(SAuthTokenValidatorFailed, [E.Message]);
+          Result := False;
+        end;
+      end;
+
+      LTarget := AContext.Find<TMCPAccessToken>;
+      if Result and Assigned(LTarget) then
+        LTarget.Assign(LIdentity);
+    finally
+      LIdentity.Free;
+    end;
+  end;
+
+  procedure Reject;
+  var
+    LResponse: TMCPTransportResponse;
+    LScheme, LRealm: string;
+  begin
+    // Never the token itself in the log: what a key looked like is not worth
+    // turning the log into a place keys can be read from.
+    Logger.LogWarning(SAuthTokenRejected, [LRequest.Command, LRequest.Url]);
+
+    if LTokenConfig.Location = TAuthTokenLocation.Bearer then
+      LScheme := BearerScheme
+    else
+      LScheme := ApiKeyScheme;
+
+    if Assigned(LOAuthConfig) then
+      LRealm := LOAuthConfig.Realm
+    else
+      LRealm := TOAuthConfig.DefaultRealm;
+
+    // Written before raising: the transport keeps the headers of the response it
+    // turns the exception into, as it does for the CORS ones.
+    if AContext.TryFind<TMCPTransportResponse>(LResponse) then
+      LResponse.SetHeader('WWW-Authenticate', Format('%s realm="%s"', [LScheme, LRealm]));
+
+    raise EMCPTransportException.Create(HTTP_CODE_UNAUTHORIZED, SAuthorizationCheckFailed);
+  end;
+
 begin
   LTokenConfig := AContext.Find<TAuthTokenConfig>;
   LOAuthConfig := AContext.Find<TOAuthConfig>;
 
-  // No token configured, nothing to check. Nor is there anything to read a
-  // token from outside a transport that has a request.
-  if Assigned(LTokenConfig) and (LTokenConfig.Token <> '') and
-     AContext.TryFind<TMCPTransportRequest>(LRequest) then
+  // Nothing configured, nothing to check. Nor is there anything to read a token
+  // from outside a transport that has a request, or on STDIO, which carries no
+  // headers and runs with the authority of the client that spawned it.
+  if Assigned(LTokenConfig) and LTokenConfig.Enabled and
+     AContext.TryFind<TMCPTransportRequest>(LRequest) and
+     (LRequest.Protocol <> TTransportProtocol.Stdio) then
   begin
     // A preflight carries no credentials by definition, so asking it for any
     // would refuse every browser client before its real request is ever sent.
     if not SameText(LRequest.Command, 'OPTIONS') and not IsOAuthMetadataRequest() and
-       not TokenMatches() then
-      raise EMCPTransportException.Create(HTTP_CODE_FORBIDDEN, SAuthorizationCheckFailed);
+       not TokenAccepted() then
+      Reject;
   end;
 
   AChain.Next(AContext);

@@ -71,6 +71,7 @@ uses
   MCPConnect.Tests.MCP.Middleware in 'MCPConnect.Tests.MCP.Middleware.pas',
   MCPConnect.Tests.Transport.Middleware in 'MCPConnect.Tests.Transport.Middleware.pas',
   MCPConnect.Tests.Transport.DefaultMiddleware in 'MCPConnect.Tests.Transport.DefaultMiddleware.pas',
+  MCPConnect.Tests.MCP.AccessToken in 'MCPConnect.Tests.MCP.AccessToken.pas',
   MCPConnect.Tests.MCP.Tools in 'MCPConnect.Tests.MCP.Tools.pas',
   MCPConnect.Tests.JRPC.Invoker in 'MCPConnect.Tests.JRPC.Invoker.pas',
   MCPConnect.Tests.Core.Utils in 'MCPConnect.Tests.Core.Utils.pas',

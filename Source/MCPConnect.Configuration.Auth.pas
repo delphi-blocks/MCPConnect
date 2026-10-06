@@ -17,7 +17,11 @@ interface
 
 uses
   System.Classes, System.SysUtils, System.Net.URLClient,
+
+  JRPC.Core,
+
   MCPConnect.Configuration.Core,
+  MCPConnect.MCP.Types.Base,
   MCPConnect.Security.Jwks;
 
 {$SCOPEDENUMS ON}
@@ -69,6 +73,13 @@ resourcestring
     'issuer instead and rejects it. A patch-only proxy cannot satisfy both; if your client fails ' +
     'with an issuer mismatch after the redirect, this is why.';
 
+  SAuthTokenValidatorClassInvalidFmt = 'Class [%s] cannot be used as an auth token validator: ' +
+    'it does not implement IAuthTokenValidator';
+  SAuthTokenNameRequired = 'Token authentication reads the token from a cookie or a custom ' +
+    'header, but no name was given for it: call IAuthTokenConfig.SetTokenCustomHeader.';
+  SAuthTokenStaticIgnoredWarning = 'A token validator is registered: the token set with ' +
+    'SetToken is ignored.';
+
 type
   /// <summary>
   ///   Specifies where the authentication token should be extracted from
@@ -84,20 +95,60 @@ type
   );
 
   /// <summary>
+  ///   Decides whether a token (an API key, typically) is accepted, and on success
+  ///   describes who is calling.
+  /// </summary>
+  /// <param name="AContext">The context of the request.</param>
+  /// <param name="AToken">The token sent by the client, never empty.</param>
+  /// <param name="AIdentity">
+  ///   The identity of the caller: fill it in (AIdentity.Subject, AIdentity.Scope, ...)
+  ///   so that tools reading TMCPAccessToken through [Context] know who is calling.
+  ///   It reaches the request context only when True is returned: whatever is written
+  ///   into it before a refusal is thrown away.
+  /// </param>
+  /// <remarks>
+  ///   Called concurrently from every request thread: whatever it captures must be
+  ///   thread-safe. An exception is logged and treated as a rejected token.
+  /// </remarks>
+  TAuthTokenValidatorFunc = reference to function(AContext: TJRPCContext;
+    const AToken: string; AIdentity: TMCPAccessToken): Boolean;
+
+  /// <summary>
+  ///   Class-based alternative to TAuthTokenValidatorFunc, for code that cannot pass an
+  ///   anonymous method (e.g. C++Builder). Register it with
+  ///   IAuthTokenConfig.SetTokenValidatorClass.
+  /// </summary>
+  /// <remarks>
+  ///   One instance is built per request through RTTI and released at the end of it: the
+  ///   class needs a parameterless constructor and must be reference counted (descending
+  ///   from TInterfacedObject is the usual way).
+  /// </remarks>
+  IAuthTokenValidator = interface
+  ['{8C3D6A51-2F47-4B9E-A0D2-7E15C94B3F86}']
+    /// <summary>Same contract as TAuthTokenValidatorFunc.</summary>
+    function Validate(AContext: TJRPCContext; const AToken: string;
+      AIdentity: TMCPAccessToken): Boolean;
+  end;
+
+  /// <summary>
   ///   Configuration interface for token-based authentication in JSON-RPC servers.
   ///   Supports Bearer tokens, cookie-based authentication, and custom header tokens.
   ///   Inherits fluent API methods (ApplyConfig, BackToApp) from IJRPCConfiguration.
   /// </summary>
   /// <remarks>
   ///   Token authentication is checked before processing JSON-RPC requests.
-  ///   If the token doesn't match, the request is rejected with an authentication error.
-  ///   This is a simple token comparison - for more complex authentication schemes,
-  ///   write a middleware of your own.
+  ///   If the token is not accepted, the request is rejected with 401 and a
+  ///   WWW-Authenticate challenge. Tokens are accepted either by comparison with a
+  ///   fixed one (SetToken) or by a validator (SetTokenValidator /
+  ///   SetTokenValidatorClass), which takes precedence: use the latter to look keys
+  ///   up in a database, to revoke them, or to tell callers apart. The check is
+  ///   skipped on STDIO, which carries no headers.
   ///
-  ///   SetToken is what turns the check on, and what registers the middleware
-  ///   performing it (TAuthTokenMiddleware, MCPConnect.MCP.Middleware.Default):
-  ///   the check can then be removed or moved on Server.Middleware like any
-  ///   other. OAuth is a separate mechanism, see IOAuthConfig.
+  ///   SetToken, SetTokenValidator and SetTokenValidatorClass are what turn the check
+  ///   on, and what register the middleware performing it (TAuthTokenMiddleware,
+  ///   MCPConnect.MCP.Middleware.Default): the check can then be removed or moved on
+  ///   Server.Middleware like any other. OAuth is a separate mechanism, see
+  ///   IOAuthConfig.
   /// </remarks>
   /// <example>
   ///   <code>
@@ -123,6 +174,18 @@ type
   ///     .SetTokenCustomHeader('X-API-Key')
   ///     .ApplyConfig;
   ///   // Client must send: X-API-Key: api-key-xyz
+  ///
+  ///   // Keys validated by the application:
+  ///   FJRPCServer.Plugin.Configure&lt;IAuthTokenConfig&gt;
+  ///     .SetTokenLocation(TAuthTokenLocation.Header)
+  ///     .SetTokenCustomHeader('X-API-Key')
+  ///     .SetTokenValidator(
+  ///       function (AContext: TJRPCContext; const AToken: string;
+  ///         AIdentity: TMCPAccessToken): Boolean
+  ///       begin
+  ///         Result := MyKeyStore.IsValid(AToken);
+  ///       end)
+  ///     .ApplyConfig;
   ///   </code>
   /// </example>
   IAuthTokenConfig = interface(IJRPCConfiguration)
@@ -133,6 +196,20 @@ type
     /// <param name="AToken">The token string to match (case-sensitive comparison)</param>
     /// <returns>Self for fluent chaining</returns>
     function SetToken(const AToken: string): IAuthTokenConfig;
+
+    /// <summary>
+    ///   Delegates the decision to the application, replacing any validator class
+    ///   registered before. While set, the token given to SetToken is ignored.
+    /// </summary>
+    function SetTokenValidator(const AValidator: TAuthTokenValidatorFunc): IAuthTokenConfig;
+
+    /// <summary>
+    ///   Delegates the decision to a class implementing IAuthTokenValidator, replacing
+    ///   any validator function registered before. While set, the token given to
+    ///   SetToken is ignored.
+    /// </summary>
+    /// <exception cref="EJRPCException">AClass does not implement IAuthTokenValidator.</exception>
+    function SetTokenValidatorClass(AClass: TClass): IAuthTokenConfig;
 
     /// <summary>
     ///   Specifies where to extract the authentication token from HTTP requests.
@@ -535,22 +612,55 @@ type
     FToken: string;
     FLocation: TAuthTokenLocation;
     FCustomHeader: string;
+    FValidator: TAuthTokenValidatorFunc;
+    FValidatorClass: TClass;
+    function GetEnabled: Boolean;
+    function GetHasValidator: Boolean;
+    function ValidateWithClass(AContext: TJRPCContext; const AToken: string;
+      AIdentity: TMCPAccessToken): Boolean;
+
+    /// <summary>
+    ///   Puts in the middleware performing the check, once: called by whatever turns
+    ///   the check on.
+    /// </summary>
+    procedure RegisterMiddleware;
   public
     function SetToken(const AToken: string): IAuthTokenConfig;
+    function SetTokenValidator(const AValidator: TAuthTokenValidatorFunc): IAuthTokenConfig;
+    function SetTokenValidatorClass(AClass: TClass): IAuthTokenConfig;
     function SetTokenLocation(ALocation: TAuthTokenLocation): IAuthTokenConfig;
     function SetTokenCustomHeader(const ACustomHeader: string): IAuthTokenConfig;
 
+    function ApplyConfig: IJRPCApplication; override;
+
+    /// <summary>
+    ///   Whether AToken is accepted: by the registered validator when there is one,
+    ///   by comparison with Token otherwise. An empty token is never accepted.
+    /// </summary>
+    /// <remarks>Exceptions raised by a validator are propagated to the caller.</remarks>
+    function Validate(AContext: TJRPCContext; const AToken: string;
+      AIdentity: TMCPAccessToken): Boolean;
+
+    /// <summary>
+    ///   Compares the full length of both strings regardless of where they first differ,
+    ///   so the running time does not leak how many leading characters of a guessed
+    ///   token matched (a classic side channel for '&lt;&gt;' / early-exit comparisons).
+    /// </summary>
+    class function ConstantTimeEquals(const A, B: string): Boolean; static;
+
+    /// <summary>Whether token authentication is enforced at all.</summary>
+    property Enabled: Boolean read GetEnabled;
+    property HasValidator: Boolean read GetHasValidator;
     property Token: string read FToken write FToken;
     property Location: TAuthTokenLocation read FLocation write FLocation;
     property CustomHeader: string read FCustomHeader write FCustomHeader;
-
   end;
 
 implementation
 
 uses
   Logify,
-  JRPC.Core,
+  Neon.Core.Utils,
   MCPConnect.JRPC.Middleware,
   // Only for the ITokenValidator type check in SetTokenValidatorClass. It lives in
   // the implementation on purpose: MCPConnect.Security.Token uses this unit in its
@@ -563,24 +673,131 @@ uses
 
 { TAuthTokenConfig }
 
-function TAuthTokenConfig.SetToken(
-  const AToken: string): IAuthTokenConfig;
+procedure TAuthTokenConfig.RegisterMiddleware;
 var
   LMiddleware: TMiddlewareList;
 begin
-  FToken := AToken;
-  Result := Self;
-
-  // The token is what turns the check on, so setting one is what puts in the
-  // middleware that performs it - once. Where the token is read from is
-  // SetTokenLocation's business, and it is read at request time, so the order
-  // of the two calls does not matter. Taking the check out again, or moving it,
-  // is done on Server.Middleware like for any other middleware.
+  // A token or a validator is what turns the check on, so setting one is what puts
+  // in the middleware that performs it - once. Where the token is read from is
+  // SetTokenLocation's business, and it is read at request time, so the order of
+  // the calls does not matter. Taking the check out again, or moving it, is done
+  // on Server.Middleware like for any other middleware.
   LMiddleware := Application.GetMiddlewareList as TMiddlewareList;
   if not Assigned(LMiddleware) or LMiddleware.Contains(TAuthTokenMiddleware) then
     Exit;
 
   LMiddleware.Add(TAuthTokenMiddleware);
+end;
+
+function TAuthTokenConfig.SetToken(
+  const AToken: string): IAuthTokenConfig;
+begin
+  FToken := AToken;
+  Result := Self;
+  RegisterMiddleware;
+end;
+
+function TAuthTokenConfig.SetTokenValidator(
+  const AValidator: TAuthTokenValidatorFunc): IAuthTokenConfig;
+begin
+  FValidator := AValidator;
+  FValidatorClass := nil;
+  Result := Self;
+
+  if Assigned(AValidator) then
+    RegisterMiddleware;
+end;
+
+function TAuthTokenConfig.SetTokenValidatorClass(AClass: TClass): IAuthTokenConfig;
+begin
+  // The class reference is untyped, so what the compiler cannot guarantee is
+  // checked here instead - at startup, rather than on the first request.
+  if Assigned(AClass) and (AClass.GetInterfaceEntry(IAuthTokenValidator) = nil) then
+    raise EJRPCException.CreateFmt(SAuthTokenValidatorClassInvalidFmt, [AClass.ClassName]);
+
+  FValidatorClass := AClass;
+  FValidator := nil;
+  Result := Self;
+
+  if Assigned(AClass) then
+    RegisterMiddleware;
+end;
+
+function TAuthTokenConfig.ApplyConfig: IJRPCApplication;
+begin
+  Result := inherited ApplyConfig;
+
+  if not Enabled then
+    Exit;
+
+  // Without a name every request would be rejected, with nothing saying why.
+  if (FLocation in [TAuthTokenLocation.Cookie, TAuthTokenLocation.Header]) and (FCustomHeader = '') then
+    raise EJRPCException.Create(SAuthTokenNameRequired);
+
+  if HasValidator and (FToken <> '') then
+    Logger.LogWarning(SAuthTokenStaticIgnoredWarning);
+end;
+
+function TAuthTokenConfig.Validate(AContext: TJRPCContext; const AToken: string;
+  AIdentity: TMCPAccessToken): Boolean;
+begin
+  if AToken = '' then
+    Exit(False);
+
+  if Assigned(FValidator) then
+    Result := FValidator(AContext, AToken, AIdentity)
+  else if Assigned(FValidatorClass) then
+    Result := ValidateWithClass(AContext, AToken, AIdentity)
+  else
+    Result := ConstantTimeEquals(AToken, FToken);
+end;
+
+function TAuthTokenConfig.ValidateWithClass(AContext: TJRPCContext;
+  const AToken: string; AIdentity: TMCPAccessToken): Boolean;
+var
+  LInstance: TObject;
+  LValidator: IAuthTokenValidator;
+begin
+  LInstance := TRttiUtils.CreateInstance(FValidatorClass);
+  if not Supports(LInstance, IAuthTokenValidator, LValidator) then
+  begin
+    LInstance.Free;
+    Exit(False);
+  end;
+
+  // LValidator is the only reference held: the instance is released on exit.
+  Result := LValidator.Validate(AContext, AToken, AIdentity);
+end;
+
+class function TAuthTokenConfig.ConstantTimeEquals(const A, B: string): Boolean;
+var
+  I, LMaxLen: Integer;
+  LDiff: Integer;
+  LCharA, LCharB: Word;
+begin
+  LMaxLen := Length(A);
+  if Length(B) > LMaxLen then
+    LMaxLen := Length(B);
+
+  LDiff := Length(A) xor Length(B);
+  for I := 1 to LMaxLen do
+  begin
+    if I <= Length(A) then LCharA := Word(A[I]) else LCharA := 0;
+    if I <= Length(B) then LCharB := Word(B[I]) else LCharB := 0;
+    LDiff := LDiff or (LCharA xor LCharB);
+  end;
+
+  Result := LDiff = 0;
+end;
+
+function TAuthTokenConfig.GetEnabled: Boolean;
+begin
+  Result := HasValidator or (FToken <> '');
+end;
+
+function TAuthTokenConfig.GetHasValidator: Boolean;
+begin
+  Result := Assigned(FValidator) or Assigned(FValidatorClass);
 end;
 
 function TAuthTokenConfig.SetTokenCustomHeader(

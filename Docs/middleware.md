@@ -445,7 +445,7 @@ A list filtered per caller must also stay `ScopePrivate`. That is what results s
 | Middleware | Level | Registered by | What it does |
 |---|---|---|---|
 | `TCORSMiddleware` | `ITransportMiddleware` | `IMCPConfig.Security` | Answers the CORS headers a browser client needs, and refuses a request whose `Origin` is not in the allowlist |
-| `TAuthTokenMiddleware` | `ITransportMiddleware` | `IAuthTokenConfig.SetToken` | Checks the static token every request has to carry, in the header, cookie or `Authorization` scheme the configuration names |
+| `TAuthTokenMiddleware` | `ITransportMiddleware` | `IAuthTokenConfig.SetToken`, `SetTokenValidator`, `SetTokenValidatorClass` | Checks the token (an API key, typically) every request has to carry, in the header, cookie or `Authorization` scheme the configuration names: against the static token, or through the application's validator. Refuses with `401` and a `WWW-Authenticate` challenge; skipped on STDIO |
 | `TOAuthMiddleware` | `ITransportMiddleware` | `IOAuthConfig.AddAuthorizationServer` | Answers the OAuth discovery endpoints (`/.well-known/oauth-protected-resource`, and the authorization server document when the metadata proxy is on) and validates the bearer token of everything else |
 
 They are **not** registered by merely using the unit. Each is put in by the configuration that turns its feature on, so a server configures a feature and gets the middleware that implements it:
@@ -462,7 +462,7 @@ FServer.Plugin.Configure<IMCPConfig>
 
 Any of those three calls registers `TCORSMiddleware`, once. `SetCORS(False)` registers it too, and that is deliberate: the middleware is the `Origin` check as much as it is the headers, and the two are configured apart — a server that wants the allowlist enforced without writing CORS headers gets exactly that. A server that says nothing about origins pays nothing: the chain stays empty.
 
-The static token check works the same way — `SetToken` is what turns it on, so `SetToken` is what registers `TAuthTokenMiddleware`:
+The token check works the same way — a token or a validator is what turns it on, so `SetToken`, `SetTokenValidator` or `SetTokenValidatorClass` is what registers `TAuthTokenMiddleware`:
 
 ```pascal
 FServer.Plugin.Configure<IAuthTokenConfig>
@@ -471,7 +471,7 @@ FServer.Plugin.Configure<IAuthTokenConfig>
 .ApplyConfig;
 ```
 
-Saying only *where* a token would be read from configures nothing, and registers nothing. OAuth is a different mechanism with a middleware of its own, and is unaffected; there the switch is `AddAuthorizationServer`, since a resource or a validator without one enforces nothing.
+Saying only *where* a token would be read from configures nothing, and registers nothing. A validator writes who the caller is into an identity of its own, which becomes the `TMCPAccessToken` of the request only once the token is accepted. OAuth is a different mechanism with a middleware of its own, and is unaffected; there the switch is `AddAuthorizationServer`, since a resource or a validator without one enforces nothing.
 
 `TOAuthMiddleware` is the one that does more than check: the discovery endpoints a client reads *before* it has a token are answered by it and never reach the dispatcher — it writes the response and does not call `Next`. That is the shape of a middleware that owns a URL, and the transport level is the only one where a URL is still a thing.
 

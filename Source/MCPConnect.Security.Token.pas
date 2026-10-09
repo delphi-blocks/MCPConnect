@@ -75,6 +75,12 @@ type
     ///   It must never carry internal details (exception text, stack, configuration).
     /// </summary>
     ErrorDescription: string;
+    /// <summary>
+    ///   Scopes the challenge should ask the client for. Empty unless validation failed
+    ///   for want of a scope, in which case it holds the missing ones; the transport
+    ///   falls back to the configured scopes for a rejection that named none.
+    /// </summary>
+    Scopes: TArray<string>;
 
     class function Ok: TTokenValidationResult; static;
     class function Fail(AErrorCode: TTokenValidationErrorCode;
@@ -194,7 +200,7 @@ type
       out ATrusted: string): Boolean;
     function AudienceMatches(AConfig: TOAuthConfig; const AAudience: TArray<string>): Boolean;
     function ScopesSatisfied(AConfig: TOAuthConfig; AClaims: TMCPAccessToken;
-      out AMissing: string): Boolean;
+      out AMissing: TArray<string>): Boolean;
     function CheckClaims(AConfig: TOAuthConfig; AClaims: TMCPAccessToken;
       const AHeader, APayload, ASignature: string): TTokenValidationResult;
   protected
@@ -290,9 +296,16 @@ function TokenValidationErrorCodeToString(AErrorCode: TTokenValidationErrorCode)
 
 /// <summary>
 ///   Builds the "WWW-Authenticate" challenge sent with a 401: the Bearer scheme, the
-///   realm, the URL of this resource's metadata document, and - once validation has
-///   actually rejected something - the RFC 6750 error and its description.
+///   realm, the URL of this resource's metadata document, the scopes to request, and -
+///   once validation has actually rejected something - the RFC 6750 error and its
+///   description.
 /// </summary>
+/// <param name="AScopes">
+///   Scopes to advertise in the challenge's "scope" parameter. The MCP Scope Selection
+///   Strategy gives this parameter priority over the protected resource metadata's
+///   "scopes_supported", so a client that does not implement the fallback relies on it
+///   to know what to request at all. An empty list omits the parameter.
+/// </param>
 /// <remarks>
 ///   Every parameter value is quoted and sanitized, so no configured or validator
 ///   supplied string can produce a malformed header. Lives here, rather than in the
@@ -300,7 +313,7 @@ function TokenValidationErrorCodeToString(AErrorCode: TTokenValidationErrorCode)
 ///   <see cref="TTokenValidationResult" /> and belongs with the vocabulary it uses.
 /// </remarks>
 function BuildBearerChallenge(const ARealm, AResourceMetadata: string;
-  const AResult: TTokenValidationResult): string;
+  const AScopes: TArray<string>; const AResult: TTokenValidationResult): string;
 
 implementation
 
@@ -336,7 +349,7 @@ begin
 end;
 
 function BuildBearerChallenge(const ARealm, AResourceMetadata: string;
-  const AResult: TTokenValidationResult): string;
+  const AScopes: TArray<string>; const AResult: TTokenValidationResult): string;
 
   // Values travel inside a quoted-string, so a quote or a line break in one would end
   // it early: truncating the challenge, or letting the value inject parameters - or a
@@ -348,6 +361,25 @@ function BuildBearerChallenge(const ARealm, AResourceMetadata: string;
     Result := AValue.Replace('"', '''').Replace(#13, ' ').Replace(#10, ' ').Trim;
   end;
 
+  // RFC 6750's "scope" is one space-delimited value, not a repeated parameter, so the
+  // list is folded here. Blank entries are dropped rather than emitted as a run of
+  // spaces that a strict client would read as scopes.
+  function JoinScopes: string;
+  var
+    LScope: string;
+  begin
+    Result := '';
+    for LScope in AScopes do
+      if not LScope.Trim.IsEmpty then
+      begin
+        if Result <> '' then
+          Result := Result + ' ';
+        Result := Result + LScope.Trim;
+      end;
+  end;
+
+var
+  LScope: string;
 begin
   // Every value is quoted, the metadata URL included. RFC 7235 admits an auth-param
   // value as either a bare token or a quoted-string, and a URL is not a token - ":"
@@ -356,6 +388,10 @@ begin
   // spells "resource_metadata" out with its quotes for that reason.
   Result := Format('Bearer realm="%s", resource_metadata="%s"',
     [Sanitize(ARealm), Sanitize(AResourceMetadata)]);
+
+  LScope := JoinScopes;
+  if LScope <> '' then
+    Result := Result + Format(', scope="%s"', [Sanitize(LScope)]);
 
   // Nothing to report: a request that simply arrived without a token gets the bare
   // challenge, not an error naming something it never did.
@@ -377,6 +413,7 @@ begin
   Result.Success := True;
   Result.ErrorCode := TTokenValidationErrorCode.None;
   Result.ErrorDescription := '';
+  Result.Scopes := [];
 end;
 
 class function TTokenValidationResult.Fail(AErrorCode: TTokenValidationErrorCode;
@@ -385,6 +422,7 @@ begin
   Result.Success := False;
   Result.ErrorCode := AErrorCode;
   Result.ErrorDescription := ADescription;
+  Result.Scopes := [];
 end;
 
 { TTokenValidatorBase }
@@ -551,20 +589,20 @@ begin
 end;
 
 function TClaimsTokenValidator.ScopesSatisfied(AConfig: TOAuthConfig;
-  AClaims: TMCPAccessToken; out AMissing: string): Boolean;
+  AClaims: TMCPAccessToken; out AMissing: TArray<string>): Boolean;
 var
   LRequired: string;
 begin
-  AMissing := '';
+  AMissing := [];
 
+  // All the missing scopes, not just the first: RFC 6750 §3.1 asks the challenge to
+  // name them together, so a client can request them in one round-trip instead of
+  // being sent back to the authorization server once per missing scope.
   for LRequired in AConfig.RequiredScopes do
     if not AClaims.HasScope(LRequired) then
-    begin
-      AMissing := LRequired;
-      Exit(False);
-    end;
+      AMissing := AMissing + [LRequired];
 
-  Result := True;
+  Result := Length(AMissing) = 0;
 end;
 
 function TClaimsTokenValidator.Reject(AErrorCode: TTokenValidationErrorCode;
@@ -614,7 +652,8 @@ function TClaimsTokenValidator.CheckClaims(AConfig: TOAuthConfig;
   end;
 
 var
-  LAlgorithm, LKeyId, LKeySource, LTrustedIssuer, LMissingScope: string;
+  LAlgorithm, LKeyId, LKeySource, LTrustedIssuer: string;
+  LMissingScopes: TArray<string>;
   LNowUTC: TDateTime;
   LKey: TOAuthJsonWebKey;
 begin
@@ -672,9 +711,15 @@ begin
   if not Result.Success then
     Exit;
 
-  if not ScopesSatisfied(AConfig, AClaims, LMissingScope) then
-    Exit(Reject(TTokenValidationErrorCode.InsufficientScope, STokenScopeMissing,
-      LMissingScope, OrNone(AClaims.Scope)));
+  if not ScopesSatisfied(AConfig, AClaims, LMissingScopes) then
+  begin
+    Result := Reject(TTokenValidationErrorCode.InsufficientScope, STokenScopeMissing,
+      string.Join(' ', LMissingScopes), OrNone(AClaims.Scope));
+    // Names them in the challenge, so a client can step up to exactly the scopes this
+    // operation needs rather than guessing from the advertised set.
+    Result.Scopes := LMissingScopes;
+    Exit;
+  end;
 
   Result := TTokenValidationResult.Ok;
 end;

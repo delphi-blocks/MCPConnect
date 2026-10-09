@@ -129,6 +129,10 @@ type
     procedure TestChallenge_OmitsAnEmptyDescription;
     [Test]
     procedure TestChallenge_DescriptionCannotEndTheQuotedString;
+    [Test]
+    procedure TestChallenge_OmitsTheScopeParameterWhenNoneIsGiven;
+    [Test]
+    procedure TestChallenge_FoldsTheScopeListIntoOneParameter;
   end;
 
   [TestFixture]
@@ -586,7 +590,7 @@ begin
   // RFC 7235 admits an auth-param value as a token or a quoted-string, and a URL is
   // not a token: unquoted, "resource_metadata" is malformed and a strict client drops
   // it - taking with it the only pointer to the metadata document (RFC 9728 §5.1).
-  LChallenge := BuildBearerChallenge(Realm, Metadata, TTokenValidationResult.Ok);
+  LChallenge := BuildBearerChallenge(Realm, Metadata, [], TTokenValidationResult.Ok);
 
   Assert.AreEqual(Format('Bearer realm="%s", resource_metadata="%s"', [Realm, Metadata]),
     LChallenge);
@@ -598,7 +602,7 @@ var
 begin
   // A request that simply arrived without a token has not failed validation, so the
   // challenge must not name an error it never produced.
-  LChallenge := BuildBearerChallenge(Realm, Metadata,
+  LChallenge := BuildBearerChallenge(Realm, Metadata, [],
     TTokenValidationResult.Fail(TTokenValidationErrorCode.None, ''));
 
   Assert.IsFalse(LChallenge.Contains('error'), 'The bare challenge carries no error');
@@ -608,7 +612,7 @@ procedure TBearerChallengeTest.TestChallenge_CarriesTheErrorAndItsDescription;
 var
   LChallenge: string;
 begin
-  LChallenge := BuildBearerChallenge(Realm, Metadata,
+  LChallenge := BuildBearerChallenge(Realm, Metadata, [],
     TTokenValidationResult.Fail(TTokenValidationErrorCode.InsufficientScope, 'needs mcp.write'));
 
   Assert.IsTrue(LChallenge.Contains('error="insufficient_scope"'), LChallenge);
@@ -621,7 +625,7 @@ var
 begin
   // Misconfigurations are reported with an empty description on purpose: what this
   // server is missing is none of a caller's business.
-  LChallenge := BuildBearerChallenge(Realm, Metadata,
+  LChallenge := BuildBearerChallenge(Realm, Metadata, [],
     TTokenValidationResult.Fail(TTokenValidationErrorCode.InvalidToken, ''));
 
   Assert.IsTrue(LChallenge.Contains('error="invalid_token"'), LChallenge);
@@ -645,7 +649,7 @@ var
 begin
   // The description comes from a validator implementation, so it is trusted neither
   // to stay inside its quotes nor to stay on one line.
-  LChallenge := BuildBearerChallenge(Realm, Metadata,
+  LChallenge := BuildBearerChallenge(Realm, Metadata, [],
     TTokenValidationResult.Fail(TTokenValidationErrorCode.InvalidToken,
       'broken" , error="none'#13#10'X-Injected: yes'));
 
@@ -655,6 +659,35 @@ begin
   Assert.AreEqual(8, QuoteCount(LChallenge), LChallenge);
   Assert.IsFalse(LChallenge.Contains(#13), 'A challenge is a single header line');
   Assert.IsFalse(LChallenge.Contains(#10), 'A challenge is a single header line');
+end;
+
+procedure TBearerChallengeTest.TestChallenge_OmitsTheScopeParameterWhenNoneIsGiven;
+var
+  LChallenge: string;
+begin
+  // No scope configured: the challenge must stay exactly as it was before, with no
+  // empty "scope" parameter a client would read as "request nothing".
+  LChallenge := BuildBearerChallenge(Realm, Metadata, [''],
+    TTokenValidationResult.Ok);
+
+  Assert.IsFalse(LChallenge.Contains('scope'), LChallenge);
+end;
+
+procedure TBearerChallengeTest.TestChallenge_FoldsTheScopeListIntoOneParameter;
+var
+  LChallenge: string;
+  LFirst, LSecond: Integer;
+begin
+  // RFC 6750's "scope" is one space-delimited value: two scopes must not become two
+  // repeated "scope" parameters, which a strict parser would drop.
+  LChallenge := BuildBearerChallenge(Realm, Metadata, ['mcp.read', 'mcp.write'],
+    TTokenValidationResult.Ok);
+
+  Assert.IsTrue(LChallenge.Contains('scope="mcp.read mcp.write"'), LChallenge);
+
+  LFirst := LChallenge.IndexOf('scope="');
+  LSecond := LChallenge.IndexOf('scope="', LFirst + 1);
+  Assert.AreEqual(-1, LSecond, 'The scope list must be a single parameter');
 end;
 
 { TDecodeOnlyTokenValidatorTest }

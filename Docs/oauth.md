@@ -26,7 +26,9 @@ When OAuth is enabled, MCPConnect's HTTP transport (`TMCPTransportHandler` in
   `GET /.well-known/oauth-protected-resource/mcp`. A resource that is just an origin publishes at
   the bare `/.well-known/oauth-protected-resource`, which is also still served as a fallback.
 - Rejects unauthenticated requests with `401 Unauthorized` and a `WWW-Authenticate: Bearer
-  realm="...", resource_metadata="..."` header, per the MCP Authorization spec.
+  realm="...", resource_metadata="...", scope="..."` header, per the MCP Authorization spec. The
+  `scope` parameter lists the scopes the client should request — see
+  [Section 2.3](#23-the-scope-parameter-in-the-401-challenge).
 - Accepts requests carrying `Authorization: Bearer <token>` **when a registered token validator
   accepts them** (see [Section 3.2](#32-token-validation)), and injects the validated claims into the
   request context as `TMCPAccessToken`.
@@ -72,6 +74,21 @@ AServer
 | `AddRequiredScope(AScope)` | Scope the token must carry, else `insufficient_scope`. Can be called multiple times. |
 | `SetClockSkew(ASeconds)` | Tolerance on `exp`/`nbf`, in seconds. Defaults to 60. |
 | `SetKeyCacheTTL(ASeconds)` | Lifetime of the cached JWKS, in seconds. Defaults to 3600. |
+
+### 2.3 The `scope` parameter in the 401 challenge
+
+A `401` response carries a `WWW-Authenticate` challenge whose `scope` parameter tells the client
+which scopes to request at the authorization server. The MCP Scope Selection Strategy gives this
+parameter priority over the protected resource metadata's `scopes_supported`, falling back to the
+latter only when the challenge carries none. Clients that do not implement that fallback rely on
+it entirely — and an authorization server such as Keycloak, which adds a client scope assigned as
+*Optional* only when the client explicitly requests it, then never puts it in the token.
+
+On the initial `401` (no token, or a token rejected without naming a scope) the challenge
+advertises every scope this resource requires or supports: `AddRequiredScope` followed by
+`AddScopesSupported`, without duplicates. When a token is rejected for a missing scope, the
+challenge instead carries exactly the missing ones alongside `error="insufficient_scope"`, so the
+client steps up to what the operation actually needs.
 
 If `AuthorizationServers` is empty, OAuth enforcement is fully disabled — `CheckOAuth` short-circuits
 and every request is allowed through, regardless of `Authorization` headers. This lets you enable

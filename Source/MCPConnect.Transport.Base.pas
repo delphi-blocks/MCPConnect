@@ -551,10 +551,20 @@ begin
 end;
 
 procedure TMCPTransportHandler.SendUnauthorized(const AResult: TTokenValidationResult);
+var
+  LScopes: TArray<string>;
 begin
+  // MCP reads scopes from this challenge first, then "scopes_supported": without it a
+  // client requests nothing and "optional" scopes (Keycloak) never reach the token. A
+  // rejection names the missing ones; an initial 401 everything required or supported.
+  if Length(AResult.Scopes) > 0 then
+    LScopes := AResult.Scopes
+  else
+    LScopes := TMCPScopeList.Merge(FOAuthConfig.RequiredScopes, FOAuthConfig.ScopesSupported);
+
   FResponse.Code := HTTP_CODE_UNAUTHORIZED;
   FResponse.SetHeader('WWW-Authenticate',
-    BuildBearerChallenge(FOAuthConfig.Realm, FOAuthConfig.ResourceMetadata, AResult));
+    BuildBearerChallenge(FOAuthConfig.Realm, FOAuthConfig.ResourceMetadata, LScopes, AResult));
 end;
 
 function TMCPTransportHandler.IsProtectedResourceMetadataRequest: Boolean;

@@ -40,6 +40,27 @@ type
     constructor Create(const AName: string; const AAdditionalTags: string = '');
   end;
 
+  /// <summary>
+  ///   Scopes the caller's access token must all carry to see and use a tool,
+  ///   resource, template, App UI or prompt. On a class it applies to every item the
+  ///   class registers, on a method it adds to the class requirements.
+  /// </summary>
+  /// <remarks>
+  ///   Scopes are separated by commas or semicolons. Checked by the default
+  ///   authorizer (see TMCPSecurityConfig.SetAuthorizer). Not to be confused with
+  ///   [McpScope], which namespaces the tool names.
+  /// </remarks>
+  /// <example>
+  ///   [McpRequiredScope('orders:read, orders:write')]
+  /// </example>
+  McpRequiredScopeAttribute = class(TCustomAttribute)
+  private
+    FScopes: TArray<string>;
+  public
+    property Scopes: TArray<string> read FScopes;
+    constructor Create(const AScopes: string);
+  end;
+
   McpAttribute = class(McpBaseAttribute)
   private
     FName: string;
@@ -177,6 +198,9 @@ type
 
 implementation
 
+uses
+  MCPConnect.MCP.Types.Base;
+
 { McpAttribute }
 
 constructor McpAttribute.Create(const AName, ADescription, AAdditionalTags: string);
@@ -245,6 +269,14 @@ constructor McpScopeAttribute.Create(const AName, AAdditionalTags: string);
 begin
   FName := AName;
   FAdditionalTags := AAdditionalTags;
+end;
+
+{ McpRequiredScopeAttribute }
+
+constructor McpRequiredScopeAttribute.Create(const AScopes: string);
+begin
+  inherited Create;
+  FScopes := TMCPScopeList.Parse(AScopes);
 end;
 
 { MCPAppUIAttribute }

@@ -69,6 +69,7 @@ contains
   MCPConnect.JRPC.Middleware in '..\..\Source\MCPConnect.JRPC.Middleware.pas',
   MCPConnect.Logging.Memory in '..\..\Source\MCPConnect.Logging.Memory.pas',
   MCPConnect.MCP.Attributes in '..\..\Source\MCPConnect.MCP.Attributes.pas',
+  MCPConnect.MCP.Authorization in '..\..\Source\MCPConnect.MCP.Authorization.pas',
   MCPConnect.MCP.Config in '..\..\Source\MCPConnect.MCP.Config.pas',
   MCPConnect.MCP.Invoker in '..\..\Source\MCPConnect.MCP.Invoker.pas',
   MCPConnect.MCP.Middleware in '..\..\Source\MCPConnect.MCP.Middleware.pas',

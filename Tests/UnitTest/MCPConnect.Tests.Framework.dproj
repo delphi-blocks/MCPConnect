@@ -139,6 +139,7 @@
         <DCCReference Include="..\..\Source\MCPConnect.Configuration.Neon.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.JRPC.Middleware.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Attributes.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.MCP.Authorization.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Middleware.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Middleware.Default.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Middleware.Headers.pas"/>
@@ -176,6 +177,7 @@
         <DCCReference Include="MCPConnect.Tests.Transport.Middleware.pas"/>
         <DCCReference Include="MCPConnect.Tests.Transport.DefaultMiddleware.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.AccessToken.pas"/>
+        <DCCReference Include="MCPConnect.Tests.MCP.Authorization.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Tools.pas"/>
         <DCCReference Include="MCPConnect.Tests.JRPC.Invoker.pas"/>
         <DCCReference Include="MCPConnect.Tests.Core.Utils.pas"/>

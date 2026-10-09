@@ -418,6 +418,10 @@ This is the one place where middleware state is shared between requests, so maki
 
 ## Filtering Lists Per Caller
 
+::: tip Scopes first
+To hide tools, resources and prompts from callers who lack an OAuth scope, prefer `[McpRequiredScope]`/`RequireScope`, or `IMCPConfig.Security.SetAuthorizer` for custom rules (see [Authorizing Tools, Resources and Prompts](./authorization.md)). They also protect the calls, completion and subscriptions, not just the lists, and they cannot be dropped by removing a middleware. A list middleware is for what those cannot express.
+:::
+
 The list hooks see `TMCPTool`, `TMCPResource` and `TMCPPrompt` objects *before* they are serialized, which is what makes per-caller filtering possible:
 
 ```pascal

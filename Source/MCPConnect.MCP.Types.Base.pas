@@ -178,6 +178,26 @@ type
     destructor Destroy; override;
   end;
 
+  /// <summary>
+  ///   Helpers for the lists of scopes an MCP tool, resource or prompt requires.
+  /// </summary>
+  TMCPScopeList = record
+  public const
+    Separators: array[0..1] of Char = (',', ';');
+  public
+    /// <summary>
+    ///   Splits a list of scopes separated by commas or semicolons, trimming them and
+    ///   dropping the empty ones and the duplicates.
+    /// </summary>
+    class function Parse(const AScopes: string): TArray<string>; static;
+
+    /// <summary>Union of the two lists, without duplicates, keeping the order.</summary>
+    class function Merge(const AScopes, AOther: TArray<string>): TArray<string>; static;
+
+    /// <summary>Whether AScope is in AScopes (case-sensitive, as OAuth scopes are).</summary>
+    class function Contains(const AScopes: TArray<string>; const AScope: string): Boolean; static;
+  end;
+
   TOAuthProtectedResourceMetadata = class
   private
     FResource: string;
@@ -257,6 +277,7 @@ type
     function GetEMail: string;
     function GetSubject: string;
     function GetScope: string;
+    function GetScopes: TArray<string>;
     function GetEmailVerified: Boolean;
     function GetPreferredUsername: string;
     function GetGivenName: string;
@@ -309,6 +330,18 @@ type
     procedure Assign(ASource: TMCPAccessToken);
     function ToString: string; override;
 
+    /// <summary>Whether the token grants AScope (case-sensitive).</summary>
+    function HasScope(const AScope: string): Boolean;
+
+    /// <summary>
+    ///   Whether the token grants every scope in AScopes. An empty list is always
+    ///   satisfied.
+    /// </summary>
+    function HasScopes(const AScopes: TArray<string>): Boolean;
+
+    /// <summary>The scopes in AScopes that the token does not grant.</summary>
+    function MissingScopes(const AScopes: TArray<string>): TArray<string>;
+
     /// <summary>Raw decoded JWT payload (all claims), for direct access to non-wrapped claims.</summary>
     property Payload: TJSONObject read FPayload;
 
@@ -323,6 +356,8 @@ type
     ///   Written to "scope".
     /// </summary>
     property Scope: string read GetScope write SetScope;
+    /// <summary>The authorized scopes (see Scope) split into a list.</summary>
+    property Scopes: TArray<string> read GetScopes;
     /// <summary>Whether the user's email address has been verified ("email_verified").</summary>
     property EmailVerified: Boolean read GetEmailVerified write SetEmailVerified;
     /// <summary>Preferred username claim ("preferred_username").</summary>
@@ -1635,6 +1670,39 @@ begin
   inherited;
 end;
 
+{ TMCPScopeList }
+
+class function TMCPScopeList.Parse(const AScopes: string): TArray<string>;
+var
+  LScope: string;
+begin
+  Result := [];
+  for LScope in AScopes.Split(Separators, TStringSplitOptions.ExcludeEmpty) do
+    if not LScope.Trim.IsEmpty then
+      Result := Merge(Result, [LScope.Trim]);
+end;
+
+class function TMCPScopeList.Merge(const AScopes, AOther: TArray<string>): TArray<string>;
+var
+  LScope: string;
+begin
+  Result := Copy(AScopes);
+  for LScope in AOther do
+    if not Contains(Result, LScope) then
+      Result := Result + [LScope];
+end;
+
+class function TMCPScopeList.Contains(const AScopes: TArray<string>; const AScope: string): Boolean;
+var
+  LScope: string;
+begin
+  for LScope in AScopes do
+    if LScope = AScope then
+      Exit(True);
+
+  Result := False;
+end;
+
 { TMCPAccessToken }
 
 constructor TMCPAccessToken.Create;
@@ -1755,6 +1823,37 @@ begin
   end
   else if LValue is TJSONString then
     Result := LValue.Value;
+end;
+
+function TMCPAccessToken.GetScopes: TArray<string>;
+begin
+  // RFC 6749 section 3.3: the scope is a list of space-delimited strings
+  Result := GetScope.Split([' '], TStringSplitOptions.ExcludeEmpty);
+end;
+
+function TMCPAccessToken.HasScope(const AScope: string): Boolean;
+begin
+  Result := TMCPScopeList.Contains(GetScopes, AScope);
+end;
+
+function TMCPAccessToken.HasScopes(const AScopes: TArray<string>): Boolean;
+begin
+  Result := Length(MissingScopes(AScopes)) = 0;
+end;
+
+function TMCPAccessToken.MissingScopes(const AScopes: TArray<string>): TArray<string>;
+var
+  LGranted: TArray<string>;
+  LScope: string;
+begin
+  Result := [];
+  if Length(AScopes) = 0 then
+    Exit;
+
+  LGranted := GetScopes;
+  for LScope in AScopes do
+    if not TMCPScopeList.Contains(LGranted, LScope) then
+      Result := Result + [LScope];
 end;
 
 function TMCPAccessToken.GetEmailVerified: Boolean;

@@ -31,6 +31,7 @@ uses
   MCPConnect.JRPC.Middleware,
   MCPConnect.MCP.Middleware,
   MCPConnect.MCP.Attributes,
+  MCPConnect.MCP.Authorization,
   MCPConnect.MCP.Types.Tools,
   MCPConnect.MCP.Types.Resources,
   MCPConnect.MCP.Types.Prompts,
@@ -39,6 +40,9 @@ uses
   MCPConnect.MCP.Types.Elicitation,
   MCPConnect.MCP.Types.Errors,
   MCPConnect.MCP.Types.Subscriptions;
+
+resourcestring
+  SMCPAccessDeniedLogFmt = 'Access to %s denied (required scopes: "%s", token scopes: "%s")';
 
 type
   TApiCall<T> = procedure (AContext: TMiddlewareContext; AParams: T) of object;
@@ -142,6 +146,25 @@ type
     ///   and the server's otherwise.
     /// </summary>
     function PageSizeFor(const ASection: TMCPPaging): Integer;
+
+    /// <summary>
+    ///   A guard asking the configured authorizer about the items of this
+    ///   request. Owned by the caller.
+    /// </summary>
+    /// <remarks>
+    ///   The check lives here, in the api, and not in a middleware: a
+    ///   middleware can be removed - which would open everything it closed -
+    ///   and three of the operations (the template list, completion and
+    ///   subscriptions/listen) have no chain to put one in.
+    /// </remarks>
+    function CreateAccessGuard: TMCPAccessGuard;
+
+    /// <summary>
+    ///   Raises the same "not found" error as an item that does not exist when
+    ///   the caller is not allowed to use AItem, so that its existence is not
+    ///   disclosed. The real reason goes to the log.
+    /// </summary>
+    procedure CheckAccess(const AItem: TMCPAuthItem; const ANotFoundFmt, AKey: string);
 
     /// <summary>
     ///   Refuses a cursor this server cannot have issued: one minted for
@@ -305,7 +328,8 @@ type
   TMCPSubscriptionsApi = class(TMCPApi)
   private
     /// <summary>
-    ///   The subset of AUris this server actually serves.
+    ///   The subset of AUris this server actually serves, and the caller is
+    ///   allowed to read.
     /// </summary>
     function KnownResourceUris(const AUris: TArray<string>): TArray<string>;
   public
@@ -374,6 +398,30 @@ begin
     Result := ASection.PageSize
   else
     Result := MCPConfig.Server.Paging.PageSize;
+end;
+
+function TMCPApi.CreateAccessGuard: TMCPAccessGuard;
+begin
+  Result := TMCPAccessGuard.Create(RPCContext, MCPConfig.Security.CreateAuthorizer);
+end;
+
+procedure TMCPApi.CheckAccess(const AItem: TMCPAuthItem; const ANotFoundFmt, AKey: string);
+var
+  LGuard: TMCPAccessGuard;
+begin
+  LGuard := CreateAccessGuard;
+  try
+    if LGuard.IsAllowed(AItem) then
+      Exit;
+
+    Logger.LogWarning(SMCPAccessDeniedLogFmt,
+      [AItem.ToString, string.Join(' ', AItem.RequiredScopes), LGuard.Identity.Scope]);
+  finally
+    LGuard.Free;
+  end;
+
+  // Not-found is Invalid Params (-32602) since 2026-07-28
+  raise EJRPCInvalidParamsError.CreateFmt(ANotFoundFmt, [AKey]);
 end;
 
 procedure TMCPApi.CheckCursor(AKind: TMCPPageKind; const ACursor: NullString; APageSize: Integer);
@@ -537,6 +585,8 @@ begin
     if not MCPConfig.Tools.Registry.TryGetValue(AParams.Name, LTool) then
       raise EJRPCInvalidParamsError.CreateFmt(SMCPToolNotFound, [AParams.Name]);
 
+    CheckAccess(TMCPAuthItem.FromTool(LTool), SMCPToolNotFound, AParams.Name);
+
     // Instance of the tool class
     LToolObj := TRttiUtils.CreateInstance(LTool.ToolClass);
     try
@@ -568,10 +618,22 @@ function TMCPToolsApi.DoToolsList(AContext: TMiddlewareContext;
   AParams: TPaginatedRequestParams): TListToolsResult;
 var
   LStopwatch: TStopwatch;
+  LGuard: TMCPAccessGuard;
 begin
   LStopwatch := TStopwatch.StartNew;
   try
-    Result := MCPConfig.Tools.ListEnabled;
+    // Filtered here, before ToolsList pages the result: filtering a page would
+    // leave it short, and its cursor pointing past items the caller cannot see
+    LGuard := CreateAccessGuard;
+    try
+      Result := MCPConfig.Tools.ListEnabled(
+        function (ATool: TMCPTool): Boolean
+        begin
+          Result := LGuard.IsAllowed(TMCPAuthItem.FromTool(ATool));
+        end);
+    finally
+      LGuard.Free;
+    end;
   finally
     Logger.LogDebug('[PERF] ToolsList total: %d ms', [LStopwatch.ElapsedMilliseconds]);
   end;
@@ -664,9 +726,15 @@ begin
     end;
 
     if Assigned(LRes) then
-      Result := InternalReadResource(AParams, LRes)
+    begin
+      CheckAccess(TMCPAuthItem.FromResource(LRes), SMCPResourceNotFound, AParams.Uri);
+      Result := InternalReadResource(AParams, LRes);
+    end
     else
+    begin
+      CheckAccess(TMCPAuthItem.FromTemplate(LTpl, AParams.Uri), SMCPResourceNotFound, AParams.Uri);
       Result := InternalReadTemplate(AParams, LTpl);
+    end;
   finally
     Logger.LogDebug('[PERF] ReadResource [%s] total: %d ms', [AParams.Uri, LStopwatch.ElapsedMilliseconds]);
   end;
@@ -676,6 +744,7 @@ function TMCPResourcesApi.DoResourcesList(AContext: TMiddlewareContext;
   AParams: TPaginatedRequestParams): TListResourcesResult;
 var
   LStopwatch: TStopwatch;
+  LGuard: TMCPAccessGuard;
 begin
   // The cursor is read by the caller, after the chain: this builds the whole
   // list, and ResourcesList pages what comes back out of it
@@ -683,7 +752,16 @@ begin
   try
     Result := TListResourcesResult.Create;
     try
-      MCPConfig.Resources.ResourceList(Result);
+      LGuard := CreateAccessGuard;
+      try
+        MCPConfig.Resources.ResourceList(Result,
+          function (AResource: TMCPResource): Boolean
+          begin
+            Result := LGuard.IsAllowed(TMCPAuthItem.FromResource(AResource));
+          end);
+      finally
+        LGuard.Free;
+      end;
     except
       Result.Free;
       raise;
@@ -696,6 +774,7 @@ end;
 function TMCPResourcesApi.TemplatesList(AParams: TPaginatedRequestParams): TListResourceTemplatesResult;
 var
   LPageSize: Integer;
+  LGuard: TMCPAccessGuard;
 begin
   RPCContext.AddContent(AParams);
 
@@ -706,7 +785,17 @@ begin
 
   Result := TListResourceTemplatesResult.Create;
   try
-    MCPConfig.Resources.TemplateList(Result);
+    // Before Paginate, as in tools/list
+    LGuard := CreateAccessGuard;
+    try
+      MCPConfig.Resources.TemplateList(Result,
+        function (ATemplate: TMCPResourceTemplate): Boolean
+        begin
+          Result := LGuard.IsAllowed(TMCPAuthItem.FromTemplate(ATemplate));
+        end);
+    finally
+      LGuard.Free;
+    end;
 
     Result.NextCursor := Paginate<TMCPResourceTemplate>(Result.ResourceTemplates,
       TemplateKey, TMCPPageKind.Templates, AParams.Cursor, LPageSize);
@@ -725,11 +814,21 @@ function TMCPPromptsApi.DoPromptList(AContext: TMiddlewareContext;
   AParams: TPaginatedRequestParams): TListPromptsResult;
 var
   LStopwatch: TStopwatch;
+  LGuard: TMCPAccessGuard;
 begin
   // See DoResourcesList on where the cursor is read
   LStopwatch := TStopwatch.StartNew;
   try
-    Result := MCPConfig.Prompts.ListComplete;
+    LGuard := CreateAccessGuard;
+    try
+      Result := MCPConfig.Prompts.ListComplete(
+        function (APrompt: TMCPPrompt): Boolean
+        begin
+          Result := LGuard.IsAllowed(TMCPAuthItem.FromPrompt(APrompt));
+        end);
+    finally
+      LGuard.Free;
+    end;
   finally
     Logger.LogDebug('[PERF] PromptList total: %d ms', [LStopwatch.ElapsedMilliseconds]);
   end;
@@ -747,6 +846,8 @@ begin
   try
     if not MCPConfig.Prompts.Registry.TryGetValue(AParams.Name, LPrompt) then
       raise EJRPCInvalidParamsError.CreateFmt(SMCPPromptNotFound, [AParams.Name]);
+
+    CheckAccess(TMCPAuthItem.FromPrompt(LPrompt), SMCPPromptNotFound, AParams.Name);
 
     // Create an instance of the tool class
     LPromptObj := TRttiUtils.CreateInstance(LPrompt.PromptClass);
@@ -777,6 +878,9 @@ var
   LProviderObj: TObject;
   LTarget: string;
   LStopwatch: TStopwatch;
+  LPrompt: TMCPPrompt;
+  LTpl: TMCPResourceTemplate;
+  LRes: TMCPResource;
 begin
   RPCContext.AddContent(AParams);
 
@@ -785,16 +889,27 @@ begin
     LTarget := AParams.Ref.Target;
 
     // Per the spec a malformed reference or an unknown prompt/template is
-    // Invalid Params, not Method Not Found
+    // Invalid Params, not Method Not Found. One the caller may not use answers
+    // the same, so that completing its arguments does not disclose it
     case AParams.Ref.Kind of
       TMCPCompletionRefKind.Prompt:
-        if not MCPConfig.Prompts.Registry.ContainsKey(LTarget) then
+      begin
+        if not MCPConfig.Prompts.Registry.TryGetValue(LTarget, LPrompt) then
           raise EJRPCInvalidParamsError.CreateFmt(SMCPPromptNotFound, [LTarget]);
 
+        CheckAccess(TMCPAuthItem.FromPrompt(LPrompt), SMCPPromptNotFound, LTarget);
+      end;
+
       TMCPCompletionRefKind.ResourceTemplate:
-        if not MCPConfig.Resources.TemplateRegistry.ContainsKey(LTarget) and
-           not MCPConfig.Resources.Registry.ContainsKey(LTarget) then
+      begin
+        // The target names a uri template or, less often, a plain resource uri
+        if MCPConfig.Resources.TemplateRegistry.TryGetValue(LTarget, LTpl) then
+          CheckAccess(TMCPAuthItem.FromTemplate(LTpl), SMCPResourceNotFound, LTarget)
+        else if MCPConfig.Resources.Registry.TryGetValue(LTarget, LRes) then
+          CheckAccess(TMCPAuthItem.FromResource(LRes), SMCPResourceNotFound, LTarget)
+        else
           raise EJRPCInvalidParamsError.CreateFmt(SMCPResourceNotFound, [LTarget]);
+      end;
     else
       raise EJRPCInvalidParamsError.CreateFmt(SMCPCompletionRefUnknownFmt, [AParams.Ref.&Type]);
     end;
@@ -930,12 +1045,30 @@ end;
 function TMCPSubscriptionsApi.KnownResourceUris(const AUris: TArray<string>): TArray<string>;
 var
   LUri: string;
+  LGuard: TMCPAccessGuard;
+  LRes: TMCPResource;
+  LTpl: TMCPResourceTemplate;
 begin
   Result := [];
-  for LUri in AUris do
-    if MCPConfig.Resources.Registry.ContainsKey(LUri) or
-       MCPConfig.Resources.TemplateRegistry.ContainsKey(LUri) then
-      Result := Result + [LUri];
+
+  // A uri the caller may not read is left out just like an unknown one: the
+  // acknowledgement must not disclose it, and nothing may be sent about it
+  LGuard := CreateAccessGuard;
+  try
+    for LUri in AUris do
+      if MCPConfig.Resources.Registry.TryGetValue(LUri, LRes) then
+      begin
+        if LGuard.IsAllowed(TMCPAuthItem.FromResource(LRes)) then
+          Result := Result + [LUri];
+      end
+      else if MCPConfig.Resources.TemplateRegistry.TryGetValue(LUri, LTpl) then
+      begin
+        if LGuard.IsAllowed(TMCPAuthItem.FromTemplate(LTpl)) then
+          Result := Result + [LUri];
+      end;
+  finally
+    LGuard.Free;
+  end;
 end;
 
 { TMCPToolsApi }

@@ -233,7 +233,7 @@ type
     function MatchTrustedIssuer(AConfig: TOAuthConfig; const AIssuer: string;
       out ATrusted: string): Boolean;
     function AudienceMatches(AConfig: TOAuthConfig; const AAudience: TArray<string>): Boolean;
-    function ScopesSatisfied(AConfig: TOAuthConfig; const AScope: string;
+    function ScopesSatisfied(AConfig: TOAuthConfig; AClaims: TMCPAccessToken;
       out AMissing: string): Boolean;
     function CheckClaims(AConfig: TOAuthConfig; AClaims: TMCPAccessToken;
       const AHeader, APayload, ASignature: string): TTokenValidationResult;
@@ -711,31 +711,19 @@ begin
 end;
 
 function TClaimsTokenValidator.ScopesSatisfied(AConfig: TOAuthConfig;
-  const AScope: string; out AMissing: string): Boolean;
+  AClaims: TMCPAccessToken; out AMissing: string): Boolean;
 var
-  LGranted: TArray<string>;
-  LRequired, LValue: string;
-  LFound: Boolean;
+  LRequired: string;
 begin
   AMissing := '';
-  LGranted := AScope.Split([' '], TStringSplitOptions.ExcludeEmpty);
 
+  // HasScope reads Scope, so an Entra ID token carrying "scp" is honored too
   for LRequired in AConfig.RequiredScopes do
-  begin
-    LFound := False;
-    for LValue in LGranted do
-      if LValue = LRequired then
-      begin
-        LFound := True;
-        Break;
-      end;
-
-    if not LFound then
+    if not AClaims.HasScope(LRequired) then
     begin
       AMissing := LRequired;
       Exit(False);
     end;
-  end;
 
   Result := True;
 end;
@@ -848,7 +836,7 @@ begin
   if not Result.Success then
     Exit;
 
-  if not ScopesSatisfied(AConfig, AClaims.Scope, LMissingScope) then
+  if not ScopesSatisfied(AConfig, AClaims, LMissingScope) then
     Exit(Reject(TTokenValidationErrorCode.InsufficientScope, STokenScopeMissing,
       LMissingScope, OrNone(AClaims.Scope)));
 

@@ -835,7 +835,12 @@ begin
     raise EJRPCException.CreateFmt(SOAuthAuthServerInvalidFmt,
       [AAuthorizationServer, LReason]);
 
-  FAuthorizationServers := FAuthorizationServers + [AAuthorizationServer.Trim];
+  // The trailing slash is not part of the issuer's identity (SameIssuer folds it), but
+  // a client comparing the advertised "authorization_servers" entry against the
+  // authorization server's "issuer" (RFC 8414 §3.3) compares exactly: Keycloak, for
+  // one, publishes the realm issuer without it. Storing the trimmed form keeps the two
+  // identical however the value was spelled here.
+  FAuthorizationServers := FAuthorizationServers + [AAuthorizationServer.Trim.TrimRight(['/'])];
 
   // An authorization server is what turns OAuth on - everything else here
   // (resource, validator, proxy) configures an enforcement that without one

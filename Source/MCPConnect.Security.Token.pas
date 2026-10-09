@@ -355,15 +355,16 @@ function TokenValidationErrorCodeToString(AErrorCode: TTokenValidationErrorCode)
 
 /// <summary>
 ///   Builds the "WWW-Authenticate" challenge sent with a 401: the Bearer scheme, the
-///   realm, the URL of this resource's metadata document, and - once validation has
-///   actually rejected something - the RFC 6750 error and its description.
+///   realm, the URL of this resource's metadata document, the scopes to request, and -
+///   once validation has actually rejected something - the RFC 6750 error and its
+///   description.
 /// </summary>
 /// <param name="ARequiredScopes">
-///   The scopes this resource requires. Sent as the RFC 6750 section 3 "scope"
-///   parameter, and only on an "insufficient_scope" refusal, where it is the answer
-///   to the question the refusal raises: a client told its token is not enough can
-///   ask for what would be, instead of reading it out of a description meant for a
-///   human. Meaningless on any other outcome, so it is left out of those.
+///   The scopes a client should ask the authorization server for. Sent as the RFC 6750
+///   section 3 "scope" parameter whenever there are any: on the initial 401 that
+///   carries no error, to guide the first authorization, and on an "insufficient_scope"
+///   refusal, to say what would be enough. Left out of any other refusal, where it
+///   would answer a question nobody asked.
 /// </param>
 /// <remarks>
 ///   Every parameter value is quoted and sanitized, so no configured or validator
@@ -475,6 +476,15 @@ begin
   Result := Format('Bearer realm="%s", resource_metadata="%s"',
     [Sanitize(ARealm), Sanitize(AResourceMetadata)]);
 
+  // RFC 6750 section 3: the scopes a client should ask for, on the initial 401 (no
+  // token yet: ErrorCode None) and on an "insufficient_scope" refusal. Space
+  // delimited, in one parameter. On any other refusal it would read as the reason.
+  if (AResult.ErrorCode in [TTokenValidationErrorCode.None,
+      TTokenValidationErrorCode.InsufficientScope]) and
+     (Length(ARequiredScopes) > 0) then
+    Result := Result + Format(', scope="%s"',
+      [Sanitize(string.Join(' ', ARequiredScopes))]);
+
   // Nothing to report: a request that simply arrived without a token gets the bare
   // challenge, not an error naming something it never did.
   if AResult.ErrorCode = TTokenValidationErrorCode.None then
@@ -486,14 +496,6 @@ begin
   if AResult.ErrorDescription <> '' then
     Result := Result + Format(', error_description="%s"',
       [Sanitize(AResult.ErrorDescription)]);
-
-  // RFC 6750 section 3: the scope this resource requires, sent only where it says
-  // something - on the one refusal that is about scopes. Space delimited, and the
-  // scopes are configuration rather than anything the request carried.
-  if (AResult.ErrorCode = TTokenValidationErrorCode.InsufficientScope) and
-     (Length(ARequiredScopes) > 0) then
-    Result := Result + Format(', scope="%s"',
-      [Sanitize(string.Join(' ', ARequiredScopes))]);
 end;
 
 { TTokenValidationResult }

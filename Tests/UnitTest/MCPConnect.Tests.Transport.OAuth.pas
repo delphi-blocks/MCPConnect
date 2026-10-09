@@ -166,6 +166,8 @@ type
     [Test]
     procedure TestChallenge_QuotesTheMetadataUrl;
     [Test]
+    procedure TestChallenge_CarriesTheScopesToRequest;
+    [Test]
     procedure TestRequestWithARejectedToken_ReportsInvalidToken;
     [Test]
     procedure TestRequestWithAnAcceptedToken_IsNotChallenged;
@@ -420,6 +422,8 @@ begin
     .SetResource(Resource)
     .AddAuthorizationServer(Issuer)
     .SetTokenValidatorClass(TStubTokenValidator)
+    .AddRequiredScope('mcp.write')
+    .AddScopesSupported('mcp.read')
   .ApplyConfig;
 end;
 
@@ -598,6 +602,22 @@ begin
   Assert.AreEqual('https://mcp.example.com' + MetadataPath,
     LOutcome.ChallengeParam('resource_metadata'), LOutcome.Challenge);
   Assert.AreEqual('mcp', LOutcome.ChallengeParam('realm'));
+end;
+
+procedure TTransportOAuthTest.TestChallenge_CarriesTheScopesToRequest;
+var
+  LOutcome: TTransportOutcome;
+begin
+  EnableOAuth;
+
+  // The initial 401 advertises every scope this resource requires or supports, so a
+  // client that does not fall back to the metadata's "scopes_supported" still knows
+  // what to ask the authorization server for - which is what an "optional" Keycloak
+  // scope needs before the server will put it in the token.
+  LOutcome := Execute('POST', ResourcePath);
+
+  Assert.AreEqual('mcp.write mcp.read', LOutcome.ChallengeParam('scope'),
+    LOutcome.Challenge);
 end;
 
 procedure TTransportOAuthTest.TestRequestWithARejectedToken_ReportsInvalidToken;

@@ -427,11 +427,22 @@ var
   end;
 
   procedure SendUnauthorized(const AResult: TTokenValidationResult);
+  var
+    LScopes: TArray<string>;
   begin
+    // On the initial 401 (no token yet) advertise what the client should ask for: the
+    // scopes this resource requires and the ones it supports. A client that does not
+    // fall back to the metadata's "scopes_supported" then still requests them - which
+    // is what an "optional" Keycloak scope needs before the server adds it to the
+    // token. An insufficient_scope refusal keeps naming the required scopes only.
+    if AResult.ErrorCode = TTokenValidationErrorCode.InsufficientScope then
+      LScopes := LConfig.RequiredScopes
+    else
+      LScopes := TMCPScopeList.Merge(LConfig.RequiredScopes, LConfig.ScopesSupported);
+
     LResponse.Code := HTTP_CODE_UNAUTHORIZED;
     LResponse.SetHeader('WWW-Authenticate',
-      BuildBearerChallenge(LConfig.Realm, LConfig.ResourceMetadata, AResult,
-        LConfig.RequiredScopes));
+      BuildBearerChallenge(LConfig.Realm, LConfig.ResourceMetadata, AResult, LScopes));
   end;
 
   procedure SendProtectedResourceMetadata;

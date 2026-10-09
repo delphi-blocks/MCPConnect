@@ -188,6 +188,8 @@ type
     procedure TestChallenge_ScopeIsOnlySentForInsufficientScope;
     [Test]
     procedure TestChallenge_OmitsTheScopeWhenNoneIsRequired;
+    [Test]
+    procedure TestChallenge_Initial401CarriesTheScopesToRequest;
   end;
 
   [TestFixture]
@@ -383,6 +385,8 @@ type
     procedure TestAddAuthorizationServer_IgnoresEmptyValues;
     [Test]
     procedure TestAddAuthorizationServer_RefusesAValueThatIsNotAUrl;
+    [Test]
+    procedure TestAddAuthorizationServer_KeepsTheTrailingSlashOut;
     [Test]
     procedure TestAddScopesSupported_RefusesASpaceDelimitedList;
     [Test]
@@ -945,6 +949,21 @@ begin
     TTokenValidationResult.Fail(TTokenValidationErrorCode.InsufficientScope, 'needs more'));
 
   Assert.IsFalse(LChallenge.Contains('scope='), LChallenge);
+end;
+
+procedure TBearerChallengeTest.TestChallenge_Initial401CarriesTheScopesToRequest;
+var
+  LChallenge: string;
+begin
+  // The initial 401 (no token yet, ErrorCode None) guides the first authorization: the
+  // MCP Scope Selection Strategy reads these scopes before the metadata's
+  // "scopes_supported", and a client that skips the fallback relies on them entirely.
+  LChallenge := BuildBearerChallenge(Realm, Metadata,
+    TTokenValidationResult.Fail(TTokenValidationErrorCode.None, ''),
+    ['mcp.read', 'mcp.write']);
+
+  Assert.IsTrue(LChallenge.Contains('scope="mcp.read mcp.write"'), LChallenge);
+  Assert.IsFalse(LChallenge.Contains('error='), LChallenge);
 end;
 
 { TDecodeOnlyTokenValidatorTest }
@@ -1839,6 +1858,19 @@ begin
 
   Assert.AreEqual(0, Length(GetOAuthConfig.AuthorizationServers),
     'A refused value must not have been registered');
+end;
+
+procedure TOAuthConfigValidationTest.TestAddAuthorizationServer_KeepsTheTrailingSlashOut;
+begin
+  // Advertised in the protected resource metadata as-is, a trailing slash would make a
+  // strict client expect an issuer that ends with it, while Keycloak publishes the
+  // realm issuer without one (RFC 8414 §3.3 compares exactly).
+  FConfig
+    .SetResource('https://mcp.example.com/mcp')
+    .AddAuthorizationServer('https://idp.example.com/realms/demo/');
+
+  Assert.AreEqual('https://idp.example.com/realms/demo',
+    GetOAuthConfig.AuthorizationServers[0]);
 end;
 
 procedure TOAuthConfigValidationTest.TestAddScopesSupported_RefusesASpaceDelimitedList;

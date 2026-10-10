@@ -1,4 +1,4 @@
-﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <PropertyGroup>
         <ProjectGuid>{D4D7C0B4-429F-49B7-ACAB-4E6BF3C4F304}</ProjectGuid>
         <ProjectVersion>20.4</ProjectVersion>
@@ -170,6 +170,7 @@
         <DCCReference Include="MCPConnect.Tests.Transport.OAuth.pas"/>
         <DCCReference Include="MCPConnect.Tests.Transport.AuthToken.pas"/>
         <DCCReference Include="MCPConnect.Tests.Transport.Headers.pas"/>
+        <DCCReference Include="MCPConnect.Tests.MCP.ToolCall.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

@@ -43,6 +43,13 @@ type
     [Context] FGC: IGarbageCollector;
 
     function GetParamName(AParam: TRttiParameter): string; virtual;
+    /// <summary>
+    ///   Neon configuration used to deserialize the arguments. It must match the
+    ///   one used to generate the input schema, otherwise member names differ
+    ///   (e.g. schema "x" vs. field "X") and structured arguments are not bound.
+    ///   nil = Neon's default configuration.
+    /// </summary>
+    function GetArgumentsNeonConfig: INeonConfiguration; virtual;
     function ArgumentsToRttiParams(AArguments: TJSONObject; const AParams: TArray<TRttiParameter>): TArray<TValue>;
 
     constructor Create(AInstance: TObject);
@@ -52,6 +59,7 @@ type
   protected
     FTool: TMCPTool;
     function GetParamName(AParam: TRttiParameter): string; override;
+    function GetArgumentsNeonConfig: INeonConfiguration; override;
     procedure ResultToTool(const AToolResult: TValue; AResult: TCallToolResult);  public
     constructor Create(AInstance: TObject; ATool: TMCPTool);
 
@@ -102,7 +110,14 @@ uses
   Logify,
   MCPConnect.Content.Writers;
 
+function TMCPInvoker.GetArgumentsNeonConfig: INeonConfiguration;
+begin
+  Result := nil;
+end;
+
 function TMCPInvoker.ArgumentsToRttiParams(AArguments: TJSONObject; const AParams: TArray<TRttiParameter>): TArray<TValue>;
+var
+  LNeonConfig: INeonConfiguration;
 
   function CastJSONValue(AParam: TRttiParameter; AValue: TJSONValue): TValue;
   begin
@@ -113,10 +128,20 @@ function TMCPInvoker.ArgumentsToRttiParams(AArguments: TJSONObject; const AParam
     end;
 
     //CheckCompatibility(AParam, AValue);
-    if AParam.ParamType.IsInstance then
-      Result := TNeon.JSONToObject(AParam.ParamType, AValue)
+    if Assigned(LNeonConfig) then
+    begin
+      if AParam.ParamType.IsInstance then
+        Result := TNeon.JSONToObject(AParam.ParamType, AValue, LNeonConfig)
+      else
+        Result := TNeon.JSONToValue(AParam.ParamType, AValue, LNeonConfig);
+    end
     else
-      Result := TNeon.JSONToValue(AParam.ParamType, AValue);
+    begin
+      if AParam.ParamType.IsInstance then
+        Result := TNeon.JSONToObject(AParam.ParamType, AValue)
+      else
+        Result := TNeon.JSONToValue(AParam.ParamType, AValue);
+    end;
   end;
 
   function CastParamValue(AParam: TRttiParameter; AValue: TValue): TValue;
@@ -132,6 +157,7 @@ var
   LParamJSON: TJSONValue;
 begin
   Result := [];
+  LNeonConfig := GetArgumentsNeonConfig;
 
   for LParam in AParams do
   begin
@@ -160,6 +186,12 @@ constructor TMCPToolInvoker.Create(AInstance: TObject; ATool: TMCPTool);
 begin
   inherited Create(AInstance);
   FTool := ATool;
+end;
+
+function TMCPToolInvoker.GetArgumentsNeonConfig: INeonConfiguration;
+begin
+  // Same configuration TMCPToolsConfig uses to write the tool's inputSchema
+  Result := FConfig.Tools.NeonConfig;
 end;
 
 function TMCPToolInvoker.GetParamName(AParam: TRttiParameter): string;
@@ -237,26 +269,32 @@ begin
 
     tkArray, tkDynArray:
     begin
-      LResBlob := TEmbeddedResourceBlob.Create;
-
       if AToolResult.TypeInfo = TypeInfo(TBytes) then
       begin
+        LResBlob := TEmbeddedResourceBlob.Create;
         LResBlob.Resource.Blob := TNetEncoding.Base64String.EncodeBytesToString(AToolResult.AsType<TBytes>);
-        LResBlob.Resource.MIMEType := 'application/octect-stream'
+        LResBlob.Resource.MIMEType := 'application/octet-stream'
       end
       else
       begin
+        // outputSchema and structuredContent are (for now) limited to a JSON Object
+        // See: https://github.com/modelcontextprotocol/php-sdk/issues/357
+        if FTool.Tags.Exists('structured') then
+          raise EMCPException.Create(SMCPStructuredContentMustBeObject);
+
+        // A JSON array is text, exactly like a serialized object: sending it as
+        // an embedded *blob* (which MCP defines as base64 data) was invalid
         var LJSON := TNeon.ValueToJSON(AToolResult, FConfig.Tools.NeonConfig);
         try
-          // outputSchema and structuredContent are (for now) limited to a JSON Object
-          // See: https://github.com/modelcontextprotocol/php-sdk/issues/357
-
-          // Check if the tool is configured to return a structured content
-          if FTool.Tags.Exists('structured') then
-            raise EMCPException.Create(SMCPStructuredContentMustBeObject);
-
-          LResBlob.Resource.MIMEType := 'application/json';
-          LResBlob.Resource.Blob := LJSON.ToJSON;
+          if FTool.Tags.Exists('embedded') then
+          begin
+            LResText := TEmbeddedResourceText.Create;
+            LResText.Resource.MIMEType := 'application/json';
+            LResText.Resource.URI := '';
+            LResText.Resource.Text := LJSON.ToJSON;
+          end
+          else
+            LText := TTextContent.CreateWithText(LJSON.ToJSON);
         finally
           LJSON.Free;
         end;

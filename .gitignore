@@ -72,3 +72,8 @@ nul
 /Demo/.env
 /Tests/Bin
 /Demo/MCPServerSession_MemoryManager_EventLog.txt
+
+# Cpp local files 
+*.o
+*.d
+*.pch

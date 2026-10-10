@@ -112,7 +112,8 @@ uses
   MCPConnect.Tests.MCP.Pagination in 'MCPConnect.Tests.MCP.Pagination.pas',
   MCPConnect.Tests.Logging.Memory in 'MCPConnect.Tests.Logging.Memory.pas',
   MCPConnect.Tests.Metrics in 'MCPConnect.Tests.Metrics.pas',
-  MCPConnect.Tests.Metrics.Otlp in 'MCPConnect.Tests.Metrics.Otlp.pas';
+  MCPConnect.Tests.Metrics.Otlp in 'MCPConnect.Tests.Metrics.Otlp.pas',
+  MCPConnect.Tests.MCP.ToolCall in 'MCPConnect.Tests.MCP.ToolCall.pas';
 
 var
   runner : ITestRunner;

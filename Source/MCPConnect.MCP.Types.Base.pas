@@ -402,7 +402,7 @@ type
     Image = 'image';
     ImagePng = 'image/png';
     ImageJpg = 'image/jpg';
-    OctectStream = 'application/octect-stream';
+    OctectStream = 'application/octet-stream';
   end;
 
   TFlatMetaClass = class

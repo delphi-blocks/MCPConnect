@@ -242,6 +242,13 @@ begin
     AHttpResponse.CustomHeaders.AddValue(LHeaderPair.Key, LHeaderPair.Value);
   end;
   AHttpResponse.ContentType := AResponse.ContentType;
+  // MCP messages are UTF-8 (SSE events are written with IndyTextEncoding_UTF8,
+  // ContentText is encoded with CharSet). Without this Indy declares, and for
+  // ContentText also encodes with, its ISO-8859-1 default for text types,
+  // which garbles every non-ASCII character.
+  if (AResponse.ContentType <> '') and
+     not AResponse.ContentType.ToLower.Contains(TMediaType.CHARSET_NAME) then
+    AHttpResponse.CharSet := TMediaType.CHARSET_UTF8;
   AHttpResponse.TransferEncoding := AResponse.TransferEncoding;
   AHttpResponse.Connection := AResponse.GetHeader('Connection');
   if AResponse.ContentType = TMediaType.TEXT_EVENT_STREAM then

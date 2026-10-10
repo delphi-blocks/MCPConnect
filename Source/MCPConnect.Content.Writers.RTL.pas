@@ -138,7 +138,7 @@ begin
   if Assigned(LMCP) then
     LBlob.MimeType := LMCP.MimeType
   else
-    LBlob.MimeType := 'application/octect-stream';
+    LBlob.MimeType := TMime.OctectStream;
 
   LBlob.Blob := LBase64;
   AContext.Result.Contents.Add(LBlob);
@@ -146,7 +146,7 @@ end;
 
 procedure TMCPStreamWriter.WriteTool(const AValue: TValue; AContext: TMCPToolContext);
 begin
-  AContext.Result.Content.AddBlob('application/octect-stream', StreamToBase64(AValue));
+  AContext.Result.Content.AddBlob(TMime.OctectStream, StreamToBase64(AValue));
 end;
 
 end.

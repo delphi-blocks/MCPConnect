@@ -216,6 +216,7 @@
         <DCCReference Include="MCPConnect.Tests.Logging.Memory.pas"/>
         <DCCReference Include="MCPConnect.Tests.Metrics.pas"/>
         <DCCReference Include="MCPConnect.Tests.Metrics.Otlp.pas"/>
+        <DCCReference Include="MCPConnect.Tests.MCP.ToolCall.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

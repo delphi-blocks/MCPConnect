@@ -406,7 +406,7 @@ object FormMCPProjectWizard: TFormMCPProjectWizard
         Left = 16
         Top = 197
         Width = 385
-        Height = 105
+        Height = 153
         BevelOuter = bvNone
         TabOrder = 3
         Visible = False
@@ -469,6 +469,32 @@ object FormMCPProjectWizard: TFormMCPProjectWizard
           TabOrder = 3
           TextHint = 'openid, email, profile'
         end
+        object CheckOAuthVerifySignature: TCheckBox
+          Left = 0
+          Top = 106
+          Width = 369
+          Height = 17
+          Hint = 
+            'Uses TJoseTokenValidator: needs the Delphi JOSE library to build ' +
+            'and the OpenSSL libraries at run time'
+          Caption = 'Verify the token signature (JOSE, needs OpenSSL)'
+          ParentShowHint = False
+          ShowHint = True
+          TabOrder = 4
+        end
+        object CheckOAuthMetadataProxy: TCheckBox
+          Left = 0
+          Top = 130
+          Width = 369
+          Height = 17
+          Hint = 
+            'Republishes the authorization server metadata locally, adding th' +
+            'e PKCE method it does not advertise (e.g. Microsoft Entra ID)'
+          Caption = 'Proxy the authorization server metadata (PKCE)'
+          ParentShowHint = False
+          ShowHint = True
+          TabOrder = 5
+        end
       end
     end
     object TabOptions: TTabSheet
@@ -487,6 +513,35 @@ object FormMCPProjectWizard: TFormMCPProjectWizard
           Width = 353
           Height = 17
           Caption = 'Create a unit with a sample tool, resource and prompt'
+          TabOrder = 0
+          OnClick = OptionChanged
+        end
+      end
+      object GroupCompatibility: TGroupBox
+        Left = 16
+        Top = 113
+        Width = 385
+        Height = 137
+        Caption = ' Compatibility '
+        TabOrder = 1
+        object LabelLegacyWarning: TLabel
+          Left = 34
+          Top = 60
+          Width = 335
+          Height = 64
+          AutoSize = False
+          Caption = 
+            'Older clients can connect, but only with a subset of the availab' +
+            'le features: every result keeps the 2026-07-28 shape and the ' +
+            'validation of the request headers and _meta is relaxed.'
+          WordWrap = True
+        end
+        object CheckLegacy: TCheckBox
+          Left = 16
+          Top = 36
+          Width = 353
+          Height = 17
+          Caption = 'Accept MCP 2025-06-18 / 2025-11-25 clients (legacy)'
           TabOrder = 0
           OnClick = OptionChanged
         end

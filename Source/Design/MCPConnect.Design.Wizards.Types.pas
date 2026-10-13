@@ -83,6 +83,25 @@ type
     OAuthTrustedIssuer: string;
     OAuthScopes: string;
 
+    /// <summary>
+    ///   Verifies the token signature against the keys of the issuer
+    ///   (TJoseTokenValidator) instead of checking the claims only
+    ///   (TClaimsTokenValidator)
+    /// </summary>
+    OAuthVerifySignature: Boolean;
+
+    /// <summary>
+    ///   Republishes the metadata of the authorization server locally, adding
+    ///   the PKCE method it may not advertise (e.g. Microsoft Entra ID)
+    /// </summary>
+    OAuthMetadataProxy: Boolean;
+
+    /// <summary>
+    ///   Answers the clients written against the previous MCP revisions too,
+    ///   with a subset of the features (IMCPLegacyConfig)
+    /// </summary>
+    LegacyCompatibility: Boolean;
+
     CreateSampleUnit: Boolean;
 
     class function CreateDefault: TMCPProjectConfig; static;
@@ -129,6 +148,11 @@ begin
   Result.AuthKind := TMCPAuthKind.None;
   Result.TokenLocation := TMCPTokenLocation.Bearer;
   Result.TokenCustomHeader := DefaultTokenCustomHeader;
+
+  Result.OAuthVerifySignature := True;
+  Result.OAuthMetadataProxy := False;
+
+  Result.LegacyCompatibility := False;
 
   Result.CreateSampleUnit := True;
 end;

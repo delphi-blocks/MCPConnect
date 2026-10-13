@@ -34,6 +34,7 @@ type
     class function ArrayLiteral(const AValue: string): string; static;
     class function IndentLines(const AText: string; ALevel: Integer): string; static;
     class function TokenLocationLiteral(ALocation: TMCPTokenLocation): string; static;
+    class function TokenValidatorClass(const AConfig: TMCPProjectConfig): string; static;
   public
     /// <summary>
     ///   Returns the MCPConnect uses entries needed by the generated
@@ -57,6 +58,11 @@ uses
 
 const
   IndentSize = 2;
+
+  // Mirror MCP_LEGACY_SUPPORTED_VERSIONS and MCP_PROTOCOL_VERSION_2026_07_28,
+  // used only in the comments of the generated code
+  LegacyRevisions = '2025-06-18 / 2025-11-25';
+  CurrentRevision = '2026-07-28';
 
 { TMCPCodeGen }
 
@@ -94,6 +100,16 @@ begin
     Assert(False, 'Unhandled MCP token location');
     Result := 'TAuthTokenLocation.Bearer';
   end;
+end;
+
+class function TMCPCodeGen.TokenValidatorClass(const AConfig: TMCPProjectConfig): string;
+begin
+  // TJoseTokenValidator adds the signature check (against the keys published
+  // by the issuer) to the claims checked by TClaimsTokenValidator
+  if AConfig.OAuthVerifySignature then
+    Result := 'TJoseTokenValidator'
+  else
+    Result := 'TClaimsTokenValidator';
 end;
 
 class function TMCPCodeGen.QuotedPascalString(const AValue: string): string;
@@ -145,9 +161,15 @@ begin
         LUnits := LUnits + ['MCPConnect.Configuration.Auth'];
 
       TMCPAuthKind.OAuth:
-        LUnits := LUnits + ['MCPConnect.Configuration.Auth', 'MCPConnect.Security.Token'];
+        if AConfig.OAuthVerifySignature then
+          LUnits := LUnits + ['MCPConnect.Configuration.Auth', 'MCPConnect.Security.Token.JOSE']
+        else
+          LUnits := LUnits + ['MCPConnect.Configuration.Auth', 'MCPConnect.Security.Token'];
     end;
   end;
+
+  if AConfig.LegacyCompatibility then
+    LUnits := LUnits + ['MCPConnect.Configuration.Legacy'];
 
   if AConfig.CreateSampleUnit and not AToolsUnit.IsEmpty then
     LUnits := LUnits + [AToolsUnit];
@@ -193,11 +215,14 @@ begin
           begin
             LCode.AppendLine('  .Plugin.Configure<IOAuthConfig>');
             LCode.AppendLine('    .SetResource(' + QuotedPascalString(AConfig.OAuthResource) + ')');
-            LCode.AppendLine('    .AddAuthorizationServer(' + QuotedPascalString(AConfig.OAuthAuthServer) + ')');
+            // The proxy registers itself as the authorization server, so it
+            // replaces AddAuthorizationServer instead of going along with it
+            if AConfig.OAuthMetadataProxy then
+              LCode.AppendLine('    .EnableMetadataProxy(' + QuotedPascalString(AConfig.OAuthAuthServer) + ')')
+            else
+              LCode.AppendLine('    .AddAuthorizationServer(' + QuotedPascalString(AConfig.OAuthAuthServer) + ')');
             LCode.AppendLine('    .AddTrustedIssuer(' + QuotedPascalString(AConfig.OAuthTrustedIssuer) + ')');
-            // Switch to TJoseTokenValidator (MCPConnect.Security.Token.JOSE) to also
-            // verify the token signature against the JWKS of the issuer
-            LCode.AppendLine('    .SetTokenValidatorClass(TClaimsTokenValidator)');
+            LCode.AppendLine('    .SetTokenValidatorClass(' + TokenValidatorClass(AConfig) + ')');
             for LScope in SplitList(AConfig.OAuthScopes) do
               LCode.AppendLine('    .AddScopesSupported(' + QuotedPascalString(LScope) + ')');
             LCode.AppendLine('  .ApplyConfig');
@@ -245,8 +270,25 @@ begin
     end;
 
     // TrimRight drops the blank line left by the last section, so that the
-    // closing semicolon sits right below it
-    Result := LCode.ToString.TrimRight + sLineBreak + '  ;';
+    // closing ApplyConfig sits right below it. ApplyConfig is not optional: it
+    // registers the protocol middleware (request headers, _meta, Origin check)
+    Result := LCode.ToString.TrimRight + sLineBreak + '  .ApplyConfig';
+
+    if AConfig.LegacyCompatibility then
+    begin
+      LCode.Clear;
+      LCode.AppendLine('');
+      LCode.AppendLine('');
+      LCode.AppendLine('  // Older clients (MCP ' + LegacyRevisions + ') can connect too, but only');
+      LCode.AppendLine('  // with a subset of the features: every result keeps the ' + CurrentRevision);
+      LCode.AppendLine('  // shape and the header/_meta validation is relaxed to Lenient');
+      LCode.AppendLine('  .Plugin.Configure<IMCPLegacyConfig>');
+      LCode.AppendLine('    .SetEnabled(True)');
+      LCode.Append('  .ApplyConfig');
+      Result := Result + LCode.ToString;
+    end;
+
+    Result := Result + ';';
     Result := IndentLines(Result, AIndent).TrimRight;
   finally
     LCode.Free;

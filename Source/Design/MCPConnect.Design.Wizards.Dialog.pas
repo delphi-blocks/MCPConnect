@@ -89,10 +89,15 @@ type
     EditOAuthIssuer: TEdit;
     LabelOAuthScopes: TLabel;
     EditOAuthScopes: TEdit;
+    CheckOAuthVerifySignature: TCheckBox;
+    CheckOAuthMetadataProxy: TCheckBox;
 
     TabOptions: TTabSheet;
     GroupSamples: TGroupBox;
     CheckSamples: TCheckBox;
+    GroupCompatibility: TGroupBox;
+    CheckLegacy: TCheckBox;
+    LabelLegacyWarning: TLabel;
 
     TabSummary: TTabSheet;
     MemoSummary: TMemo;
@@ -148,7 +153,7 @@ resourcestring
   STitleSecurity = 'Security';
   SHintSecurity = 'Cross origin policy and authentication of incoming requests.';
   STitleOptions = 'Options';
-  SHintOptions = 'Sample code.';
+  SHintOptions = 'Sample code and compatibility with older clients.';
   STitleSummary = 'Summary';
   SHintSummary = 'Review the choices, then press Finish to create the project.';
 
@@ -262,8 +267,11 @@ begin
   EditOAuthAuthServer.Text := FConfig.OAuthAuthServer;
   EditOAuthIssuer.Text := FConfig.OAuthTrustedIssuer;
   EditOAuthScopes.Text := FConfig.OAuthScopes;
+  CheckOAuthVerifySignature.Checked := FConfig.OAuthVerifySignature;
+  CheckOAuthMetadataProxy.Checked := FConfig.OAuthMetadataProxy;
 
   CheckSamples.Checked := FConfig.CreateSampleUnit;
+  CheckLegacy.Checked := FConfig.LegacyCompatibility;
 
   UpdateControlsState;
   UpdateNavigation;
@@ -297,8 +305,11 @@ begin
   FConfig.OAuthAuthServer := Trim(EditOAuthAuthServer.Text);
   FConfig.OAuthTrustedIssuer := Trim(EditOAuthIssuer.Text);
   FConfig.OAuthScopes := Trim(EditOAuthScopes.Text);
+  FConfig.OAuthVerifySignature := CheckOAuthVerifySignature.Checked;
+  FConfig.OAuthMetadataProxy := CheckOAuthMetadataProxy.Checked;
 
   FConfig.CreateSampleUnit := CheckSamples.Checked;
+  FConfig.LegacyCompatibility := CheckLegacy.Checked;
 end;
 
 function TFormMCPProjectWizard.SelectedAppKind: TMCPAppKind;
@@ -588,12 +599,20 @@ begin
             LLines.Add('  auth server . : ' + FConfig.OAuthAuthServer);
             LLines.Add('  issuer  . . . : ' + OrNone(FConfig.OAuthTrustedIssuer));
             LLines.Add('  scopes  . . . : ' + OrNone(FConfig.OAuthScopes));
+            if FConfig.OAuthVerifySignature then
+              LLines.Add('  validator . . : TJoseTokenValidator (signature verified)')
+            else
+              LLines.Add('  validator . . : TClaimsTokenValidator (claims only)');
+            LLines.Add('  metadata proxy: ' + OnOff(FConfig.OAuthMetadataProxy));
           end;
       end;
     end;
 
     LLines.Add('');
     LLines.Add('Sample unit . . : ' + OnOff(FConfig.CreateSampleUnit));
+    LLines.Add('Legacy clients  : ' + OnOff(FConfig.LegacyCompatibility));
+    if FConfig.LegacyCompatibility then
+      LLines.Add('  (subset of the features only)');
   finally
     LLines.EndUpdate;
   end;

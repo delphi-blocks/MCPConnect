@@ -3,9 +3,9 @@
 MCPConnect ships a small, interface based metrics subsystem - `MCPConnect.Metrics` - for
 collecting measurements with one-liners and harvesting them later. It is deliberately modelled
 on [OpenTelemetry](https://opentelemetry.io/docs/specs/otel/metrics/) and deliberately limited to
-metrics: there is no OTLP, no traces, no wire protocol. Measurements accumulate in process,
-thread safely, and are read back through a typed snapshot (`Collect`) or pushed to exporters
-(`Harvest`).
+metrics: no traces, and no wire protocol of its own - the core accumulates in process, thread
+safely, and is read back through a typed snapshot (`Collect`) or pushed to exporters
+(`Harvest`), one of which speaks OTLP/HTTP and the rest are samples to read or copy.
 
 This document explains:
 
@@ -542,8 +542,16 @@ ordinary VCL frame, all controls in the DFM, so the screen can be edited in the 
 - **Cardinality is bounded per instrument**, not per label key: 128 distinct label sets by default
   (configurable, `0` = unbounded). Watch `DroppedSeries` when labels carry unbounded values
   such as user or tenant ids.
-- **No OTLP/HTTP exporters ship.** `IMetricExporter` is the integration point; the JSON
-  exporter gives you a wire-ready document to push anywhere.
+- **OTLP/HTTP is one unit away.** `MCPConnect.Metrics.Exporters.Otlp` posts each harvest to a
+  collector as an OTLP `ExportMetricsServiceRequest` (cumulative temporality, so a failed POST
+  loses nothing), configured directly or from the `OTEL_*` variables. It never lets a network
+  failure out: the failure is counted, kept in `LastError` and reported to `OnError`, and after
+  one the next attempt waits 5 s, 10 s, 20 s ... up to 5 minutes (`Backoff`, on by default)
+  rather than reconnecting on every harvest. Set `Async` to move the POST onto the exporter's own
+  thread, which is what a host that harvests from a UI timer or a request wants: with it off the
+  POST runs on the harvest thread and blocks it for up to `Timeout`. `IMetricExporter` remains the
+  integration point for anything else; the JSON exporter gives you a wire-ready document to push
+  anywhere.
 - **Recording is cheap but not free** - a lock plus label normalization per call. For extremely
   hot loops, cache the instrument and keep label arrays short.
 

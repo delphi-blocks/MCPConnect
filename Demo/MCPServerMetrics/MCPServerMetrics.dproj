@@ -1,7 +1,7 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <PropertyGroup>
         <ProjectGuid>{11908C65-090B-44CE-A0C3-2380E6A5B2DB}</ProjectGuid>
-        <ProjectVersion>20.4</ProjectVersion>
+        <ProjectVersion>20.5</ProjectVersion>
         <FrameworkType>VCL</FrameworkType>
         <Base>True</Base>
         <Config Condition="'$(Config)'==''">Debug</Config>
@@ -131,15 +131,18 @@
             <MainSource>MainSource</MainSource>
         </DelphiCompile>
         <DCCReference Include="Server.Config.pas"/>
-        <DCCReference Include="Server.Middleware.pas"/>
         <DCCReference Include="Server.Tools.pas"/>
+        <DCCReference Include="Server.Middleware.pas"/>
         <DCCReference Include="Server.Dashboard.pas">
             <Form>FrameDashboard</Form>
             <FormType>dfm</FormType>
+            <DesignClass>TFrameMetricsDashboard</DesignClass>
         </DCCReference>
-        <DCCReference Include="Server.Metrics.Features.pas"/>
-        <DCCReference Include="Server.Metrics.Middleware.pas"/>
         <DCCReference Include="Server.Metrics.pas"/>
+        <DCCReference Include="Server.Metrics.Document.pas"/>
+        <DCCReference Include="Server.Metrics.Features.pas"/>
+        <DCCReference Include="Server.Metrics.Http.pas"/>
+        <DCCReference Include="Server.Metrics.Middleware.pas"/>
         <DCCReference Include="Server.Form.Main.pas">
             <Form>frmMain</Form>
             <FormType>dfm</FormType>

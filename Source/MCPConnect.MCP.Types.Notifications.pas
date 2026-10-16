@@ -102,7 +102,9 @@ type
     function OnSubscription(const AId: string): TMCPNotificationParams; overload;
     function OnSubscription(AId: Int64): TMCPNotificationParams; overload;
 
-    /// <summary>Renders the params. The caller owns the result.</summary>
+    /// <summary>
+    ///   Renders the params. The caller owns the result.
+    /// </summary>
     function ToJSON: TJSONObject;
   end;
 
@@ -125,7 +127,9 @@ type
     /// </summary>
     [NeonInclude(IncludeIf.NotEmpty)] RequestId: TJSONValue;
 
-    /// <summary>An optional human-readable reason for the cancellation.</summary>
+    /// <summary>
+    ///   An optional human-readable reason for the cancellation.
+    /// </summary>
     Reason: NullString;
   public
     destructor Destroy; override;
@@ -152,10 +156,14 @@ type
     /// </summary>
     Progress: Double;
 
-    /// <summary>Total units of work, if known.</summary>
+    /// <summary>
+    ///   Total units of work, if known.
+    /// </summary>
     Total: NullDouble;
 
-    /// <summary>An optional message describing the current step.</summary>
+    /// <summary>
+    ///   An optional message describing the current step.
+    /// </summary>
     Message: NullString;
   public
     destructor Destroy; override;
@@ -175,10 +183,14 @@ type
   /// </summary>
   TLoggingMessageNotificationParams = class(TMCPNotificationParams)
   public
-    /// <summary>REQUIRED. The severity of this message.</summary>
+    /// <summary>
+    ///   REQUIRED. The severity of this message.
+    /// </summary>
     Level: TMCPLogLevel;
 
-    /// <summary>An optional name for the logger issuing the message.</summary>
+    /// <summary>
+    ///   An optional name for the logger issuing the message.
+    /// </summary>
     Logger: NullString;
 
     /// <summary>
@@ -190,10 +202,14 @@ type
     constructor Create; override;
     destructor Destroy; override;
 
-    /// <summary>Sets Data to a plain string message.</summary>
+    /// <summary>
+    ///   Sets Data to a plain string message.
+    /// </summary>
     procedure SetData(const AMessage: string); overload;
 
-    /// <summary>Sets Data to AValue, taking ownership of it.</summary>
+    /// <summary>
+    ///   Sets Data to AValue, taking ownership of it.
+    /// </summary>
     procedure SetData(AValue: TJSONValue); overload;
   end;
 
@@ -285,6 +301,12 @@ type
     FKnown: Boolean;
     FLast: Double;
     FStarted: Boolean;
+
+    /// <summary>
+    ///   Whether AProgress may be reported: it has to be larger than the last
+    ///   one, which is what the specification requires of the sequence.
+    /// </summary>
+    function Advance(AProgress: Double): Boolean;
   public
     constructor Create(AQueue: TMCPMessageQueue);
     destructor Destroy; override;
@@ -311,17 +333,15 @@ type
     /// </summary>
     function Known: Boolean;
 
-    /// <summary>Reports progress with no known total.</summary>
+    /// <summary>
+    ///   Reports progress with no known total.
+    /// </summary>
     procedure Report(AProgress: Double); overload;
 
-    /// <summary>Reports progress out of ATotal, with an optional message.</summary>
-    procedure Report(AProgress, ATotal: Double; const AMessage: string = ''); overload;
-  private
     /// <summary>
-    ///   Whether AProgress may be reported: it has to be larger than the last
-    ///   one, which is what the specification requires of the sequence.
+    ///   Reports progress out of ATotal, with an optional message.
     /// </summary>
-    function Advance(AProgress: Double): Boolean;
+    procedure Report(AProgress, ATotal: Double; const AMessage: string = ''); overload;
   end;
 
   /// <summary>
@@ -396,17 +416,17 @@ type
     /// </summary>
     function Level: TMCPLogLevel;
 
-    /// <summary>Logs AMessage at ALevel, if the request asked for it.</summary>
-    procedure Log(ALevel: TMCPLogLevel; const AMessage: string;
-      const ALogger: string = ''); overload;
+    /// <summary>
+    ///   Logs AMessage at ALevel, if the request asked for it.
+    /// </summary>
+    procedure Log(ALevel: TMCPLogLevel; const AMessage: string; const ALogger: string = ''); overload;
 
     /// <summary>
     ///   Logs AData at ALevel, if the request asked for it. AData is owned by
     ///   this call either way: it is freed when the message is dropped, and
     ///   handed to the notification when it is not.
     /// </summary>
-    procedure Log(ALevel: TMCPLogLevel; AData: TJSONValue;
-      const ALogger: string = ''); overload;
+    procedure Log(ALevel: TMCPLogLevel; AData: TJSONValue; const ALogger: string = ''); overload;
   end;
 
 implementation

@@ -47,7 +47,32 @@
 ///   counted, kept in LastError and reported to OnError, since an exception
 ///   out of an exporter would stop Harvest from reaching the exporters after it
 ///   and from resetting. Harvests must not run concurrently on one exporter.
-///   The POST runs on the harvest thread and blocks it for up to Timeout.
+///
+///   ## When the collector is not there
+///
+///   Two behaviours exist for the endpoint that is down, because a dead
+///   collector is a normal thing for a metrics pipeline to live with:
+///
+///   * **Backoff** (on by default): after a failed export the next attempt waits
+///     5 s, then 10, 20 ... up to 5 minutes, and a success clears it. A
+///     connection that cannot be established comes with no Retry-After, so
+///     without this the exporter would reconnect on every harvest and report the
+///     same failure each time. Skips are counted in SkippedCount and are not
+///     reported - the failure that started the wait already was. Tune it with
+///     BackoffBaseMs / MaxBackoffMs, or turn it off with Backoff := False.
+///   * **Async** (off by default): with Async set, the POST runs on a thread of
+///     the exporter's own and Harvest returns as soon as the body is built, so a
+///     collector that is slow - or one whose address blackholes the connection
+///     for the whole timeout - cannot hold up the thread that harvests. That
+///     thread is the UI thread in a VCL host and a request thread in a web host,
+///     which is why a host that harvests on a timer, or from a request, wants
+///     Async on. Only the newest body waits while a POST is in flight
+///     (DroppedCount counts the ones replaced, and they carry nothing the newer
+///     one does not), and Flush waits for the queue to drain when a caller wants
+///     the result before reading the counters.
+///
+///   The synchronous default keeps the counting immediate: with Async off, the
+///   counters already describe the attempt when Export returns.
 /// </summary>
 unit MCPConnect.Metrics.Exporters.Otlp;
 
@@ -95,6 +120,21 @@ const
   /// </summary>
   OTLP_MAX_RETRY_AFTER = 3600;
 
+  /// <summary>
+  ///   First delay after a failed export, when the connect-failure backoff is on:
+  ///   the next attempt is not made before it has elapsed. Each further failure
+  ///   doubles it, up to OTLP_MAX_BACKOFF_MS. A success clears it.
+  /// </summary>
+  OTLP_DEFAULT_BACKOFF_MS = 5000;
+
+  /// <summary>
+  ///   Longest gap between attempts. A collector that is down tends to stay down
+  ///   for a while, and retrying a dead endpoint on every harvest costs a connect
+  ///   attempt, a warning line and - on a blackholed address rather than a
+  ///   refused one - a full timeout each time.
+  /// </summary>
+  OTLP_MAX_BACKOFF_MS = 300000;
+
 type
   /// <summary>
   ///   Raised on configuration errors (never on a failed export).
@@ -139,6 +179,26 @@ type
   public
     function Post(const AUrl: string; const AHeaders: TArray<TOtlpHeader>;
       const ABody: TBytes; ATimeoutMs: Integer): TOtlpHttpResponse;
+  end;
+
+  /// <summary>
+  ///   One body waiting to be POSTed, when the exporter runs its delivery on its
+  ///   own thread (Async). Built by the harvest, sent by TOtlpExportWorker.
+  /// </summary>
+  /// <remarks>
+  ///   Exposed only because a private field of the exporter has to name it; it is
+  ///   not part of the exporter's interface and a host never touches one.
+  /// </remarks>
+  TOtlpPendingExport = class
+  public
+    Url: string;
+    Headers: TArray<TOtlpHeader>;
+    Body: TBytes;
+    /// <summary>The harvest time this body was taken at, for the data point times.</summary>
+    Time: TDateTime;
+    TimeoutMs: Integer;
+    constructor Create(const AUrl: string; const AHeaders: TArray<TOtlpHeader>;
+      const ABody: TBytes; const ATime: TDateTime; ATimeoutMs: Integer);
   end;
 
   { OTLP entities -------------------------------------------------------------
@@ -291,16 +351,58 @@ type
     FSentCount: Int64;
     FFailedCount: Int64;
     FSkippedCount: Int64;
+    FDroppedCount: Int64;
     FLastError: string;
+
+    // Delivery: synchronous on the caller's thread, or handed to FWorker.
+    FAsync: Boolean;
+    FWorker: TThread;
+    FWorkerSignal: TEvent;
+    FPending: TOtlpPendingExport;
+    FPosting: Boolean;
+
+    // Connect-failure backoff.
+    FBackoff: Boolean;
+    FBackoffBaseMs: Integer;
+    FMaxBackoffMs: Integer;
+    FConsecutiveFailures: Integer;
 
     function Accumulate(const APoints: TArray<TMetricPoint>; AReset: Boolean): TArray<TMetricPoint>;
     function BuildHeaders: TArray<TOtlpHeader>;
     function HandleResponse(const AUrl: string; const AResponse: TOtlpHttpResponse; const ATime: TDateTime): string;
-    function RecordFailure(const AMessage: string): string;
+    /// <summary>
+    ///   Records a failed export and, when the backoff is on, pushes the next
+    ///   attempt out: 5 s, 10 s, 20 s ... capped. Returns AMessage, so a caller
+    ///   can hand it straight to NotifyError.
+    /// </summary>
+    function ScheduleFailure(const AMessage: string; const ANow: TDateTime): string;
+    /// <summary>
+    ///   Sends one body on the calling thread and handles the answer. Never
+    ///   raises: a transport failure comes back as the message.
+    /// </summary>
+    function SendNow(const AUrl: string; const AHeaders: TArray<TOtlpHeader>;
+      const ABody: TBytes; const ATime: TDateTime; ATimeoutMs: Integer): string;
+    /// <summary>
+    ///   Hands a built body to the sender: on this thread, or to the delivery
+    ///   thread when Async is set. Returns the error message in the first case,
+    ///   '' in the second (the worker reports its own).
+    /// </summary>
+    function Deliver(const AUrl: string; const AHeaders: TArray<TOtlpHeader>;
+      const ABody: TBytes; const ATime: TDateTime; ATimeoutMs: Integer): string;
+    procedure EnsureWorker;
+    procedure StopWorker;
+    /// <summary>Nudges the delivery thread: a body is waiting.</summary>
+    procedure WakeWorker;
+    /// <summary>Takes the pending body, marking a POST as in flight. Called by the worker.</summary>
+    function TakePending: TOtlpPendingExport;
+    /// <summary>True while a body is queued or being POSTed.</summary>
+    function HasWork: Boolean;
     procedure NotifyError(const AMessage: string);
     function GetSentCount: Int64;
     function GetFailedCount: Int64;
     function GetSkippedCount: Int64;
+    function GetDroppedCount: Int64;
+    function GetConsecutiveFailures: Integer;
     function GetLastError: string;
     function GetHeaders: TArray<TOtlpHeader>;
     function GetResourceAttributes: TArray<TMetricLabel>;
@@ -366,12 +468,51 @@ type
     property DefaultScopeName: string read FDefaultScope write FDefaultScope;
 
     /// <summary>
-    ///   Called on the harvest thread with the description of a failed or
-    ///   partially rejected export. An exception it raises is swallowed.
+    ///   Called with the description of a failed or partially rejected export.
+    ///   With Async off that is the harvest thread; with Async on it is the
+    ///   exporter's delivery thread, so a handler must be thread safe (logging
+    ///   is). An exception it raises is swallowed either way.
     /// </summary>
     property OnError: TProc<string> read FOnError write FOnError;
     property Headers: TArray<TOtlpHeader> read GetHeaders;
     property ResourceAttributes: TArray<TMetricLabel> read GetResourceAttributes;
+
+    /// <summary>
+    ///   When True the POST runs on a thread of the exporter's own and Export
+    ///   returns as soon as the body is built: a collector that is slow, or
+    ///   absent, cannot hold up the thread that harvests - which in a VCL host is
+    ///   the UI thread, and in a web host may be a request thread.
+    /// </summary>
+    /// <remarks>
+    ///   Off by default, which keeps the documented behaviour (the POST runs on
+    ///   the harvest thread) and the counting synchronous: after Export the
+    ///   counters already describe the attempt. With it on, only the most recent
+    ///   body is kept while one is in flight - bodies are cumulative snapshots,
+    ///   so the newest one carries everything the older one did - and
+    ///   <see cref="Flush"/> waits for the queue to drain when a caller does want
+    ///   the result (an on-demand "push now" button, a test, a shutdown).
+    /// </remarks>
+    property Async: Boolean read FAsync write FAsync;
+
+    /// <summary>
+    ///   After a failed export, wait before trying the collector again: 5 s at
+    ///   first, doubling per consecutive failure up to 5 minutes, cleared by a
+    ///   success. On by default.
+    /// </summary>
+    /// <remarks>
+    ///   A connection that cannot be established is not answered with a
+    ///   Retry-After, so without this the exporter retries on every harvest and
+    ///   reports the same failure each time. Skips are counted in
+    ///   <see cref="SkippedCount"/> and are not reported to OnError: the failure
+    ///   that started the wait already was.
+    /// </remarks>
+    property Backoff: Boolean read FBackoff write FBackoff;
+
+    /// <summary>First backoff delay in milliseconds. Default OTLP_DEFAULT_BACKOFF_MS.</summary>
+    property BackoffBaseMs: Integer read FBackoffBaseMs write FBackoffBaseMs;
+
+    /// <summary>Longest backoff delay in milliseconds. Default OTLP_MAX_BACKOFF_MS.</summary>
+    property MaxBackoffMs: Integer read FMaxBackoffMs write FMaxBackoffMs;
 
     /// <summary>
     ///   Exports the collector accepted (partially or not).
@@ -384,11 +525,29 @@ type
     property FailedCount: Int64 read GetFailedCount;
 
     /// <summary>
-    ///   Harvests not sent because a Retry-After had not elapsed.
+    ///   Harvests not sent because a Retry-After, or the connect-failure
+    ///   backoff, had not elapsed yet.
     /// </summary>
     property SkippedCount: Int64 read GetSkippedCount;
 
+    /// <summary>
+    ///   Queued bodies replaced before they were sent, because a newer one
+    ///   arrived while the previous POST was still in flight (Async only).
+    ///   Nothing is lost: every body is a cumulative snapshot.
+    /// </summary>
+    property DroppedCount: Int64 read GetDroppedCount;
+
+    /// <summary>Failures in a row, reset by an accepted export.</summary>
+    property ConsecutiveFailures: Integer read GetConsecutiveFailures;
+
     property LastError: string read GetLastError;
+
+    /// <summary>
+    ///   Waits until nothing is queued or in flight, or the timeout elapses
+    ///   (ATimeoutMs &lt;= 0 uses Timeout). True when the queue drained in time.
+    ///   With Async off there is nothing to wait for and it returns True.
+    /// </summary>
+    function Flush(ATimeoutMs: Integer = 0): Boolean;
   end;
 
 /// <summary>
@@ -423,6 +582,7 @@ uses
   System.TypInfo,
   System.DateUtils,
   System.ZLib,
+  System.TimeSpan,
   System.Generics.Defaults,
   System.Net.URLClient,
   System.Net.HttpClient,
@@ -825,6 +985,84 @@ begin
   end;
 end;
 
+{ TOtlpPendingExport ------------------------------------------------------- }
+
+constructor TOtlpPendingExport.Create(const AUrl: string; const AHeaders: TArray<TOtlpHeader>;
+  const ABody: TBytes; const ATime: TDateTime; ATimeoutMs: Integer);
+begin
+  inherited Create;
+  Url := AUrl;
+  Headers := AHeaders;
+  Body := ABody;
+  Time := ATime;
+  TimeoutMs := ATimeoutMs;
+end;
+
+{ TOtlpExportWorker --------------------------------------------------------
+
+  The thread an async exporter delivers on. One per exporter, created the first
+  time a body is handed over, and stopped by the exporter's destructor: it takes
+  a pending body, POSTs it, and handles the answer, so the harvest never waits on
+  the network. It never lets an exception out - a thread nobody watches is the
+  worst place for one, and SendNow already turns failures into messages. }
+
+type
+  TOtlpExportWorker = class(TThread)
+  private
+    FExporter: TOtlpMetricExporter;
+    FSignal: TEvent;
+  protected
+    procedure Execute; override;
+  public
+    constructor Create(const AExporter: TOtlpMetricExporter; const ASignal: TEvent);
+  end;
+
+constructor TOtlpExportWorker.Create(const AExporter: TOtlpMetricExporter; const ASignal: TEvent);
+begin
+  // Created *running*, and deliberately not "Create(True) then Start": the RTL
+  // starts a thread that was created running from TThread.AfterConstruction,
+  // which runs after this constructor body - so the fields below are set before
+  // the thread can use them - whereas calling Start here leaves FCreateSuspended
+  // cleared, and AfterConstruction then tries to resume a thread that is already
+  // running and raises EThread "Cannot call Start on a running or suspended
+  // thread".
+  inherited Create(False);
+  FreeOnTerminate := False;
+  FExporter := AExporter;
+  FSignal := ASignal;
+end;
+
+procedure TOtlpExportWorker.Execute;
+var
+  LPending: TOtlpPendingExport;
+  LError: string;
+begin
+  while not Terminated do
+  begin
+    // A timeout as well as the signal: a wake-up that arrives while the thread
+    // is between two bodies is not lost, because the queue is checked again
+    // after every wait.
+    FSignal.WaitFor(1000);
+    if Terminated then
+      Break;
+
+    LPending := FExporter.TakePending;
+    while (LPending <> nil) and not Terminated do
+    begin
+      try
+        LError := FExporter.SendNow(LPending.Url, LPending.Headers, LPending.Body,
+          LPending.Time, LPending.TimeoutMs);
+        if LError <> '' then
+          FExporter.NotifyError(LError);
+      except
+        // Nothing may leave this thread: see the comment above.
+      end;
+      LPending.Free;
+      LPending := FExporter.TakePending;
+    end;
+  end;
+end;
+
 { TOtlpMetricExporter ------------------------------------------------------ }
 
 constructor TOtlpMetricExporter.Create(const AEndpoint: string);
@@ -846,17 +1084,114 @@ begin
     FSender := TOtlpHttpClientSender.Create;
   FDefaultScope := OTLP_DEFAULT_SCOPE;
   FTimeout := OTLP_DEFAULT_TIMEOUT;
+  FBackoff := True;
+  FBackoffBaseMs := OTLP_DEFAULT_BACKOFF_MS;
+  FMaxBackoffMs := OTLP_MAX_BACKOFF_MS;
   AddResourceAttribute('service.name',
     'unknown_service:' + ChangeFileExt(ExtractFileName(ParamStr(0)), ''));
 end;
 
 destructor TOtlpMetricExporter.Destroy;
 begin
+  // The worker first: it reads FPending, FSender and the counters, so it has to
+  // be gone before any of them are.
+  StopWorker;
+
+  if Assigned(FPending) then
+    FreeAndNil(FPending);
+
   FSeries.Free;
   FResource.Free;
   FHeaders.Free;
   FLock.Free;
   inherited;
+end;
+
+procedure TOtlpMetricExporter.EnsureWorker;
+begin
+  FLock.Enter;
+  try
+    if not Assigned(FWorkerSignal) then
+      FWorkerSignal := TEvent.Create(nil, False, False, '');
+    if not Assigned(FWorker) then
+      FWorker := TOtlpExportWorker.Create(Self, FWorkerSignal);
+  finally
+    FLock.Leave;
+  end;
+end;
+
+procedure TOtlpMetricExporter.StopWorker;
+begin
+  FLock.Enter;
+  try
+    if Assigned(FWorker) then
+    begin
+      FWorker.Terminate;
+      if Assigned(FWorkerSignal) then
+        FWorkerSignal.SetEvent;
+    end;
+  finally
+    FLock.Leave;
+  end;
+
+  if Assigned(FWorker) then
+  begin
+    // Bounded by the POST timeout: the worker may be inside one POST, and it
+    // finishes that before it notices the termination.
+    FWorker.WaitFor;
+    FreeAndNil(FWorker);
+  end;
+
+  if Assigned(FWorkerSignal) then
+    FreeAndNil(FWorkerSignal);
+end;
+
+function TOtlpMetricExporter.TakePending: TOtlpPendingExport;
+begin
+  FLock.Enter;
+  try
+    Result := FPending;
+    FPending := nil;
+    FPosting := Result <> nil;
+  finally
+    FLock.Leave;
+  end;
+end;
+
+function TOtlpMetricExporter.HasWork: Boolean;
+begin
+  FLock.Enter;
+  try
+    Result := FPosting or (FPending <> nil);
+  finally
+    FLock.Leave;
+  end;
+end;
+
+function TOtlpMetricExporter.Flush(ATimeoutMs: Integer): Boolean;
+var
+  LDeadline: UInt64;
+begin
+  if not FAsync then
+    Exit(True);
+  if ATimeoutMs <= 0 then
+    ATimeoutMs := FTimeout;
+  LDeadline := TThread.GetTickCount64 + UInt64(ATimeoutMs);
+
+  while HasWork do
+  begin
+    if TThread.GetTickCount64 >= LDeadline then
+      Exit(False);
+    Sleep(5);
+  end;
+
+  Result := True;
+end;
+
+procedure TOtlpMetricExporter.WakeWorker;
+begin
+  if Assigned(FWorkerSignal) then
+    FWorkerSignal.SetEvent;
 end;
 
 class function TOtlpMetricExporter.FromEnvironment: TOtlpMetricExporter;
@@ -1077,12 +1412,12 @@ var
   LBody: TBytes;
   LUrl: string;
   LTimeout: Integer;
-  LSender: IOtlpHttpSender;
   LSend: Boolean;
   LError: string;
 begin
   LError := '';
-  LSend := False;
+  // LSend is assigned inside the try below before it is read - on the one path
+  // that reads it - so it needs no initial value here.
   LTimeout := 0;
   try
     FLock.Enter;
@@ -1092,6 +1427,9 @@ begin
       LSend := Length(LPoints) > 0;
       if LSend and (FRetryNotBefore > 0) and (AInfo.Time < FRetryNotBefore) then
       begin
+        // Either a Retry-After from the collector or the wait this exporter put
+        // between attempts after a failure. Counted, and deliberately not
+        // reported: whoever asked for the wait already heard about the failure.
         Inc(FSkippedCount);
         LSend := False;
       end;
@@ -1104,20 +1442,65 @@ begin
         LHeaders := BuildHeaders;
         LUrl := FEndpoint;
         LTimeout := FTimeout;
-        LSender := FSender;
       end;
     finally
       FLock.Leave;
     end;
 
-    // The network call runs outside the lock, so the statistics stay readable
+    // Outside the lock - and, with Async, on the exporter's own thread - so the
+    // statistics stay readable and the caller never waits on the network.
     if LSend then
-      LError := HandleResponse(LUrl, LSender.Post(LUrl, LHeaders, LBody, LTimeout), AInfo.Time);
+      LError := Deliver(LUrl, LHeaders, LBody, AInfo.Time, LTimeout);
   except
     on E: Exception do
-      LError := RecordFailure(Format('OTLP export to %s failed: %s', [FEndpoint, E.Message]));
+      LError := ScheduleFailure(Format('OTLP export to %s failed: %s', [FEndpoint, E.Message]),
+        TTimeZone.Local.ToUniversalTime(Now));
   end;
-  NotifyError(LError);
+
+  if not FAsync then
+    NotifyError(LError);
+end;
+
+function TOtlpMetricExporter.SendNow(const AUrl: string; const AHeaders: TArray<TOtlpHeader>;
+  const ABody: TBytes; const ATime: TDateTime; ATimeoutMs: Integer): string;
+begin
+  try
+    Result := HandleResponse(AUrl, FSender.Post(AUrl, AHeaders, ABody, ATimeoutMs), ATime);
+  except
+    on E: Exception do
+      Result := ScheduleFailure(Format('OTLP export to %s failed: %s', [AUrl, E.Message]),
+        TTimeZone.Local.ToUniversalTime(Now));
+  end;
+end;
+
+function TOtlpMetricExporter.Deliver(const AUrl: string; const AHeaders: TArray<TOtlpHeader>;
+  const ABody: TBytes; const ATime: TDateTime; ATimeoutMs: Integer): string;
+var
+  LPending: TOtlpPendingExport;
+begin
+  if not FAsync then
+    Exit(SendNow(AUrl, AHeaders, ABody, ATime, ATimeoutMs));
+
+  EnsureWorker;
+  LPending := TOtlpPendingExport.Create(AUrl, AHeaders, ABody, ATime, ATimeoutMs);
+
+  FLock.Enter;
+  try
+    // One slot: a body built while the previous POST is still in flight replaces
+    // it. The bodies are cumulative snapshots, so the newer one carries
+    // everything the older one did and nothing is lost by dropping it.
+    if Assigned(FPending) then
+    begin
+      FreeAndNil(FPending);
+      Inc(FDroppedCount);
+    end;
+    FPending := LPending;
+  finally
+    FLock.Leave;
+  end;
+
+  WakeWorker;
+  Result := '';
 end;
 
 function TOtlpMetricExporter.HandleResponse(const AUrl: string;
@@ -1126,6 +1509,7 @@ var
   LJson, LPartial, LValue: TJSONValue;
   LRejected, LMessage, LBody: string;
   LSeconds: Integer;
+  LRetryAt: TDateTime;
 begin
   Result := '';
 
@@ -1162,7 +1546,10 @@ begin
     FLock.Enter;
     try
       Inc(FSentCount);
+      // The collector answered, so whatever went wrong before is over: the wait
+      // between attempts starts from scratch if it goes wrong again.
       FRetryNotBefore := 0;
+      FConsecutiveFailures := 0;
       if Result <> '' then
         FLastError := Result;
     finally
@@ -1174,27 +1561,53 @@ begin
   LBody := AResponse.Body;
   if Length(LBody) > 200 then
     LBody := LBody.Substring(0, 200) + '...';
-  Result := RecordFailure(Format('OTLP export to %s answered HTTP %d: %s',
-    [AUrl, AResponse.StatusCode, LBody]));
+  Result := ScheduleFailure(Format('OTLP export to %s answered HTTP %d: %s',
+    [AUrl, AResponse.StatusCode, LBody]), ATime);
 
-  // Only the delta-seconds form; an HTTP-date is rare enough to ignore
+  // Only the delta-seconds form; an HTTP-date is rare enough to ignore. Taken
+  // together with the backoff the failure already scheduled: whichever asks for
+  // the longer wait wins.
   if TryStrToInt(AResponse.RetryAfter.Trim, LSeconds) and (LSeconds > 0) then
   begin
     FLock.Enter;
     try
-      FRetryNotBefore := IncSecond(ATime, System.Math.Min(LSeconds, OTLP_MAX_RETRY_AFTER));
+      LRetryAt := IncSecond(ATime, System.Math.Min(LSeconds, OTLP_MAX_RETRY_AFTER));
+      if LRetryAt > FRetryNotBefore then
+        FRetryNotBefore := LRetryAt;
     finally
       FLock.Leave;
     end;
   end;
 end;
 
-function TOtlpMetricExporter.RecordFailure(const AMessage: string): string;
+function TOtlpMetricExporter.ScheduleFailure(const AMessage: string; const ANow: TDateTime): string;
+var
+  LDelayMs: Integer;
+  LSteps: Integer;
 begin
   FLock.Enter;
   try
     Inc(FFailedCount);
     FLastError := AMessage;
+
+    if FBackoff then
+    begin
+      Inc(FConsecutiveFailures);
+
+      // 5 s, 10 s, 20 s ... capped. The exponent is walked rather than shifted
+      // so that a long outage cannot overflow its way back to a short wait.
+      LDelayMs := FBackoffBaseMs;
+      LSteps := 0;
+      while (LSteps < FConsecutiveFailures - 1) and (LDelayMs < FMaxBackoffMs) do
+      begin
+        LDelayMs := LDelayMs * 2;
+        Inc(LSteps);
+      end;
+      if (LDelayMs > FMaxBackoffMs) or (LDelayMs <= 0) then
+        LDelayMs := FMaxBackoffMs;
+
+      FRetryNotBefore := IncMilliSecond(ANow, LDelayMs);
+    end;
   finally
     FLock.Leave;
   end;
@@ -1237,6 +1650,26 @@ begin
   FLock.Enter;
   try
     Result := FSkippedCount;
+  finally
+    FLock.Leave;
+  end;
+end;
+
+function TOtlpMetricExporter.GetDroppedCount: Int64;
+begin
+  FLock.Enter;
+  try
+    Result := FDroppedCount;
+  finally
+    FLock.Leave;
+  end;
+end;
+
+function TOtlpMetricExporter.GetConsecutiveFailures: Integer;
+begin
+  FLock.Enter;
+  try
+    Result := FConsecutiveFailures;
   finally
     FLock.Leave;
   end;

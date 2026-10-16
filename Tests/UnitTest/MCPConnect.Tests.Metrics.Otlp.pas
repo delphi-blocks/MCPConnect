@@ -17,7 +17,7 @@ interface
 
 uses
   System.SysUtils, System.Classes, System.JSON, System.DateUtils,
-  System.Generics.Collections,
+  System.Generics.Collections, System.SyncObjs,
   DUnitX.TestFramework,
 
   MCPConnect.Metrics,
@@ -31,6 +31,8 @@ type
   TFakeOtlpSender = class(TInterfacedObject, IOtlpHttpSender)
   public
     Calls: Integer;
+    /// <summary>POSTs that have started, whether or not they have finished.</summary>
+    Entered: Integer;
     LastUrl: string;
     LastHeaders: TArray<TOtlpHeader>;
     LastBody: TBytes;
@@ -41,6 +43,10 @@ type
     RetryAfter: string;
     /// <summary>When not empty, Post raises with this message.</summary>
     RaiseMessage: string;
+    /// <summary>When assigned, Post waits on it: an async test's handbrake.</summary>
+    Gate: TEvent;
+    /// <summary>Milliseconds each Post spends inside, for the drop test.</summary>
+    DelayMs: Integer;
     constructor Create;
     destructor Destroy; override;
     function Post(const AUrl: string; const AHeaders: TArray<TOtlpHeader>;
@@ -125,6 +131,37 @@ type
     procedure TestPlainExport_SendsWithoutHarvestInfo();
   end;
 
+  /// <summary>
+  ///   Delivery when the collector is not there: the async worker (the POST off
+  ///   the harvest thread) and the connect-failure backoff.
+  /// </summary>
+  [TestFixture]
+  TMetricsOtlpDeliveryTest = class(TObject)
+  private
+    FProvider: IMeterProvider;
+    FSender: TFakeOtlpSender;
+    FSenderRef: IOtlpHttpSender;
+    FExporter: TOtlpMetricExporter;
+    FExporterRef: IMetricExporter;
+    FGate: TEvent;
+    function LastDoc: TJSONObject;
+    function LastSum: Double;
+  public
+    [Setup]
+    procedure Setup();
+    [TearDown]
+    procedure TearDown();
+
+    [Test]
+    procedure TestAsync_ExportReturnsBeforeThePost();
+    [Test]
+    procedure TestAsync_KeepsOnlyTheNewestPendingBody();
+    [Test]
+    procedure TestBackoff_SkipsUntilItElapses();
+    [Test]
+    procedure TestBackoff_ResetsOnSuccess();
+  end;
+
   /// <summary>TOtlpMetricExporter.FromEnvironment.</summary>
   [TestFixture]
   TMetricsOtlpEnvironmentTest = class(TObject)
@@ -155,6 +192,13 @@ uses
 
 const
   METRIC_PATH = 'resourceMetrics[0].scopeMetrics[0].metrics[0]';
+
+  /// <summary>
+  ///   How long a gated fake POST waits for its test to let it through: long
+  ///   enough that a slow machine does not fail the test, short enough that a
+  ///   forgotten gate does not hang the suite.
+  /// </summary>
+  GATE_TIMEOUT_MS = 15000;
 
 function MakePoint(const AMeter, AName: string; AKind: TMetricKind;
   const ALabels: array of string; ACount: Int64; ASum, AMin, AMax, ALast: Double): TMetricPoint;
@@ -240,10 +284,20 @@ var
   LOutput: TBytesStream;
   LUnzip: TZDecompressionStream;
 begin
-  Inc(Calls);
+  // Entered counts arrivals, Calls completions: an async test can tell "the
+  // worker has not got there yet" from "the worker is inside Post, waiting".
+  Inc(Entered);
   LastUrl := AUrl;
   LastHeaders := AHeaders;
   LastBody := ABody;
+
+  if Assigned(Gate) then
+    Gate.WaitFor(GATE_TIMEOUT_MS);
+
+  if DelayMs > 0 then
+    Sleep(DelayMs);
+
+  Inc(Calls);
 
   if RaiseMessage <> '' then
     raise Exception.Create(RaiseMessage);
@@ -442,6 +496,11 @@ begin
   FSenderRef := FSender;
   FExporter := TOtlpMetricExporter.Create('http://collector:4318/v1/metrics', FSenderRef);
   FExporterRef := FExporter;
+  // The delivery assertions in this fixture are deliberately synchronous: after
+  // Harvest they read the counters, which only describe the attempt once it has
+  // been made. The async path has its own fixture below, and the backoff its own
+  // tests (the tests that fail an export twice need it off).
+  FExporter.Async := False;
   FProvider.AddExporter(FExporterRef);
 end;
 
@@ -654,6 +713,9 @@ begin
     begin
       LReported := AMessage;
     end;
+  // This test fails once and succeeds immediately after: the backoff, which
+  // would hold the second attempt back, is the subject of its own tests.
+  FExporter.Backoff := False;
   FSender.RaiseMessage := 'connection refused';
   FProvider.GetMeter('m').Counter('c').Add(2);
 
@@ -726,6 +788,139 @@ begin
 
   Assert.AreEqual(1, FSender.Calls);
   Assert.AreEqual(Double(5), CounterSum(0), 0.0001);
+end;
+
+{ TMetricsOtlpDeliveryTest }
+
+procedure TMetricsOtlpDeliveryTest.Setup();
+begin
+  FProvider := TMetrics.CreateProvider;
+  FSender := TFakeOtlpSender.Create;
+  FSenderRef := FSender;
+  FExporter := TOtlpMetricExporter.Create('http://collector:4318/v1/metrics', FSenderRef);
+  FExporterRef := FExporter;
+  FProvider.AddExporter(FExporterRef);
+end;
+
+procedure TMetricsOtlpDeliveryTest.TearDown();
+begin
+  // Let a POST still in flight finish before the objects it touches go away.
+  if Assigned(FExporter) then
+    FExporter.Flush(5000);
+
+  FGate.Free;
+  FGate := nil;
+  FSender.Gate := nil;
+  FProvider := nil;
+  FExporterRef := nil;
+  FExporter := nil;
+  FSenderRef := nil;
+  FSender := nil;
+end;
+
+function TMetricsOtlpDeliveryTest.LastDoc: TJSONObject;
+begin
+  Result := ParseObject(FSender.Texts[FSender.Texts.Count - 1]);
+end;
+
+function TMetricsOtlpDeliveryTest.LastSum: Double;
+var
+  LDoc: TJSONObject;
+begin
+  LDoc := LastDoc;
+  try
+    Result := LDoc.GetValue<Double>(METRIC_PATH + '.sum.dataPoints[0].asDouble');
+  finally
+    LDoc.Free;
+  end;
+end;
+
+procedure TMetricsOtlpDeliveryTest.TestAsync_ExportReturnsBeforeThePost();
+begin
+  // A gate the test opens by hand: until then the POST is inside the worker,
+  // which is what makes "the harvest did not wait for it" observable rather
+  // than a matter of timing.
+  FGate := TEvent.Create(nil, True, False, '');
+  FSender.Gate := FGate;
+  FExporter.Async := True;
+
+  FProvider.GetMeter('m').Counter('c').Add(1);
+  FProvider.Harvest(False);
+
+  Assert.AreEqual(Int64(0), FExporter.SentCount, 'the harvest does not wait for the POST');
+  Assert.IsFalse(FExporter.Flush(200), 'the queue is still busy while the POST is held');
+
+  FGate.SetEvent;
+
+  Assert.IsTrue(FExporter.Flush(5000), 'the queue drains once the POST may run');
+  Assert.AreEqual(Int64(1), FExporter.SentCount);
+  Assert.AreEqual(1, FSender.Calls);
+  Assert.AreEqual(Double(1), LastSum, 0.0001);
+end;
+
+procedure TMetricsOtlpDeliveryTest.TestAsync_KeepsOnlyTheNewestPendingBody();
+begin
+  FExporter.Async := True;
+  // The first POST takes its time, so the two harvests behind it queue up.
+  FSender.DelayMs := 300;
+
+  FProvider.GetMeter('m').Counter('c').Add(1);
+  FProvider.Harvest(False);
+  Sleep(50);
+
+  FProvider.GetMeter('m').Counter('c').Add(1);
+  FProvider.Harvest(False);
+  FProvider.GetMeter('m').Counter('c').Add(1);
+  FProvider.Harvest(False);
+
+  Assert.IsTrue(FExporter.Flush(10000), 'the queue drains');
+
+  // How many of the three bodies actually went is timing; what matters is that
+  // dropping one loses nothing, because every body is a cumulative snapshot.
+  Assert.IsTrue(FSender.Calls >= 1, 'at least the first body was sent');
+  Assert.IsTrue(FExporter.DroppedCount >= 1, 'a queued body was replaced, not queued forever');
+  Assert.AreEqual(Double(3), LastSum, 0.0001,
+    'the body that went last carries all three recordings');
+end;
+
+procedure TMetricsOtlpDeliveryTest.TestBackoff_SkipsUntilItElapses();
+begin
+  FExporter.BackoffBaseMs := 60000;   // longer than this test can last
+
+  FSender.RaiseMessage := 'connection refused';
+  FProvider.GetMeter('m').Counter('c').Add(1);
+  FProvider.Harvest(False);
+
+  Assert.AreEqual(Int64(1), FExporter.FailedCount);
+  Assert.AreEqual(1, FSender.Entered);
+  Assert.AreEqual(1, FExporter.ConsecutiveFailures);
+
+  // The collector is back, but the exporter is waiting: no attempt, and the
+  // skip is counted rather than reported.
+  FSender.RaiseMessage := '';
+  FProvider.Harvest(False);
+
+  Assert.AreEqual(1, FSender.Entered, 'no second attempt inside the backoff');
+  Assert.AreEqual(Int64(1), FExporter.SkippedCount);
+  Assert.AreEqual(Int64(0), FExporter.SentCount);
+end;
+
+procedure TMetricsOtlpDeliveryTest.TestBackoff_ResetsOnSuccess();
+begin
+  FExporter.BackoffBaseMs := 1;
+
+  FSender.RaiseMessage := 'connection refused';
+  FProvider.GetMeter('m').Counter('c').Add(1);
+  FProvider.Harvest(False);
+  Assert.AreEqual(1, FExporter.ConsecutiveFailures);
+
+  FSender.RaiseMessage := '';
+  Sleep(20);
+
+  FProvider.Harvest(False);
+
+  Assert.AreEqual(Int64(1), FExporter.SentCount, 'the attempt happens once the wait is over');
+  Assert.AreEqual(0, FExporter.ConsecutiveFailures, 'and a success clears the run');
 end;
 
 { TMetricsOtlpEnvironmentTest }

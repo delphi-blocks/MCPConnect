@@ -672,7 +672,7 @@ begin
     try
       LOtlp := CreateOtlpExporter;
       FOtlpAttached := True;
-      FExporterLines.Add('otlp           - TOtlpMetricExporter, POST to ' + LOtlp.Endpoint);
+      FExporterLines.Add('otlp           - TOtlpMetricExporter, async POST to ' + LOtlp.Endpoint);
     except
       on E: Exception do
         Logger.Log('[metrics] OTLP exporter not attached: ' + E.Message, TLogLevel.Error);
@@ -974,6 +974,14 @@ begin
   FOtlpExporter := Result;
   if GetEnvironmentVariable('OTEL_SERVICE_NAME') = '' then
     Result.AddResourceAttribute('service.name', 'mcpconnect-metrics-demo');
+
+  // The harvest this exporter rides on runs from a VCL timer, i.e. on the UI
+  // thread, and the POST is synchronous by default with a 10 s timeout. Async
+  // moves the POST to the exporter's own thread, so an unreachable collector
+  // costs a warning line rather than a frozen window; the running totals are
+  // still folded on the harvest thread, so the numbers do not change.
+  Result.Async := True;
+
   Result.OnError :=
     procedure(AMessage: string)
     begin
@@ -1011,12 +1019,18 @@ begin
   // harvest info counts as "no reset", so the running totals stay exact.
   FOtlp.Export(LPoints);
 
+  // The exporter delivers on its own thread (Async above), and this call is a
+  // "push now, tell me what happened" - so wait for the queue to drain before
+  // reading the counters. It blocks this thread for at most the POST timeout,
+  // which is what the button asked for.
+  FOtlpExporter.Flush;
+
   if FOtlpExporter.SentCount > LSent then
     LOutcome := 'accepted by the collector'
   else if FOtlpExporter.FailedCount > LFailed then
     LOutcome := 'FAILED - ' + FOtlpExporter.LastError
   else if FOtlpExporter.SkippedCount > LSkipped then
-    LOutcome := 'skipped - the collector asked to retry later (Retry-After)'
+    LOutcome := 'skipped - waiting before the next attempt (Retry-After or backoff)'
   else
     LOutcome := 'nothing to send - no series recorded yet';
 
@@ -1031,6 +1045,12 @@ begin
     Format('  result          : %s', [LOutcome]) + sLineBreak +
     Format('  sent / failed   : %d / %d since the exporter was created',
       [FOtlpExporter.SentCount, FOtlpExporter.FailedCount]) + sLineBreak +
+    Format('  waiting         : %d skip(s), %d consecutive failure(s)',
+      [FOtlpExporter.SkippedCount, FOtlpExporter.ConsecutiveFailures]) + sLineBreak +
+    sLineBreak +
+    'The POST runs on the exporter''s own thread, so an unreachable collector' + sLineBreak +
+    'cannot hold up this one; after a failure the exporter waits 5 s, then 10,' + sLineBreak +
+    'then 20 ... before trying again.' + sLineBreak +
     sLineBreak +
     'Counters and histograms are sent as cumulative totals: the exporter keeps' + sLineBreak +
     'its own running total, so the delta harvests that reset the provider do not' + sLineBreak +
@@ -1187,30 +1207,41 @@ begin
     '7. Cardinality and isolation' + sLineBreak +
     '   metrics_cardinality builds a private provider with a budget of 8 series and' + sLineBreak +
     '   shows DroppedSeries; metrics_separate_provider proves two providers never mix' + sLineBreak +
-    '   even when instrument names collide.';
+    '   even when instrument names collide.' + sLineBreak +
+    sLineBreak +
+    '8. The same numbers without MCP at all' + sLineBreak +
+    '   GET /metrics answers an ordinary JSON document over plain HTTP (see' + sLineBreak +
+    '   Server.Metrics.Http.pas), which is what the Vite + Vue dashboard in' + sLineBreak +
+    '   WebDashboard/ polls. It carries a fold of its own, so its counters stay' + sLineBreak +
+    '   monotonic across the 30 s Harvest(True) this demo runs.';
 end;
 
 function TServerMetrics.AboutText: string;
 begin
   Result :=
-    'IndyMetrics - the MCPConnect telemetry showcase' + sLineBreak +
+    'MCPServerMetrics - the MCPConnect telemetry showcase' + sLineBreak +
     StringOfChar('=', 74) + sLineBreak +
     sLineBreak +
-    'This demo is the Indy flavour of the MCP server demo, extended into a tour of' + sLineBreak +
-    'MCPConnect.Metrics. The server itself is the shared one (MCPServer.Config);' + sLineBreak +
-    'everything metrics-specific lives in:' + sLineBreak +
+    'This is the MCPConnect metrics demo, extended into a tour of' + sLineBreak +
+    'MCPConnect.Metrics. The server definition is shared; everything' + sLineBreak +
+    'metrics-specific lives next to it:' + sLineBreak +
     sLineBreak +
-    '  MCPServerIndy.Metrics.pas            instruments, exporters, reports, demos' + sLineBreak +
-    '  MCPServerIndy.Metrics.Middleware.pas protocol telemetry as middleware' + sLineBreak +
-    '  MCPServerIndy.Metrics.Features.pas   MCP tools/resource/prompt over the data' + sLineBreak +
-    '  MCPServerIndy.Dashboard.pas          the tabs and the live grid' + sLineBreak +
+    '  Server.Config.pas              what the server exposes (name, security, tools)' + sLineBreak +
+    '  Server.Metrics.pas             instruments, exporters, reports, demos' + sLineBreak +
+    '  Server.Metrics.Middleware.pas  protocol telemetry as middleware' + sLineBreak +
+    '  Server.Metrics.Features.pas    MCP tools/resource/prompt over the data' + sLineBreak +
+    '  Server.Metrics.Document.pas    the fold and the rollups, shared by both dashboards' + sLineBreak +
+    '  Server.Metrics.Http.pas        GET /metrics, plain JSON for a browser' + sLineBreak +
+    '  Server.Dashboard.pas           the VCL dashboard (the tabs and the live grid)' + sLineBreak +
+    '  WebDashboard/                  the Vite + Vue dashboard that polls /metrics' + sLineBreak +
+    '  WebStencils/                   this page: WebBroker + WebStencils, no build step' + sLineBreak +
     sLineBreak +
     'Start the server, call the todo tools from any MCP client (or press Simulate' + sLineBreak +
-    'workload) and watch the Metrics tab. metrics.jsonl and metrics.log next to the' + sLineBreak +
-    '.exe hold the same harvests for a collector to pick up.' + sLineBreak +
+    'workload on the Metrics tab) and watch the numbers move here and there.' + sLineBreak +
+    'metrics.jsonl and metrics.log next to the .exe hold the same harvests.' + sLineBreak +
     sLineBreak +
-    'Read Docs/metrics.md for the reference and Demo/MCPServer/IndyMetrics/README.md' + sLineBreak +
-    'for the guided tour.';
+    'Read Docs/metrics.md for the reference, Demo/MCPServerMetrics/README.md for the' + sLineBreak +
+    'guided tour, and the two dashboards'' own READMEs for how each renders it.';
 end;
 
 { API demonstrations ------------------------------------------------------- }

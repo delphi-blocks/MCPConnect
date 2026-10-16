@@ -26,12 +26,16 @@ unit Server.Form.Main;
   Point an MCP client at it (MCPJam Inspector, LM Studio, or Claude Desktop
   through 'npx mcp-remote http://localhost:8080/').
 
-  The metrics showcase lives in four units next to this one:
+  The metrics showcase lives in five units next to this one:
 
     Server.Metrics.pas             instruments, exporters, reports
     Server.Metrics.Middleware.pas  protocol telemetry from the chain
     Server.Metrics.Features.pas    tools, resource and prompt over it
+    Server.Metrics.Http.pas        GET /metrics, plain JSON for a browser
     Server.Dashboard.pas           the tabbed dashboard (a design-time frame)
+
+  Beyond MCP, the server also answers GET /metrics on the same port: an ordinary
+  JSON document, no protocol, which is what WebDashboard/ (Vite + Vue) polls.
 
   On top of the todo tools shared with the other flavours, the client also gets
   metrics_snapshot, metrics_snapshot_json, metrics_instrument, metrics_slowest,
@@ -56,7 +60,8 @@ uses
   MCPConnect.Metrics,
   MCPConnect.Transport.Indy,
 
-  Server.Dashboard;
+  Server.Dashboard,
+  Server.Metrics.Http;
 
 type
   TfrmMain = class(TForm)
@@ -207,6 +212,12 @@ begin
     TPath.Combine(TPath.GetAppPath, 'metrics.log')]), TLogLevel.Debug);
   Logger.Log(Format('Perf: [PERF] measurements captured in memory, report written to %s', [
     PerfReportFileName]), TLogLevel.Debug);
+
+  // The plain-HTTP endpoint the web dashboard polls. It answers on the same
+  // socket as the MCP endpoint, since Indy routes by nothing at all: the path
+  // is the middleware's business, not the transport's.
+  Logger.Log(Format('HTTP: http://localhost:%s%s serves the metrics as plain JSON (no MCP)', [
+    EditPort.Text, TMetricsHttpMiddleware.METRICS_PATH]), TLogLevel.Debug);
 end;
 
 procedure TfrmMain.RegisterMetricsFeatures;
@@ -215,6 +226,12 @@ begin
   // tools/call by tool name. Added with the observability priority the class
   // declares, so it sits inside whatever the shared config registered.
   FServer.MCPServer.Middleware.Add(TMetricsMCPMiddleware);
+
+  // The plain-HTTP half: GET /metrics, answered by a transport middleware, so a
+  // browser dashboard can poll the numbers without speaking MCP at all. Its own
+  // priority puts it inside CORS and outside the static-token gate - see
+  // Server.Metrics.Http.
+  FServer.MCPServer.Middleware.Add(TMetricsHttpMiddleware);
 
   // The features that put the snapshot back on the wire. They are registered
   // here rather than in MCPServer.Config so the shared server definition stays

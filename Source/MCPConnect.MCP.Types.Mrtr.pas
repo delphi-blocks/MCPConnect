@@ -45,14 +45,17 @@ type
   ///   Controls tool selection behavior for sampling requests.
   /// </summary>
   TToolChoiceMode = (
+
     /// <summary>
     ///   Model decides whether to use tools (default)
     /// </summary>
     Auto,
+
     /// <summary>
     ///   Model MUST use at least one tool before completing.
     /// </summary>
     Required,
+
     /// <summary>
     ///   Model MUST NOT use any tools.
     /// </summary>
@@ -71,18 +74,18 @@ type
   public
 
     /// <summary>
-    /// Must be "tool_use".
+    ///   Must be "tool_use".
     /// </summary>
-    [NeonProperty('type')]
-    &Type: string;
+    [NeonProperty('type')] &Type: string;
 
     /// <summary>
-    /// ID is a unique identifier for this tool use, used to match tool results to their corresponding tool uses.
+    ///   ID is a unique identifier for this tool use, used to match tool
+    ///   results to their corresponding tool uses.
     /// </summary>
     Id: string;
 
     /// <summary>
-    /// Name is the name of the tool to call.
+    ///   Name is the name of the tool to call.
     /// </summary>
     Name: string;
 
@@ -107,18 +110,18 @@ type
   public
 
     /// <summary>
-    /// Must be "tool_result".
+    ///   Must be "tool_result".
     /// </summary>
     &Type: string;
 
     /// <summary>
-    /// ToolUseID is the ID of the tool use this result corresponds to.
-    /// This MUST match the ID from a previous ToolUseContent.
+    ///   ToolUseID is the ID of the tool use this result corresponds to. This
+    ///   MUST match the ID from a previous ToolUseContent.
     /// </summary>
     ToolUseId: string;
 
     /// <summary>
-    /// Content is the unstructured result content of the tool use.
+    ///   Content is the unstructured result content of the tool use.
     /// </summary>
     Content: TContentList;
 
@@ -134,7 +137,7 @@ type
     StructuredContent: TJSONObject;
 
     /// <summary>
-    /// Whether the tool use resulted in an error.
+    ///   Whether the tool use resulted in an error.
     /// </summary>
     IsError: NullBoolean;
   public
@@ -220,7 +223,9 @@ type
     /// </summary>
     [NeonIgnore] FBlocks: TObjectDictionary<Integer, TMetaClass>;
 
-    /// <summary>Block AIndex of Content, or nil when there is no such block.</summary>
+    /// <summary>
+    ///   Block AIndex of Content, or nil when there is no such block.
+    /// </summary>
     function BlockAt(AIndex: Integer): TJSONObject;
 
     /// <summary>
@@ -463,21 +468,31 @@ type
   /// </summary>
   TInputRequest = class
   public
-    // Method is the JSON-RPC method of this request: one of the MCP_INPUT_*
-    // constants. It selects which of the typed fields below is populated.
+    /// <summary>
+    ///   Method is the JSON-RPC method of this request: one of the MCP_INPUT_*
+    ///   constants. It selects which of the typed fields below is populated.
+    /// </summary>
     [NeonIgnore] Method: string;
 
-    // Elicitation holds the params of an elicitation/create input request.
+    /// <summary>
+    ///   Elicitation holds the params of an elicitation/create input request.
+    /// </summary>
     [NeonIgnore] Elicitation: TElicitRequestParams;
 
-    // Sampling holds the params of a sampling/createMessage input request.
+    /// <summary>
+    ///   Sampling holds the params of a sampling/createMessage input request.
+    /// </summary>
     [NeonIgnore] Sampling: TCreateMessageRequestParams;
 
-    // Roots holds the params of a roots/list input request.
+    /// <summary>
+    ///   Roots holds the params of a roots/list input request.
+    /// </summary>
     [NeonIgnore] Roots: TListRootsParams;
 
-    // raw preserves the original JSON so that a response can be round-tripped
-    // and decoded against the method of the request it answers.
+    /// <summary>
+    ///   Raw preserves the original JSON so that a response can be
+    ///   round-tripped and decoded against the method of the request.
+    /// </summary>
     [NeonUnwrapped] Raw: TJSONValue;
   public
     destructor Destroy; override;
@@ -519,13 +534,19 @@ type
   /// </example>
   TInputRequests = class(TObjectDictionary<string, TInputRequest>)
   public
-    /// <summary>Asks the client to collect input from the user.</summary>
+    /// <summary>
+    ///   Asks the client to collect input from the user.
+    /// </summary>
     function AddElicitation(const AKey: string; AParams: TElicitRequestParams): TInputRequest;
 
-    /// <summary>Asks the client to sample an LLM.</summary>
+    /// <summary>
+    ///   Asks the client to sample an LLM.
+    /// </summary>
     function AddSampling(const AKey: string; AParams: TCreateMessageRequestParams): TInputRequest;
 
-    /// <summary>Asks the client for its list of roots.</summary>
+    /// <summary>
+    ///   Asks the client for its list of roots.
+    /// </summary>
     function AddRoots(const AKey: string): TInputRequest;
 
     /// <summary>
@@ -547,17 +568,25 @@ type
   /// </remarks>
   TInputResponse = class
 
-    // Elicitation answers an elicitation/create input request.
+    /// <summary>
+    ///   Elicitation answers an elicitation/create input request.
+    /// </summary>
     [NeonIgnore] Elicitation: TElicitResult;
 
-    // Sampling answers a sampling/createMessage input request.
+    /// <summary>
+    ///   Sampling answers a sampling/createMessage input request.
+    /// </summary>
     [NeonIgnore] Sampling: TCreateMessageResult;
 
-    // Roots answers a roots/list input request.
+    /// <summary>
+    ///   Roots answers a roots/list input request.
+    /// </summary>
     [NeonIgnore] Roots: TListRootsResult;
 
-    // Raw preserves the original JSON so that a response can be round-tripped
-    // and decoded against the method of the request it answers.
+    /// <summary>
+    ///   Raw preserves the original JSON so that a response can be
+    ///   round-tripped and decoded against the method of the request.
+    /// </summary>
     [NeonUnwrapped] Raw: TJSONValue;
   public
     destructor Destroy; override;
@@ -568,10 +597,14 @@ type
     /// </summary>
     function AsElicitation: TElicitResult;
 
-    /// <summary>Decodes Raw as the answer to a "sampling/createMessage".</summary>
+    /// <summary>
+    ///   Decodes Raw as the answer to a "sampling/createMessage".
+    /// </summary>
     function AsSampling: TCreateMessageResult;
 
-    /// <summary>Decodes Raw as the answer to a "roots/list".</summary>
+    /// <summary>
+    ///   Decodes Raw as the answer to a "roots/list".
+    /// </summary>
     function AsRoots: TListRootsResult;
   end;
 
@@ -582,7 +615,9 @@ type
   /// </summary>
   TInputResponses = class(TObjectDictionary<string, TInputResponse>)
   public
-    /// <summary>The response stored under AKey, or nil.</summary>
+    /// <summary>
+    ///   The response stored under AKey, or nil.
+    /// </summary>
     function Find(const AKey: string): TInputResponse;
 
     /// <summary>
@@ -590,10 +625,14 @@ type
     /// </summary>
     function ElicitationFor(const AKey: string): TElicitResult;
 
-    /// <summary>The sampling answer under AKey, or nil.</summary>
+    /// <summary>
+    ///   The sampling answer under AKey, or nil.
+    /// </summary>
     function SamplingFor(const AKey: string): TCreateMessageResult;
 
-    /// <summary>The roots answer under AKey, or nil.</summary>
+    /// <summary>
+    ///   The roots answer under AKey, or nil.
+    /// </summary>
     function RootsFor(const AKey: string): TListRootsResult;
   end;
 
@@ -709,8 +748,6 @@ begin
   Roots.Free;
   inherited;
 end;
-
-
 
 { TToolUseContent }
 

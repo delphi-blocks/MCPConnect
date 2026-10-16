@@ -36,6 +36,8 @@ uses
   MCPConnect.MCP.Types.Prompts,
   MCPConnect.MCP.Types.Resources,
   MCPConnect.MCP.Types.Completion,
+  MCPConnect.MCP.Types.Notifications,
+  MCPConnect.MCP.Types.Subscriptions,
   MCPConnect.MCP.Attributes,
   MCPConnect.MCP.Authorization,
   MCPConnect.MCP.Response,
@@ -102,6 +104,7 @@ type
   TMCPSecurityConfig = class;
   TMCPMessageHandlingConfig = class;
   TMCPCompletionsConfig = class;
+  TMCPSubscriptionsConfig = class;
 
   /// <summary>
   ///   Primary configuration interface for Model Context Protocol (MCP) servers.
@@ -193,6 +196,13 @@ type
     ///   Argument-completion configuration (the "completion/complete" request)
     /// </summary>
     function Completions: TMCPCompletionsConfig;
+
+    /// <summary>
+    ///   Notification-subscription state and publishers: the live
+    ///   "subscriptions/listen" streams, and the four ways application code
+    ///   raises a change for them.
+    /// </summary>
+    function Subscriptions: TMCPSubscriptionsConfig;
   end;
 
   /// <summary>
@@ -694,6 +704,12 @@ type
 
     procedure WriteTool(ATool: TMCPTool);
 
+    /// <summary>
+    ///   The body of RegisterClass, which runs inside a batch so that the class
+    ///   is announced to the subscriptions once rather than once per method.
+    /// </summary>
+    procedure RegisterClassNow(AClass: TClass);
+
     procedure EndTool(AConfig: TMCPToolConfig);
   public
     Registry: TMCPToolRegistry;
@@ -801,6 +817,11 @@ type
   TMCPPromptsConfig = class(TMCPBaseConfig)
   private
     procedure WritePrompt(APrompt: TMCPPrompt);
+
+    /// <summary>
+    ///   The body of RegisterClass, run inside a batch. See TMCPToolsConfig.
+    /// </summary>
+    procedure RegisterClassNow(AClass: TClass);
   public
     Registry: TMCPPromptRegistry;
 
@@ -942,6 +963,11 @@ type
     procedure RegisterUIMethod(AClass: TClass; AMethod: TRttiMethod; AAttr: MCPAppUIAttribute);
     procedure RegisterResMethod(AClass: TClass; AMethod: TRttiMethod; AAttr: MCPResourceAttribute);
     procedure RegisterTplMethod(AClass: TClass; AMethod: TRttiMethod; AAttr: MCPTemplateAttribute);
+
+    /// <summary>
+    ///   The body of RegisterClass, run inside a batch. See TMCPToolsConfig.
+    /// </summary>
+    procedure RegisterClassNow(AClass: TClass);
   public
     constructor Create(AConfig: IMCPConfig);
     destructor Destroy; override;
@@ -1157,6 +1183,144 @@ type
   end;
 
   /// <summary>
+  ///   The notification subscription state of the server, and the four
+  ///   notifications application code raises for it.
+  /// </summary>
+  /// <remarks>
+  ///   One section, two jobs, because they are two ends of one pipeline: the
+  ///   registry holds what is listening, the publishers are what speaks. What a
+  ///   publisher sends is filtered by the filter each stream was acknowledged
+  ///   with, so a caller never has to know whether anybody is listening - and
+  ///   publishing to nobody costs nothing.
+  ///
+  ///   Everything here is callable from any thread: a tool, a file watcher, a
+  ///   database trigger, or the registration methods of the Tools, Prompts and
+  ///   Resources sections, which fire the matching list_changed on their own.
+  ///
+  ///   A note on what "changed" means for a resource: ResourceUpdated is for a
+  ///   uri this server already serves, and one it does not is dropped rather
+  ///   than announced - a subscription names concrete uris, and telling a client
+  ///   about one it cannot then read is a worse answer than silence.
+  /// </remarks>
+  TMCPSubscriptionsConfig = class(TMCPBaseConfig)
+  public type
+    /// <summary>
+    ///   The three list-changed notifications, as the sections that raise them
+    ///   name them. Named "list" and not after the section: "Tools" and
+    ///   "Resources" are already declared in this unit's scope.
+    /// </summary>
+    TMCPChangedKind = (ToolsList, PromptsList, ResourcesList);
+  private
+    FRegistry: TMCPSubscriptionRegistry;
+
+    /// <summary>
+    ///   The cap a queue made by CreateQueue gets. MCP_SUBSCRIPTION_QUEUE_CAP
+    ///   unless the server says otherwise.
+    /// </summary>
+    FQueueCap: Integer;
+
+    /// <summary>
+    ///   How deep inside a registration batch this section is. See Batch.
+    /// </summary>
+    FBatchDepth: Integer;
+
+    /// <summary>
+    ///   The list_changed notifications a batch has earned so far but not yet
+    ///   sent.
+    /// </summary>
+    FPending: set of TMCPChangedKind;
+
+    procedure Publish(ANotification: TJRPCNotification);
+
+    /// <summary>
+    ///   Sends what FPending holds, then clears it. Only the outermost batch
+    ///   calls this, which is why it is not where KindDirty goes.
+    /// </summary>
+    procedure FlushPending;
+  public
+    constructor Create(AConfig: IMCPConfig);
+    destructor Destroy; override;
+
+    /// <summary>
+    ///   The server's live subscriptions. Empty until a client opens one, and
+    ///   emptied by the transport as each stream ends.
+    /// </summary>
+    property Registry: TMCPSubscriptionRegistry read FRegistry;
+
+    /// <summary>
+    ///   How many notifications one subscription's queue holds before it closes
+    ///   and the stream is ended, the client told to reconnect.
+    /// </summary>
+    /// <remarks>
+    ///   The transport reads this when it opens a stream, and the queue it then
+    ///   gives the registry is the one that is bounded - the registry holds a
+    ///   queue, it does not make one. Default MCP_SUBSCRIPTION_QUEUE_CAP.
+    /// </remarks>
+    property QueueCap: Integer read FQueueCap write FQueueCap;
+
+    /// <summary>
+    ///   A queue for one subscription, bounded by QueueCap and set to close
+    ///   rather than drop. The transport's to own, the registry's to hold.
+    /// </summary>
+    function CreateQueue: TMCPMessageQueue;
+
+    /// <summary>
+    ///   Tells every subscription that does not want AUri to say so, and every
+    ///   one that does that it should read it again.
+    /// </summary>
+    /// <remarks>
+    ///   The call to make from wherever the resource's content actually changes
+    ///   - the write that invalidates it, not the read that observes it. Sent
+    ///   under the exact uri the client subscribed to; see
+    ///   TSubscriptionFilter.WantsResource for why a sub-resource is not a
+    ///   match.
+    /// </remarks>
+    procedure ResourceUpdated(const AUri: string);
+
+    /// <summary>
+    ///   Tells every subscription that asked about the tool list that it
+    ///   changed.
+    /// </summary>
+    procedure ToolsChanged;
+
+    /// <summary>
+    ///   Tells every subscription that asked about the prompt list that it
+    ///   changed.
+    /// </summary>
+    procedure PromptsChanged;
+
+    /// <summary>
+    ///   Tells every subscription that asked about the resource list that it
+    ///   changed.
+    /// </summary>
+    procedure ResourcesChanged;
+
+    /// <summary>
+    ///   Marks a list_changed notification as owed, and raises it at the end of
+    ///   the batch in progress.
+    /// </summary>
+    /// <remarks>
+    ///   Not a millisecond-based debounce. What has to be coalesced is the
+    ///   registration of one class, which registers its methods one at a time
+    ///   and would otherwise announce a tool list it was still writing; that is
+    ///   a batch, not an interval, and a batch needs no timer.
+    /// </remarks>
+    procedure KindDirty(AKind: TMCPChangedKind);
+
+    /// <summary>
+    ///   Runs ADo as one batch: the list_changed notifications the work earns
+    ///   are sent once, when it ends, and not once per item registered.
+    /// </summary>
+    /// <remarks>
+    ///   Batches nest, and only the outermost one sends. A body that raises
+    ///   still flushes - the registrations it managed before failing are real,
+    ///   and a client that has them but was never told is the worse half of the
+    ///   two.
+    /// </remarks>
+    procedure Batch(ADo: TProc);
+  end;
+
+  /// <summary>
   ///   Main implementation of IMCPConfig, aggregating all configuration sections.
   /// </summary>
   [Implements(IMCPConfig)]
@@ -1170,6 +1334,7 @@ type
     FPrompts: TMCPPromptsConfig;
     FResources: TMCPResourcesConfig;
     FCompletions: TMCPCompletionsConfig;
+    FSubscriptions: TMCPSubscriptionsConfig;
 
     /// <summary>
     ///   Puts the two middleware that enforce the per-request contracts of the
@@ -1199,6 +1364,7 @@ type
     function Resources: TMCPResourcesConfig;
     function Completions: TMCPCompletionsConfig;
     function MessageHandling: TMCPMessageHandlingConfig;
+    function Subscriptions: TMCPSubscriptionsConfig;
     function GetConstructorProxy(const AName: string; out AProxy: TJRPCConstructorProxy): Boolean;
   end;
 
@@ -1228,6 +1394,7 @@ begin
   FPrompts := TMCPPromptsConfig.Create(Self);
   FResources := TMCPResourcesConfig.Create(Self);
   FCompletions := TMCPCompletionsConfig.Create(Self);
+  FSubscriptions := TMCPSubscriptionsConfig.Create(Self);
 end;
 
 procedure TMCPConfig.EnsureProtocolMiddleware;
@@ -1272,6 +1439,7 @@ end;
 
 destructor TMCPConfig.Destroy;
 begin
+  FSubscriptions.Free;
   FCompletions.Free;
   FPrompts.Free;
   FResources.Free;
@@ -1303,6 +1471,11 @@ end;
 function TMCPConfig.Resources: TMCPResourcesConfig;
 begin
   Result := FResources;
+end;
+
+function TMCPConfig.Subscriptions: TMCPSubscriptionsConfig;
+begin
+  Result := FSubscriptions;
 end;
 
 function TMCPConfig.Completions: TMCPCompletionsConfig;
@@ -1370,6 +1543,11 @@ begin
 
   Registry.Add(AConfig.Name, AConfig);
   Configs.Remove(AConfig);
+
+  // Committed, so it is now a fact a client should hear about. Outside a batch
+  // this is the end of one RegisterTool(...).WithParam(...).EndTool chain; inside
+  // one - RegisterClass - it waits for the class to finish registering.
+  FConfig.Subscriptions.KindDirty(TMCPSubscriptionsConfig.TMCPChangedKind.ToolsList);
 end;
 
 function TMCPToolsConfig.ListEnabled(const AFilter: TMCPToolFilterFunc): TListToolsResult;
@@ -1394,6 +1572,23 @@ begin
 end;
 
 function TMCPToolsConfig.RegisterClass(AClass: TClass): TMCPToolsConfig;
+var
+  LConfig: IMCPConfig;
+begin
+  // One class is one change to the list, however many tools it declares: the
+  // batch is what keeps a twelve-tool class from announcing a tool list it is
+  // still in the middle of writing.
+  LConfig := FConfig;
+  LConfig.Subscriptions.Batch(
+    procedure
+    begin
+      RegisterClassNow(AClass);
+    end);
+
+  Result := Self;
+end;
+
+procedure TMCPToolsConfig.RegisterClassNow(AClass: TClass);
 var
   LScope: string;
   LClassType: TRttiType;
@@ -1459,7 +1654,8 @@ begin
       raise;
     end;
   end;
-  Result := Self;
+
+  FConfig.Subscriptions.KindDirty(TMCPSubscriptionsConfig.TMCPChangedKind.ToolsList);
 end;
 
 function TMCPToolsConfig.RegisterTool(AClass: TClass;
@@ -1495,27 +1691,50 @@ begin
     raise EMCPException.CreateFmt(SToolNotFoundFmt, [AName]);
 
   Registry.Remove(AName);
+  FConfig.Subscriptions.KindDirty(TMCPSubscriptionsConfig.TMCPChangedKind.ToolsList);
   Result := Self;
 end;
 
 function TMCPToolsConfig.UnregisterClass(AClass: TClass): TMCPToolsConfig;
 var
   LNames: TArray<string>;
+  LConfig: IMCPConfig;
 begin
-  LNames := [];
-  for var pair in Registry do
-    if pair.Value.ToolClass = AClass then
-      LNames := LNames + [pair.Key];
+  LConfig := FConfig;
+  LConfig.Subscriptions.Batch(
+    procedure
+    begin
+      LNames := [];
+      for var pair in Registry do
+        if pair.Value.ToolClass = AClass then
+          LNames := LNames + [pair.Key];
 
-  for var name in LNames do
-    Registry.Remove(name);
+      for var name in LNames do
+        Registry.Remove(name);
+
+      if Length(LNames) > 0 then
+        LConfig.Subscriptions.KindDirty(TMCPSubscriptionsConfig.TMCPChangedKind.ToolsList);
+    end);
 
   Result := Self;
 end;
 
 function TMCPToolsConfig.ClearAll: TMCPToolsConfig;
+var
+  LWasEmpty: Boolean;
+  LConfig: IMCPConfig;
 begin
-  Registry.Clear;
+  LWasEmpty := Registry.Count = 0;
+  LConfig := FConfig;
+  LConfig.Subscriptions.Batch(
+    procedure
+    begin
+      Registry.Clear;
+
+      if not LWasEmpty then
+        LConfig.Subscriptions.KindDirty(TMCPSubscriptionsConfig.TMCPChangedKind.ToolsList);
+    end);
+
   Result := Self;
 end;
 
@@ -2091,12 +2310,26 @@ end;
 
 function TMCPResourcesConfig.RegisterClass(AClass: TClass): TMCPResourcesConfig;
 var
+  LConfig: IMCPConfig;
+begin
+  // One class, one change to the list: see TMCPToolsConfig.RegisterClass
+  LConfig := FConfig;
+  LConfig.Subscriptions.Batch(
+    procedure
+    begin
+      RegisterClassNow(AClass);
+    end);
+
+  Result := Self;
+end;
+
+procedure TMCPResourcesConfig.RegisterClassNow(AClass: TClass);
+var
   LClassType: TRttiType;
   LAppAttr: MCPAppUIAttribute;
   LResAttr: MCPResourceAttribute;
   LTplAttr: MCPTemplateAttribute;
 begin
-  Result := Self;
   LClassType := TRttiUtils.Context.GetType(AClass);
 
   // Registers all the Resources and UIResources found in AClass
@@ -2124,6 +2357,11 @@ begin
     end;
 
   end;
+
+  // Once for the class, inside the batch that wraps this: the three method
+  // helpers above add to the registry without announcing anything, so that
+  // registering a class is one change to the list and not one per method.
+  FConfig.Subscriptions.KindDirty(TMCPSubscriptionsConfig.TMCPChangedKind.ResourcesList);
 end;
 
 function TMCPResourcesConfig.RegisterResource(AClass: TClass; const AMethodName, AName, AUri: string;
@@ -2161,6 +2399,7 @@ begin
     raise;
   end;
 
+  FConfig.Subscriptions.KindDirty(TMCPSubscriptionsConfig.TMCPChangedKind.ResourcesList);
   Result := Self;
 end;
 
@@ -2240,6 +2479,7 @@ begin
     raise;
   end;
 
+  FConfig.Subscriptions.KindDirty(TMCPSubscriptionsConfig.TMCPChangedKind.ResourcesList);
   Result := Self;
 end;
 
@@ -2349,6 +2589,7 @@ begin
     raise;
   end;
 
+  FConfig.Subscriptions.KindDirty(TMCPSubscriptionsConfig.TMCPChangedKind.ResourcesList);
   Result := Self;
 end;
 
@@ -2358,6 +2599,7 @@ begin
     raise EMCPException.CreateFmt(SConfigResourceNotFoundFmt, [AUri]);
 
   Registry.Remove(AUri);
+  FConfig.Subscriptions.KindDirty(TMCPSubscriptionsConfig.TMCPChangedKind.ResourcesList);
   Result := Self;
 end;
 
@@ -2372,36 +2614,58 @@ begin
     raise EMCPException.CreateFmt(STemplateNotFoundFmt, [AUriTemplate]);
 
   TemplateRegistry.Remove(AUriTemplate);
+  FConfig.Subscriptions.KindDirty(TMCPSubscriptionsConfig.TMCPChangedKind.ResourcesList);
   Result := Self;
 end;
 
 function TMCPResourcesConfig.UnregisterClass(AClass: TClass): TMCPResourcesConfig;
 var
   LUris: TArray<string>;
+  LConfig: IMCPConfig;
 begin
-  LUris := [];
-  for var pair in Registry do
-    if pair.Value.ResourceClass = AClass then
-      LUris := LUris + [pair.Key];
+  LConfig := FConfig;
+  LConfig.Subscriptions.Batch(
+    procedure
+    begin
+      LUris := [];
+      for var pair in Registry do
+        if pair.Value.ResourceClass = AClass then
+          LUris := LUris + [pair.Key];
 
-  for var uri in LUris do
-    Registry.Remove(uri);
+      for var uri in LUris do
+        Registry.Remove(uri);
 
-  LUris := [];
-  for var pair in TemplateRegistry do
-    if pair.Value.ResourceClass = AClass then
-      LUris := LUris + [pair.Key];
+      LUris := [];
+      for var pair in TemplateRegistry do
+        if pair.Value.ResourceClass = AClass then
+          LUris := LUris + [pair.Key];
 
-  for var uri in LUris do
-    TemplateRegistry.Remove(uri);
+      for var uri in LUris do
+        TemplateRegistry.Remove(uri);
+
+      LConfig.Subscriptions.KindDirty(TMCPSubscriptionsConfig.TMCPChangedKind.ResourcesList);
+    end);
 
   Result := Self;
 end;
 
 function TMCPResourcesConfig.ClearAll: TMCPResourcesConfig;
+var
+  LWasEmpty: Boolean;
+  LConfig: IMCPConfig;
 begin
-  Registry.Clear;
-  TemplateRegistry.Clear;
+  LWasEmpty := (Registry.Count = 0) and (TemplateRegistry.Count = 0);
+  LConfig := FConfig;
+  LConfig.Subscriptions.Batch(
+    procedure
+    begin
+      Registry.Clear;
+      TemplateRegistry.Clear;
+
+      if not LWasEmpty then
+        LConfig.Subscriptions.KindDirty(TMCPSubscriptionsConfig.TMCPChangedKind.ResourcesList);
+    end);
+
   Result := Self;
 end;
 
@@ -2447,6 +2711,7 @@ begin
     raise;
   end;
 
+  FConfig.Subscriptions.KindDirty(TMCPSubscriptionsConfig.TMCPChangedKind.ResourcesList);
   Result := Self;
 end;
 
@@ -2535,6 +2800,21 @@ end;
 
 function TMCPPromptsConfig.RegisterClass(AClass: TClass): TMCPPromptsConfig;
 var
+  LConfig: IMCPConfig;
+begin
+  // One class, one change to the list: see TMCPToolsConfig.RegisterClass
+  LConfig := FConfig;
+  LConfig.Subscriptions.Batch(
+    procedure
+    begin
+      RegisterClassNow(AClass);
+    end);
+
+  Result := Self;
+end;
+
+procedure TMCPPromptsConfig.RegisterClassNow(AClass: TClass);
+var
   LScope: string;
   LClassType: TRttiType;
   LPromptAttr: MCPPromptAttribute;
@@ -2593,7 +2873,8 @@ begin
       raise;
     end;
   end;
-  Result := Self;
+
+  FConfig.Subscriptions.KindDirty(TMCPSubscriptionsConfig.TMCPChangedKind.PromptsList);
 end;
 
 function TMCPPromptsConfig.RegisterPrompt(AClass: TClass; const AMethodName, AName: string;
@@ -2647,6 +2928,7 @@ begin
     raise;
   end;
 
+  FConfig.Subscriptions.KindDirty(TMCPSubscriptionsConfig.TMCPChangedKind.PromptsList);
   Result := Self;
 end;
 
@@ -2667,27 +2949,50 @@ begin
     raise EMCPException.CreateFmt(SPromptNotFoundFmt, [AName]);
 
   Registry.Remove(AName);
+  FConfig.Subscriptions.KindDirty(TMCPSubscriptionsConfig.TMCPChangedKind.PromptsList);
   Result := Self;
 end;
 
 function TMCPPromptsConfig.UnregisterClass(AClass: TClass): TMCPPromptsConfig;
 var
   LNames: TArray<string>;
+  LConfig: IMCPConfig;
 begin
-  LNames := [];
-  for var pair in Registry do
-    if pair.Value.PromptClass = AClass then
-      LNames := LNames + [pair.Key];
+  LConfig := FConfig;
+  LConfig.Subscriptions.Batch(
+    procedure
+    begin
+      LNames := [];
+      for var pair in Registry do
+        if pair.Value.PromptClass = AClass then
+          LNames := LNames + [pair.Key];
 
-  for var name in LNames do
-    Registry.Remove(name);
+      for var name in LNames do
+        Registry.Remove(name);
+
+      if Length(LNames) > 0 then
+        LConfig.Subscriptions.KindDirty(TMCPSubscriptionsConfig.TMCPChangedKind.PromptsList);
+    end);
 
   Result := Self;
 end;
 
 function TMCPPromptsConfig.ClearAll: TMCPPromptsConfig;
+var
+  LWasEmpty: Boolean;
+  LConfig: IMCPConfig;
 begin
-  Registry.Clear;
+  LWasEmpty := Registry.Count = 0;
+  LConfig := FConfig;
+  LConfig.Subscriptions.Batch(
+    procedure
+    begin
+      Registry.Clear;
+
+      if not LWasEmpty then
+        LConfig.Subscriptions.KindDirty(TMCPSubscriptionsConfig.TMCPChangedKind.PromptsList);
+    end);
+
   Result := Self;
 end;
 
@@ -3088,6 +3393,120 @@ begin
       Exit(True);
 
   Result := False;
+end;
+
+{ TMCPSubscriptionsConfig }
+
+constructor TMCPSubscriptionsConfig.Create(AConfig: IMCPConfig);
+begin
+  inherited;
+  FRegistry := TMCPSubscriptionRegistry.Create;
+  FQueueCap := MCP_SUBSCRIPTION_QUEUE_CAP;
+end;
+
+destructor TMCPSubscriptionsConfig.Destroy;
+begin
+  FRegistry.Free;
+  inherited;
+end;
+
+function TMCPSubscriptionsConfig.CreateQueue: TMCPMessageQueue;
+begin
+  // CloseOnDrop is also set by TMCPSubscription.Create; setting it here means a
+  // queue made for a subscription is already the right shape before the
+  // subscription exists, which is what the transport hands to Open.
+  Result := TMCPMessageQueue.Create(FQueueCap);
+  Result.CloseOnDrop := True;
+end;
+
+procedure TMCPSubscriptionsConfig.Publish(ANotification: TJRPCNotification);
+begin
+  // The notification is built by every caller, whether or not anybody is
+  // listening: the registry is the only thing that knows who wants what, and
+  // asking it first would mean asking it twice.
+  FRegistry.Publish(ANotification);
+  ANotification.Free;
+end;
+
+procedure TMCPSubscriptionsConfig.ResourceUpdated(const AUri: string);
+begin
+  if AUri.IsEmpty then
+    Exit;
+
+  // Only a uri this server serves can have changed. A subscription names
+  // concrete uris, so one that is not registered was never subscribable, and
+  // announcing it would tell a client about something it cannot read.
+  if not Assigned(FConfig) or not Assigned(FConfig.Resources) then
+    Exit;
+
+  if not FConfig.Resources.Registry.ContainsKey(AUri) then
+    Exit;
+
+  Publish(TMCPNotification.ResourceUpdated(AUri));
+end;
+
+procedure TMCPSubscriptionsConfig.ToolsChanged;
+begin
+  Publish(TMCPNotification.ToolListChanged);
+end;
+
+procedure TMCPSubscriptionsConfig.PromptsChanged;
+begin
+  Publish(TMCPNotification.PromptListChanged);
+end;
+
+procedure TMCPSubscriptionsConfig.ResourcesChanged;
+begin
+  Publish(TMCPNotification.ResourceListChanged);
+end;
+
+procedure TMCPSubscriptionsConfig.KindDirty(AKind: TMCPChangedKind);
+begin
+  Include(FPending, AKind);
+
+  // Inside a batch the notification waits for the batch to end; outside one it
+  // goes out now, which is what makes a bare RegisterTool call on a running
+  // server behave the way it reads.
+  if FBatchDepth = 0 then
+    FlushPending;
+end;
+
+procedure TMCPSubscriptionsConfig.Batch(ADo: TProc);
+begin
+  if not Assigned(ADo) then
+    Exit;
+
+  // No save-and-restore of FPending here: what the body marks is the point of
+  // the batch, and the outermost Batch is what sends it. A nested batch only
+  // moves the boundary further out.
+  Inc(FBatchDepth);
+  try
+    ADo;
+  finally
+    Dec(FBatchDepth);
+
+    // Raised or not, the registrations the body managed are real, and a client
+    // holding them without having been told is the worse half of the two.
+    if FBatchDepth = 0 then
+      FlushPending;
+  end;
+end;
+
+procedure TMCPSubscriptionsConfig.FlushPending;
+var
+  LPending: set of TMCPChangedKind;
+begin
+  LPending := FPending;
+  FPending := [];
+
+  if TMCPChangedKind.ToolsList in LPending then
+    ToolsChanged;
+
+  if TMCPChangedKind.PromptsList in LPending then
+    PromptsChanged;
+
+  if TMCPChangedKind.ResourcesList in LPending then
+    ResourcesChanged;
 end;
 
 initialization

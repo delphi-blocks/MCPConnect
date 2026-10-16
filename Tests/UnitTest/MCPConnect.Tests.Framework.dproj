@@ -204,6 +204,7 @@
         <DCCReference Include="MCPConnect.Tests.MCP.Notifications.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Prompts.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Subscriptions.pas"/>
+        <DCCReference Include="MCPConnect.Tests.MCP.SubscriptionRegistry.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Mrtr.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.Response.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.RequestMeta.pas"/>

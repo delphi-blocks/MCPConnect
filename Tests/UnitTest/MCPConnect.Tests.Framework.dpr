@@ -100,6 +100,7 @@ uses
   MCPConnect.Tests.MCP.Notifications in 'MCPConnect.Tests.MCP.Notifications.pas',
   MCPConnect.Tests.MCP.Prompts in 'MCPConnect.Tests.MCP.Prompts.pas',
   MCPConnect.Tests.MCP.Subscriptions in 'MCPConnect.Tests.MCP.Subscriptions.pas',
+  MCPConnect.Tests.MCP.SubscriptionRegistry in 'MCPConnect.Tests.MCP.SubscriptionRegistry.pas',
   MCPConnect.Tests.MCP.Mrtr in 'MCPConnect.Tests.MCP.Mrtr.pas',
   MCPConnect.Tests.MCP.Response in 'MCPConnect.Tests.MCP.Response.pas',
   MCPConnect.Tests.MCP.RequestMeta in 'MCPConnect.Tests.MCP.RequestMeta.pas',

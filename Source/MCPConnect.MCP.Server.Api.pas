@@ -609,6 +609,10 @@ begin
         try
           Result := LInvoker.Invoke(AParams);
         except
+          // A cancellation is not a tool failure: it is answered with nothing,
+          // and the transport has to see it as it is to know that
+          on E: EMCPRequestCancelled do
+            raise;
           on E: Exception do
           begin
             raise EJRPCException.CreateFmt(SMCPToolCallError, [E.ClassName, E.Message]);

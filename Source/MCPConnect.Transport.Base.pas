@@ -58,6 +58,8 @@ resourcestring
   STransportMethodNotFoundFmt = 'Method "%s" not found';
   SDuplicateAuthorizationHeader = 'Multiple Authorization headers are not allowed';
   STransportWriterCannotWrite = 'This transport writer does not implement Write';
+  STransportClientClosedStream = 'The client closed the connection';
+  STransportStreamWriteFailed = 'The response stream could not be written';
 
 type
   /// <summary>
@@ -232,6 +234,68 @@ type
 
   TMCPTransportResponseConverter = reference to procedure (AResponse: TMCPTransportResponse);
 
+  /// <summary>
+  ///   The requests one connection has in flight, by id: where a
+  ///   "notifications/cancelled" finds the request it names.
+  /// </summary>
+  /// <remarks>
+  ///   Per connection, never per server. A JSON-RPC id is unique only within
+  ///   one client, so a server-wide map would cancel another client's request
+  ///   the moment two of them both used id 1. The transport that owns the
+  ///   connection owns the map and hands it to each TMCPTransportHandler it
+  ///   creates (TMCPTransportHandler.InFlight).
+  ///
+  ///   Stdio is one client on one connection, so it has one map. Streamable
+  ///   HTTP has none: with no sessions there is nothing to tie a cancellation,
+  ///   which arrives as a request of its own, to the request it names - and a
+  ///   request is cancelled there by closing its stream instead.
+  ///
+  ///   Thread safe. Cancel runs the request's cancellation under this map's
+  ///   lock, which is what keeps a request that is finishing from freeing its
+  ///   cancellation while it is being cancelled: Remove waits for it.
+  /// </remarks>
+  TMCPInFlightRequests = class
+  private
+    FLock: TObject;
+    FRequests: TDictionary<string, TMCPCancellation>;
+
+    /// <summary>
+    ///   The key of an id: its JSON type and its value, so that 7 and "7" are
+    ///   different requests, as they are on the wire.
+    /// </summary>
+    class function KeyOf(const AId: TJRPCID): string; overload; static;
+    class function KeyOf(AId: TJSONValue): string; overload; static;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    /// <summary>
+    ///   Files ACancellation under AId. False, and nothing filed, when the id is
+    ///   null or already in flight: a client reusing the id of a request still
+    ///   running cannot cancel either of them unambiguously, so the first keeps
+    ///   it.
+    /// </summary>
+    function Add(const AId: TJRPCID; ACancellation: TMCPCancellation): Boolean;
+
+    /// <summary>
+    ///   Removes AId, but only while it is still ACancellation's: a request
+    ///   never removes another one's entry.
+    /// </summary>
+    procedure Remove(const AId: TJRPCID; ACancellation: TMCPCancellation);
+
+    /// <summary>
+    ///   Cancels the request in flight under AId, for AReason. Answers whether
+    ///   there was one; an unknown id is ignored, which the specification
+    ///   allows - the request may simply have finished.
+    /// </summary>
+    function Cancel(AId: TJSONValue; const AReason: string): Boolean;
+
+    /// <summary>
+    ///   How many requests are in flight.
+    /// </summary>
+    function Count: Integer;
+  end;
+
   IMCPTransportHandler = interface
   ['{B2966C2A-7594-4B30-95D9-D702AE20633E}']
     procedure ProcessRequest(ARequestConverter: TMCPTransportRequestConverter;
@@ -306,7 +370,30 @@ type
     ///   to this.
     /// </remarks>
     FProtocolStatus: Integer;
+
+    /// <summary>
+    ///   The cancellation state of the request being handled, made by
+    ///   HandlePOST and owned by the request's garbage collector. Nil before.
+    /// </summary>
+    FCancellation: TMCPCancellation;
+
+    /// <summary>
+    ///   See InFlight. Not owned.
+    /// </summary>
+    FInFlight: TMCPInFlightRequests;
   private
+    /// <summary>
+    ///   Answers a "notifications/cancelled": tells the application through
+    ///   MessageHandling.OnCancelled, and cancels the request it names when this
+    ///   connection has it in flight.
+    /// </summary>
+    procedure HandleCancelledNotification(ANotification: TJRPCNotification);
+
+    /// <summary>
+    ///   Whether the request being handled has been cancelled.
+    /// </summary>
+    function Cancelled: Boolean;
+
     function SelectNeonConfig(const AProxy: TJRPCConstructorProxy): INeonConfiguration;
     procedure HandleMessage(AMessage: TJRPCMessage; AResponseQueue: TMCPMessageQueue);
     /// <summary>
@@ -432,6 +519,15 @@ type
       AResponseConverter: TMCPTransportResponseConverter);
     function GetSendResponseHeadersProc: TProc<TMCPTransportResponse>;
     procedure SetSendResponseHeadersProc(const Value: TProc<TMCPTransportResponse>);
+
+    /// <summary>
+    ///   The requests in flight on the connection this handler serves, or nil
+    ///   when the transport has no way to route a cancellation to one (see
+    ///   TMCPInFlightRequests). Set by the transport before ProcessRequest; the
+    ///   request is filed there while it runs, and a "notifications/cancelled"
+    ///   handled here looks there for the request it names.
+    /// </summary>
+    property InFlight: TMCPInFlightRequests read FInFlight write FInFlight;
   end;
 
 implementation
@@ -473,6 +569,113 @@ begin
   // said it can hold a stream is not asked to, so a request that needs one is
   // refused rather than answered into a void
   Result := False;
+end;
+
+{ TMCPInFlightRequests }
+
+constructor TMCPInFlightRequests.Create;
+begin
+  inherited Create;
+  FLock := TObject.Create;
+  FRequests := TDictionary<string, TMCPCancellation>.Create;
+end;
+
+destructor TMCPInFlightRequests.Destroy;
+begin
+  // Holds, never owns: every cancellation belongs to its request
+  FRequests.Free;
+  FLock.Free;
+  inherited;
+end;
+
+class function TMCPInFlightRequests.KeyOf(const AId: TJRPCID): string;
+begin
+  if AId.IsNull then
+    Result := ''
+  else if AId.IsString then
+    Result := 's:' + AId.AsString
+  else
+    Result := 'n:' + AId.AsString;
+end;
+
+class function TMCPInFlightRequests.KeyOf(AId: TJSONValue): string;
+begin
+  // The two halves have to agree: a TJRPCID renders a number without quotes
+  // and a string as its bare value, which is what this reads off the JSON
+  if AId is TJSONString then
+    Result := 's:' + TJSONString(AId).Value
+  else if AId is TJSONNumber then
+    Result := 'n:' + TJSONNumber(AId).ToJSON
+  else
+    Result := '';
+end;
+
+function TMCPInFlightRequests.Add(const AId: TJRPCID; ACancellation: TMCPCancellation): Boolean;
+var
+  LKey: string;
+begin
+  LKey := KeyOf(AId);
+  if LKey.IsEmpty then
+    Exit(False);
+
+  TMonitor.Enter(FLock);
+  try
+    Result := not FRequests.ContainsKey(LKey);
+    if Result then
+      FRequests.Add(LKey, ACancellation);
+  finally
+    TMonitor.Exit(FLock);
+  end;
+end;
+
+procedure TMCPInFlightRequests.Remove(const AId: TJRPCID; ACancellation: TMCPCancellation);
+var
+  LKey: string;
+  LFiled: TMCPCancellation;
+begin
+  LKey := KeyOf(AId);
+  if LKey.IsEmpty then
+    Exit;
+
+  TMonitor.Enter(FLock);
+  try
+    if FRequests.TryGetValue(LKey, LFiled) and (LFiled = ACancellation) then
+      FRequests.Remove(LKey);
+  finally
+    TMonitor.Exit(FLock);
+  end;
+end;
+
+function TMCPInFlightRequests.Cancel(AId: TJSONValue; const AReason: string): Boolean;
+var
+  LKey: string;
+  LCancellation: TMCPCancellation;
+begin
+  LKey := KeyOf(AId);
+  if LKey.IsEmpty then
+    Exit(False);
+
+  // Under the lock, cancellation included: released first, the request could
+  // finish and free its cancellation before it was cancelled. Lock order is
+  // this map, then the cancellation, then whatever its hook takes.
+  TMonitor.Enter(FLock);
+  try
+    Result := FRequests.TryGetValue(LKey, LCancellation);
+    if Result then
+      LCancellation.Cancel(AReason);
+  finally
+    TMonitor.Exit(FLock);
+  end;
+end;
+
+function TMCPInFlightRequests.Count: Integer;
+begin
+  TMonitor.Enter(FLock);
+  try
+    Result := FRequests.Count;
+  finally
+    TMonitor.Exit(FLock);
+  end;
 end;
 
 { TMCPTransportHandler }
@@ -741,7 +944,18 @@ begin
       try
         TMiddlewareChain.Run<IMessageMiddleware>(FPipeline, LContext, DispatchMessage);
       except
+        // A request the client cancelled is answered with nothing at all, an
+        // error included: the server MUST NOT send anything further for it.
+        // Whatever a cancelled request raises is taken the same way - a tool
+        // that noticed in its own fashion, an operation the OnCancel hook
+        // aborted - since none of it is anything the client still wants.
         on E: Exception do
+        if (AMessage is TJRPCRequest) and ((E is EMCPRequestCancelled) or Cancelled) then
+        begin
+          Logger.LogDebug('Request [%s] cancelled, nothing is answered: %s',
+            [TJRPCRequest(AMessage).Id.AsString, E.Message]);
+        end
+        else
         begin
           Logger.LogError(E, Format('TMCPTransportHandler.HandleMessage %s: %s', [E.ClassName, E.Message]));
 
@@ -792,11 +1006,15 @@ begin
   // TJRPCRequest raises EInvalidCast, and the client is told 500.
 
   // A notification is fire-and-forget, and the specification forbids answering
-  // one at all. There is no longer an inbound session queue to route it to, so
-  // it is accepted and dropped.
+  // one at all. A cancellation is acted on; there is no longer an inbound
+  // session queue to route anything else to, so the rest are accepted and
+  // dropped.
   if AContext.Message is TJRPCNotification then
   begin
-    Logger.LogDebug('Discarding notification [%s]', [TJRPCNotification(AContext.Message).Method]);
+    if TJRPCNotification(AContext.Message).Method = MCP_NOTIFY_CANCELLED then
+      HandleCancelledNotification(TJRPCNotification(AContext.Message))
+    else
+      Logger.LogDebug('Discarding notification [%s]', [TJRPCNotification(AContext.Message).Method]);
     Exit;
   end;
 
@@ -882,6 +1100,65 @@ begin
   finally
     LInvokerResponses.Free;
   end;
+end;
+
+procedure TMCPTransportHandler.HandleCancelledNotification(ANotification: TJRPCNotification);
+var
+  LParams: TCancelledNotificationParams;
+  LRequestId, LReason: TJSONValue;
+begin
+  // Read by hand rather than through Neon: RequestId is raw JSON on purpose, a
+  // string or a number, and that is exactly what the params object holds
+  LRequestId := nil;
+  LReason := nil;
+  if ANotification.Params is TJSONObject then
+  begin
+    LRequestId := TJSONObject(ANotification.Params).GetValue('requestId');
+    LReason := TJSONObject(ANotification.Params).GetValue('reason');
+  end;
+
+  // REQUIRED, and a string or a number. Without one there is nothing to name,
+  // and a notification cannot be answered with an error: dropped.
+  if not ((LRequestId is TJSONString) or (LRequestId is TJSONNumber)) then
+  begin
+    Logger.LogDebug('Discarding a notifications/cancelled that names no request');
+    Exit;
+  end;
+
+  LParams := TCancelledNotificationParams.Create;
+  try
+    LParams.RequestId := LRequestId.Clone as TJSONValue;
+    if LReason is TJSONString then
+      LParams.Reason := TJSONString(LReason).Value;
+
+    // The request first, the hook second: a hook that takes its time must not
+    // keep a running tool going for that long
+    if Assigned(FInFlight) and FInFlight.Cancel(LParams.RequestId, LParams.Reason.GetValueOrDefault) then
+      Logger.LogDebug('Request [%s] cancelled by the client', [LRequestId.ToJSON])
+    else
+      // Not an error: the request may have finished already, and over HTTP
+      // there is no map at all - the stream it ran on is what cancels it
+      Logger.LogDebug('notifications/cancelled for [%s]: no such request in flight here',
+        [LRequestId.ToJSON]);
+
+    // The application's, and a notification has nobody to report its failure
+    // to: logged, so that it does not turn into a 500 for a message the
+    // specification says must not be answered
+    if Assigned(FMCPConfig) and Assigned(FMCPConfig.MessageHandling.CancelledProc) then
+    try
+      FMCPConfig.MessageHandling.CancelledProc(FContext, LParams);
+    except
+      on E: Exception do
+        Logger.LogError(E, Format('MessageHandling.OnCancelled %s: %s', [E.ClassName, E.Message]));
+    end;
+  finally
+    LParams.Free;
+  end;
+end;
+
+function TMCPTransportHandler.Cancelled: Boolean;
+begin
+  Result := Assigned(FCancellation) and FCancellation.IsCancelled;
 end;
 
 procedure TMCPTransportHandler.HandleOPTIONS;
@@ -1105,7 +1382,16 @@ var
     AResponseList.Process(
       procedure (AMessage: TJRPCMessage; var ADispose: Boolean)
       begin
-        if IsUnsolicitedProgress(AMessage) then
+        if Cancelled then
+        begin
+          // The gate every message passes, which is why it sits here and not in
+          // the channels: TMCPProgress, TMCPLog and a tool's own queue all
+          // enqueue straight into this queue. Once the request is cancelled the
+          // server MUST NOT send anything further for it, the result and the
+          // held listen answer included; leaving ADispose True frees it.
+          Logger.LogDebug('Message dropped, the request was cancelled');
+        end
+        else if IsUnsolicitedProgress(AMessage) then
         begin
           Logger.LogDebug('Progress notification dropped, the request asked for none');
         end
@@ -1138,7 +1424,18 @@ var
         end
         else if LStreamed then
         begin
-          WriteSSEResponse(AMessage.ToJson);
+          // A write that fails is a client that went away, which over HTTP is
+          // what cancelling a request is. The request is told, and the queue is
+          // still drained - into the gate above - until the worker is done.
+          try
+            WriteSSEResponse(AMessage.ToJson);
+          except
+            on E: Exception do
+            begin
+              Logger.LogDebug('[SSE] Write failed, cancelling the request: %s', [E.Message]);
+              FCancellation.Cancel(STransportStreamWriteFailed);
+            end;
+          end;
         end
         else if AMessage is TJRPCNotification then
         begin
@@ -1229,13 +1526,8 @@ begin
     var LReason: TMCPListenRefusal;
     if ListenRefusal(LReason) then
     begin
-      var LRefusal: EMCPListenNotStreamableError;
-      case LReason of
-        TMCPListenRefusal.NotAccepted: LRefusal := EMCPListenNotStreamableError.CreateNotAccepted;
-        TMCPListenRefusal.NoStream: LRefusal := EMCPListenNotStreamableError.CreateNoStream;
-      else
-        LRefusal := EMCPListenNotStreamableError.CreateTooMany(FMCPConfig.Subscriptions.MaxSubscriptions);
-      end;
+      var LRefusal := EMCPListenNotStreamableError.CreateFor(LReason,
+        FMCPConfig.Subscriptions.MaxSubscriptions);
 
       try
         // Answered as the parse errors above are: the request is replaced with
@@ -1287,6 +1579,27 @@ begin
   FGarbage.Add(LLog);
   FContext.AddContent(LLog);
 
+  // And whether the client still wants the answer, on the same terms: always in
+  // the context, so a tool never tests it for nil. Filed under the request's id
+  // where the transport can route a "notifications/cancelled" to it.
+  FCancellation := TMCPCancellation.Create;
+  FGarbage.Add(FCancellation);
+  FContext.AddContent(FCancellation);
+
+  var LInFlightRequest: TJRPCRequest := nil;
+  if Assigned(FInFlight) and (LRequestList.Count = 1) and (LRequestList.List[0] is TJRPCRequest) then
+  begin
+    LInFlightRequest := TJRPCRequest(LRequestList.List[0]);
+    if not FInFlight.Add(LInFlightRequest.Id, FCancellation) then
+    begin
+      // A null id, or one already in flight: nothing a cancellation could name
+      // unambiguously, so nothing is filed - and nothing removed at the end
+      Logger.LogDebug('Request [%s] not filed as in flight: its id is null or already in use',
+        [LInFlightRequest.Id.AsString]);
+      LInFlightRequest := nil;
+    end;
+  end;
+
   // This list contains the responses in case SSE channel is not active
   LResponseList := TJRPCMessages.Create(True);
   FGarbage.Add(LResponseList);
@@ -1327,21 +1640,48 @@ begin
     while not LResponseQueue.Closed do
     begin
       ProcessQueue(LResponseQueue);
+
+      // Between reads, which is at most every QueueReadTimeout while the worker
+      // runs: a client that has closed the stream has cancelled the request,
+      // and over HTTP that is the way a request is cancelled. Only asked of a
+      // stream: Connected describes one, and a writer may have to open a stream
+      // to answer it (WebBroker does) - which a reply going out as a document
+      // must not get. A document reply has no disconnect to notice, then; its
+      // request runs to the end and the answer goes nowhere.
+      if LStreamed and not Cancelled and not FResponseWriter.Connected then
+      begin
+        Logger.LogDebug('The client went away, cancelling the request');
+        FCancellation.Cancel(STransportClientClosedStream);
+      end;
     end;
     ProcessQueue(LResponseQueue);
 
     // A listen that opened a subscription: the acknowledgement is out, the
     // result is held, and the stream stays open until the subscription ends.
-    // The registry must not be left holding it once this request is gone - its
-    // queue goes with the request's garbage - so it is closed and freed here
-    // whatever the pump did, a listen that failed after opening included.
+    // The registry must not be left holding it once this request is gone, so
+    // it is closed and freed here whatever the pump did, a listen that failed
+    // after opening included - and freed with its queue, which it owns.
     if Assigned(LListen) and Assigned(LListen.Subscription) then
     begin
+      var LSubscription := LListen.Subscription;
       try
+        // A cancelled listen ends abruptly: the client asked for it to stop,
+        // and the server MUST NOT send anything further - the result included.
+        // Set before the pump, and run at once if the cancellation came first.
+        FCancellation.OnCancel :=
+          procedure (ACancellation: TMCPCancellation)
+          begin
+            FMCPConfig.Subscriptions.Registry.Close(LSubscription, False);
+          end;
+
         if Assigned(LHeld) then
-          PumpSubscription(LListen.Subscription, LHeld);
+          PumpSubscription(LSubscription, LHeld);
       finally
-        FMCPConfig.Subscriptions.Registry.Close(LListen.Subscription, False);
+        // Cleared before the subscription is freed: the hook runs under the
+        // cancellation's lock, so once this returns it cannot run again
+        FCancellation.OnCancel := nil;
+
+        FMCPConfig.Subscriptions.Registry.Close(LSubscription, False);
         FreeAndNil(LListen.Subscription);
       end;
     end;
@@ -1349,7 +1689,15 @@ begin
     // Not a stream: the reply is a document, or it is nothing at all
     if not LStreamed then
     begin
-      if LResponseList.Count = 0 then
+      if Cancelled then
+      begin
+        // Nothing is answered for a cancelled request. Over HTTP the client has
+        // gone, so this reaches nobody; on stdio an empty body is no line at all,
+        // which is the silence the specification asks for.
+        FResponse.Code := HTTP_CODE_NOCONTENT;
+        FResponse.Content := '';
+      end
+      else if LResponseList.Count = 0 then
       begin
         // Taken, and there is nothing to say about it: a notification gets no
         // reply, so no body - and with no body, no Content-Type either.
@@ -1371,7 +1719,12 @@ begin
       end;
     end;
   finally
+    // Waits for the worker, which is what makes removing the entry after it
+    // safe: nothing of this request runs any more
     LAsyncExecute.Free;
+
+    if Assigned(LInFlightRequest) then
+      FInFlight.Remove(LInFlightRequest.Id, FCancellation);
   end;
   Logger.LogDebug('[PERF] Transport CreateAsyncQueue: %d ms', [LFragment.ElapsedMilliseconds]);
 

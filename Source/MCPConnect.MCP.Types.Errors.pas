@@ -87,6 +87,7 @@ resourcestring
   SMCPListenNotAccepted = 'subscriptions/listen is answered with an event stream, and the request''s Accept excludes text/event-stream';
   SMCPListenNoStream = 'subscriptions/listen needs a response that stays open, and this deployment cannot stream one';
   SMCPListenTooManyFmt = 'This server already holds its maximum of %d subscription streams';
+  SMCPRequestCancelled = 'The request was cancelled';
 
 type
   /// <summary>
@@ -266,11 +267,37 @@ type
   public
     procedure AfterConstruction; override;
 
-    constructor CreateNotAccepted;
-    constructor CreateNoStream;
-    constructor CreateTooMany(AMax: Integer);
+    /// <summary>
+    ///   The refusal for AReason. AMax is the cap a TooMany refusal names, and
+    ///   is ignored for the other two.
+    /// </summary>
+    /// <remarks>
+    ///   One constructor rather than one per reason: two parameterless
+    ///   constructors cannot be told apart from C++Builder (W1029).
+    /// </remarks>
+    constructor CreateFor(AReason: TMCPListenRefusal; AMax: Integer = 0);
 
     property Reason: TMCPListenRefusal read FReason;
+  end;
+
+  /// <summary>
+  ///   Raised by TMCPCancellation.CheckCancelled to abandon a request the
+  ///   client cancelled.
+  /// </summary>
+  /// <remarks>
+  ///   Answered with nothing at all: once a request is cancelled the server
+  ///   MUST NOT send anything further for it, an error included. The transport
+  ///   recognises it and enqueues no reply, and drops whatever the request had
+  ///   still queued.
+  ///
+  ///   An EJRPCException, so that the JSON-RPC invoker lets it through as it
+  ///   is rather than wrapping it into a generic "error calling the method".
+  ///   Deliberately not an EMCPProtocolError: it is not a refusal, and it maps
+  ///   to no status.
+  /// </remarks>
+  EMCPRequestCancelled = class(EJRPCException)
+  public
+    constructor Create(const AReason: string = ''); reintroduce;
   end;
 
   /// <summary>
@@ -528,22 +555,25 @@ begin
   FCode := JRPC_INVALID_REQUEST;
 end;
 
-constructor EMCPListenNotStreamableError.CreateNotAccepted;
+constructor EMCPListenNotStreamableError.CreateFor(AReason: TMCPListenRefusal; AMax: Integer);
 begin
-  inherited Create(SMCPListenNotAccepted);
-  FReason := TMCPListenRefusal.NotAccepted;
+  case AReason of
+    TMCPListenRefusal.NotAccepted: inherited Create(SMCPListenNotAccepted);
+    TMCPListenRefusal.NoStream: inherited Create(SMCPListenNoStream);
+  else
+    inherited CreateFmt(SMCPListenTooManyFmt, [AMax]);
+  end;
+  FReason := AReason;
 end;
 
-constructor EMCPListenNotStreamableError.CreateNoStream;
-begin
-  inherited Create(SMCPListenNoStream);
-  FReason := TMCPListenRefusal.NoStream;
-end;
+{ EMCPRequestCancelled }
 
-constructor EMCPListenNotStreamableError.CreateTooMany(AMax: Integer);
+constructor EMCPRequestCancelled.Create(const AReason: string);
 begin
-  inherited CreateFmt(SMCPListenTooManyFmt, [AMax]);
-  FReason := TMCPListenRefusal.TooMany;
+  if AReason.IsEmpty then
+    inherited Create(SMCPRequestCancelled)
+  else
+    inherited Create(SMCPRequestCancelled + ': ' + AReason);
 end;
 
 { EMCPInvalidRequestMetaError }

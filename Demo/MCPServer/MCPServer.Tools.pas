@@ -7,7 +7,9 @@ uses
 
   Neon.Core.Persistence,
 
+  JRPC.Classes,
   MCPConnect.MCP.Types.Base,
+  MCPConnect.MCP.Types.Notifications,
   MCPConnect.MCP.Attributes;
 
 type
@@ -50,6 +52,9 @@ type
   end;
 
   TTodoTools = class
+  private
+    [Context] FCancel: TMCPCancellation;
+    [Context] FProgress: TMCPProgress;
   public
     [McpTool('add_task', 'Add a new task to the todo list')]
     function AddTask(
@@ -80,6 +85,16 @@ type
 
     [McpTool('draft_day_plan', 'Draft a plan for today from the pending tasks and the client workspace', 'readonly')]
     function DraftDayPlan(): string;
+
+    /// <summary>
+    ///   The cancellation showcase: counts one a second, reporting progress, and
+    ///   stops the moment the client cancels - closing the stream over HTTP, or
+    ///   sending notifications/cancelled where the transport routes one.
+    /// </summary>
+    [McpTool('slow_count', 'Count up to a number, one a second; cancel the request to stop early', 'readonly')]
+    function SlowCount(
+      [McpParam('count_to', 'Where to stop counting, from 1 to 60')] ACountTo: Integer
+    ): string;
   end;
 
 var
@@ -317,6 +332,29 @@ end;
 function TTodoTools.ImportTasks(const AText: string): string;
 begin
 
+end;
+
+function TTodoTools.SlowCount(ACountTo: Integer): string;
+var
+  LCount: Integer;
+begin
+  if ACountTo < 1 then
+    ACountTo := 1
+  else if ACountTo > 60 then
+    ACountTo := 60;
+
+  for LCount := 1 to ACountTo do
+  begin
+    // A second's wait that ends early when the client cancels: WaitFor wakes at
+    // once, and CheckCancelled then abandons the request - nothing, not even an
+    // error, is sent back for it
+    FCancel.WaitFor(1000);
+    FCancel.CheckCancelled;
+
+    FProgress.Report(LCount, ACountTo, Format('Counted to %d', [LCount]));
+  end;
+
+  Result := Format('Counted to %d', [ACountTo]);
 end;
 
 initialization

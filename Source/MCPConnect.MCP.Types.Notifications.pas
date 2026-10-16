@@ -18,7 +18,7 @@ interface
 {$SCOPEDENUMS ON}
 
 uses
-  System.SysUtils, System.JSON,
+  System.SysUtils, System.JSON, System.SyncObjs,
 
   JRPC.Core,
   Neon.Core.Types,
@@ -429,10 +429,108 @@ type
     procedure Log(ALevel: TMCPLogLevel; AData: TJSONValue; const ALogger: string = ''); overload;
   end;
 
+  /// <summary>
+  ///   The cancellation state of the request being served: what a long-running
+  ///   tool checks between steps to learn that the client no longer wants the
+  ///   answer.
+  /// </summary>
+  /// <remarks>
+  ///   Injected with [Context]:
+  ///
+  ///     [Context] FCancel: TMCPCancellation;
+  ///     ...
+  ///     for LStep := 1 to 10 do
+  ///     begin
+  ///       FCancel.CheckCancelled;
+  ///       DoStep(LStep);
+  ///     end;
+  ///
+  ///   A request is cancelled when its client closes the HTTP stream (or the
+  ///   connection) it is answered on, when a write to that stream fails, or
+  ///   when the client sends "notifications/cancelled" for it on a transport
+  ///   that can route one (see TMCPInFlightRequests). Cancellation is
+  ///   cooperative: nothing interrupts a running tool, so a tool that never
+  ///   checks simply runs to the end - and whatever it then answers is
+  ///   dropped, since the server MUST NOT send anything further for a
+  ///   cancelled request.
+  ///
+  ///   Put in the request context by the transport, so it is always there: a
+  ///   tool never needs to test it for nil. Thread safe; Cancel is called from
+  ///   whichever thread noticed, while the tool reads it from its own.
+  /// </remarks>
+  TMCPCancellation = class
+  private
+    FLock: TObject;
+    FSignal: TEvent;
+    FCancelled: Boolean;
+    FReason: string;
+    FOnCancel: TProc<TMCPCancellation>;
+    function GetOnCancel: TProc<TMCPCancellation>;
+    procedure SetOnCancel(const AValue: TProc<TMCPCancellation>);
+
+    /// <summary>
+    ///   Calls the hook, logging rather than raising what it raises: the caller
+    ///   of Cancel is a transport that has nothing to do with the failure.
+    /// </summary>
+    procedure RunHook;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    /// <summary>
+    ///   Marks the request cancelled, for AReason, and runs OnCancel. Answers
+    ///   True when this call cancelled it and False when it already was: only
+    ///   the first cancellation counts, and its reason is the one kept.
+    /// </summary>
+    function Cancel(const AReason: string = ''): Boolean;
+
+    /// <summary>
+    ///   Whether the request has been cancelled.
+    /// </summary>
+    function IsCancelled: Boolean;
+
+    /// <summary>
+    ///   Why it was cancelled, as the canceller put it; empty while it is not.
+    /// </summary>
+    function Reason: string;
+
+    /// <summary>
+    ///   Raises EMCPRequestCancelled when the request has been cancelled, which
+    ///   abandons it without a reply. The one-line check for a loop.
+    /// </summary>
+    procedure CheckCancelled;
+
+    /// <summary>
+    ///   Waits up to ATimeoutMs, returning early - with True - as soon as the
+    ///   request is cancelled. False when the time ran out first.
+    /// </summary>
+    /// <remarks>
+    ///   What a tool that has to wait between steps uses instead of Sleep, so
+    ///   that a cancellation is noticed at once rather than at the next step.
+    /// </remarks>
+    function WaitFor(ATimeoutMs: Cardinal): Boolean;
+
+    /// <summary>
+    ///   Called once, when the request is cancelled, on the thread that
+    ///   cancelled it - or at once, when it is set on a request that already
+    ///   is.
+    /// </summary>
+    /// <remarks>
+    ///   Runs under this object's lock, which is what makes clearing it safe:
+    ///   once setting it to nil has returned, it will not run again. So it
+    ///   must be quick, and must not wait for the thread serving the request.
+    ///   The transport uses it on a "subscriptions/listen" to close the
+    ///   subscription; a tool may use it to abort an operation it is blocked
+    ///   in, and should clear it before that operation's resources are freed.
+    /// </remarks>
+    property OnCancel: TProc<TMCPCancellation> read GetOnCancel write SetOnCancel;
+  end;
+
 implementation
 
 uses
-  Logify;
+  Logify,
+  MCPConnect.MCP.Types.Errors;
 
 { TNotificationMetaObject }
 
@@ -868,6 +966,109 @@ begin
   end;
 
   FQueue.Enqueue(TMCPNotification.LogMessage(ALevel, AData, ALogger));
+end;
+
+{ TMCPCancellation }
+
+constructor TMCPCancellation.Create;
+begin
+  inherited Create;
+  FLock := TObject.Create;
+  // Manual reset: once cancelled, every WaitFor from then on returns at once
+  FSignal := TEvent.Create(nil, True, False, '');
+end;
+
+destructor TMCPCancellation.Destroy;
+begin
+  FSignal.Free;
+  FLock.Free;
+  inherited;
+end;
+
+function TMCPCancellation.Cancel(const AReason: string): Boolean;
+begin
+  TMonitor.Enter(FLock);
+  try
+    if FCancelled then
+      Exit(False);
+
+    FCancelled := True;
+    FReason := AReason;
+    FSignal.SetEvent;
+    RunHook;
+    Result := True;
+  finally
+    TMonitor.Exit(FLock);
+  end;
+end;
+
+function TMCPCancellation.IsCancelled: Boolean;
+begin
+  TMonitor.Enter(FLock);
+  try
+    Result := FCancelled;
+  finally
+    TMonitor.Exit(FLock);
+  end;
+end;
+
+function TMCPCancellation.Reason: string;
+begin
+  TMonitor.Enter(FLock);
+  try
+    Result := FReason;
+  finally
+    TMonitor.Exit(FLock);
+  end;
+end;
+
+procedure TMCPCancellation.CheckCancelled;
+begin
+  if IsCancelled then
+    raise EMCPRequestCancelled.Create(Reason);
+end;
+
+function TMCPCancellation.WaitFor(ATimeoutMs: Cardinal): Boolean;
+begin
+  Result := FSignal.WaitFor(ATimeoutMs) = wrSignaled;
+end;
+
+function TMCPCancellation.GetOnCancel: TProc<TMCPCancellation>;
+begin
+  TMonitor.Enter(FLock);
+  try
+    Result := FOnCancel;
+  finally
+    TMonitor.Exit(FLock);
+  end;
+end;
+
+procedure TMCPCancellation.SetOnCancel(const AValue: TProc<TMCPCancellation>);
+begin
+  TMonitor.Enter(FLock);
+  try
+    FOnCancel := AValue;
+
+    // A hook set too late is still owed its call: the request was cancelled
+    // before anybody was listening, and the hook is how they find out
+    if FCancelled then
+      RunHook;
+  finally
+    TMonitor.Exit(FLock);
+  end;
+end;
+
+procedure TMCPCancellation.RunHook;
+begin
+  if not Assigned(FOnCancel) then
+    Exit;
+
+  try
+    FOnCancel(Self);
+  except
+    on E: Exception do
+      Logger.LogError('TMCPCancellation.OnCancel %s: %s', [E.ClassName, E.Message]);
+  end;
 end;
 
 end.

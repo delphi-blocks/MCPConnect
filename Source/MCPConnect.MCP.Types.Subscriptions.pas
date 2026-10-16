@@ -825,7 +825,7 @@ begin
     // Under the lock, so that two listens arriving together cannot both see
     // room for one more
     if (FMaxCount > 0) and (FSubscriptions.Count >= FMaxCount) then
-      raise EMCPListenNotStreamableError.CreateTooMany(FMaxCount);
+      raise EMCPListenNotStreamableError.CreateFor(TMCPListenRefusal.TooMany, FMaxCount);
 
     Result := TMCPSubscription.Create(AId.Clone as TJSONValue, AFilter, AQueueCap);
     Result.FKey := LKey;

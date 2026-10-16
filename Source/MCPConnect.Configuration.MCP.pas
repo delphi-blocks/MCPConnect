@@ -450,7 +450,7 @@ type
   TMCPMessageHandlingConfig = class(TMCPBaseConfig)
   private
     FRegistry: TJRPCRegistry;
-    //FCancelledProc: TProc<TJRPCContext, TCancelledNotificationParams>;
+    FCancelledProc: TProc<TJRPCContext, TCancelledNotificationParams>;
     FSetLogLevelProc: TProc<TJRPCContext, TMCPLogLevel>;
   public
     constructor Create(AConfig: IMCPConfig);
@@ -500,6 +500,37 @@ type
     ///   no hook.
     /// </summary>
     property SetLogLevelProc: TProc<TJRPCContext, TMCPLogLevel> read FSetLogLevelProc;
+
+    /// <summary>
+    ///   Registers a handler for the "notifications/cancelled" a client sends.
+    /// </summary>
+    /// <remarks>
+    ///   Called for every cancellation the server receives, with the id of the
+    ///   request it names and the optional reason - whether or not that request
+    ///   is still running here, since the client may cancel one that already
+    ///   finished. The request itself is cancelled by the transport, not by
+    ///   this hook: a tool learns of it through its TMCPCancellation.
+    ///
+    ///   Over Streamable HTTP a cancellation rarely names anything still
+    ///   running: with no sessions, a request is cancelled by closing its
+    ///   stream, and the notification arrives on a request of its own. On stdio
+    ///   it is the way to cancel. The params belong to the transport and are
+    ///   freed when the hook returns.
+    /// </remarks>
+    /// <param name="AProc">
+    ///   Callback receiving the request context and the notification's params.
+    ///   Pass nil to unregister.
+    /// </param>
+    /// <returns>
+    ///   Self for fluent chaining
+    /// </returns>
+    function OnCancelled(AProc: TProc<TJRPCContext, TCancelledNotificationParams>): TMCPMessageHandlingConfig;
+
+    /// <summary>
+    ///   Read-only access to the registered cancellation handler, called by the
+    ///   transport.
+    /// </summary>
+    property CancelledProc: TProc<TJRPCContext, TCancelledNotificationParams> read FCancelledProc;
   end;
 
   /// <summary>
@@ -3198,6 +3229,13 @@ end;
 function TMCPMessageHandlingConfig.OnSetLogLevel(AProc: TProc<TJRPCContext, TMCPLogLevel>): TMCPMessageHandlingConfig;
 begin
   FSetLogLevelProc := AProc;
+  Result := Self;
+end;
+
+function TMCPMessageHandlingConfig.OnCancelled(
+  AProc: TProc<TJRPCContext, TCancelledNotificationParams>): TMCPMessageHandlingConfig;
+begin
+  FCancelledProc := AProc;
   Result := Self;
 end;
 

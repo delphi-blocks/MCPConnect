@@ -109,8 +109,12 @@ type
     FCode: Integer;
     FContent: string;
   public
+    /// <summary>
+    ///   Starts the request. AInFlight, when given, is the connection's map of
+    ///   requests in flight - what a "notifications/cancelled" is routed through.
+    /// </summary>
     constructor Create(AServer: TMCPServer; AWriter: IMCPTransportWriter;
-      const ABody, AAccept: string);
+      const ABody, AAccept: string; AInFlight: TMCPInFlightRequests = nil);
     destructor Destroy; override;
 
     /// <summary>
@@ -394,7 +398,7 @@ end;
 { TListenRun }
 
 constructor TListenRun.Create(AServer: TMCPServer; AWriter: IMCPTransportWriter;
-  const ABody, AAccept: string);
+  const ABody, AAccept: string; AInFlight: TMCPInFlightRequests);
 begin
   inherited Create;
   FDone := TEvent.Create(nil, True, False, '');
@@ -404,9 +408,12 @@ begin
     procedure
     var
       LHandler: IMCPTransportHandler;
+      LTransport: TMCPTransportHandler;
     begin
       try
-        LHandler := TMCPTransportHandler.Create(AServer, AWriter);
+        LTransport := TMCPTransportHandler.Create(AServer, AWriter);
+        LTransport.InFlight := AInFlight;
+        LHandler := LTransport;
         LHandler.ProcessRequest(
           procedure (ARequest: TMCPTransportRequest)
           begin

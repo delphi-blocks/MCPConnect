@@ -139,6 +139,17 @@ type
   TWorkerThread = class(TThread)
   private
     FServer: TMCPServer;
+
+    /// <summary>
+    ///   The requests in flight on this connection - stdio is one client, so
+    ///   one map - where a "notifications/cancelled" finds the one it names.
+    /// </summary>
+    /// <remarks>
+    ///   Requests are still handled one at a time, so a cancellation cannot
+    ///   arrive while one runs yet; the map is what lets it, once the reader
+    ///   dispatches concurrently.
+    /// </remarks>
+    FInFlight: TMCPInFlightRequests;
     procedure HandleRequest(const ARequestContent: string; out AResponseContent: string; AStdOutWriter: TStdOutWriter);
   protected
     procedure Execute; override;
@@ -474,6 +485,7 @@ var
 begin
   inherited;
   try
+    FInFlight := TMCPInFlightRequests.Create;
     LReader := TStdInReader.Create;
     try
       LWriter := TStdOutWriter.Create;
@@ -500,6 +512,7 @@ begin
       end;
     finally
       LReader.Free;
+      FreeAndNil(FInFlight);
     end;
 
     Terminate;
@@ -522,7 +535,9 @@ begin
 
   // Auth??
 
-  LMcpHandler := TMCPTransportHandler.Create(FServer, TMCPTransportWriterStdio.Create(AStdOutWriter));
+  var LHandler := TMCPTransportHandler.Create(FServer, TMCPTransportWriterStdio.Create(AStdOutWriter));
+  LHandler.InFlight := FInFlight;
+  LMcpHandler := LHandler;
 
   LMcpHandler.ProcessRequest(
 

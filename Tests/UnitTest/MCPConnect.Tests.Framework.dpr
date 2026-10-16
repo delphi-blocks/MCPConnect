@@ -111,6 +111,7 @@ uses
   MCPConnect.Tests.Transport.Logging in 'MCPConnect.Tests.Transport.Logging.pas',
   MCPConnect.Tests.Transport.SSE in 'MCPConnect.Tests.Transport.SSE.pas',
   MCPConnect.Tests.Transport.Subscriptions in 'MCPConnect.Tests.Transport.Subscriptions.pas',
+  MCPConnect.Tests.Transport.Cancellation in 'MCPConnect.Tests.Transport.Cancellation.pas',
   MCPConnect.Tests.MCP.Pagination in 'MCPConnect.Tests.MCP.Pagination.pas',
   MCPConnect.Tests.Logging.Memory in 'MCPConnect.Tests.Logging.Memory.pas',
   MCPConnect.Tests.Metrics in 'MCPConnect.Tests.Metrics.pas',

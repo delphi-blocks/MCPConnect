@@ -7,7 +7,7 @@
 **A powerful, attribute-driven framework for building Model Context Protocol (MCP) Servers in Delphi.**
 
 > [!NOTE]
-> Support for the MCP specification version **2026-07-28** is under development in the [`feature/mcp-2026-07-28`](https://github.com/delphi-blocks/MCPConnect/tree/feature/mcp-2026-07-28) branch. The protocol entity layer is complete there — discovery, completion, elicitation schemas, subscriptions, notifications, MRTR and the new error codes — with the transport still to follow. That revision is stateless: the `initialize` handshake and `Mcp-Session-Id` sessions have been removed from that branch, along with SSE resumption over HTTP GET.
+> Support for the MCP specification version **2026-07-28** is under development in the [`feature/mcp-2026-07-28`](https://github.com/delphi-blocks/MCPConnect/tree/feature/mcp-2026-07-28) branch. The protocol entity layer is complete there — discovery, completion, elicitation schemas, subscriptions, notifications, MRTR and the new error codes. Over Streamable HTTP, `subscriptions/listen` now holds its SSE stream open and delivers list-changed and resource-updated notifications as they happen; stdio streaming is still to follow. That revision is stateless: the `initialize` handshake and `Mcp-Session-Id` sessions have been removed from that branch, along with SSE resumption over HTTP GET.
 
 ## Getting Started
 

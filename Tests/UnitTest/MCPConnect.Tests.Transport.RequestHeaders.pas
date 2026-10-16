@@ -36,11 +36,11 @@ uses
 
 type
   /// <summary>A response writer that streams nothing.</summary>
-  TSilentHeaderWriter = class(TInterfacedObject, IMCPTransportWriter)
+  TSilentHeaderWriter = class(TMCPTransportWriter)
   public
-    procedure Write(const AValue: string);
-    function Connected: Boolean;
-    function SupportsStreaming: Boolean;
+    procedure Write(const AValue: string); override;
+    function Connected: Boolean; override;
+    function SupportsStreaming: Boolean; override;
   end;
 
   /// <summary>What a request answered, as far as these tests care.</summary>

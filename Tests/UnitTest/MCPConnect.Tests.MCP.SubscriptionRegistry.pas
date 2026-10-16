@@ -35,6 +35,11 @@ type
   TMCPSubscriptionRegistryTest = class(TObject)
   private
     FRegistry: TMCPSubscriptionRegistry;
+
+    /// <summary>
+    ///   The queues of the two subscriptions most tests open. Not owned here:
+    ///   each belongs to its subscription, and goes with it in TearDown.
+    /// </summary>
     FOne: TMCPMessageQueue;
     FTwo: TMCPMessageQueue;
 
@@ -59,17 +64,12 @@ type
     FOpened: TList<TMCPSubscription>;
 
     /// <summary>
-    ///   Extra queues a test made for itself, so that TearDown frees them after
-    ///   the subscriptions that point at them. Not owned here, for the same
-    ///   reason as FOpened: close, then free, in that order.
-    /// </summary>
-    FQueues: TList<TMCPMessageQueue>;
-
-    /// <summary>
-    ///   Opens a subscription on its own queue, owning everything it is given.
+    ///   Opens a subscription and answers, in AQueue, the queue it made for
+    ///   itself - the one a pump would drain.
     /// </summary>
     function Subscribe(AId: TJSONValue; AFilter: TSubscriptionFilter;
-      AQueue: TMCPMessageQueue): TMCPSubscription;
+      out AQueue: TMCPMessageQueue;
+      AQueueCap: Integer = MCP_SUBSCRIPTION_QUEUE_CAP): TMCPSubscription;
 
     /// <summary>A filter that asked for nothing at all.</summary>
     function EmptyFilter: TSubscriptionFilter;
@@ -123,6 +123,14 @@ type
     procedure TestPublishingToNobodyIsFree;
     [Test]
     procedure TestOverflowClosesTheSubscription;
+    [Test]
+    procedure TestCloseClosesTheQueue;
+    [Test]
+    procedure TestAScopeSeparatesTheSameId;
+    [Test]
+    procedure TestCloseByObjectSparesANewerOneUnderTheSameKey;
+    [Test]
+    procedure TestOpenRefusesOverTheCap;
   end;
 
   /// <summary>
@@ -144,8 +152,12 @@ type
     /// <summary>Everything this fixture opened, for TearDown to free.</summary>
     FOpened: TList<TMCPSubscription>;
 
+    /// <summary>
+    ///   Opens a subscription and answers, in AQueue, the queue it made for
+    ///   itself.
+    /// </summary>
     function SubscribeTo(AId: Int64; AFilter: TSubscriptionFilter;
-      AQueue: TMCPMessageQueue): TMCPSubscription;
+      out AQueue: TMCPMessageQueue): TMCPSubscription;
 
     /// <summary>Dequeues everything and frees it, answering how many there were.</summary>
     function Drain(AQueue: TMCPMessageQueue): Integer;
@@ -176,7 +188,8 @@ type
 implementation
 
 uses
-  MCPConnect.MCP.Attributes;
+  MCPConnect.MCP.Attributes,
+  MCPConnect.MCP.Types.Errors;
 
 type
   /// <summary>
@@ -225,44 +238,27 @@ procedure TMCPSubscriptionRegistryTest.Setup;
 begin
   FRegistry := TMCPSubscriptionRegistry.Create;
   FOpened := TList<TMCPSubscription>.Create;
-  FQueues := TList<TMCPMessageQueue>.Create;
-  FOne := TMCPMessageQueue.Create;
-  FTwo := TMCPMessageQueue.Create;
+  FOne := nil;
+  FTwo := nil;
 end;
 
 procedure TMCPSubscriptionRegistryTest.TearDown;
 begin
   // Close first and free second, exactly as the pump does: the id lives on the
   // subscription, so freeing it before closing it would hand Close a dangling
-  // pointer to read the key from.
+  // pointer to read the key from. Freeing it frees its queue, and whatever a
+  // test published to it and did not read.
   for var LSubscription in FOpened do
   begin
     // A close the test already made is not an error: Close answers whether it
-    // found the subscription, and ignores an id that is gone.
-    FRegistry.Close(LSubscription.Id, False);
+    // found the subscription, and ignores one that is gone. By the object and
+    // not the id, so that a subscription opened under a scope is reached too.
+    FRegistry.Close(LSubscription, False);
     LSubscription.Free;
   end;
 
   FRegistry.Free;
   FOpened.Free;
-
-  // Messages a test published but did not read, and then the queues themselves:
-  // a queue frees what it still holds when it is destroyed, so this is belt and
-  // braces - it is what makes a leftover message show up as a mistake here
-  // rather than as a leak at shutdown.
-  Drain(FOne);
-  Drain(FTwo);
-
-  for var LQueue in FQueues do
-  begin
-    Drain(LQueue);
-    LQueue.Free;
-  end;
-
-  FQueues.Free;
-
-  FTwo.Free;
-  FOne.Free;
 end;
 
 function TMCPSubscriptionRegistryTest.EmptyFilter: TSubscriptionFilter;
@@ -283,10 +279,12 @@ begin
 end;
 
 function TMCPSubscriptionRegistryTest.Subscribe(AId: TJSONValue;
-  AFilter: TSubscriptionFilter; AQueue: TMCPMessageQueue): TMCPSubscription;
+  AFilter: TSubscriptionFilter; out AQueue: TMCPMessageQueue;
+  AQueueCap: Integer): TMCPSubscription;
 begin
-  Result := FRegistry.Open(AId, AFilter, AQueue);
+  Result := FRegistry.Open(AId, AFilter, AQueueCap);
   FOpened.Add(Result);
+  AQueue := Result.Queue;
 end;
 
 function TMCPSubscriptionRegistryTest.SubscriptionIdOf(
@@ -368,7 +366,7 @@ begin
     Assert.WillRaise(
       procedure
       begin
-        FRegistry.Open(LNewId, LNewFilter, FTwo);
+        FRegistry.Open(LNewId, LNewFilter);
       end,
       EMCPException);
   finally
@@ -574,13 +572,9 @@ begin
   // A short queue stands in for the 64-message one a subscription gets: what is
   // under test is the policy, not the number. CloseOnDrop is what a subscription
   // sets on its queue, and what makes the cap a thing the pump can see.
-  LSmallQueue := TMCPMessageQueue.Create(2);
-  LSmallQueue.CloseOnDrop := True;
-  FQueues.Add(LSmallQueue);
-
   LId := TJSONNumber.Create(1);
   try
-    Subscribe(LId, ToolsFilter, LSmallQueue);
+    Subscribe(LId, ToolsFilter, LSmallQueue, 2);
   finally
     LId.Free;
   end;
@@ -602,6 +596,123 @@ begin
   Assert.AreEqual(2, Drain(LSmallQueue));
 end;
 
+procedure TMCPSubscriptionRegistryTest.TestCloseClosesTheQueue;
+var
+  LId: TJSONValue;
+  LSubscription: TMCPSubscription;
+begin
+  // What wakes a pump blocked on the queue at once, rather than at its next
+  // keep-alive tick
+  LId := TJSONNumber.Create(1);
+  try
+    LSubscription := Subscribe(LId, ToolsFilter, FOne);
+  finally
+    LId.Free;
+  end;
+
+  Assert.IsFalse(FOne.Closed);
+  Assert.IsTrue(FRegistry.Close(LSubscription, True));
+  Assert.IsTrue(FOne.Closed);
+  Assert.AreEqual(TMCPSubscriptionState.ClosedGracefully, LSubscription.State);
+
+  // And CloseAll does the same for each
+  LId := TJSONNumber.Create(2);
+  try
+    Subscribe(LId, ToolsFilter, FTwo);
+  finally
+    LId.Free;
+  end;
+
+  Assert.AreEqual(1, FRegistry.CloseAll(False));
+  Assert.IsTrue(FTwo.Closed);
+end;
+
+procedure TMCPSubscriptionRegistryTest.TestAScopeSeparatesTheSameId;
+var
+  LId: TJSONValue;
+  LA, LB: TMCPSubscription;
+begin
+  // Two HTTP clients that both chose id 1: with no sessions, the scope is the
+  // only thing that tells their streams apart
+  LId := TJSONNumber.Create(1);
+  try
+    LA := FRegistry.Open('stream-a', LId, ToolsFilter);
+    FOpened.Add(LA);
+    FOne := LA.Queue;
+    LB := FRegistry.Open('stream-b', LId, EmptyFilter);
+    FOpened.Add(LB);
+    FTwo := LB.Queue;
+  finally
+    LId.Free;
+  end;
+
+  Assert.AreEqual(2, FRegistry.Count);
+
+  Assert.AreEqual(1, Published(TMCPNotification.ToolListChanged));
+  Assert.AreEqual(1, Drain(FOne));
+  Assert.AreEqual(0, Drain(FTwo), 'the other stream with the same id was reached');
+
+  // And each one still carries the id its client chose
+  Assert.AreEqual('1', LA.Id.ToJSON);
+  Assert.AreEqual('1', LB.Id.ToJSON);
+end;
+
+procedure TMCPSubscriptionRegistryTest.TestCloseByObjectSparesANewerOneUnderTheSameKey;
+var
+  LId: TJSONValue;
+  LOld, LNew: TMCPSubscription;
+begin
+  // The old one is closed by someone else (shutdown, say) and the id reused
+  // before its pump gets round to closing it: that late close must not take
+  // the new subscription down with it
+  LId := TJSONNumber.Create(1);
+  try
+    LOld := Subscribe(LId, ToolsFilter, FOne);
+    Assert.IsTrue(FRegistry.Close(LId, True));
+
+    LNew := Subscribe(LId, ToolsFilter, FTwo);
+
+    Assert.IsFalse(FRegistry.Close(LOld, False), 'the old one was already closed');
+    Assert.AreSame(LNew, FRegistry.Find(LId), 'and the new one is untouched');
+    Assert.AreEqual(TMCPSubscriptionState.Live, LNew.State);
+  finally
+    LId.Free;
+  end;
+end;
+
+procedure TMCPSubscriptionRegistryTest.TestOpenRefusesOverTheCap;
+var
+  LId: TJSONValue;
+  LFilter: TSubscriptionFilter;
+begin
+  FRegistry.MaxCount := 1;
+
+  LId := TJSONNumber.Create(1);
+  try
+    Subscribe(LId, ToolsFilter, FOne);
+  finally
+    LId.Free;
+  end;
+  Assert.IsTrue(FRegistry.IsFull);
+
+  LId := TJSONNumber.Create(2);
+  LFilter := ToolsFilter;
+  try
+    Assert.WillRaise(
+      procedure
+      begin
+        FRegistry.Open(LId, LFilter);
+      end,
+      EMCPListenNotStreamableError);
+  finally
+    // A refusal leaves the filter with the caller
+    LFilter.Free;
+    LId.Free;
+  end;
+
+  Assert.AreEqual(1, FRegistry.Count);
+end;
+
 { TMCPSubscriptionsConfigTest }
 
 procedure TMCPSubscriptionsConfigTest.Setup;
@@ -611,10 +722,6 @@ begin
   FConfig.ApplyConfig;
 
   FOpened := TList<TMCPSubscription>.Create;
-  FToolsQueue := TMCPMessageQueue.Create;
-  FPromptsQueue := TMCPMessageQueue.Create;
-  FResourcesQueue := TMCPMessageQueue.Create;
-  FReadmeQueue := TMCPMessageQueue.Create;
 
   // One subscription per interest, so that a notification meant for one proves
   // it did not go to the others.
@@ -639,48 +746,37 @@ end;
 
 procedure TMCPSubscriptionsConfigTest.TearDown;
 begin
-  // The registry must not outlive the queues: closing first is the invariant
-  // the transport's pump holds, and freeing afterwards is what the pump does
-  // with the subscription once it has read the State.
+  // Closing first is the invariant the transport's pump holds, and freeing
+  // afterwards is what the pump does with the subscription once it has read the
+  // State. The queues go with their subscriptions, and so does whatever a test
+  // published and did not read.
   for var LSubscription in FOpened do
   begin
-    FConfig.Subscriptions.Registry.Close(LSubscription.Id, False);
+    FConfig.Subscriptions.Registry.Close(LSubscription, False);
     LSubscription.Free;
   end;
 
   FOpened.Free;
-
-  // Messages a test published but did not read. A queue frees what it holds
-  // when it is destroyed, so this is belt and braces: it is what makes a
-  // leftover message show up here rather than as a leak at shutdown.
-  Drain(FReadmeQueue);
-  Drain(FResourcesQueue);
-  Drain(FPromptsQueue);
-  Drain(FToolsQueue);
-
-  FReadmeQueue.Free;
-  FResourcesQueue.Free;
-  FPromptsQueue.Free;
-  FToolsQueue.Free;
 
   FConfig := nil;
   FServer.Free;
 end;
 
 function TMCPSubscriptionsConfigTest.SubscribeTo(AId: Int64;
-  AFilter: TSubscriptionFilter; AQueue: TMCPMessageQueue): TMCPSubscription;
+  AFilter: TSubscriptionFilter; out AQueue: TMCPMessageQueue): TMCPSubscription;
 var
   LId: TJSONValue;
 begin
   // Open copies the id and takes the filter, so the id is this fixture's to free
   LId := TJSONNumber.Create(AId);
   try
-    Result := FConfig.Subscriptions.Registry.Open(LId, AFilter, AQueue);
+    Result := FConfig.Subscriptions.Registry.Open(LId, AFilter);
   finally
     LId.Free;
   end;
 
   FOpened.Add(Result);
+  AQueue := Result.Queue;
 end;
 
 function TMCPSubscriptionsConfigTest.Drain(AQueue: TMCPMessageQueue): Integer;
@@ -787,19 +883,14 @@ var
 begin
   // A subscription that acknowledged nothing - the shape a client gets when it
   // asks only for prompts, say, and then the tool list changes
-  LMuteQueue := TMCPMessageQueue.Create;
-  try
-    SubscribeTo(99, TSubscriptionFilter.Create, LMuteQueue);
+  SubscribeTo(99, TSubscriptionFilter.Create, LMuteQueue);
 
-    FConfig.Subscriptions.ToolsChanged;
-    FConfig.Subscriptions.PromptsChanged;
-    FConfig.Subscriptions.ResourcesChanged;
+  FConfig.Subscriptions.ToolsChanged;
+  FConfig.Subscriptions.PromptsChanged;
+  FConfig.Subscriptions.ResourcesChanged;
 
-    Assert.AreEqual(0, Drain(LMuteQueue),
-      'The server MUST NOT send a notification type the client did not request');
-  finally
-    LMuteQueue.Free;
-  end;
+  Assert.AreEqual(0, Drain(LMuteQueue),
+    'The server MUST NOT send a notification type the client did not request');
 end;
 
 initialization

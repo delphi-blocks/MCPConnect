@@ -1,4 +1,4 @@
-﻿{******************************************************************************}
+{******************************************************************************}
 {                                                                              }
 {  Delphi MCP Connect Library                                                  }
 {                                                                              }
@@ -47,11 +47,11 @@ type
   ///   A response writer that streams nothing, which is what the WebBroker and plain
   ///   HTTP paths look like: everything comes back through the response converter.
   /// </summary>
-  TStubTransportWriter = class(TInterfacedObject, IMCPTransportWriter)
+  TStubTransportWriter = class(TMCPTransportWriter)
   public
-    procedure Write(const AValue: string);
-    function Connected: Boolean;
-    function SupportsStreaming: Boolean;
+    procedure Write(const AValue: string); override;
+    function Connected: Boolean; override;
+    function SupportsStreaming: Boolean; override;
   end;
 
   /// <summary>What a request produced, copied out before the handler is destroyed.</summary>
@@ -698,7 +698,7 @@ begin
 
   LOutcome := Execute('POST', ResourcePath, 'bearer ' + TStubTokenValidator.GoodToken);
 
-  Assert.AreNotEqual(401, LOutcome.Code, 'Lowercase "bearer" scheme must be accepted (RFC 7235 §2.1)');
+  Assert.AreNotEqual(401, LOutcome.Code, 'Lowercase "bearer" scheme must be accepted (RFC 7235 section 2.1)');
   Assert.IsFalse(LOutcome.HasChallenge);
 end;
 
@@ -710,7 +710,7 @@ begin
 
   LOutcome := Execute('POST', ResourcePath, 'BEARER ' + TStubTokenValidator.GoodToken);
 
-  Assert.AreNotEqual(401, LOutcome.Code, 'Mixed-case "BEARER" scheme must be accepted (RFC 7235 §2.1)');
+  Assert.AreNotEqual(401, LOutcome.Code, 'Mixed-case "BEARER" scheme must be accepted (RFC 7235 section 2.1)');
   Assert.IsFalse(LOutcome.HasChallenge);
 end;
 
@@ -723,7 +723,7 @@ begin
   LOutcome := Execute('POST', ResourcePath, 'authorization',
     'Bearer ' + TStubTokenValidator.GoodToken, TTransportProtocol.StreamableHTTP);
 
-  Assert.AreNotEqual(401, LOutcome.Code, 'Lowercase "authorization" header must be accepted (RFC 7230 §3.2)');
+  Assert.AreNotEqual(401, LOutcome.Code, 'Lowercase "authorization" header must be accepted (RFC 7230 section 3.2)');
   Assert.IsFalse(LOutcome.HasChallenge);
 end;
 

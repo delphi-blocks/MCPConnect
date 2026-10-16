@@ -51,6 +51,14 @@ type
     FMCPServer: TMCPServer;
     FBridge: TMCPIndyBridge;
     procedure ParseAuthentication(AContext: TIdContext; const AAuthType, AAuthData: string; var VUsername, VPassword: String; var VHandled: Boolean);
+  protected
+    /// <summary>
+    ///   Ends every subscription stream gracefully before Indy disconnects the
+    ///   connections: a listen holds its connection thread, which Indy would
+    ///   otherwise wait on, and a server going down owes each stream its
+    ///   result.
+    /// </summary>
+    procedure Shutdown; override;
   public
     constructor Create(AOwner: TComponent);
     destructor Destroy; override;
@@ -60,25 +68,25 @@ type
     class function CreateMCPServer(AOwner: TComponent): TMCPIndyServer;
   end;
 
-  TMCPTransportWriterIndy = class(TInterfacedObject, IMCPTransportWriter)
+  TMCPTransportWriterIndy = class(TMCPTransportWriter)
   private
     FConnection: TIdTCPConnection;
     function SplitString(const AValue: string): TArray<string>;
     procedure WriteSSEEvent(const AEvent, AValue: string; ARetry: Integer);
-  protected
-    { IMCPTransportWriter }
-    function Connected: Boolean;
-    procedure Write(const AValue: string);
-    procedure WriteComment(const AValue: string); overload;
-    function SupportsStreaming: Boolean;
   public
+    function Connected: Boolean; override;
+    procedure Write(const AValue: string); override;
+    procedure WriteComment(const AValue: string); override;
+    function SupportsStreaming: Boolean; override;
+
     constructor Create(AConnection: TIdTCPConnection);
   end;
 
 implementation
 
 uses
-  System.IOUtils, Logify;
+  System.IOUtils, Logify,
+  MCPConnect.Configuration.MCP;
 
 procedure TMCPIndyBridge.HandleRequest(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
 var
@@ -150,8 +158,20 @@ end;
 
 destructor TMCPIndyServer.Destroy;
 begin
+  // Deactivated here rather than by the inherited destructor, which would do it
+  // after FMCPServer is gone - and Shutdown reaches into it
+  Active := False;
+
   FBridge.Free;
   FMCPServer.Free;
+  inherited;
+end;
+
+procedure TMCPIndyServer.Shutdown;
+begin
+  if Assigned(FMCPServer) then
+    FMCPServer.GetConfiguration<TMCPConfig>.Subscriptions.Registry.CloseAll(True);
+
   inherited;
 end;
 

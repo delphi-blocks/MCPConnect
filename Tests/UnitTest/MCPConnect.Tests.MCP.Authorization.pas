@@ -82,11 +82,11 @@ type
   end;
 
   /// <summary>A response writer that streams nothing.</summary>
-  TSilentAuthorizationWriter = class(TInterfacedObject, IMCPTransportWriter)
+  TSilentAuthorizationWriter = class(TMCPTransportWriter)
   public
-    procedure Write(const AValue: string);
-    function Connected: Boolean;
-    function SupportsStreaming: Boolean;
+    procedure Write(const AValue: string); override;
+    function Connected: Boolean; override;
+    function SupportsStreaming: Boolean; override;
   end;
 
   [TestFixture]

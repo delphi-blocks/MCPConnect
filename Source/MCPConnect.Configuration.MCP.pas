@@ -1214,10 +1214,15 @@ type
     FRegistry: TMCPSubscriptionRegistry;
 
     /// <summary>
-    ///   The cap a queue made by CreateQueue gets. MCP_SUBSCRIPTION_QUEUE_CAP
+    ///   The cap each subscription's queue is made with. MCP_SUBSCRIPTION_QUEUE_CAP
     ///   unless the server says otherwise.
     /// </summary>
     FQueueCap: Integer;
+
+    /// <summary>
+    ///   See KeepAliveInterval.
+    /// </summary>
+    FKeepAliveInterval: Integer;
 
     /// <summary>
     ///   How deep inside a registration batch this section is. See Batch.
@@ -1229,6 +1234,9 @@ type
     ///   sent.
     /// </summary>
     FPending: set of TMCPChangedKind;
+
+    function GetMaxSubscriptions: Integer;
+    procedure SetMaxSubscriptions(const AValue: Integer);
 
     procedure Publish(ANotification: TJRPCNotification);
 
@@ -1252,17 +1260,36 @@ type
     ///   and the stream is ended, the client told to reconnect.
     /// </summary>
     /// <remarks>
-    ///   The transport reads this when it opens a stream, and the queue it then
-    ///   gives the registry is the one that is bounded - the registry holds a
-    ///   queue, it does not make one. Default MCP_SUBSCRIPTION_QUEUE_CAP.
+    ///   Read by the listen endpoint when it opens a subscription, which makes
+    ///   its queue with this cap; changing it affects streams opened afterwards.
+    ///   Default MCP_SUBSCRIPTION_QUEUE_CAP.
     /// </remarks>
     property QueueCap: Integer read FQueueCap write FQueueCap;
 
     /// <summary>
-    ///   A queue for one subscription, bounded by QueueCap and set to close
-    ///   rather than drop. The transport's to own, the registry's to hold.
+    ///   How many subscription streams the server holds at once; a listen over
+    ///   the cap is refused with 400 + -32600. 0 for no cap. Default
+    ///   MCP_SUBSCRIPTION_MAX.
     /// </summary>
-    function CreateQueue: TMCPMessageQueue;
+    /// <remarks>
+    ///   Deployment-wide, not per client: with no sessions the server has no
+    ///   client to count against, only streams - and each stream holds a
+    ///   connection, and on Indy or an ISAPI host a thread, for as long as it
+    ///   is open. This is the number that bounds them.
+    /// </remarks>
+    property MaxSubscriptions: Integer read GetMaxSubscriptions write SetMaxSubscriptions;
+
+    /// <summary>
+    ///   How long, in milliseconds, a stream may stay silent before the
+    ///   transport writes a keep-alive comment on it. Default
+    ///   MCP_SUBSCRIPTION_KEEPALIVE_MS.
+    /// </summary>
+    /// <remarks>
+    ///   The keep-alive is also how a dead client is found: a half-open TCP
+    ///   connection reports itself connected until a write to it fails, so the
+    ///   interval is also the longest a dead stream holds its thread.
+    /// </remarks>
+    property KeepAliveInterval: Integer read FKeepAliveInterval write FKeepAliveInterval;
 
     /// <summary>
     ///   Tells every subscription that does not want AUri to say so, and every
@@ -3401,22 +3428,27 @@ constructor TMCPSubscriptionsConfig.Create(AConfig: IMCPConfig);
 begin
   inherited;
   FRegistry := TMCPSubscriptionRegistry.Create;
+  FRegistry.MaxCount := MCP_SUBSCRIPTION_MAX;
   FQueueCap := MCP_SUBSCRIPTION_QUEUE_CAP;
+  FKeepAliveInterval := MCP_SUBSCRIPTION_KEEPALIVE_MS;
+end;
+
+function TMCPSubscriptionsConfig.GetMaxSubscriptions: Integer;
+begin
+  Result := FRegistry.MaxCount;
+end;
+
+procedure TMCPSubscriptionsConfig.SetMaxSubscriptions(const AValue: Integer);
+begin
+  // Kept on the registry rather than here: Open is what enforces it, under the
+  // lock that keeps two listens from both seeing room for one more
+  FRegistry.MaxCount := AValue;
 end;
 
 destructor TMCPSubscriptionsConfig.Destroy;
 begin
   FRegistry.Free;
   inherited;
-end;
-
-function TMCPSubscriptionsConfig.CreateQueue: TMCPMessageQueue;
-begin
-  // CloseOnDrop is also set by TMCPSubscription.Create; setting it here means a
-  // queue made for a subscription is already the right shape before the
-  // subscription exists, which is what the transport hands to Open.
-  Result := TMCPMessageQueue.Create(FQueueCap);
-  Result.CloseOnDrop := True;
 end;
 
 procedure TMCPSubscriptionsConfig.Publish(ANotification: TJRPCNotification);

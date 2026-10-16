@@ -39,11 +39,11 @@ uses
 type
   /// <summary>A response writer that streams nothing: everything comes back
   ///   through the response converter.</summary>
-  TSilentWriter = class(TInterfacedObject, IMCPTransportWriter)
+  TSilentWriter = class(TMCPTransportWriter)
   public
-    procedure Write(const AValue: string);
-    function Connected: Boolean;
-    function SupportsStreaming: Boolean;
+    procedure Write(const AValue: string); override;
+    function Connected: Boolean; override;
+    function SupportsStreaming: Boolean; override;
   end;
 
   /// <summary>Writes its own name going in and coming out of both levels.</summary>

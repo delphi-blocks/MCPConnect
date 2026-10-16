@@ -33,11 +33,11 @@ uses
 
 type
   /// <summary>A response writer that streams nothing.</summary>
-  TSilentCacheWriter = class(TInterfacedObject, IMCPTransportWriter)
+  TSilentCacheWriter = class(TMCPTransportWriter)
   public
-    procedure Write(const AValue: string);
-    function Connected: Boolean;
-    function SupportsStreaming: Boolean;
+    procedure Write(const AValue: string); override;
+    function Connected: Boolean; override;
+    function SupportsStreaming: Boolean; override;
   end;
 
   /// <summary>The two hints of a reply, and whether it carried them at all.</summary>

@@ -35,11 +35,11 @@ uses
 
 type
   /// <summary>A response writer that streams nothing.</summary>
-  TSilentInfoWriter = class(TInterfacedObject, IMCPTransportWriter)
+  TSilentInfoWriter = class(TMCPTransportWriter)
   public
-    procedure Write(const AValue: string);
-    function Connected: Boolean;
-    function SupportsStreaming: Boolean;
+    procedure Write(const AValue: string); override;
+    function Connected: Boolean; override;
+    function SupportsStreaming: Boolean; override;
   end;
 
   [TestFixture]
@@ -296,14 +296,16 @@ procedure TServerInfoTest.TestTheUnchainedOperationsSayItToo;
 begin
   ConfigureServer();
 
-  // These three run no middleware chain of their own, so a result-stamping
-  // middleware would have left exactly them unsigned. subscriptions/listen is
-  // the pointed one: its result carries a _meta of its own, which must not
-  // lose the inherited member.
+  // These run no middleware chain of their own, so a result-stamping
+  // middleware would have left exactly them unsigned.
+  //
+  // subscriptions/listen is the third, and is checked in
+  // MCPConnect.Tests.Transport.Subscriptions instead: its result is now the
+  // last frame of a stream that ended gracefully, and this fixture's writer
+  // cannot stream - which is exactly the listen the transport refuses.
   AssertSaysWhoAnswered('resources/templates/list');
   AssertSaysWhoAnswered('completion/complete',
     '"ref":{"type":"ref/prompt","name":"greet"},"argument":{"name":"who","value":"w"}');
-  AssertSaysWhoAnswered('subscriptions/listen', '"notifications":{"toolsListChanged":true}');
 end;
 
 procedure TServerInfoTest.TestAnUnnamedServerWritesNothing;

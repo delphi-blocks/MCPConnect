@@ -34,15 +34,15 @@ uses
 
 type
   /// <summary>Keeps every SSE frame the handler wrote.</summary>
-  TRecordingWriter = class(TInterfacedObject, IMCPTransportWriter)
+  TRecordingWriter = class(TMCPTransportWriter)
   private
     FFrames: TStringList;
   public
     constructor Create(AFrames: TStringList);
 
-    procedure Write(const AValue: string);
-    function Connected: Boolean;
-    function SupportsStreaming: Boolean;
+    procedure Write(const AValue: string); override;
+    function Connected: Boolean; override;
+    function SupportsStreaming: Boolean; override;
   end;
 
   [TestFixture]

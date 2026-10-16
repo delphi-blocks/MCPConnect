@@ -34,11 +34,11 @@ uses
 
 type
   /// <summary>A response writer that streams nothing.</summary>
-  TSilentMrtrWriter = class(TInterfacedObject, IMCPTransportWriter)
+  TSilentMrtrWriter = class(TMCPTransportWriter)
   public
-    procedure Write(const AValue: string);
-    function Connected: Boolean;
-    function SupportsStreaming: Boolean;
+    procedure Write(const AValue: string); override;
+    function Connected: Boolean; override;
+    function SupportsStreaming: Boolean; override;
   end;
 
   /// <summary>What a call answered, as far as these tests care.</summary>

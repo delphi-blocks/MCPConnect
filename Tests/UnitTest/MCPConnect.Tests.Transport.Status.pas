@@ -35,26 +35,26 @@ uses
 
 type
   /// <summary>A response writer that streams nothing.</summary>
-  TSilentStatusWriter = class(TInterfacedObject, IMCPTransportWriter)
+  TSilentStatusWriter = class(TMCPTransportWriter)
   public
-    procedure Write(const AValue: string);
-    function Connected: Boolean;
-    function SupportsStreaming: Boolean;
+    procedure Write(const AValue: string); override;
+    function Connected: Boolean; override;
+    function SupportsStreaming: Boolean; override;
   end;
 
   /// <summary>
   ///   A response writer that can stream, and keeps what it was given. What a
   ///   payload answered 202 must never reach.
   /// </summary>
-  TStreamingStatusWriter = class(TInterfacedObject, IMCPTransportWriter)
+  TStreamingStatusWriter = class(TMCPTransportWriter)
   private
     FFrames: TStrings;
   public
     constructor Create(AFrames: TStrings);
 
-    procedure Write(const AValue: string);
-    function Connected: Boolean;
-    function SupportsStreaming: Boolean;
+    procedure Write(const AValue: string); override;
+    function Connected: Boolean; override;
+    function SupportsStreaming: Boolean; override;
   end;
 
   /// <summary>What a request answered, as far as these tests care.</summary>

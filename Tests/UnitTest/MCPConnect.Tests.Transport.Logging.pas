@@ -65,15 +65,15 @@ type
   end;
 
   /// <summary>Keeps every SSE frame the handler wrote.</summary>
-  TLogRecordingWriter = class(TInterfacedObject, IMCPTransportWriter)
+  TLogRecordingWriter = class(TMCPTransportWriter)
   private
     FFrames: TStringList;
   public
     constructor Create(AFrames: TStringList);
 
-    procedure Write(const AValue: string);
-    function Connected: Boolean;
-    function SupportsStreaming: Boolean;
+    procedure Write(const AValue: string); override;
+    function Connected: Boolean; override;
+    function SupportsStreaming: Boolean; override;
   end;
 
   [TestFixture]

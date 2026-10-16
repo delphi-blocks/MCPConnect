@@ -39,26 +39,26 @@ uses
 
 type
   /// <summary>A writer that streams, and keeps what it was given.</summary>
-  TStreamingSSEWriter = class(TInterfacedObject, IMCPTransportWriter)
+  TStreamingSSEWriter = class(TMCPTransportWriter)
   private
     FFrames: TStringList;
   public
     constructor Create(AFrames: TStringList);
 
-    procedure Write(const AValue: string);
-    function Connected: Boolean;
-    function SupportsStreaming: Boolean;
+    procedure Write(const AValue: string); override;
+    function Connected: Boolean; override;
+    function SupportsStreaming: Boolean; override;
   end;
 
   /// <summary>
   ///   A writer that cannot stream - the WebBroker one on Delphi 11 and 12,
   ///   where the RTL has no SSE response stream.
   /// </summary>
-  TNonStreamingSSEWriter = class(TInterfacedObject, IMCPTransportWriter)
+  TNonStreamingSSEWriter = class(TMCPTransportWriter)
   public
-    procedure Write(const AValue: string);
-    function Connected: Boolean;
-    function SupportsStreaming: Boolean;
+    procedure Write(const AValue: string); override;
+    function Connected: Boolean; override;
+    function SupportsStreaming: Boolean; override;
   end;
 
   [TestFixture]

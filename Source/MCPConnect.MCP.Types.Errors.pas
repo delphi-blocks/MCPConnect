@@ -84,6 +84,9 @@ resourcestring
   SMCPMissingClientCapabilityFmt = 'The request requires the [%s] client capability, not declared by the client';
   SMCPUnsupportedProtocolVersionFmt = 'Protocol version [%s] is not supported by this server';
   SMCPBatchNotSupported = 'The body of a request must be a single JSON-RPC request or notification, not a batch';
+  SMCPListenNotAccepted = 'subscriptions/listen is answered with an event stream, and the request''s Accept excludes text/event-stream';
+  SMCPListenNoStream = 'subscriptions/listen needs a response that stays open, and this deployment cannot stream one';
+  SMCPListenTooManyFmt = 'This server already holds its maximum of %d subscription streams';
 
 type
   /// <summary>
@@ -223,6 +226,51 @@ type
     procedure AfterConstruction; override;
 
     constructor Create; reintroduce;
+  end;
+
+  /// <summary>
+  ///   Why a "subscriptions/listen" could not be given its stream.
+  /// </summary>
+  TMCPListenRefusal = (
+    /// <summary>
+    ///   The request's own Accept excluded text/event-stream.
+    /// </summary>
+    NotAccepted,
+
+    /// <summary>
+    ///   The deployment cannot hold a response open at all.
+    /// </summary>
+    NoStream,
+
+    /// <summary>
+    ///   The server already holds as many streams as it allows.
+    /// </summary>
+    TooMany);
+
+  /// <summary>
+  ///   Raised when a "subscriptions/listen" reaches a server that cannot give it
+  ///   the stream it exists to open.
+  /// </summary>
+  /// <remarks>
+  ///   Invalid Request (-32600), and refused before anything is acknowledged:
+  ///   acknowledging and then ending the subscription at once is what a client
+  ///   reads as a clean close, and it reconnects for ever.
+  ///
+  ///   The HTTP status is the transport's to choose, from Reason: 406 when the
+  ///   client asked for a shape the request cannot be answered in, 400 when the
+  ///   client did nothing wrong and the deployment cannot do this.
+  /// </remarks>
+  EMCPListenNotStreamableError = class(EMCPProtocolError)
+  private
+    FReason: TMCPListenRefusal;
+  public
+    procedure AfterConstruction; override;
+
+    constructor CreateNotAccepted;
+    constructor CreateNoStream;
+    constructor CreateTooMany(AMax: Integer);
+
+    property Reason: TMCPListenRefusal read FReason;
   end;
 
   /// <summary>
@@ -470,6 +518,32 @@ end;
 constructor EMCPBatchNotSupportedError.Create;
 begin
   inherited Create(SMCPBatchNotSupported);
+end;
+
+{ EMCPListenNotStreamableError }
+
+procedure EMCPListenNotStreamableError.AfterConstruction;
+begin
+  inherited;
+  FCode := JRPC_INVALID_REQUEST;
+end;
+
+constructor EMCPListenNotStreamableError.CreateNotAccepted;
+begin
+  inherited Create(SMCPListenNotAccepted);
+  FReason := TMCPListenRefusal.NotAccepted;
+end;
+
+constructor EMCPListenNotStreamableError.CreateNoStream;
+begin
+  inherited Create(SMCPListenNoStream);
+  FReason := TMCPListenRefusal.NoStream;
+end;
+
+constructor EMCPListenNotStreamableError.CreateTooMany(AMax: Integer);
+begin
+  inherited CreateFmt(SMCPListenTooManyFmt, [AMax]);
+  FReason := TMCPListenRefusal.TooMany;
 end;
 
 { EMCPInvalidRequestMetaError }

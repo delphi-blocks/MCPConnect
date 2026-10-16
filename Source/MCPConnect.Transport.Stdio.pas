@@ -146,14 +146,20 @@ type
     property Server: TMCPServer read FServer write FServer;
   end;
 
-  TMCPTransportWriterStdio = class(TInterfacedObject, IMCPTransportWriter)
+  /// <summary>
+  ///   Writes each message as one JSON line on stdout.
+  /// </summary>
+  /// <remarks>
+  ///   WriteComment keeps the base class's no-op: a comment is an SSE concept,
+  ///   and on stdio it would be a line the client cannot parse as JSON-RPC.
+  /// </remarks>
+  TMCPTransportWriterStdio = class(TMCPTransportWriter)
   private
     FStdOutWriter: TStdOutWriter;
   public
-    { IMCPTransportWriter }
-    procedure Write(const AValue: string);
-    function Connected: Boolean;
-    function SupportsStreaming: Boolean;
+    procedure Write(const AValue: string); override;
+    function Connected: Boolean; override;
+    function SupportsStreaming: Boolean; override;
 
     constructor Create(AStdOutWriter: TStdOutWriter);
   end;

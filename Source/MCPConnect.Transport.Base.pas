@@ -1,4 +1,4 @@
-﻿{******************************************************************************}
+{******************************************************************************}
 {                                                                              }
 {  Delphi MCP Connect Library                                                  }
 {                                                                              }
@@ -34,6 +34,7 @@ uses
   MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Errors,
   MCPConnect.MCP.Types.Notifications,
+  MCPConnect.MCP.Types.Subscriptions,
   MCPConnect.JRPC.Middleware,
   MCPConnect.MCP.Server;
 
@@ -56,6 +57,7 @@ resourcestring
   SHttpMethodNotAllowed = 'Http method not allowed';
   STransportMethodNotFoundFmt = 'Method "%s" not found';
   SDuplicateAuthorizationHeader = 'Multiple Authorization headers are not allowed';
+  STransportWriterCannotWrite = 'This transport writer does not implement Write';
 
 type
   /// <summary>
@@ -78,8 +80,43 @@ type
     ///   2026-07-28, and this transport has nothing to replay them from.
     /// </summary>
     procedure Write(const AValue: string);
+
+    /// <summary>
+    ///   Writes an SSE comment: a line every client ignores and every
+    ///   intermediary sees as traffic.
+    /// </summary>
+    /// <remarks>
+    ///   The transport writes one on a "subscriptions/listen" stream that has
+    ///   been silent for TMCPSubscriptionsConfig.KeepAliveInterval. It is the
+    ///   liveness probe as much as the keep-alive: a dead peer is often not
+    ///   visible in Connected, while a write to it fails at once. A writer with
+    ///   no notion of a comment (stdio, where it would be a line that is not
+    ///   JSON-RPC) writes nothing.
+    /// </remarks>
+    procedure WriteComment(const AValue: string);
+
     function Connected: Boolean;
     function SupportsStreaming: Boolean;
+  end;
+
+  /// <summary>
+  ///   What every IMCPTransportWriter has in common, so that a writer only
+  ///   declares the parts it actually does differently.
+  /// </summary>
+  /// <remarks>
+  ///   Write is the one method a writer must always answer for itself; the
+  ///   other defaults are the harmless ones. SupportsStreaming is False, so a
+  ///   writer that says nothing is treated as unable to hold a stream rather
+  ///   than accepting one it cannot deliver; Connected is True, so a writer
+  ///   that cannot tell does not end every stream the moment it starts; and
+  ///   WriteComment writes nothing.
+  /// </remarks>
+  TMCPTransportWriter = class(TInterfacedObject, IMCPTransportWriter)
+  public
+    procedure Write(const AValue: string); virtual;
+    procedure WriteComment(const AValue: string); virtual;
+    function Connected: Boolean; virtual;
+    function SupportsStreaming: Boolean; virtual;
   end;
 
   TTransportProtocol = (Undefined, Stdio, StreamableHTTP);
@@ -126,6 +163,7 @@ type
     FAcceptItems: TAcceptItemList<TAcceptItem>;
     FProtocol: TTransportProtocol;
     FHeaders: TMCPRequestHeaders;
+    FCanStream: Boolean;
     function GetAccept: string;
     procedure SetAccept(const AValue: string);
     function GetAcceptItems: TAcceptItemList<TAcceptItem>;
@@ -149,6 +187,13 @@ type
     property Origin: string read GetOrigin;
     property Protocol: TTransportProtocol read FProtocol write FProtocol;
     property Headers: TMCPRequestHeaders read FHeaders;
+
+    /// <summary>
+    ///   Whether the transport serving this request can stream a reply at all:
+    ///   a fact about the deployment, where AcceptsEventStream is a fact about
+    ///   the client. Set by the handler from its writer.
+    /// </summary>
+    property CanStream: Boolean read FCanStream write FCanStream;
 
     constructor Create;
     destructor Destroy; override;
@@ -342,6 +387,39 @@ type
     /// </remarks>
     function ExpectsResponse(AMessages: TJRPCMessages): Boolean;
 
+    /// <summary>
+    ///   The "subscriptions/listen" request AMessages is, or nil. A body is a
+    ///   single message, so this is a question about its only one.
+    /// </summary>
+    class function ListenRequestOf(AMessages: TJRPCMessages): TJRPCRequest; static;
+
+    /// <summary>
+    ///   Why a listen cannot be given its stream here, or False when it can.
+    ///   Asked before dispatch, so that a refusal is a status and a document
+    ///   rather than an error frame on a stream that has already said 200.
+    /// </summary>
+    function ListenRefusal(out AReason: TMCPListenRefusal): Boolean;
+
+    /// <summary>
+    ///   Whether the token the stream was opened with has expired since.
+    ///   False when it carries no expiry at all - a static token, or none.
+    /// </summary>
+    function TokenExpired: Boolean;
+
+    /// <summary>
+    ///   Holds a "subscriptions/listen" stream open: writes what the registry
+    ///   publishes to the subscription, a keep-alive when it has been quiet,
+    ///   and, if the subscription ends gracefully, AHeld - the listen result -
+    ///   as the last frame.
+    /// </summary>
+    /// <remarks>
+    ///   Never raises. A write that fails is a client that went away, which is
+    ///   a disconnect and not a server error: answering it with a 500 would be
+    ///   a write down the same dead connection. Leaves the subscription
+    ///   closed, never freed - HandlePOST does that in its finally.
+    /// </remarks>
+    procedure PumpSubscription(ASubscription: TMCPSubscription; AHeld: TJRPCMessage);
+
     procedure HandlePOST;
     procedure HandleOPTIONS;
     function CreateAsyncThread(ARequestList: TJRPCMessages; AResponseQueue: TMCPMessageQueue): TThread;
@@ -365,6 +443,37 @@ uses
   MCPConnect.Transport.MediaType,
   MCPConnect.Configuration.Core,
   MCPConnect.Configuration.Neon;
+
+{ TMCPTransportWriter }
+
+procedure TMCPTransportWriter.Write(const AValue: string);
+begin
+  // A writer that says nothing about how it writes is not a writer: a transport
+  // that can deliver anything has to say how
+  raise EJRPCException.Create(STransportWriterCannotWrite);
+end;
+
+procedure TMCPTransportWriter.WriteComment(const AValue: string);
+begin
+  // Nothing to do, and that is the honest default rather than an oversight: a
+  // transport with no notion of a comment is a real case, and a stream held
+  // open on it relies on its own framing
+end;
+
+function TMCPTransportWriter.Connected: Boolean;
+begin
+  // Optimistic: a writer that cannot tell whether its peer is still there must
+  // not answer False, or every stream would end the moment it started
+  Result := True;
+end;
+
+function TMCPTransportWriter.SupportsStreaming: Boolean;
+begin
+  // Pessimistic, the deliberate opposite of Connected: a writer that has not
+  // said it can hold a stream is not asked to, so a request that needs one is
+  // refused rather than answered into a void
+  Result := False;
+end;
 
 { TMCPTransportHandler }
 
@@ -461,6 +570,7 @@ begin
   try
     LFragment := TStopwatch.StartNew;
     ARequestConverter(FRequest);
+    FRequest.CanStream := Assigned(FResponseWriter) and FResponseWriter.SupportsStreaming;
     {$IFDEF FULL_PAYLOAD_LOGGING}
     Logger.LogTrace('[REQ] %s', [FRequest.Content]);
     {$ENDIF}
@@ -837,6 +947,135 @@ begin
   Result := (AMessages.Types - [TJRPCMessageType.Notification]) <> [];
 end;
 
+class function TMCPTransportHandler.ListenRequestOf(AMessages: TJRPCMessages): TJRPCRequest;
+begin
+  Result := nil;
+  if not Assigned(AMessages) or (AMessages.Count <> 1) then
+    Exit;
+
+  if (AMessages.List[0] is TJRPCRequest) and
+     (TJRPCRequest(AMessages.List[0]).Method = MCP_SUBSCRIPTIONS_LISTEN) then
+    Result := TJRPCRequest(AMessages.List[0]);
+end;
+
+function TMCPTransportHandler.ListenRefusal(out AReason: TMCPListenRefusal): Boolean;
+begin
+  Result := True;
+
+  // The client asked for a document, and a stream that stays open is the only
+  // answer a listen has
+  if not FRequest.AcceptsEventStream then
+    AReason := TMCPListenRefusal.NotAccepted
+
+  // The client did nothing wrong: this deployment cannot hold a response open
+  // (WebBroker before 13.1, CGI)
+  else if not FRequest.CanStream then
+    AReason := TMCPListenRefusal.NoStream
+
+  // Checked again, atomically, when the subscription is opened. This one is so
+  // that the common case is refused with a status rather than with an error
+  // frame on a stream that already said 200.
+  else if FMCPConfig.Subscriptions.Registry.IsFull then
+    AReason := TMCPListenRefusal.TooMany
+
+  else
+    Result := False;
+end;
+
+function TMCPTransportHandler.TokenExpired: Boolean;
+var
+  LExpiration: TDateTime;
+begin
+  if not Assigned(FAccessToken) then
+    Exit(False);
+
+  LExpiration := FAccessToken.Expiration;
+  Result := (LExpiration > 0) and (TTimeZone.Local.ToUniversalTime(Now) >= LExpiration);
+end;
+
+procedure TMCPTransportHandler.PumpSubscription(ASubscription: TMCPSubscription; AHeld: TJRPCMessage);
+var
+  LRegistry: TMCPSubscriptionRegistry;
+  LInterval: Integer;
+  LMessage: TJRPCMessage;
+begin
+  LRegistry := FMCPConfig.Subscriptions.Registry;
+
+  LInterval := FMCPConfig.Subscriptions.KeepAliveInterval;
+  if LInterval <= 0 then
+    LInterval := MCP_SUBSCRIPTION_KEEPALIVE_MS;
+
+  Logger.LogDebug('[SSE] Subscription %s open', [ASubscription.Id.ToJSON]);
+  try
+    // The response queue was closed the moment the api method returned, and
+    // that means nothing here: what ends this loop is the subscription's own
+    // queue closing - the registry closing it, or an overflow - or the client
+    // going away.
+    while True do
+    begin
+      // Cheap, and catches what the socket does report. A half-open peer is
+      // caught by the keep-alive write below failing instead.
+      if not FResponseWriter.Connected then
+      begin
+        Logger.LogDebug('[SSE] Subscription %s: the client disconnected', [ASubscription.Id.ToJSON]);
+        LRegistry.Close(ASubscription, False);
+        Exit;
+      end;
+
+      // The token was checked once, when the stream opened. A client whose
+      // access has since lapsed is not to keep listening on it for ever.
+      if TokenExpired then
+      begin
+        Logger.LogDebug('[SSE] Subscription %s: the access token expired', [ASubscription.Id.ToJSON]);
+        LRegistry.Close(ASubscription, True);
+      end;
+
+      // Returns what is still queued even once the queue is closed, so a
+      // notification published just before a close is not lost; nil on an
+      // empty closed queue, and nil on the timeout - which is the keep-alive
+      // tick, so there is no second timer.
+      LMessage := ASubscription.Queue.DequeueWait(LInterval);
+      if Assigned(LMessage) then
+      begin
+        try
+          WriteSSEResponse(LMessage.ToJson);
+        finally
+          LMessage.Free;
+        end;
+      end
+      else if ASubscription.Queue.Closed then
+        Break
+      else
+        FResponseWriter.WriteComment('keep-alive');
+    end;
+
+    // The queue closed while the subscription is still live: nobody closed it,
+    // so it overflowed. The client has lost a change it will never ask about,
+    // and the honest answer is an abrupt end - no result - which is what a
+    // client reads as a reason to reconnect and re-read. A result here would
+    // tell it the subscription ended cleanly and nothing was missed.
+    if ASubscription.State = TMCPSubscriptionState.Live then
+    begin
+      LRegistry.Close(ASubscription, False);
+      Exit;
+    end;
+
+    // Ended by the server, gracefully: the result it has been holding back is
+    // owed, as the last frame. An abrupt end owes nothing.
+    if (ASubscription.State = TMCPSubscriptionState.ClosedGracefully) and Assigned(AHeld) then
+      WriteSSEResponse(AHeld.ToJson);
+  except
+    on E: Exception do
+    begin
+      // A write on a dead socket. Logged and swallowed: the client is gone, and
+      // there is no one to tell.
+      Logger.LogDebug('[SSE] Subscription %s ended by a failed write: %s',
+        [ASubscription.Id.ToJSON, E.Message]);
+      LRegistry.Close(ASubscription, False);
+    end;
+  end;
+end;
+
 procedure TMCPTransportHandler.HandlePOST;
 const
   QueueReadTimeout = 500;
@@ -848,6 +1087,18 @@ var
   ///   parse, and read everywhere the reply is written.
   /// </summary>
   LStreamed: Boolean;
+
+  /// <summary>
+  ///   The meeting point with the listen endpoint, for a "subscriptions/listen"
+  ///   this transport is going to hold open; nil for every other request.
+  /// </summary>
+  LListen: TMCPListenStream;
+
+  /// <summary>
+  ///   The listen result, kept back while the subscription is live. Owned by
+  ///   the garbage collector from the moment it is held.
+  /// </summary>
+  LHeld: TJRPCMessage;
 
   procedure ProcessQueue(AResponseList: TMCPMessageQueue);
   begin
@@ -861,6 +1112,29 @@ var
         else if IsUnsolicitedLog(AMessage) then
         begin
           Logger.LogDebug('Log notification dropped, the request asked for no logging at this level');
+        end
+        else if Assigned(LListen) and Assigned(LListen.Subscription) and (AMessage is TJRPCResponse) then
+        begin
+          // The hold rule. Written now, the result would follow the
+          // acknowledgement at once and close the exchange - the graceful-end
+          // signal, which a client answers by tearing down and subscribing
+          // again, for ever. It is the last frame of the stream instead, and
+          // only if the stream ends gracefully.
+          //
+          // Only a response is held: an error for this id means the listen
+          // failed, and that is what the client must be told.
+          ADispose := False;
+          FGarbage.Add(AMessage);
+          LHeld := AMessage;
+        end
+        else if Assigned(LListen) and (AMessage is TJRPCNotification) and
+          (TJRPCNotification(AMessage).Method <> MCP_NOTIFY_SUBSCRIPTIONS_ACKNOWLEDGED) then
+        begin
+          // A listen stream carries its acknowledgement and what the registry
+          // publishes, and nothing else: progress and log messages are
+          // request-scoped, and never travel on one.
+          Logger.LogDebug('[SSE] Notification dropped, a listen stream does not carry it [method=%s]',
+            [TJRPCNotification(AMessage).Method]);
         end
         else if LStreamed then
         begin
@@ -939,6 +1213,61 @@ begin
 
   FGarbage.Add(LRequestList);
 
+  LListen := nil;
+  LHeld := nil;
+
+  // A listen is a request for a stream that stays open, and it is refused here,
+  // before anything is dispatched, when this request cannot have one. The
+  // alternative - acknowledge, then end the subscription at once - is what a
+  // client reads as a clean close, and it reconnects for ever.
+  //
+  // Over HTTP only. A stdio listen keeps answering at once until that transport
+  // can dispatch concurrently: holding one open today would block it for good.
+  var LListenRequest := ListenRequestOf(LRequestList);
+  if Assigned(LListenRequest) and (FRequest.Protocol = TTransportProtocol.StreamableHTTP) then
+  begin
+    var LReason: TMCPListenRefusal;
+    if ListenRefusal(LReason) then
+    begin
+      var LRefusal: EMCPListenNotStreamableError;
+      case LReason of
+        TMCPListenRefusal.NotAccepted: LRefusal := EMCPListenNotStreamableError.CreateNotAccepted;
+        TMCPListenRefusal.NoStream: LRefusal := EMCPListenNotStreamableError.CreateNoStream;
+      else
+        LRefusal := EMCPListenNotStreamableError.CreateTooMany(FMCPConfig.Subscriptions.MaxSubscriptions);
+      end;
+
+      try
+        // Answered as the parse errors above are: the request is replaced with
+        // the error it earned, which the message chain hands back unchanged,
+        // and the status is settled now, before any header goes out
+        var LRefusalList := TJRPCMessages.Create(True);
+        FGarbage.Add(LRefusalList);
+        LRefusalList.AddMessage(TJRPCError.CreateFromException(LRefusal, LListenRequest.Id));
+        LRequestList := LRefusalList;
+      finally
+        LRefusal.Free;
+      end;
+
+      // 406 when the client asked for a shape this request cannot be answered
+      // in; 400 when it did nothing wrong and this deployment cannot do it
+      if LReason = TMCPListenRefusal.NotAccepted then
+        FProtocolStatus := HTTP_CODE_NOTACCEPTABLE
+      else
+        FProtocolStatus := HTTP_CODE_BADREQUEST;
+    end
+    else
+    begin
+      // A scope of its own, because the id alone is not one: two clients may
+      // both listen with id 1, and with no sessions nothing else separates
+      // their streams. The queue the stream is drained from is not made here:
+      // the subscription makes and owns it, so the two live and die together.
+      LListen := TMCPListenStream.Create(TGUID.NewGuid.ToString);
+      FGarbage.Add(LListen);
+      FContext.AddContent(LListen);
+    end;
+  end;
+
   var LResponseQueue := TMCPMessageQueue.Create;
   FGarbage.Add(LResponseQueue);
   FContext.AddContent(LResponseQueue);
@@ -980,12 +1309,16 @@ begin
   LStreamed := (FProtocolStatus = 0) and ExpectsResponse(LRequestList) and
     FRequest.AcceptsEventStream and FResponseWriter.SupportsStreaming;
 
+  // Sent before the worker starts, not after: nothing may be written on a stream
+  // before the headers that open it, and once the worker runs it can produce at
+  // any moment. The status is fixed by now either way - a status decided during
+  // dispatch cannot reach a streamed reply.
+  if LStreamed then
+    SendSSEResponseHeaders;
+
   LFragment := TStopwatch.StartNew;
   var LAsyncExecute := CreateAsyncThread(LRequestList, LResponseQueue);
   try
-    if LStreamed then
-      SendSSEResponseHeaders;
-
     // The worker thread closes the queue when done, which wakes ProcessQueue
     // immediately: on the happy path no read timeout is ever paid. The loop is
     // still needed because a slow tool can let the timeout expire before
@@ -996,6 +1329,22 @@ begin
       ProcessQueue(LResponseQueue);
     end;
     ProcessQueue(LResponseQueue);
+
+    // A listen that opened a subscription: the acknowledgement is out, the
+    // result is held, and the stream stays open until the subscription ends.
+    // The registry must not be left holding it once this request is gone - its
+    // queue goes with the request's garbage - so it is closed and freed here
+    // whatever the pump did, a listen that failed after opening included.
+    if Assigned(LListen) and Assigned(LListen.Subscription) then
+    begin
+      try
+        if Assigned(LHeld) then
+          PumpSubscription(LListen.Subscription, LHeld);
+      finally
+        FMCPConfig.Subscriptions.Registry.Close(LListen.Subscription, False);
+        FreeAndNil(LListen.Subscription);
+      end;
+    end;
 
     // Not a stream: the reply is a document, or it is nothing at all
     if not LStreamed then

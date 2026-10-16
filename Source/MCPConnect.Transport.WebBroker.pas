@@ -59,7 +59,7 @@ type
   {$ENDIF}
 
 
-  TMCPTransportWriterWebBroker = class(TInterfacedObject, IMCPTransportWriter)
+  TMCPTransportWriterWebBroker = class(TMCPTransportWriter)
   private
     FResponse: TWebResponse;
     {$IFDEF HAS_WEBBROKER_SSE}
@@ -70,11 +70,10 @@ type
   public
     function SSEStream: TWebResponseStream;
 
-    { IMCPTransportWriter }
-    procedure Write(const AValue: string); overload;
-    procedure WriteComment(const AValue: string); overload;
-    function Connected: Boolean;
-    function SupportsStreaming: Boolean;
+    procedure Write(const AValue: string); override;
+    procedure WriteComment(const AValue: string); override;
+    function Connected: Boolean; override;
+    function SupportsStreaming: Boolean; override;
 
     constructor Create(AResponse: TWebResponse);
   end;

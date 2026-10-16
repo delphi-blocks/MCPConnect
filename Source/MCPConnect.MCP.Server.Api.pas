@@ -337,11 +337,22 @@ type
     [Context] Request: TJRPCRequest;
 
     /// <summary>
+    ///   Put in the context by a transport that will hold this request's stream
+    ///   open, and only by one: absent, Listen acknowledges and opens nothing.
+    /// </summary>
+    [Context([TContextOption.Optional])] Stream: TMCPListenStream;
+
+    /// <summary>
     ///   Opens the notification stream. This is a long-lived *request*, not a
     ///   notification: it carries an id, the notifications sent on the stream
     ///   are correlated with it, and its response is sent only when the server
     ///   tears the subscription down.
     /// </summary>
+    /// <remarks>
+    ///   Answers at once, like every api method: holding the stream is the
+    ///   transport's work. It registers the subscription and acknowledges it,
+    ///   and the transport keeps the result back until the subscription ends.
+    /// </remarks>
     [JRPC('listen')]
     function Listen([JRPCParams] AParams: TSubscriptionsListenRequestParams): TSubscriptionsListenResult;
   end;
@@ -1001,6 +1012,8 @@ end;
 function TMCPSubscriptionsApi.Listen(AParams: TSubscriptionsListenRequestParams): TSubscriptionsListenResult;
 var
   LAck: TSubscriptionsAcknowledgedNotificationParams;
+  LId: TJSONValue;
+  LFilter: TSubscriptionFilter;
 begin
   RPCContext.AddContent(AParams);
 
@@ -1008,6 +1021,14 @@ begin
   // nothing to report on is left out rather than silently never sent
   LAck := TSubscriptionsAcknowledgedNotificationParams.Create;
   try
+    // The acknowledgement is the first message of the subscription, and like
+    // every one after it carries the subscription id - the listen request's
+    // own id, keeping its JSON type
+    if Request.Id.IsString then
+      LAck.OnSubscription(Request.Id.AsString)
+    else
+      LAck.OnSubscription(Int64(Request.Id.AsInteger));
+
     if AParams.Notifications.WantsToolsListChanged and (MCPConfig.Tools.Registry.Count > 0) then
       LAck.Notifications.ToolsListChanged := True;
 
@@ -1020,6 +1041,51 @@ begin
 
     LAck.Notifications.ResourceSubscriptions := KnownResourceUris(AParams.Notifications.ResourceSubscriptions);
 
+    // Built before the subscription is opened, so that nothing can fail between
+    // registering it and handing the transport something to hold back
+    Result := TSubscriptionsListenResult.Create;
+    try
+      Identify(Result);
+
+      // The stream id is the id of this very request, keeping its JSON type
+      if Request.Id.IsString then
+        Result.Meta.SetSubscriptionId(Request.Id.AsString)
+      else
+        Result.Meta.SetSubscriptionId(Int64(Request.Id.AsInteger));
+
+      // Registered before the acknowledgement is queued, and that is safe: what
+      // the registry publishes from now on goes to the subscription's own queue,
+      // which the transport drains only after the response queue - so the
+      // acknowledgement is still the first message, and a change that happens
+      // in between is on the stream rather than lost.
+      //
+      // The authorization is the one in force now. A publish has no request to
+      // check against, so revoking access means closing the stream.
+      if Assigned(Stream) then
+      begin
+        if Request.Id.IsString then
+          LId := TJSONString.Create(Request.Id.AsString)
+        else
+          LId := TJSONNumber.Create(Int64(Request.Id.AsInteger));
+        try
+          LFilter := TSubscriptionFilter.Create;
+          try
+            LAck.Notifications.AssignTo(LFilter);
+            Stream.Subscription := MCPConfig.Subscriptions.Registry.Open(Stream.Scope, LId, LFilter,
+              MCPConfig.Subscriptions.QueueCap);
+          except
+            LFilter.Free;
+            raise;
+          end;
+        finally
+          LId.Free;
+        end;
+      end;
+    except
+      Result.Free;
+      raise;
+    end;
+
     if Assigned(Responses) then
       Responses.Enqueue(TMCPNotification.FromParams(MCP_NOTIFY_SUBSCRIPTIONS_ACKNOWLEDGED, LAck))
     else
@@ -1028,18 +1094,6 @@ begin
     LAck.Free;
     raise;
   end;
-
-  // The stream itself is transport work: until the transport holds this request
-  // open, the subscription is torn down as soon as it is acknowledged, which is
-  // the graceful teardown this result reports.
-  Result := TSubscriptionsListenResult.Create;
-  Identify(Result);
-
-  // The stream id is the id of this very request, keeping its JSON type
-  if Request.Id.IsString then
-    Result.Meta.SetSubscriptionId(Request.Id.AsString)
-  else
-    Result.Meta.SetSubscriptionId(Int64(Request.Id.AsInteger));
 end;
 
 function TMCPSubscriptionsApi.KnownResourceUris(const AUris: TArray<string>): TArray<string>;

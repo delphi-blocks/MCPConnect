@@ -58,6 +58,30 @@ const
   /// </remarks>
   MCP_SUBSCRIPTION_QUEUE_CAP = 64;
 
+  /// <summary>
+  ///   How many subscription streams a server holds at once before it refuses
+  ///   another. The default; see TMCPSubscriptionsConfig.MaxSubscriptions.
+  /// </summary>
+  /// <remarks>
+  ///   A deployment-wide budget, not a per-client one: with no sessions there is
+  ///   no client to count against, only streams. Each one holds a connection
+  ///   and, on Indy or an ISAPI host, a thread - this is what bounds both.
+  /// </remarks>
+  MCP_SUBSCRIPTION_MAX = 64;
+
+  /// <summary>
+  ///   How long, in milliseconds, a subscription stream may stay silent before
+  ///   the transport writes a keep-alive comment on it. The default; see
+  ///   TMCPSubscriptionsConfig.KeepAliveInterval.
+  /// </summary>
+  /// <remarks>
+  ///   The keep-alive is the liveness probe as much as it is a keep-alive: a
+  ///   socket reports itself connected on a half-open TCP connection until a
+  ///   send fails, so a write is the only way to find out. Shorter than the 15 s
+  ///   WebBroker pings on, so the two do not fight.
+  /// </remarks>
+  MCP_SUBSCRIPTION_KEEPALIVE_MS = 2000;
+
 resourcestring
   /// <summary>
   ///   Raised when two streams would answer to one subscription id. %s is the id.
@@ -82,13 +106,19 @@ type
   /// </remarks>
   TSubscriptionFilter = class
   public
-    /// <summary>Receive "notifications/tools/list_changed".</summary>
+    /// <summary>
+    ///   Receive "notifications/tools/list_changed".
+    /// </summary>
     ToolsListChanged: NullBoolean;
 
-    /// <summary>Receive "notifications/prompts/list_changed".</summary>
+    /// <summary>
+    ///   Receive "notifications/prompts/list_changed".
+    /// </summary>
     PromptsListChanged: NullBoolean;
 
-    /// <summary>Receive "notifications/resources/list_changed".</summary>
+    /// <summary>
+    ///   Receive "notifications/resources/list_changed".
+    /// </summary>
     ResourcesListChanged: NullBoolean;
 
     /// <summary>
@@ -97,18 +127,26 @@ type
     /// </summary>
     [NeonInclude(IncludeIf.NotEmpty)] ResourceSubscriptions: TArray<string>;
   public
-    /// <summary>True when the flag is present and set.</summary>
+    /// <summary>
+    ///   True when the flag is present and set.
+    /// </summary>
     function WantsToolsListChanged: Boolean;
     function WantsPromptsListChanged: Boolean;
     function WantsResourcesListChanged: Boolean;
 
-    /// <summary>True when AUri was subscribed to, matched case-sensitively.</summary>
+    /// <summary>
+    ///   True when AUri was subscribed to, matched case-sensitively.
+    /// </summary>
     function WantsResource(const AUri: string): Boolean;
 
-    /// <summary>True when nothing at all was requested.</summary>
+    /// <summary>
+    ///   True when nothing at all was requested.
+    /// </summary>
     function IsEmpty: Boolean;
 
-    /// <summary>Copies the requested types onto ATarget.</summary>
+    /// <summary>
+    ///   Copies the requested types onto ATarget.
+    /// </summary>
     procedure AssignTo(ATarget: TSubscriptionFilter);
   end;
 
@@ -196,11 +234,19 @@ type
   ///   would tell that client a lie.
   /// </remarks>
   TMCPSubscriptionState = (
-    /// <summary>Open: the pump is holding the stream for it.</summary>
+    /// <summary>
+    ///   Open: the pump is holding the stream for it.
+    /// </summary>
     Live,
-    /// <summary>Closed by the server, or by a request to close it: the result is owed.</summary>
+
+    /// <summary>
+    ///   Closed by the server, or by a request to close it: the result is owed.
+    /// </summary>
     ClosedGracefully,
-    /// <summary>Closed by a disconnect, by EOF, or by shutdown: no result.</summary>
+
+    /// <summary>
+    ///   Closed by a disconnect, by EOF, or by shutdown: no result.
+    /// </summary>
     ClosedAbruptly);
 
   /// <summary>
@@ -209,12 +255,18 @@ type
   ///   honour, and the queue its stream is drained from.
   /// </summary>
   /// <remarks>
-  ///   The object outlives no request: the transport opens it, pumps it, and
-  ///   closes it before the request's own garbage collector runs. It therefore
-  ///   holds the queue without owning it - see TMCPSubscriptionRegistry.
+  ///   The object outlives no request: the transport opens it, pumps it, closes
+  ///   it in the registry and frees it. It owns its queue, so the subscription
+  ///   and the channel it delivers on live and die together - and the registry
+  ///   stops reaching the queue, under its lock, the moment it closes the
+  ///   subscription, which is what makes freeing both afterwards safe.
   /// </remarks>
   TMCPSubscription = class
   private
+    /// <summary>
+    ///   The key the registry filed it under: scope and id.
+    /// </summary>
+    FKey: string;
     FId: TJSONValue;
     FFilter: TSubscriptionFilter;
     FQueue: TMCPMessageQueue;
@@ -223,9 +275,16 @@ type
     function GetState: TMCPSubscriptionState;
   public
     /// <summary>
-    ///   Takes ownership of AId and AFilter, and holds AQueue without owning it.
+    ///   Takes ownership of AId and AFilter, and makes the queue the stream is
+    ///   drained from, owned here too.
     /// </summary>
-    constructor Create(AId: TJSONValue; AFilter: TSubscriptionFilter; AQueue: TMCPMessageQueue);
+    /// <remarks>
+    ///   The queue is made here rather than handed in because a caller that made
+    ///   one and then failed to open a subscription would have nowhere to put
+    ///   it. AQueueCap is how many notifications it holds before closing itself;
+    ///   see Queue.CloseOnDrop.
+    /// </remarks>
+    constructor Create(AId: TJSONValue; AFilter: TSubscriptionFilter; AQueueCap: Integer);
     destructor Destroy; override;
 
     /// <summary>
@@ -253,7 +312,7 @@ type
     function Wants(const AMethod, AUri: string): Boolean; overload;
 
     /// <summary>
-    ///   The queue this subscription's stream is drained from. Not owned here.
+    ///   The queue this subscription's stream is drained from. Owned here.
     /// </summary>
     property Queue: TMCPMessageQueue read FQueue;
 
@@ -269,6 +328,40 @@ type
   end;
 
   /// <summary>
+  ///   The meeting point of a "subscriptions/listen" request and the transport
+  ///   that will hold its stream open.
+  /// </summary>
+  /// <remarks>
+  ///   The transport puts one in the request context only when it can actually
+  ///   stream the reply. The listen endpoint, finding it, opens the
+  ///   subscription and leaves it here for the transport to pump; not finding
+  ///   it - a direct call, a transport with no stream - it acknowledges and
+  ///   opens nothing, which is what keeps the registry from holding a
+  ///   subscription nobody will ever drain.
+  ///
+  ///   Scope is what keeps two streams apart in the registry when their
+  ///   clients chose the same id: a JSON-RPC id is unique only within one
+  ///   client, and with no sessions there is nothing else to tell them apart.
+  /// </remarks>
+  TMCPListenStream = class
+  private
+    FScope: string;
+  public
+    /// <summary>
+    ///   The subscription the listen endpoint opened, or nil. The transport
+    ///   frees it once it has closed it.
+    /// </summary>
+    Subscription: TMCPSubscription;
+
+    constructor Create(const AScope: string);
+
+    /// <summary>
+    ///   What sets this stream apart from every other one: see the remarks.
+    /// </summary>
+    property Scope: string read FScope;
+  end;
+
+  /// <summary>
   ///   The server's live "subscriptions/listen" streams, keyed by the id of the
   ///   listen request that opened each one.
   /// </summary>
@@ -281,22 +374,36 @@ type
   ///   that opted in, stamps the subscription id into its "_meta", and enqueues.
   ///   It never blocks on I/O and never touches the transport.
   ///
-  ///   Ownership: the registry owns the TMCPSubscription, the request owns the
-  ///   queue. A subscription must not be reachable from here once the request
-  ///   that opened it has ended, which is what the transport's pump guarantees
-  ///   by closing it in a finally.
+  ///   Ownership: the registry holds the TMCPSubscription while it is live, and
+  ///   the subscription owns its queue. A subscription must not be reachable
+  ///   from here once the request that opened it has ended, which is what the
+  ///   transport's pump guarantees by closing it in a finally before freeing it.
   /// </remarks>
   TMCPSubscriptionRegistry = class
   private
     FSubscriptions: TDictionary<string, TMCPSubscription>;
     FLock: TObject;
+    FMaxCount: Integer;
 
     /// <summary>
     ///   The key a subscription is filed under. The id keeps its JSON type on
     ///   the wire, but the two types cannot collide as keys: a JSON-RPC id is
     ///   either a string or a number, never both.
     /// </summary>
-    class function KeyOf(AId: TJSONValue): string; static;
+    class function KeyOf(AId: TJSONValue): string; overload; static;
+
+    /// <summary>
+    ///   The key for AId within AScope. An empty scope is the id's own key, so
+    ///   a single-client transport (stdio) and the scope-less overloads agree.
+    /// </summary>
+    class function KeyOf(const AScope: string; AId: TJSONValue): string; overload; static;
+
+    /// <summary>
+    ///   Marks ASubscription closed and closes its queue, which is what wakes a
+    ///   pump blocked on it. Under the lock; answers the hook to call outside it.
+    /// </summary>
+    class function MarkClosed(ASubscription: TMCPSubscription;
+      AGraceful: Boolean): TProc<TMCPSubscription>; static;
 
     /// <summary>
     ///   Stamps the subscription id into a notification's "_meta", keeping the
@@ -325,7 +432,15 @@ type
     ///   is the one thing the client cannot untangle.
     /// </remarks>
     function Open(AId: TJSONValue; AFilter: TSubscriptionFilter;
-      AQueue: TMCPMessageQueue): TMCPSubscription;
+      AQueueCap: Integer = MCP_SUBSCRIPTION_QUEUE_CAP): TMCPSubscription; overload;
+
+    /// <summary>
+    ///   Open, with the id filed under AScope: two streams whose clients both
+    ///   chose the same id are then two subscriptions, not a refusal. Refuses
+    ///   with EMCPListenNotStreamableError once MaxCount streams are open.
+    /// </summary>
+    function Open(const AScope: string; AId: TJSONValue; AFilter: TSubscriptionFilter;
+      AQueueCap: Integer = MCP_SUBSCRIPTION_QUEUE_CAP): TMCPSubscription; overload;
 
     /// <summary>
     ///   The live subscription filed under AId, or nil.
@@ -333,17 +448,30 @@ type
     function Find(AId: TJSONValue): TMCPSubscription; overload;
 
     /// <summary>
-    ///   Closes one subscription, marking it with the state and calling its
-    ///   OnClose hook. A no-op for an id that is not registered, so a close
-    ///   racing a disconnect is not an error. Answers whether it found one.
+    ///   Closes one subscription, marking it with the state, closing its queue
+    ///   and calling its OnClose hook. A no-op for an id that is not
+    ///   registered, so a close racing a disconnect is not an error. Answers
+    ///   whether it found one.
     /// </summary>
     function Close(AId: TJSONValue; AGraceful: Boolean): Boolean; overload;
+
+    /// <summary>
+    ///   Closes ASubscription itself, rather than whatever is filed under its
+    ///   id: the close a pump makes of its own stream, which must not reach a
+    ///   newer subscription that happens to share the key. A no-op when it is
+    ///   already closed.
+    /// </summary>
+    function Close(ASubscription: TMCPSubscription; AGraceful: Boolean): Boolean; overload;
 
     /// <summary>
     ///   Closes every live subscription with the same state - shutdown, or a
     ///   transport ending, where one result is owed to each stream. Answers how
     ///   many were closed.
     /// </summary>
+    /// <remarks>
+    ///   Each queue is closed with its subscription, so every pump wakes at
+    ///   once rather than at its next keep-alive tick.
+    /// </remarks>
     function CloseAll(AGraceful: Boolean): Integer;
 
     /// <summary>
@@ -366,12 +494,25 @@ type
     ///   How many subscriptions are live.
     /// </summary>
     function Count: Integer;
+
+    /// <summary>
+    ///   Whether MaxCount streams are already open, so that another would be
+    ///   refused. Always False when there is no cap.
+    /// </summary>
+    function IsFull: Boolean;
+
+    /// <summary>
+    ///   How many subscriptions Open admits at once; 0 for no cap. Enforced
+    ///   under the lock, so concurrent listens cannot overshoot it.
+    /// </summary>
+    property MaxCount: Integer read FMaxCount write FMaxCount;
   end;
 
 implementation
 
 uses
-  Logify;
+  Logify,
+  MCPConnect.MCP.Types.Errors;
 
 { TSubscriptionFilter }
 
@@ -485,13 +626,14 @@ end;
 
 { TMCPSubscription }
 
-constructor TMCPSubscription.Create(AId: TJSONValue; AFilter: TSubscriptionFilter; AQueue: TMCPMessageQueue);
+constructor TMCPSubscription.Create(AId: TJSONValue; AFilter: TSubscriptionFilter; AQueueCap: Integer);
 begin
   inherited Create;
   FId := AId;
   FFilter := AFilter;
-  FQueue := AQueue;
   FState := TMCPSubscriptionState.Live;
+
+  FQueue := TMCPMessageQueue.Create(AQueueCap);
 
   // A subscription's queue is the one kind that must not drop quietly: every
   // message on it is an invalidation, so losing one leaves a client with a cache
@@ -502,10 +644,11 @@ end;
 
 destructor TMCPSubscription.Destroy;
 begin
+  // Frees whatever is still queued with it: a notification nobody drained is
+  // one nobody will
+  FQueue.Free;
   FId.Free;
   FFilter.Free;
-  // FQueue is not ours: the request that opened the subscription owns it, and
-  // the registry drops its reference when the pump closes the subscription.
   inherited;
 end;
 
@@ -549,6 +692,15 @@ begin
     FFilter.WantsResource(AUri);
 end;
 
+{ TMCPListenStream }
+
+constructor TMCPListenStream.Create(const AScope: string);
+begin
+  inherited Create;
+  FScope := AScope;
+  Subscription := nil;
+end;
+
 { TMCPSubscriptionRegistry }
 
 constructor TMCPSubscriptionRegistry.Create;
@@ -556,13 +708,13 @@ begin
   inherited Create;
   FSubscriptions := TDictionary<string, TMCPSubscription>.Create;
   FLock := TObject.Create;
+  FMaxCount := 0;
 end;
 
 destructor TMCPSubscriptionRegistry.Destroy;
 begin
   // Server shutdown: no stream is left to answer, and no hook can run any more.
-  // The subscriptions themselves are freed; the queues they point at belong to
-  // requests that are being torn down with them.
+  // The subscriptions are freed, and their queues with them.
   TMonitor.Enter(FLock);
   try
     for var LSubscription in FSubscriptions.Values do
@@ -590,6 +742,35 @@ begin
     Result := AId.ToJSON
   else
     Result := '';
+end;
+
+class function TMCPSubscriptionRegistry.KeyOf(const AScope: string; AId: TJSONValue): string;
+begin
+  // The id's JSON text never starts with a space, so the scope cannot run into
+  // it: "a 1" and "a1" stay apart whatever the scope is.
+  if AScope.IsEmpty then
+    Result := KeyOf(AId)
+  else
+    Result := AScope + ' ' + KeyOf(AId);
+end;
+
+class function TMCPSubscriptionRegistry.MarkClosed(ASubscription: TMCPSubscription; AGraceful: Boolean): TProc<TMCPSubscription>;
+begin
+  if AGraceful then
+    ASubscription.FState := TMCPSubscriptionState.ClosedGracefully
+  else
+    ASubscription.FState := TMCPSubscriptionState.ClosedAbruptly;
+
+  // Lock order is registry, then queue: this runs under the registry lock and
+  // takes the queue's, which is the order Publish takes them in too. Closing is
+  // what wakes the pump blocked in DequeueWait, which would otherwise notice
+  // only at its next keep-alive tick.
+  ASubscription.Queue.Close;
+
+  // Read here, under the lock, and called by the caller outside it: once the
+  // lock is released the pump is free to free the subscription, so nothing may
+  // read its fields after that - the hook included.
+  Result := ASubscription.OnClose;
 end;
 
 class procedure TMCPSubscriptionRegistry.Stamp(AId: TJSONValue; AParams: TJSONValue);
@@ -622,21 +803,32 @@ begin
   LMeta.AddPair(MCP_META_SUBSCRIPTION_ID, AId.Clone as TJSONValue);
 end;
 
-function TMCPSubscriptionRegistry.Open(AId: TJSONValue; AFilter: TSubscriptionFilter; AQueue: TMCPMessageQueue): TMCPSubscription;
+function TMCPSubscriptionRegistry.Open(AId: TJSONValue; AFilter: TSubscriptionFilter; AQueueCap: Integer): TMCPSubscription;
+begin
+  Result := Open('', AId, AFilter, AQueueCap);
+end;
+
+function TMCPSubscriptionRegistry.Open(const AScope: string; AId: TJSONValue;
+  AFilter: TSubscriptionFilter; AQueueCap: Integer): TMCPSubscription;
 var
   LKey: string;
 begin
-  LKey := KeyOf(AId);
+  LKey := KeyOf(AScope, AId);
 
   TMonitor.Enter(FLock);
   try
-    // Checked before the subscription is built, so that a duplicate id does not
-    // take AFilter down with it: this is a refusal, and the caller still owns
-    // what it passed in.
+    // Both refusals are checked before the subscription is built, so that they
+    // do not take AFilter down with them: the caller still owns what it passed.
     if FSubscriptions.ContainsKey(LKey) then
-      raise EMCPException.CreateFmt(SSubscriptionAlreadyOpenFmt, [LKey]);
+      raise EMCPException.CreateFmt(SSubscriptionAlreadyOpenFmt, [KeyOf(AId)]);
 
-    Result := TMCPSubscription.Create(AId.Clone as TJSONValue, AFilter, AQueue);
+    // Under the lock, so that two listens arriving together cannot both see
+    // room for one more
+    if (FMaxCount > 0) and (FSubscriptions.Count >= FMaxCount) then
+      raise EMCPListenNotStreamableError.CreateTooMany(FMaxCount);
+
+    Result := TMCPSubscription.Create(AId.Clone as TJSONValue, AFilter, AQueueCap);
+    Result.FKey := LKey;
     FSubscriptions.Add(LKey, Result);
   finally
     TMonitor.Exit(FLock);
@@ -658,6 +850,7 @@ function TMCPSubscriptionRegistry.Close(AId: TJSONValue; AGraceful: Boolean): Bo
 var
   LKey: string;
   LSubscription: TMCPSubscription;
+  LHook: TProc<TMCPSubscription>;
 begin
   Result := False;
   LKey := KeyOf(AId);
@@ -671,37 +864,60 @@ begin
       Exit;
 
     FSubscriptions.Remove(LKey);
-    if AGraceful then
-      LSubscription.FState := TMCPSubscriptionState.ClosedGracefully
-    else
-      LSubscription.FState := TMCPSubscriptionState.ClosedAbruptly;
+    LHook := MarkClosed(LSubscription, AGraceful);
 
     Result := True;
   finally
     TMonitor.Exit(FLock);
   end;
 
-  if Assigned(LSubscription.OnClose) then
-    LSubscription.OnClose(LSubscription);
+  if Assigned(LHook) then
+    LHook(LSubscription);
+end;
+
+function TMCPSubscriptionRegistry.Close(ASubscription: TMCPSubscription; AGraceful: Boolean): Boolean;
+var
+  LFiled: TMCPSubscription;
+  LHook: TProc<TMCPSubscription>;
+begin
+  Result := False;
+  if not Assigned(ASubscription) then
+    Exit;
+
+  TMonitor.Enter(FLock);
+  try
+    // By identity: what is filed under the key may be a newer subscription that
+    // reused it after this one was closed by someone else
+    if not FSubscriptions.TryGetValue(ASubscription.FKey, LFiled) or (LFiled <> ASubscription) then
+      Exit;
+
+    FSubscriptions.Remove(ASubscription.FKey);
+    LHook := MarkClosed(ASubscription, AGraceful);
+
+    Result := True;
+  finally
+    TMonitor.Exit(FLock);
+  end;
+
+  if Assigned(LHook) then
+    LHook(ASubscription);
 end;
 
 function TMCPSubscriptionRegistry.CloseAll(AGraceful: Boolean): Integer;
 var
   LClosing: TArray<TMCPSubscription>;
+  LHooks: TArray<TProc<TMCPSubscription>>;
 begin
   Result := 0;
 
   TMonitor.Enter(FLock);
   try
     SetLength(LClosing, FSubscriptions.Count);
+    SetLength(LHooks, FSubscriptions.Count);
 
     for var LSubscription in FSubscriptions.Values do
     begin
-      if AGraceful then
-        LSubscription.FState := TMCPSubscriptionState.ClosedGracefully
-      else
-        LSubscription.FState := TMCPSubscriptionState.ClosedAbruptly;
-
+      LHooks[Result] := MarkClosed(LSubscription, AGraceful);
       LClosing[Result] := LSubscription;
       Inc(Result);
     end;
@@ -711,9 +927,9 @@ begin
     TMonitor.Exit(FLock);
   end;
 
-  for var LSubscription in LClosing do
-    if Assigned(LSubscription.OnClose) then
-      LSubscription.OnClose(LSubscription);
+  for var I := 0 to Result - 1 do
+    if Assigned(LHooks[I]) then
+      LHooks[I](LClosing[I]);
 
   // The subscriptions stay alive: the pump that owns each one reads its State
   // to decide whether the client is owed the listen result, and unregisters it
@@ -794,6 +1010,16 @@ begin
   TMonitor.Enter(FLock);
   try
     Result := FSubscriptions.Count;
+  finally
+    TMonitor.Exit(FLock);
+  end;
+end;
+
+function TMCPSubscriptionRegistry.IsFull: Boolean;
+begin
+  TMonitor.Enter(FLock);
+  try
+    Result := (FMaxCount > 0) and (FSubscriptions.Count >= FMaxCount);
   finally
     TMonitor.Exit(FLock);
   end;

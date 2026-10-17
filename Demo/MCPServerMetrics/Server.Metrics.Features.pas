@@ -34,6 +34,8 @@ interface
 uses
   System.SysUtils,
 
+  JRPC.Classes,
+  MCPConnect.Configuration.MCP,
   MCPConnect.MCP.Attributes,
   MCPConnect.MCP.Types.Base;
 
@@ -41,6 +43,14 @@ type
   /// <summary>Tools over the metrics: read, inspect, generate, reset.</summary>
   [McpScope('metrics')]
   TMetricsShowcaseTools = class
+  private
+    [Context] FConfig: TMCPConfig;
+
+    /// <summary>
+    ///   Tells every client listening for resource://metrics/live that the
+    ///   snapshot it reads has changed. Free when nobody listens.
+    /// </summary>
+    procedure LiveChanged;
   public
     [McpTool('snapshot',
       'Current in-process metrics as a human readable table, one line per series')]
@@ -132,6 +142,13 @@ uses
 
 { TMetricsShowcaseTools }
 
+procedure TMetricsShowcaseTools.LiveChanged;
+begin
+  // The resource reads TMetrics.Collect as it is, so anything that records or
+  // clears changes it. The host's harvest timer says the same after each tick.
+  FConfig.Subscriptions.ResourceUpdated('resource://metrics/live');
+end;
+
 function TMetricsShowcaseTools.Snapshot: string;
 begin
   Result := TServerMetrics.Instance.TextReport;
@@ -171,6 +188,7 @@ function TMetricsShowcaseTools.SimulateWorkload(AOperations: Integer;
   const ARegions: string): string;
 begin
   TServerMetrics.Instance.SimulateWorkload(AOperations, ARegions);
+  LiveChanged;
   Result := Format('Recorded %d simulated operations across [%s].', [AOperations, ARegions]) +
     sLineBreak + sLineBreak +
     TServerMetrics.Instance.InstrumentReport('demo.workload', 'orders.created');
@@ -179,6 +197,7 @@ end;
 function TMetricsShowcaseTools.SimulateErrors(AOperations: Integer): string;
 begin
   TServerMetrics.Instance.SimulateErrors(AOperations);
+  LiveChanged;
   Result := Format('Recorded %d simulated errors.', [AOperations]) +
     sLineBreak + sLineBreak +
     TServerMetrics.Instance.InstrumentReport('demo.workload', 'errors');
@@ -192,6 +211,7 @@ begin
   // Clear resets the recorded values, not the instruments: after this the same
   // counters keep being recorded into, from zero.
   TMetrics.Clear;
+  LiveChanged;
   Result := Format('Cleared %d series; instruments and exporters are kept.', [LBefore]);
 end;
 

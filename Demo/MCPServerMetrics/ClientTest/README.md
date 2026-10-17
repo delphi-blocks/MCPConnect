@@ -28,7 +28,8 @@ what a 2026-07-28 request looks like on the wire.
 
 Options: `-Url` (endpoint, default `http://localhost:8080/`), `-ProtocolVersion`
 (default `2026-07-28`), `-Truncate` (characters printed per answer, default 1200),
-`-SkipMrtr` (skip the part that writes to the todo list).
+`-SkipMrtr` (skip the part that writes to the todo list), `-SkipListen` (skip
+the `subscriptions/listen` step, which holds a stream open for a moment).
 
 The client is a normal PowerShell script, so it runs on Windows PowerShell 5.1
 and PowerShell 7 alike; it needs nothing but `System.Net.Http`, which the script
@@ -48,29 +49,45 @@ loads itself.
 | 8 | `tools/call metrics_cardinality` | the per-instrument series budget and `DroppedSeries` |
 | 9 | `tools/call metrics_separate_provider` | a second provider never mixing with the default |
 | 10 | `resources/read resource://metrics/live` | the same snapshot as a JSON resource |
-| 11 | `prompts/get analyse-metrics` | a prompt that embeds the snapshot for a model |
-| 12 | `tools/call delete_task`, then the retry | MRTR: `input_required`, then the answer |
-| 13 | `tools/call summarize_tasks`, then the retry | MRTR asking the *client*: `sampling/createMessage` |
-| 14 | `tools/call import_tasks`, three rounds | MRTR: `roots/list`, then a form built from what was found there |
-| 15 | `tools/call draft_day_plan`, then the retry | two requests — roots and sampling — in one `input_required` |
+| 11 | `subscriptions/listen`, a tool call, then close | the long-lived stream: acknowledgement, then `resources/updated` |
+| 12 | `prompts/get analyse-metrics` | a prompt that embeds the snapshot for a model |
+| 13 | `tools/call delete_task`, then the retry | MRTR: `input_required`, then the answer |
+| 14 | `tools/call summarize_tasks`, then the retry | MRTR asking the *client*: `sampling/createMessage` |
+| 15 | `tools/call import_tasks`, three rounds | MRTR: `roots/list`, then a form built from what was found there |
+| 16 | `tools/call draft_day_plan`, then the retry | two requests — roots and sampling — in one `input_required` |
 
-Steps 12–15 are the interesting ones, and they are one per kind of input
+**Step 11** is the one request that stays open. The listen asks for
+`resourceSubscriptions: ["resource://metrics/live"]` and has to accept
+`text/event-stream`, since a stream is the only answer it has (without it the
+server answers `406`). It runs on an `HttpClient` of its own with no timeout,
+read with `ResponseHeadersRead` so the call returns once the headers are in. The
+first event is always the acknowledgement: what the server agreed to send. The
+script then calls `metrics_simulate_workload` *on another connection*, which
+changes the live snapshot, and a `notifications/resources/updated` for that uri
+arrives on the stream. Both messages carry the listen id in
+`_meta["io.modelcontextprotocol/subscriptionId"]`. The script ends the
+subscription by closing the stream, which is how an HTTP client cancels. The
+server notices at its next write (a keep-alive comment within two seconds at
+the latest) and sends no result, since nobody is left to read one. See
+`Docs/notifications.md` for the whole lifecycle.
+
+Steps 13–16 are the interesting ones for MRTR, and they are one per kind of input
 request. The first call of each carries no answer, so the server replies
 `resultType: "input_required"` with the requests it needs fulfilled and, when it
 has something to remember, a `requestState`; the client retries the same call
 with that state and the answers under the keys the server chose.
 
-- **12, `delete`** asks the *user*: an elicitation, answered `accept` + content.
-- **13, `summary`** asks the *client's model*. The script has no model, so it
+- **13, `delete`** asks the *user*: an elicitation, answered `accept` + content.
+- **14, `summary`** asks the *client's model*. The script has no model, so it
   fabricates the `TCreateMessageResult` (role, one text block, `model`,
   `stopReason`) — what the step demonstrates is the request: the system prompt,
   the token budget, and the advisory `modelPreferences` the client may ignore.
-- **14** runs three rounds: `roots/list`, then an elicitation naming the files
+- **15** runs three rounds: `roots/list`, then an elicitation naming the files
   the server found in the root the client named, then the import. Its
   `requestState` is *signed* (`MCPRS1S.`), because it carries the folder the
   next round will read. The script creates that workspace under `%TEMP%\mcp-import-demo`
   and writes a `todo-import.md` for the server to find.
-- **15** asks for roots and sampling at once: two keys in one interim result,
+- **16** asks for roots and sampling at once: two keys in one interim result,
   two answers in one retry, and no `requestState` at all — nothing has to
   survive between the rounds.
 
@@ -90,8 +107,8 @@ Every POST sends three things beyond the JSON-RPC body:
   answer `input_required` at all. The server reads what an interim result asks
   for and refuses with `-32021 MissingRequiredClientCapability` (`400`) when the
   client never declared it, rather than asking for something it cannot do: drop
-  `sampling` from the list and step 13 is refused, drop `roots` and steps 14
-  and 15 are. Declaring `"sampling": {}` bare says nothing about its
+  `sampling` from the list and step 14 is refused, drop `roots` and steps 15
+  and 16 are. Declaring `"sampling": {}` bare says nothing about its
   sub-capabilities — a request carrying `includeContext` or `tools` would need
   `context` / `tools` declared inside it, and none of these send either.
 
@@ -113,6 +130,13 @@ add_task, complete_task, delete_task, list_tasks, metrics_cardinality, ...
 
 == resources/read resource://metrics/live ===================================
 [{"meter":"demo.system","name":"process.cpu_percent","kind":"gauge", ...
+
+== subscriptions/listen on resource://metrics/live =========================
+<- notifications/subscriptions/acknowledged  subscriptionId=9001
+   agreed: {"toolsListChanged":true,"resourceSubscriptions":["resource://metrics/live"]}
+-> tools/call metrics_simulate_workload (on another connection)
+<- notifications/resources/updated  uri=resource://metrics/live  subscriptionId=9001
+(stream closed by the client)
 
 == prompts/get analyse-metrics ==============================================
 Here is the current metrics snapshot of this MCP server:

@@ -26,7 +26,6 @@ uses
 
 resourcestring
   SServerNotFound = 'Server not found';
-  SStdioInputClosed = 'The client closed the standard input';
 
 type
   TWorkerThread = class;
@@ -135,22 +134,8 @@ type
   end;
 
   TStdOutWriter = class(TStdWriter)
-  private
-    FHungUp: Boolean;
   public
     constructor Create;
-
-    /// <summary>
-    ///   Records that the client closed its end: stdin reached EOF.
-    /// </summary>
-    procedure HangUp;
-
-    /// <summary>
-    ///   Whether the client closed its end. Stdout may well still be read, but
-    ///   a client that sends nothing more has gone, and a stream held open for
-    ///   it is held for nobody.
-    /// </summary>
-    property HungUp: Boolean read FHungUp;
   end;
 
   TStdErrWriter = class(TStdWriter)
@@ -171,12 +156,20 @@ type
   ///   filed in FInFlight (TMCPTransportHandler.OnDispatching), so a client
   ///   that cancels a request it has just sent always finds it there.
   ///
-  ///   At the end of stdin the client is gone: every request in flight is
-  ///   cancelled - a listen among them closes its subscription abruptly - and
-  ///   the reader waits for all of them to end before freeing what they write
-  ///   to.
+  ///   At the end of stdin the client sends nothing more, but stdout may well
+  ///   still be read - "echo request | server" is a client too. So a request
+  ///   still running is left to finish and answer, as the sequential reader
+  ///   always let it; only this connection's listen streams, which would never
+  ///   end on their own, are closed, abruptly. The reader waits for everything
+  ///   to end before freeing what it all writes to.
   /// </remarks>
   TWorkerThread = class(TThread)
+  private const
+    /// <summary>
+    ///   How often, at the end of stdin, the reader closes listens again while
+    ///   it waits for the requests still running.
+    /// </summary>
+    LISTEN_CLOSE_TICK_MS = 100;
   private
     FServer: TMCPServer;
 
@@ -202,6 +195,12 @@ type
 
     procedure BeginDispatch;
     procedure EndDispatch;
+
+    /// <summary>
+    ///   Closes this connection's listen streams, abruptly: no result follows,
+    ///   and each pump returns at once.
+    /// </summary>
+    procedure CloseListens;
 
     /// <summary>
     ///   Hands ALine to a thread of its own, and returns once the request is
@@ -230,8 +229,11 @@ type
   ///   WriteComment keeps the base class's no-op: a comment is an SSE concept,
   ///   and on stdio it would be a line the client cannot parse as JSON-RPC.
   ///   A listen stream therefore gets no keep-alive here, and needs none: there
-  ///   is no intermediary to time it out, and the end of stdin is what says
-  ///   the client has gone (Connected).
+  ///   is no intermediary to time it out, and the reader ends the connection's
+  ///   listens itself at the end of stdin.
+  ///
+  ///   Connected stays True: the end of stdin is not the end of stdout, and a
+  ///   request still running there still has a reader for its answer.
   /// </remarks>
   TMCPTransportWriterStdio = class(TMCPTransportWriter)
   private
@@ -252,6 +254,7 @@ uses
   Winapi.Windows,
   {$ENDIF}
   JRPC.Core,
+  MCPConnect.Configuration.MCP,
   MCPConnect.MCP.Types.Notifications,
   Neon.Core.Types,
   Neon.Core.Persistence,
@@ -474,10 +477,6 @@ begin
   inherited Create(StdOutHandle);
 end;
 
-procedure TStdOutWriter.HangUp;
-begin
-  FHungUp := True;
-end;
 
 { TStdErrWriter }
 
@@ -605,14 +604,17 @@ begin
               end;
             end;
           finally
-            // The end of stdin is the client going away. Nothing still running
-            // can deliver anything, and a listen would wait for ever on a queue
-            // nobody fills: everything in flight is cancelled - a listen closes
-            // its subscription abruptly - and this thread waits until they have
-            // all ended, since they write through what it is about to free.
-            LWriter.HangUp;
-            FInFlight.CancelAll(SStdioInputClosed);
-            FIdle.WaitFor(INFINITE);
+            // The end of stdin: the client sends nothing more, but may still be
+            // reading. A request still running finishes and answers. A listen
+            // would wait for ever on a queue nobody fills, so this connection's
+            // streams are closed - abruptly, the client having ended them - and
+            // closed again on every tick until everything has ended: a listen
+            // read just before the end may open its subscription only after the
+            // first close. This thread waits because they all write through what
+            // it is about to free.
+            repeat
+              CloseListens;
+            until FIdle.WaitFor(LISTEN_CLOSE_TICK_MS) = wrSignaled;
           end;
         finally
           LError.Free;
@@ -646,6 +648,15 @@ begin
   finally
     TMonitor.Exit(FActiveLock);
   end;
+end;
+
+procedure TWorkerThread.CloseListens;
+var
+  LConfig: TMCPConfig;
+begin
+  LConfig := FServer.GetConfiguration<TMCPConfig>;
+  if Assigned(LConfig) then
+    LConfig.Subscriptions.Registry.CloseScope(FListenScope, False);
 end;
 
 procedure TWorkerThread.EndDispatch;
@@ -799,8 +810,8 @@ end;
 
 function TMCPTransportWriterStdio.Connected: Boolean;
 begin
-  // Stdio has no socket to ask: the client is there until it closes stdin
-  Result := not FStdOutWriter.HungUp;
+  // Stdio has no socket to ask, and closing stdin does not close stdout
+  Result := True;
 end;
 
 procedure TMCPTransportWriterStdio.Write(const AValue: string);

@@ -988,23 +988,30 @@ begin
 end;
 
 procedure TMCPServerApi.InferCapabilities(ACapabilities: TServerCapabilities);
+var
+  LSupport: TMCPListenSupport;
+  LListChanged: Boolean;
 begin
   // Presence is the declaration: "tools" in the capabilities is what says this
   // server has tools at all. The listChanged flag beside it is a second
-  // statement - that the server will say when they change - and this build
-  // cannot: the stream those notifications travel on is the one
-  // subscriptions/listen has yet to hold open. False rather than absent, since
-  // an empty capability object is dropped on the way out and would take the
+  // statement - that the server will say when they change - and it is made only
+  // where it can be kept: the notifications travel on a subscriptions/listen
+  // stream, so a transport that cannot hold one open (WebBroker before 13.1,
+  // CGI, a direct call) promises nothing. False rather than absent, since an
+  // empty capability object is dropped on the way out and would take the
   // declaration with it.
+  LSupport := RPCContext.FindContextDataAs<TMCPListenSupport>;
+  LListChanged := MCPConfig.Server.ListChanged and Assigned(LSupport) and LSupport.Available;
+
   if MCPConfig.Tools.Registry.Count > 0 then
-    ACapabilities.Tools.ListChanged := False;
+    ACapabilities.Tools.ListChanged := LListChanged;
 
   if (MCPConfig.Resources.Registry.Count > 0) or
      (MCPConfig.Resources.TemplateRegistry.Count > 0) then
-    ACapabilities.Resources.ListChanged := False;
+    ACapabilities.Resources.ListChanged := LListChanged;
 
   if MCPConfig.Prompts.Registry.Count > 0 then
-    ACapabilities.Prompts.ListChanged := False;
+    ACapabilities.Prompts.ListChanged := LListChanged;
 
   // Only advertised when something can actually answer completion/complete
   if MCPConfig.Completions.HasProviders then
@@ -1018,6 +1025,7 @@ var
   LAck: TSubscriptionsAcknowledgedNotificationParams;
   LId: TJSONValue;
   LFilter: TSubscriptionFilter;
+  LCaps: TServerCapabilities;
 begin
   RPCContext.AddContent(AParams);
 
@@ -1033,14 +1041,23 @@ begin
     else
       LAck.OnSubscription(Int64(Request.Id.AsInteger));
 
-    if AParams.Notifications.WantsToolsListChanged and (MCPConfig.Tools.Registry.Count > 0) then
+    // A kind is served when the server has something of it, or when its
+    // explicit capabilities promised listChanged for it: a server that
+    // registers late said so, and a client that listens before the first
+    // registration must still be told when it happens
+    LCaps := MCPConfig.Server.Capabilities;
+
+    if AParams.Notifications.WantsToolsListChanged and ((MCPConfig.Tools.Registry.Count > 0) or
+       (Assigned(LCaps) and LCaps.Tools.ListChanged.GetValueOrDefault)) then
       LAck.Notifications.ToolsListChanged := True;
 
-    if AParams.Notifications.WantsPromptsListChanged and (MCPConfig.Prompts.Registry.Count > 0) then
+    if AParams.Notifications.WantsPromptsListChanged and ((MCPConfig.Prompts.Registry.Count > 0) or
+       (Assigned(LCaps) and LCaps.Prompts.ListChanged.GetValueOrDefault)) then
       LAck.Notifications.PromptsListChanged := True;
 
     if AParams.Notifications.WantsResourcesListChanged and
-       ((MCPConfig.Resources.Registry.Count > 0) or (MCPConfig.Resources.TemplateRegistry.Count > 0)) then
+       ((MCPConfig.Resources.Registry.Count > 0) or (MCPConfig.Resources.TemplateRegistry.Count > 0) or
+       (Assigned(LCaps) and LCaps.Resources.ListChanged.GetValueOrDefault)) then
       LAck.Notifications.ResourcesListChanged := True;
 
     LAck.Notifications.ResourceSubscriptions := KnownResourceUris(AParams.Notifications.ResourceSubscriptions);

@@ -16,6 +16,9 @@
         metrics_instrument, metrics_slowest, metrics_exporters,
         metrics_cardinality, metrics_separate_provider
       * resources/read of resource://metrics/live
+      * subscriptions/listen: holds an SSE stream open on the live resource,
+        changes the metrics with a tool call on another connection, and shows
+        the notifications/resources/updated arriving on the stream
       * prompts/get of analyse-metrics
       * the multi-round-trip (MRTR) flows, one per kind of input request:
         delete_task (elicitation), summarize_tasks (sampling), import_tasks
@@ -39,6 +42,11 @@
 .PARAMETER SkipMrtr
     Skip the multi-round-trip demonstration (it writes to the todo list).
 
+.PARAMETER SkipListen
+    Skip the subscriptions/listen demonstration (it holds a stream open for a
+    few seconds, and needs a transport that can stream - Indy, or WebBroker on
+    Delphi 13.1).
+
 .EXAMPLE
     pwsh ./MCPClient.ps1
 
@@ -50,7 +58,8 @@ param(
     [string]$Url = 'http://localhost:8080/',
     [string]$ProtocolVersion = '2026-07-28',
     [int]$Truncate = 1200,
-    [switch]$SkipMrtr
+    [switch]$SkipMrtr,
+    [switch]$SkipListen
 )
 
 $ErrorActionPreference = 'Stop'
@@ -221,6 +230,43 @@ function Show-Ask($Response) {
     return $result
 }
 
+function Read-SseEvent {
+    <#
+      The next event of an SSE stream, parsed, or $null when none arrived within
+      TimeoutMs or the stream ended. The data: lines of one event are joined; a
+      line starting with ':' is a comment - the server's keep-alive - and is
+      shown and skipped. A read that timed out is kept and resumed by the next
+      call, since a StreamReader allows only one read in flight.
+    #>
+    param(
+        [Parameter(Mandatory)][System.IO.StreamReader]$Reader,
+        [int]$TimeoutMs = 10000
+    )
+
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMs)
+    $data = [System.Collections.Generic.List[string]]::new()
+    while ($true) {
+        if ($null -eq $script:PendingLine) { $script:PendingLine = $Reader.ReadLineAsync() }
+
+        $left = [int]($deadline - [DateTime]::UtcNow).TotalMilliseconds
+        if ($left -le 0 -or -not $script:PendingLine.Wait($left)) { return $null }
+
+        $line = $script:PendingLine.Result
+        $script:PendingLine = $null
+        if ($null -eq $line) { return $null }
+
+        if ($line -eq '') {
+            if ($data.Count -gt 0) { return (($data -join "`n") | ConvertFrom-Json) }
+        }
+        elseif ($line.StartsWith(':')) {
+            Write-Host ('  (comment: ' + $line.Substring(1).Trim() + ')') -ForegroundColor DarkGray
+        }
+        elseif ($line.StartsWith('data:')) {
+            $data.Add($line.Substring(5).TrimStart())
+        }
+    }
+}
+
 function New-SamplingReply([string]$Text) {
     <#
       The answer to a sampling/createMessage request. A real client would call
@@ -288,6 +334,90 @@ if ($live.Json.result.contents) {
 }
 else {
     Write-Host $live.Body -ForegroundColor DarkGray
+}
+
+# --- subscriptions/listen: the stream that tells a client what changed ------
+if (-not $SkipListen) {
+    Write-Section 'subscriptions/listen on resource://metrics/live'
+
+    # A listen is a request that stays open: its answer is a stream, so it must
+    # accept text/event-stream (a server answers 406 otherwise), and it needs a
+    # client of its own, with no timeout, because it holds that connection for
+    # as long as it listens. The id is the subscription id: every message on the
+    # stream carries it back in _meta.
+    $listenId = 9001
+    $listenJson = ([ordered]@{
+        jsonrpc = '2.0'
+        id      = $listenId
+        method  = 'subscriptions/listen'
+        params  = [ordered]@{
+            _meta         = $meta
+            notifications = [ordered]@{
+                toolsListChanged      = $true
+                resourceSubscriptions = @('resource://metrics/live')
+            }
+        }
+    } | ConvertTo-Json -Depth 32 -Compress)
+
+    $listenHttp = [System.Net.Http.HttpClient]::new()
+    $listenHttp.Timeout = [System.Threading.Timeout]::InfiniteTimeSpan
+
+    $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Post, $Url)
+    $request.Content = [System.Net.Http.StringContent]::new($listenJson, [System.Text.Encoding]::UTF8, 'application/json')
+    $request.Headers.Add('MCP-Protocol-Version', $ProtocolVersion)
+    $request.Headers.Add('Mcp-Method', 'subscriptions/listen')
+    $request.Headers.Add('Accept', 'application/json, text/event-stream')
+
+    # ResponseHeadersRead: return as soon as the headers are in, rather than
+    # waiting for a body that does not end until the subscription does
+    $response = $listenHttp.SendAsync($request,
+        [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+
+    if ($response.Content.Headers.ContentType.MediaType -ne 'text/event-stream') {
+        # Refused before anything was dispatched: 406, 400 when the transport
+        # cannot stream or the subscription cap is reached
+        Write-Host ('refused, HTTP ' + [int]$response.StatusCode + ': ' +
+            $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()) -ForegroundColor Red
+    }
+    else {
+        $script:PendingLine = $null
+        $reader = [System.IO.StreamReader]::new($response.Content.ReadAsStreamAsync().GetAwaiter().GetResult())
+        try {
+            # The acknowledgement is always the first message: what the server
+            # agreed to send, which can be less than what was asked for
+            $ack = Read-SseEvent -Reader $reader
+            if ($null -eq $ack) {
+                Write-Host 'no acknowledgement arrived' -ForegroundColor Red
+            }
+            else {
+                Write-Host ('<- ' + $ack.method + '  subscriptionId=' +
+                    $ack.params._meta.'io.modelcontextprotocol/subscriptionId')
+                Write-Host ('   agreed: ' + ($ack.params.notifications | ConvertTo-Json -Compress))
+
+                # Something that changes the resource, on the other connection
+                Write-Host '-> tools/call metrics_simulate_workload (on another connection)'
+                $null = Invoke-Tool 'metrics_simulate_workload' ([ordered]@{ operations = 5 })
+
+                $update = Read-SseEvent -Reader $reader
+                if ($null -eq $update) {
+                    Write-Host 'nothing arrived within 10 s' -ForegroundColor Red
+                }
+                else {
+                    Write-Host ('<- ' + $update.method + '  uri=' + $update.params.uri +
+                        '  subscriptionId=' + $update.params._meta.'io.modelcontextprotocol/subscriptionId')
+                }
+            }
+        }
+        finally {
+            # Closing the stream is how an HTTP client ends a subscription: the
+            # server notices on its next write - the keep-alive at the latest -
+            # and drops it, with no result, since nobody is there to read one
+            $reader.Dispose()
+            $response.Dispose()
+            Write-Host '(stream closed by the client)' -ForegroundColor DarkGray
+        }
+    }
+    $listenHttp.Dispose()
 }
 
 # --- the prompt --------------------------------------------------------------

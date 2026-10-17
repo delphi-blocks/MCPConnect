@@ -32,9 +32,16 @@ uses
   MCPConnect.Transport.Base;
 
 type
-  /// <summary>A response writer that streams nothing.</summary>
+  /// <summary>
+  ///   A response writer that writes nothing, and says whether its transport
+  ///   could stream - which is what server/discover asks before promising
+  ///   "listChanged".
+  /// </summary>
   TSilentDiscoverWriter = class(TMCPTransportWriter)
+  private
+    FStreams: Boolean;
   public
+    constructor Create(AStreams: Boolean = False);
     procedure Write(const AValue: string); override;
     function Connected: Boolean; override;
     function SupportsStreaming: Boolean; override;
@@ -51,8 +58,16 @@ type
     /// <summary>A server with a tool, a resource and a prompt.</summary>
     procedure ConfigureFull;
 
-    /// <summary>The "result" of server/discover. The caller owns it.</summary>
-    function Discover: TJSONObject;
+    /// <summary>
+    ///   The "result" of server/discover, asked of a transport that can stream
+    ///   or not. The caller owns it.
+    /// </summary>
+    function Discover(AStreams: Boolean = False): TJSONObject;
+
+    /// <summary>
+    ///   The "listChanged" of the capability AName, as JSON, or '' when absent.
+    /// </summary>
+    function ListChangedOf(AResult: TJSONObject; const AName: string): string;
 
     /// <summary>The "capabilities" of the result, or nil. Owned by AResult.</summary>
     function CapabilitiesOf(AResult: TJSONObject): TJSONObject;
@@ -68,7 +83,13 @@ type
     [Test]
     procedure TestABareServerAdvertisesNothing();
     [Test]
-    procedure TestNoListChangedUntilThereIsAStream();
+    procedure TestNoListChangedWhereNoStreamCanBeHeld();
+    [Test]
+    procedure TestListChangedWhereAStreamCanBeHeld();
+    [Test]
+    procedure TestSetListChangedFalseNeverPromisesIt();
+    [Test]
+    procedure TestSetListChangedDoesNotTouchExplicitCapabilities();
 
     [Test]
     procedure TestAnExplicitCapabilitySetIsUsedVerbatim();
@@ -119,9 +140,15 @@ end;
 
 { TSilentDiscoverWriter }
 
+constructor TSilentDiscoverWriter.Create(AStreams: Boolean);
+begin
+  inherited Create;
+  FStreams := AStreams;
+end;
+
 procedure TSilentDiscoverWriter.Write(const AValue: string);
 begin
-  // Nothing streams in these tests.
+  // Nothing streams in these tests: discover is asked for a document.
 end;
 
 function TSilentDiscoverWriter.Connected: Boolean;
@@ -131,7 +158,7 @@ end;
 
 function TSilentDiscoverWriter.SupportsStreaming: Boolean;
 begin
-  Result := False;
+  Result := FStreams;
 end;
 
 { TDiscoverTest }
@@ -176,7 +203,7 @@ begin
   .ApplyConfig;
 end;
 
-function TDiscoverTest.Discover: TJSONObject;
+function TDiscoverTest.Discover(AStreams: Boolean): TJSONObject;
 var
   LHandler: TMCPTransportHandler;
   LContent: string;
@@ -185,7 +212,7 @@ begin
   Result := nil;
   LContent := '';
 
-  LHandler := TMCPTransportHandler.Create(FServer, TSilentDiscoverWriter.Create);
+  LHandler := TMCPTransportHandler.Create(FServer, TSilentDiscoverWriter.Create(AStreams));
   try
     LHandler.ProcessRequest(
       procedure (ARequest: TMCPTransportRequest)
@@ -213,6 +240,25 @@ begin
   finally
     LValue.Free;
   end;
+end;
+
+function TDiscoverTest.ListChangedOf(AResult: TJSONObject; const AName: string): string;
+var
+  LCaps: TJSONObject;
+  LCapability, LFlag: TJSONValue;
+begin
+  Result := '';
+  LCaps := CapabilitiesOf(AResult);
+  if not Assigned(LCaps) then
+    Exit;
+
+  LCapability := LCaps.GetValue(AName);
+  if not (LCapability is TJSONObject) then
+    Exit;
+
+  LFlag := TJSONObject(LCapability).GetValue('listChanged');
+  if Assigned(LFlag) then
+    Result := LFlag.ToJSON;
 end;
 
 function TDiscoverTest.CapabilitiesOf(AResult: TJSONObject): TJSONObject;
@@ -284,22 +330,84 @@ begin
   end;
 end;
 
-procedure TDiscoverTest.TestNoListChangedUntilThereIsAStream;
+procedure TDiscoverTest.TestNoListChangedWhereNoStreamCanBeHeld;
 var
   LResult: TJSONObject;
-  LTools: TJSONValue;
 begin
   ConfigureFull();
 
   // Having tools and saying when they change are two statements. The second
-  // needs the subscriptions/listen stream, which this build does not hold open,
-  // so the flag says false rather than promising notifications nothing sends.
-  LResult := Discover;
+  // needs the subscriptions/listen stream, which a transport that cannot stream
+  // (WebBroker before 13.1, CGI) never holds open - so the flag says false
+  // rather than promising notifications nothing could deliver.
+  LResult := Discover(False);
   try
-    LTools := CapabilitiesOf(LResult).GetValue('tools');
-    Assert.IsTrue(LTools is TJSONObject, LResult.ToJSON);
-    Assert.AreEqual('false', TJSONObject(LTools).GetValue('listChanged').ToJSON,
-      LTools.ToJSON);
+    Assert.AreEqual('false', ListChangedOf(LResult, 'tools'), LResult.ToJSON);
+    Assert.AreEqual('false', ListChangedOf(LResult, 'resources'), LResult.ToJSON);
+    Assert.AreEqual('false', ListChangedOf(LResult, 'prompts'), LResult.ToJSON);
+  finally
+    LResult.Free;
+  end;
+end;
+
+procedure TDiscoverTest.TestListChangedWhereAStreamCanBeHeld;
+var
+  LResult: TJSONObject;
+begin
+  ConfigureFull();
+
+  // The registry publishes every change it sees, so where a listen can be held
+  // open the promise is one the server keeps. This request asked for a
+  // document: the listen the promise is about is a request of its own.
+  LResult := Discover(True);
+  try
+    Assert.AreEqual('true', ListChangedOf(LResult, 'tools'), LResult.ToJSON);
+    Assert.AreEqual('true', ListChangedOf(LResult, 'resources'), LResult.ToJSON);
+    Assert.AreEqual('true', ListChangedOf(LResult, 'prompts'), LResult.ToJSON);
+  finally
+    LResult.Free;
+  end;
+end;
+
+procedure TDiscoverTest.TestSetListChangedFalseNeverPromisesIt;
+var
+  LResult: TJSONObject;
+begin
+  ConfigureFull();
+
+  FServer.Plugin.Configure<IMCPConfig>
+    .Server
+      .SetListChanged(False)
+    .BackToMCP
+  .ApplyConfig;
+
+  LResult := Discover(True);
+  try
+    Assert.AreEqual('false', ListChangedOf(LResult, 'tools'), LResult.ToJSON);
+    Assert.AreEqual('false', ListChangedOf(LResult, 'prompts'), LResult.ToJSON);
+  finally
+    LResult.Free;
+  end;
+end;
+
+procedure TDiscoverTest.TestSetListChangedDoesNotTouchExplicitCapabilities;
+var
+  LResult: TJSONObject;
+begin
+  ConfigureFull();
+
+  // Explicit capabilities are reported as they were set: a server that set its
+  // own says listChanged itself, or does not say it
+  FServer.Plugin.Configure<IMCPConfig>
+    .Server
+      .SetListChanged(True)
+      .SetCapabilities([TMCPCapability.Tools])
+    .BackToMCP
+  .ApplyConfig;
+
+  LResult := Discover(True);
+  try
+    Assert.AreNotEqual('true', ListChangedOf(LResult, 'tools'), LResult.ToJSON);
   finally
     LResult.Free;
   end;

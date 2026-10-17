@@ -71,8 +71,6 @@ type
     procedure TestRemoveSparesAnotherRequestsEntry;
     [Test]
     procedure TestAnUnknownIdIsIgnored;
-    [Test]
-    procedure TestCancelAllCancelsEveryRequest;
   end;
 
   [TestFixture]
@@ -151,6 +149,12 @@ type
     procedure TestAStdioListenHoldsItsStream;
     [Test]
     procedure TestTheEndOfStdinEndsAListenWithoutTheResult;
+    [Test]
+    procedure TestTheEndOfStdinSparesARunningRequest;
+    [Test]
+    procedure TestClosingAScopeSparesAnotherConnection;
+    [Test]
+    procedure TestAListenBeforeTheFirstRegistrationIsStillTold;
     [Test]
     procedure TestAStdioClientCannotListenTwiceUnderOneId;
     [Test]
@@ -519,32 +523,6 @@ begin
   end;
 end;
 
-procedure TMCPInFlightRequestsTest.TestCancelAllCancelsEveryRequest;
-var
-  LMap: TMCPInFlightRequests;
-  LFirst, LSecond: TMCPCancellation;
-begin
-  // The end of stdin: every request of the connection, whatever its id
-  LMap := TMCPInFlightRequests.Create;
-  LFirst := TMCPCancellation.Create;
-  LSecond := TMCPCancellation.Create;
-  try
-    LMap.Add(TJRPCID(Int64(1)), LFirst);
-    LMap.Add(TJRPCID('1'), LSecond);
-
-    Assert.AreEqual(2, LMap.CancelAll('gone'));
-    Assert.IsTrue(LFirst.IsCancelled);
-    Assert.IsTrue(LSecond.IsCancelled);
-    Assert.AreEqual('gone', LSecond.Reason);
-
-    // Cancelling is not finishing: each request still removes its own entry
-    Assert.AreEqual(2, LMap.Count);
-  finally
-    LMap.Free;
-    LSecond.Free;
-    LFirst.Free;
-  end;
-end;
 
 { TTransportCancellationTest }
 
@@ -947,9 +925,9 @@ var
   LRef: IMCPTransportWriter;
   LRun: TListenRun;
 begin
-  // What the reader does at EOF: cancel everything of the connection. The
-  // listen ends abruptly - nobody is there to read a result - and leaves
-  // nothing behind in the registry
+  // What the reader does at EOF: close the connection's listens. The listen
+  // ends abruptly - the client ended it - and leaves nothing behind in the
+  // registry
   ConfigureServer;
   LWriter := TRecordingStreamWriter.Create;
   LRef := LWriter;
@@ -957,12 +935,97 @@ begin
   LRun := StartStdio(LRef, ListenBody('7'));
   Assert.IsTrue(LWriter.WaitForFrames(1), 'the listen was not acknowledged');
 
-  Assert.AreEqual(1, FInFlight.CancelAll('The client closed the standard input'));
+  Assert.AreEqual(1, Registry.CloseScope('stdio-connection', False));
   Assert.IsTrue(LRun.WaitFor, 'the stream did not end');
 
   Assert.AreEqual(1, LWriter.FrameCount, 'something followed the acknowledgement');
   Assert.AreEqual(0, Registry.Count, 'the subscription was left behind');
   Assert.AreEqual(0, FInFlight.Count);
+end;
+
+procedure TTransportCancellationTest.TestTheEndOfStdinSparesARunningRequest;
+var
+  LWriter: TRecordingStreamWriter;
+  LRef: IMCPTransportWriter;
+  LRun: TListenRun;
+begin
+  // "echo request | server" reaches the end of stdin while the request runs,
+  // and still reads stdout: closing the listens must not touch the request,
+  // which answers as the sequential reader always let it
+  ConfigureServer;
+  LWriter := TRecordingStreamWriter.Create;
+  LRef := LWriter;
+
+  LRun := StartStdio(LRef, CallBody('41', 'slow'));
+  Registry.CloseScope('stdio-connection', False);
+
+  Assert.IsTrue(LRun.WaitFor, 'the request did not end');
+  Assert.AreEqual(1, LWriter.FrameCount, 'the answer was not written');
+  Assert.Contains(LWriter.Frames[0], 'slow answer');
+end;
+
+procedure TTransportCancellationTest.TestClosingAScopeSparesAnotherConnection;
+var
+  LFirst, LSecond: TRecordingStreamWriter;
+  LFirstRef, LSecondRef: IMCPTransportWriter;
+  LFirstRun, LSecondRun: TListenRun;
+begin
+  // One stdio connection reaching its end is not every connection's end
+  ConfigureServer;
+  LFirst := TRecordingStreamWriter.Create;
+  LFirstRef := LFirst;
+  LSecond := TRecordingStreamWriter.Create;
+  LSecondRef := LSecond;
+
+  LFirstRun := StartStdio(LFirstRef, ListenBody('7'));
+  Assert.IsTrue(LFirst.WaitForFrames(1));
+
+  LSecondRun := TListenRun.Create(FServer, LSecondRef, ListenBody('7'),
+    TMediaType.TEXT_EVENT_STREAM, nil, TTransportProtocol.Stdio, 'another-connection');
+  FRuns.Add(LSecondRun);
+  Assert.IsTrue(LSecond.WaitForFrames(1));
+
+  Assert.AreEqual(1, Registry.CloseScope('stdio-connection', False));
+  Assert.IsTrue(LFirstRun.WaitFor, 'the closed connection''s stream did not end');
+  Assert.IsFalse(LSecondRun.WaitFor(200), 'the other connection''s stream ended too');
+  Assert.AreEqual(1, Registry.Count);
+end;
+
+procedure TTransportCancellationTest.TestAListenBeforeTheFirstRegistrationIsStillTold;
+var
+  LWriter: TRecordingStreamWriter;
+  LRef: IMCPTransportWriter;
+begin
+  // A server that registers late says so with explicit capabilities. A client
+  // that listens before the first registration is acknowledged for the kind
+  // that was promised, and told when it happens
+  FServer := TMCPServer.Create(nil);
+  FConfig := FServer.Plugin.Configure<IMCPConfig>;
+  FConfig
+    .Server
+      .SetCapabilities(
+        procedure (ACapabilities: TServerCapabilities)
+        begin
+          ACapabilities.Tools.ListChanged := True;
+        end)
+    .BackToMCP
+    .Security
+      .SetHeaderValidation(TMCPValidationLevel.Off)
+      .SetOriginPolicy(TMCPOriginPolicy.Off)
+      .SetMetaValidation(TMCPValidationLevel.Off)
+    .BackToMCP
+  .ApplyConfig;
+
+  LWriter := TRecordingStreamWriter.Create;
+  LRef := LWriter;
+
+  StartStdio(LRef, ListenBody('7'));
+  Assert.IsTrue(LWriter.WaitForFrames(1), 'the listen was not acknowledged');
+  Assert.Contains(LWriter.Frames[0], '"toolsListChanged":true');
+
+  FConfig.Tools.RegisterClass(TCancellableTools);
+  Assert.IsTrue(LWriter.WaitForFrames(2), 'the first registration was not announced');
+  Assert.Contains(LWriter.Frames[1], MCP_NOTIFY_TOOLS_LIST_CHANGED);
 end;
 
 procedure TTransportCancellationTest.TestAStdioClientCannotListenTwiceUnderOneId;

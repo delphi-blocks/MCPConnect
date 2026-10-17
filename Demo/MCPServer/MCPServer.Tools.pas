@@ -8,6 +8,7 @@ uses
   Neon.Core.Persistence,
 
   JRPC.Classes,
+  MCPConnect.Configuration.MCP,
   MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Notifications,
   MCPConnect.MCP.Attributes;
@@ -55,6 +56,13 @@ type
   private
     [Context] FCancel: TMCPCancellation;
     [Context] FProgress: TMCPProgress;
+    [Context] FConfig: TMCPConfig;
+
+    /// <summary>
+    ///   Tells every client listening on "subscriptions/listen" for the summary
+    ///   resource that it changed. Free when nobody listens.
+    /// </summary>
+    procedure SummaryChanged;
   public
     [McpTool('add_task', 'Add a new task to the todo list')]
     function AddTask(
@@ -269,12 +277,20 @@ end;
 
 { TTodoTools }
 
+procedure TTodoTools.SummaryChanged;
+begin
+  // The uri of the resource in MCPServer.Resources. A client that subscribed to
+  // it re-reads it; one that did not is never told
+  FConfig.Subscriptions.ResourceUpdated('text://todo/summary');
+end;
+
 function TTodoTools.AddTask(const ATitle: string; const ADescription: string): string;
 var
   LTask: TTaskItem;
 begin
   LTask := TodoStore.Add(ATitle, ADescription);
   Result := Format('Task #%d "%s" added successfully', [LTask.Id, LTask.Title]);
+  SummaryChanged;
 end;
 
 function TTodoTools.ListTasks(): string;
@@ -301,6 +317,7 @@ begin
   finally
     TodoStore.Unlock();
   end;
+  SummaryChanged;
 end;
 
 function TTodoTools.DeleteTask(ATaskId: Integer): string;
@@ -319,7 +336,10 @@ begin
   end;
 
   if TodoStore.Remove(ATaskId) then
-    Result := Format('Task #%d "%s" deleted', [ATaskId, LTitle])
+  begin
+    Result := Format('Task #%d "%s" deleted', [ATaskId, LTitle]);
+    SummaryChanged;
+  end
   else
     Result := Format(STaskNotFound, [ATaskId]);
 end;

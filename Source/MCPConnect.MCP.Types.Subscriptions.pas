@@ -328,6 +328,30 @@ type
   end;
 
   /// <summary>
+  ///   Whether the transport serving a request could hold a
+  ///   "subscriptions/listen" stream open. Put in the request context by the
+  ///   transport, for server/discover to read before it promises
+  ///   "listChanged".
+  /// </summary>
+  /// <remarks>
+  ///   A fact about the deployment, not about the client: whether this
+  ///   request's own Accept asked for a stream does not matter, since the
+  ///   listen the promise is about is a request of its own. Absent - a direct
+  ///   call, a transport that says nothing - reads as False.
+  /// </remarks>
+  TMCPListenSupport = class
+  private
+    FAvailable: Boolean;
+  public
+    constructor Create(AAvailable: Boolean);
+
+    /// <summary>
+    ///   True when a listen arriving on this transport would be held open.
+    /// </summary>
+    property Available: Boolean read FAvailable;
+  end;
+
+  /// <summary>
   ///   The meeting point of a "subscriptions/listen" request and the transport
   ///   that will hold its stream open.
   /// </summary>
@@ -473,6 +497,14 @@ type
     ///   once rather than at its next keep-alive tick.
     /// </remarks>
     function CloseAll(AGraceful: Boolean): Integer;
+
+    /// <summary>
+    ///   Closes every live subscription filed under AScope - the streams of one
+    ///   connection, when the transport owns its connections and gives each a
+    ///   scope (stdio). Answers how many were closed. A no-op for an empty
+    ///   scope, which is not a connection but the scope-less key.
+    /// </summary>
+    function CloseScope(const AScope: string; AGraceful: Boolean): Integer;
 
     /// <summary>
     ///   Sends ANotification to every subscription that opted in to it, each
@@ -690,6 +722,14 @@ function TMCPSubscription.Wants(const AMethod, AUri: string): Boolean;
 begin
   Result := SameText(AMethod, MCP_NOTIFY_RESOURCES_UPDATED) and
     FFilter.WantsResource(AUri);
+end;
+
+{ TMCPListenSupport }
+
+constructor TMCPListenSupport.Create(AAvailable: Boolean);
+begin
+  inherited Create;
+  FAvailable := AAvailable;
 end;
 
 { TMCPListenStream }
@@ -934,6 +974,46 @@ begin
   // The subscriptions stay alive: the pump that owns each one reads its State
   // to decide whether the client is owed the listen result, and unregisters it
   // when it is done. The registry has forgotten it, which is all shutdown needs.
+end;
+
+function TMCPSubscriptionRegistry.CloseScope(const AScope: string; AGraceful: Boolean): Integer;
+var
+  LPrefix: string;
+  LKeys: TArray<string>;
+  LClosing: TArray<TMCPSubscription>;
+  LHooks: TArray<TProc<TMCPSubscription>>;
+begin
+  Result := 0;
+  if AScope.IsEmpty then
+    Exit;
+
+  // The key KeyOf builds for this scope starts with it and a space, and no
+  // other scope's key can: see KeyOf
+  LPrefix := AScope + ' ';
+
+  TMonitor.Enter(FLock);
+  try
+    LKeys := FSubscriptions.Keys.ToArray;
+    SetLength(LClosing, Length(LKeys));
+    SetLength(LHooks, Length(LKeys));
+
+    for var LKey in LKeys do
+      if LKey.StartsWith(LPrefix) then
+      begin
+        LClosing[Result] := FSubscriptions[LKey];
+        LHooks[Result] := MarkClosed(LClosing[Result], AGraceful);
+        FSubscriptions.Remove(LKey);
+        Inc(Result);
+      end;
+  finally
+    TMonitor.Exit(FLock);
+  end;
+
+  // Outside the lock, as in CloseAll: once it is released the pump may free the
+  // subscription, and a hook must not run under a lock it could need
+  for var I := 0 to Result - 1 do
+    if Assigned(LHooks[I]) then
+      LHooks[I](LClosing[I]);
 end;
 
 function TMCPSubscriptionRegistry.Publish(ANotification: TJRPCNotification): Integer;

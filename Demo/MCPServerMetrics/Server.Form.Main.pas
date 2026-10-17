@@ -254,7 +254,15 @@ begin
   // A delta per tick would still write an empty "[]" line when nothing was
   // recorded since the previous tick, so only harvest when there is data.
   if Length(TMetrics.Collect) > 0 then
+  begin
     TServerMetrics.Instance.HarvestDelta;
+
+    // The live resource reads the snapshot this harvest just refreshed: a
+    // client listening for it (subscriptions/listen with resourceSubscriptions)
+    // is told to re-read it. Free when nobody listens.
+    FServer.MCPServer.Plugin.Configure<IMCPConfig>
+      .Subscriptions.ResourceUpdated('resource://metrics/live');
+  end;
 
   SavePerfReport;
 end;

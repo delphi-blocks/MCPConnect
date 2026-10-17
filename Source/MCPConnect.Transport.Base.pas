@@ -293,18 +293,6 @@ type
     function Cancel(AId: TJSONValue; const AReason: string): Boolean;
 
     /// <summary>
-    ///   Cancels every request in flight, for AReason: the connection is gone
-    ///   (stdin reached its end), and nothing any of them answers can be
-    ///   delivered. Answers how many there were.
-    /// </summary>
-    /// <remarks>
-    ///   A listen among them closes its subscription abruptly, through the hook
-    ///   the transport sets on its cancellation - which is what keeps its pump
-    ///   from waiting on a queue nobody will ever fill.
-    /// </remarks>
-    function CancelAll(const AReason: string): Integer;
-
-    /// <summary>
     ///   How many requests are in flight.
     /// </summary>
     function Count: Integer;
@@ -718,21 +706,6 @@ begin
   end;
 end;
 
-function TMCPInFlightRequests.CancelAll(const AReason: string): Integer;
-var
-  LCancellation: TMCPCancellation;
-begin
-  // Under the lock for the same reason as Cancel, and in the same order
-  TMonitor.Enter(FLock);
-  try
-    Result := FRequests.Count;
-    for LCancellation in FRequests.Values do
-      LCancellation.Cancel(AReason);
-  finally
-    TMonitor.Exit(FLock);
-  end;
-end;
-
 function TMCPInFlightRequests.Count: Integer;
 begin
   TMonitor.Enter(FLock);
@@ -865,6 +838,12 @@ begin
       AddApplicationToContext(FContext, FServer);
 
       FContext.AddContent(FAccessToken);
+
+      // Whether a listen could be held open here, for server/discover to read
+      // before it promises "listChanged"
+      var LListenSupport := TMCPListenSupport.Create(FRequest.CanStream);
+      FGarbage.Add(LListenSupport);
+      FContext.AddContent(LListenSupport);
 
       // The shared middleware objects have to be put in by hand: AddContent
       // picks up the configurations of an IJRPCApplication on its own, and the

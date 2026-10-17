@@ -252,6 +252,13 @@ type
     SendServerInfo: Boolean;
 
     /// <summary>
+    ///   Whether inferred capabilities promise "listChanged" for the tools,
+    ///   resources and prompts this server has. Default: True. See
+    ///   SetListChanged.
+    /// </summary>
+    ListChanged: Boolean;
+
+    /// <summary>
     ///   The caching hints every cacheable result carries, unless the section
     ///   that answered has hints of its own. Unset by default.
     /// </summary>
@@ -318,6 +325,14 @@ type
     /// </summary>
     /// <remarks>
     ///   Takes ownership of the passed instance; it will be freed by the config.
+    ///
+    ///   What is set here is reported verbatim, "listChanged" included:
+    ///   SetListChanged applies only to inferred capabilities. A server that
+    ///   sets its own and sends list_changed notifications must say so itself -
+    ///   Tools.ListChanged, Resources.ListChanged, Prompts.ListChanged - and
+    ///   should know that the notifications travel only on a
+    ///   "subscriptions/listen" stream, which a deployment that cannot stream
+    ///   (WebBroker before 13.1, CGI) never holds open.
     /// </remarks>
     /// <returns>Self for fluent chaining</returns>
     function SetCapabilities(ACapabilities: TServerCapabilities): TMCPServerConfig; overload;
@@ -354,6 +369,26 @@ type
     ///   which build is running.
     /// </remarks>
     function SetSendServerInfo(AEnable: Boolean): TMCPServerConfig;
+
+    /// <summary>
+    ///   Whether inferred capabilities promise "listChanged" - that the server
+    ///   will notify a client listening on "subscriptions/listen" when its
+    ///   tools, resources or prompts change.
+    /// </summary>
+    /// <param name="AEnable">
+    ///   True (the default) promises it for each kind the server has, on a
+    ///   transport that can hold the listen stream open; False never promises
+    ///   it, for a server whose lists do not change once it is running.
+    /// </param>
+    /// <returns>Self for fluent chaining</returns>
+    /// <remarks>
+    ///   Ignored once SetCapabilities has been called: explicit capabilities
+    ///   are reported as they were set. The promise is kept by the registry -
+    ///   Register*/Unregister*/ClearAll publish on their own, and
+    ///   Subscriptions.ToolsChanged and its siblings cover a change the
+    ///   registry cannot see.
+    /// </remarks>
+    function SetListChanged(AEnable: Boolean): TMCPServerConfig;
 
     /// <summary>
     ///   How long a client may consider this server's results fresh, and
@@ -1997,11 +2032,21 @@ begin
 
   // A server SHOULD say who it is in every result, so saying so is the default
   SendServerInfo := True;
+
+  // The registry publishes every change it sees, so the promise is one this
+  // server can keep
+  ListChanged := True;
 end;
 
 function TMCPServerConfig.SetSendServerInfo(AEnable: Boolean): TMCPServerConfig;
 begin
   SendServerInfo := AEnable;
+  Result := Self;
+end;
+
+function TMCPServerConfig.SetListChanged(AEnable: Boolean): TMCPServerConfig;
+begin
+  ListChanged := AEnable;
   Result := Self;
 end;
 

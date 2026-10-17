@@ -1,0 +1,46 @@
+<section class="panel">
+  <h2>Counters</h2>
+  <div class="note">
+    Running totals that only go up. The line is the rate - the change between two
+    samples over the time between them - and the bar splits the total by the
+    counter's first label key.
+  </div>
+  @if (Metrics.HasCounters) {
+    <div class="grid instruments">
+      @foreach (var counter in Metrics.Counters) {
+        <article class="inst counter" title="@counter.Description">
+          <header>
+            <span class="inst-name mono">@counter.Name</span>
+            <span class="inst-meter">@counter.Meter</span>
+          </header>
+          <div class="inst-value">@counter.TotalText<small>@counter.UnitText</small></div>
+          <div class="inst-hint">@counter.RateText/s now · peak @counter.PeakRateText/s · @counter.SeriesText series</div>
+          @if (counter.HasSpark) {
+            <svg class="spark" viewBox="0 0 100 34" preserveAspectRatio="none" role="img" aria-label="@counter.Name rate">
+              <polygon points="@counter.SparkArea" fill="#3fbf7f" opacity="0.15" />
+              <polyline points="@counter.SparkPoints" fill="none" stroke="#3fbf7f"
+                        stroke-width="1.5" vector-effect="non-scaling-stroke" />
+            </svg>
+          } @else {
+            <div class="spark-empty">the rate appears after two samples with traffic</div>
+          }
+          @if (counter.HasSplits) {
+            <div class="split-title">by @counter.SplitKey</div>
+            <div class="split" role="img" aria-label="@counter.Name by @counter.SplitKey">
+              @foreach (var split in counter.Splits) {
+                <span style="width:@split.Percent%;background:@split.Colour" title="@split.Value - @split.TotalText (@split.PercentText)"></span>
+              }
+            </div>
+            <ul class="split-legend">
+              @foreach (var split in counter.Splits) {
+                <li><i style="background:@split.Colour"></i><span class="mono">@split.Value</span> <em>@split.PercentText</em></li>
+              }
+            </ul>
+          }
+        </article>
+      }
+    </div>
+  } @else {
+    <p class="empty">No counter recorded yet. Call a tool over MCP and the request counters appear.</p>
+  }
+</section>

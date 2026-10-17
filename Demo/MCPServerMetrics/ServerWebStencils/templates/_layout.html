@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>@Metrics.ServiceName · MCPConnect metrics</title>
+<link rel="stylesheet" href="/dashboard.css">
+</head>
+<body>
+<header class="app-header">
+  <div class="app-title">
+    <a href="https://github.com/delphi-blocks/MCPConnect" class="app-logo">
+      <img src="/assets/logo.svg" alt="MCPConnect" width="64" height="64">
+    </a>
+  </div>
+  <div class="app-side">
+    <h1>@Metrics.ServiceName metrics</h1>
+    <div class="sub">
+      @if (Metrics.HasServiceDescription) {
+        @Metrics.ServiceDescription ·
+      }
+      @Metrics.ServiceVersion · started @Metrics.StartedText · rendered @Metrics.GeneratedText
+      · @Metrics.Schema
+    </div>
+    <div class="app-controls">
+      <span class="badge ok"><span class="dot"></span>server rendered</span>
+      <span class="badge">@Metrics.SampleCountText samples · @Metrics.HistorySpanText</span>
+      <span class="badge">@Metrics.InstrumentsText instruments · @Metrics.MetersText meters</span>
+      <a class="badge" href="/dashboard">Refresh now</a>
+    </div>
+  </div>
+</header>
+
+@Import _hero.html
+
+@RenderBody
+
+<footer class="footnote">
+  WebStencils rendered this page on the server, from the metrics of the process
+  it runs in: no HTTP hop, no CORS, no build step. The panel under
+  <code>#live</code> is replaced by a fragment rendered from the same partials
+  every @Metrics.RefreshSeconds second(s) when JavaScript is available - the page
+  itself is complete without it. Counters are cumulative across the
+  @Metrics.ResetsText folded reset(s) of the host's harvest.
+</footer>
+
+<script>
+  // The only script on the page, and the only reason it is here: swap the live
+  // fragment in without reloading. Everything it draws arrives from the server.
+  (function () {
+    var seconds = @Metrics.RefreshSeconds;
+    var target = document.getElementById('live');
+    if (!target || seconds <= 0) { return; }
+    window.setInterval(function () {
+      fetch('/dashboard/live', { cache: 'no-store' })
+        .then(function (response) { return response.ok ? response.text() : null; })
+        .then(function (html) { if (html) { target.innerHTML = html; } })
+        .catch(function () { /* the next tick tries again */ });
+    }, seconds * 1000);
+  })();
+</script>
+</body>
+</html>

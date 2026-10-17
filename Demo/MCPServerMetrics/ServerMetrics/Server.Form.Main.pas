@@ -60,7 +60,7 @@ uses
   MCPConnect.Metrics,
   MCPConnect.Transport.Indy,
 
-  Server.Dashboard,
+  Server.Form.Dashboard,
   Server.Metrics.Http;
 
 type

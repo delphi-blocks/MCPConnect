@@ -1,0 +1,39 @@
+<section class="panel">
+  <h2>Breakdown</h2>
+  <div class="note">
+    Every instrument rolled up by each of its label keys, aggregated over the
+    others. A histogram is compared by its average, a counter by its total.
+  </div>
+  @if (Metrics.HasGroups) {
+    <div class="grid two">
+      @foreach (var group in Metrics.Groups) {
+        <section class="panel inner">
+          <h3>@group.Title</h3>
+          <div class="note">@group.Kind · bars by @group.Measure</div>
+          <table>
+            <thead>
+              <tr>
+                <th>@group.LabelKey</th><th class="num">count</th><th class="num">sum</th>
+                <th class="num">avg</th><th class="num">max</th><th class="bar-col"></th>
+              </tr>
+            </thead>
+            <tbody>
+              @foreach (var item in group.Values) {
+                <tr>
+                  <td class="mono">@item.Value</td>
+                  <td class="num">@item.CountText</td>
+                  <td class="num">@item.SumText</td>
+                  <td class="num">@item.AvgText</td>
+                  <td class="num">@item.MaxText</td>
+                  <td class="bar-col"><div class="bar" style="width:@item.BarPercent%"></div></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </section>
+      }
+    </div>
+  } @else {
+    <p class="empty">Nothing labelled yet: the demo records labels as soon as a tool is called.</p>
+  }
+</section>

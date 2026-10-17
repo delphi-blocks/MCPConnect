@@ -1,0 +1,46 @@
+# Receives OTLP/HTTP on 4318, prints every metric it gets, appends it to a
+# file and exposes it to Prometheus on 8889. The file exporter is part of the contrib distribution
+# (otel/opentelemetry-collector-contrib, or the otelcol-contrib binary).
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+
+exporters:
+  debug:
+    verbosity: detailed
+
+  # One OTLP JSON document per line: every export the collector forwards.
+  # /data is the ./data folder mounted by docker-compose.yml; when running
+  # otelcol-contrib directly, change it to a local path such as
+  # ./data/metrics.jsonl.
+  file:
+    path: ./metrics.jsonl
+    format: json
+    rotation:
+      max_megabytes: 10
+      max_backups: 3
+
+  # Scraped by the prometheus service of docker-compose.yml. Names keep the
+  # instrument name with dots turned into underscores and nothing appended (no
+  # unit, no _total): request.count is request_count, request.duration_ms is
+  # request_duration_ms_bucket/_sum/_count. The meter becomes the
+  # otel_scope_name label, service.name the job label. See
+  # README.md, "Querying the metrics with PromQL".
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    translation_strategy: UnderscoreEscapingWithoutSuffixes
+    # The demo harvests every 30 s; a series silent for longer than this
+    # disappears from /metrics.
+    metric_expiration: 10m
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug, file, prometheus]

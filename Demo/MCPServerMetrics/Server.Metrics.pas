@@ -663,7 +663,7 @@ begin
   FExporterLines.Add('logify         - custom: one summary line per harvest');
 
   // An OpenTelemetry collector, only when one is configured the OpenTelemetry
-  // way (otel\docker-compose.yml starts a local one). The exporter keeps its
+  // way (OpenTelemetry\docker-compose.yml starts a local one). The exporter keeps its
   // own running totals, so the delta and cumulative harvests this demo mixes
   // still reach the collector as one cumulative stream.
   if (GetEnvironmentVariable('OTEL_EXPORTER_OTLP_ENDPOINT') <> '') or

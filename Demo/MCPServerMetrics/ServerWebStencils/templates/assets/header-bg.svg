@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 160" width="1600" height="160" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#05070a"/>
+      <stop offset="0.55" stop-color="#0a0f16"/>
+      <stop offset="1" stop-color="#0d1520"/>
+    </linearGradient>
+    <radialGradient id="glow-blue" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#4aa3ff" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#4aa3ff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow-green" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#3fbf7f" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#3fbf7f" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="dots" width="16" height="16" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="0.8" fill="#ffffff" fill-opacity="0.06"/>
+    </pattern>
+    <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse">
+      <path d="M80 0 H0 V80" fill="none" stroke="#4aa3ff" stroke-opacity="0.05" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1600" height="160" fill="url(#base)"/>
+  <rect width="1600" height="160" fill="url(#grid)"/>
+  <rect width="1600" height="160" fill="url(#dots)"/>
+
+  <ellipse cx="260" cy="70" rx="320" ry="130" fill="url(#glow-blue)"/>
+  <ellipse cx="1080" cy="120" rx="360" ry="120" fill="url(#glow-green)"/>
+  <ellipse cx="1520" cy="20" rx="260" ry="100" fill="url(#glow-blue)"/>
+
+  <!-- circuit traces -->
+  <g fill="none" stroke="#4aa3ff" stroke-opacity="0.28" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M0 40 H140 L170 70 H330 L355 45 H520"/>
+    <path d="M0 118 H90 L118 90 H260 L290 120 H410"/>
+    <path d="M220 160 V136 L246 110 H380"/>
+    <path d="M460 0 V22 L486 48 H640 L668 76 H800"/>
+    <path d="M560 160 V138 L586 112 H720 L748 140 H900"/>
+    <path d="M840 28 H990 L1018 56 H1150 L1176 30 H1300"/>
+    <path d="M960 160 V128 L988 100 H1120"/>
+    <path d="M1220 104 H1350 L1378 76 H1600"/>
+    <path d="M1300 160 V140 L1326 120 H1480 L1506 146 H1600"/>
+    <path d="M1420 0 V18 L1446 44 H1600"/>
+  </g>
+  <g fill="none" stroke="#3fbf7f" stroke-opacity="0.22" stroke-width="1" stroke-linecap="round">
+    <path d="M30 80 H200 L226 54 H300"/>
+    <path d="M680 100 H780 L806 74 H930 L956 100 H1060"/>
+    <path d="M1100 140 H1240 L1266 112"/>
+  </g>
+
+  <!-- nodes on the traces -->
+  <g fill="#0a0f16" stroke="#4aa3ff" stroke-opacity="0.55" stroke-width="1.2">
+    <circle cx="520" cy="45" r="3.2"/>
+    <circle cx="410" cy="120" r="3.2"/>
+    <circle cx="380" cy="110" r="3.2"/>
+    <circle cx="800" cy="76" r="3.2"/>
+    <circle cx="900" cy="140" r="3.2"/>
+    <circle cx="1300" cy="30" r="3.2"/>
+    <circle cx="1120" cy="100" r="3.2"/>
+    <circle cx="460" cy="22" r="0"/>
+  </g>
+  <g fill="#3fbf7f" fill-opacity="0.5">
+    <circle cx="300" cy="54" r="2.4"/>
+    <circle cx="1060" cy="100" r="2.4"/>
+    <circle cx="1266" cy="112" r="2.4"/>
+  </g>
+
+  <!-- a few lit pads -->
+  <g fill="#4aa3ff">
+    <circle cx="170" cy="70" r="1.8" fill-opacity="0.9"/>
+    <circle cx="668" cy="76" r="1.8" fill-opacity="0.9"/>
+    <circle cx="1018" cy="56" r="1.8" fill-opacity="0.9"/>
+    <circle cx="1378" cy="76" r="1.8" fill-opacity="0.9"/>
+  </g>
+
+  <!-- a faint telemetry line across the band -->
+  <polyline points="0,132 60,128 120,134 180,122 240,126 300,112 360,118 420,104 480,110 540,96 600,104 660,92 720,100 780,88 840,96 900,84 960,92 1020,80 1080,90 1140,78 1200,86 1260,74 1320,82 1380,70 1440,78 1500,66 1560,74 1600,68"
+            fill="none" stroke="#3fbf7f" stroke-opacity="0.16" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>

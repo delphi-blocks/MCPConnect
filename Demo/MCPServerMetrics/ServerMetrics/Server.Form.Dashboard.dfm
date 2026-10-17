@@ -76,7 +76,6 @@ object FrameMetricsDashboard: TFrameMetricsDashboard
         ParentFont = False
         TabOrder = 0
         ViewStyle = vsReport
-        ExplicitHeight = 407
       end
       object PanelActions: TPanel
         Left = 696
@@ -86,7 +85,6 @@ object FrameMetricsDashboard: TFrameMetricsDashboard
         Align = alRight
         BevelOuter = bvNone
         TabOrder = 1
-        ExplicitHeight = 407
         object LabelHint: TLabel
           Left = 10
           Top = 360
@@ -211,7 +209,6 @@ object FrameMetricsDashboard: TFrameMetricsDashboard
         ScrollBars = ssBoth
         TabOrder = 0
         WordWrap = False
-        ExplicitHeight = 407
       end
     end
     object TabText: TTabSheet
@@ -234,7 +231,6 @@ object FrameMetricsDashboard: TFrameMetricsDashboard
         ScrollBars = ssBoth
         TabOrder = 0
         WordWrap = False
-        ExplicitHeight = 407
       end
     end
     object TabJson: TTabSheet
@@ -257,7 +253,6 @@ object FrameMetricsDashboard: TFrameMetricsDashboard
         ScrollBars = ssBoth
         TabOrder = 0
         WordWrap = False
-        ExplicitHeight = 407
       end
     end
     object TabExporters: TTabSheet
@@ -280,7 +275,6 @@ object FrameMetricsDashboard: TFrameMetricsDashboard
         ScrollBars = ssBoth
         TabOrder = 0
         WordWrap = False
-        ExplicitHeight = 407
       end
     end
     object TabLog: TTabSheet

@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 480" width="960" height="480" role="img" aria-labelledby="t d">
+  <title id="t">MCPConnect metrics</title>
+  <desc id="d">An MCP client calls an MCPConnect server over JSON-RPC; the server records counters, histograms and gauges in-process and exports them over OTLP to an OpenTelemetry Collector and Prometheus.</desc>
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0c1117"/>
+      <stop offset="1" stop-color="#152130"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#4aa3ff" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#4aa3ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="hub" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f3a58"/>
+      <stop offset="1" stop-color="#15263a"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6cb6ff"/>
+      <stop offset="1" stop-color="#2a6fb8"/>
+    </linearGradient>
+    <linearGradient id="area" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3fbf7f" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#3fbf7f" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1" fill="#ffffff" fill-opacity="0.05"/>
+    </pattern>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4aa3ff"/>
+    </marker>
+    <marker id="arrow-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#93a1b3"/>
+    </marker>
+    <style>
+      text { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; fill: #e6ecf3; }
+      .mono { font-family: 'Cascadia Mono', Consolas, 'Courier New', monospace; }
+      .muted { fill: #93a1b3; }
+      .label { font-size: 11px; fill: #93a1b3; letter-spacing: 0.06em; }
+      .card { fill: #171d26; stroke: #2a3341; }
+      .pill { fill: #1b2430; stroke: #2f3b4d; }
+      .flow { fill: none; stroke: #4aa3ff; stroke-width: 1.6; stroke-dasharray: 5 6; animation: flow 1.4s linear infinite; }
+      .flow.muted-line { stroke: #93a1b3; }
+      @keyframes flow { to { stroke-dashoffset: -22; } }
+      @media (prefers-reduced-motion: reduce) { .flow { animation: none; } }
+    </style>
+  </defs>
+
+  <!-- backdrop -->
+  <rect width="960" height="480" fill="url(#bg)"/>
+  <rect width="960" height="480" fill="url(#dots)"/>
+  <circle cx="445" cy="220" r="190" fill="url(#glow)"/>
+
+  <!-- the MCP client -->
+  <rect class="card" x="40" y="150" width="160" height="140" rx="18"/>
+  <path d="M120,168 C122,186 126,190 144,192 C126,194 122,198 120,216 C118,198 114,194 96,192 C114,190 118,186 120,168 Z" fill="#e6ecf3"/>
+  <path d="M148,170 C149,177 150,178 157,179 C150,180 149,181 148,188 C147,181 146,180 139,179 C146,178 147,177 148,170 Z" fill="#e6ecf3"/>
+  <text x="120" y="250" text-anchor="middle" font-size="16" font-weight="600">MCP client</text>
+  <text x="120" y="270" text-anchor="middle" font-size="12" class="muted">LLM &#183; agent &#183; IDE</text>
+
+  <!-- the requests -->
+  <text x="280" y="170" text-anchor="middle" class="label">JSON-RPC 2.0</text>
+  <line class="flow" x1="200" y1="195" x2="356" y2="195" marker-end="url(#arrow)"/>
+  <line class="flow" x1="200" y1="220" x2="356" y2="220" marker-end="url(#arrow)"/>
+  <line class="flow" x1="200" y1="245" x2="356" y2="245" marker-end="url(#arrow)"/>
+  <rect class="pill" x="236" y="186" width="88" height="18" rx="9"/>
+  <text x="280" y="199" text-anchor="middle" font-size="10.5" class="mono">tools/call</text>
+  <rect class="pill" x="230" y="211" width="100" height="18" rx="9"/>
+  <text x="280" y="224" text-anchor="middle" font-size="10.5" class="mono">resources/read</text>
+  <rect class="pill" x="236" y="236" width="88" height="18" rx="9"/>
+  <text x="280" y="249" text-anchor="middle" font-size="10.5" class="mono">prompts/get</text>
+
+  <!-- the server -->
+  <rect x="360" y="140" width="170" height="160" rx="22" fill="url(#hub)" stroke="#4aa3ff" stroke-width="1.5"/>
+  <text x="445" y="200" text-anchor="middle" font-size="22" font-weight="700">MCPConnect</text>
+  <text x="445" y="224" text-anchor="middle" font-size="12.5" class="muted">Delphi MCP server</text>
+  <line x1="384" y1="242" x2="506" y2="242" stroke="#2f4a68"/>
+  <text x="445" y="264" text-anchor="middle" font-size="11" class="muted">tools &#183; resources &#183; prompts</text>
+  <text x="445" y="282" text-anchor="middle" font-size="11" class="muted">+ metrics middleware</text>
+
+  <!-- server to instruments -->
+  <path class="flow" d="M530,220 C562,220 556,84 586,84" marker-end="url(#arrow)"/>
+  <path class="flow" d="M530,220 C562,220 556,190 586,190" marker-end="url(#arrow)"/>
+  <path class="flow" d="M530,220 C562,220 556,296 586,296" marker-end="url(#arrow)"/>
+
+  <!-- histogram -->
+  <rect class="card" x="590" y="36" width="330" height="96" rx="12"/>
+  <text x="606" y="56" class="label">HISTOGRAM</text>
+  <text x="904" y="56" text-anchor="end" font-size="11" class="mono muted">latency ms</text>
+  <g fill="url(#bar)">
+    <rect x="606" y="110" width="22" height="12" rx="3"/>
+    <rect x="636" y="98" width="22" height="24" rx="3"/>
+    <rect x="666" y="82" width="22" height="40" rx="3"/>
+    <rect x="696" y="70" width="22" height="52" rx="3"/>
+    <rect x="726" y="76" width="22" height="46" rx="3"/>
+    <rect x="756" y="89" width="22" height="33" rx="3"/>
+    <rect x="786" y="100" width="22" height="22" rx="3"/>
+    <rect x="816" y="108" width="22" height="14" rx="3"/>
+    <rect x="846" y="113" width="22" height="9" rx="3"/>
+    <rect x="876" y="116" width="22" height="6" rx="3"/>
+  </g>
+
+  <!-- counter -->
+  <rect class="card" x="590" y="142" width="330" height="96" rx="12"/>
+  <text x="606" y="162" class="label">COUNTER</text>
+  <text x="904" y="162" text-anchor="end" font-size="11" class="mono muted">requests/s</text>
+  <path d="M606,216 L631,210 L656,213 L681,201 L706,205 L731,192 L756,197 L781,184 L806,190 L831,178 L856,183 L881,174 L906,180 L906,228 L606,228 Z" fill="url(#area)"/>
+  <polyline points="606,216 631,210 656,213 681,201 706,205 731,192 756,197 781,184 806,190 831,178 856,183 881,174 906,180" fill="none" stroke="#3fbf7f" stroke-width="2" stroke-linejoin="round"/>
+  <circle cx="906" cy="180" r="3.5" fill="#3fbf7f"/>
+
+  <!-- gauge -->
+  <rect class="card" x="590" y="248" width="330" height="96" rx="12"/>
+  <text x="606" y="268" class="label">GAUGE</text>
+  <path d="M650,332 A40,40 0 0 1 730,332" fill="none" stroke="#2a3341" stroke-width="8" stroke-linecap="round"/>
+  <path d="M650,332 A40,40 0 0 1 704.7,294.8" fill="none" stroke="#e0a13a" stroke-width="8" stroke-linecap="round"/>
+  <text x="690" y="330" text-anchor="middle" font-size="16" font-weight="700">62%</text>
+  <text x="772" y="288" font-size="11.5" class="mono muted">in-flight</text>
+  <text x="904" y="288" text-anchor="end" font-size="11.5" class="mono">3</text>
+  <text x="772" y="308" font-size="11.5" class="mono muted">errors</text>
+  <text x="904" y="308" text-anchor="end" font-size="11.5" class="mono">0</text>
+  <text x="772" y="328" font-size="11.5" class="mono muted">memory</text>
+  <text x="904" y="328" text-anchor="end" font-size="11.5" class="mono">62%</text>
+
+  <!-- the export pipeline -->
+  <path class="flow muted-line" d="M445,300 V346 Q445,354 437,354 H123 Q115,354 115,362 V378" marker-end="url(#arrow-muted)"/>
+  <text x="280" y="346" text-anchor="middle" class="label">HARVEST &#183; EXPORT</text>
+
+  <rect class="pill" x="40" y="382" width="150" height="34" rx="17"/>
+  <text x="115" y="404" text-anchor="middle" font-size="12" class="mono">TMetrics</text>
+  <line class="flow" x1="190" y1="399" x2="220" y2="399" marker-end="url(#arrow)"/>
+
+  <rect class="pill" x="222" y="382" width="130" height="34" rx="17"/>
+  <text x="287" y="404" text-anchor="middle" font-size="12" class="mono">OTLP / HTTP</text>
+  <line class="flow" x1="352" y1="399" x2="382" y2="399" marker-end="url(#arrow)"/>
+
+  <rect x="384" y="382" width="210" height="34" rx="17" fill="#1b2430" stroke="#e0a13a"/>
+  <text x="489" y="404" text-anchor="middle" font-size="12.5" font-weight="600">OpenTelemetry Collector</text>
+  <line class="flow" x1="594" y1="399" x2="624" y2="399" marker-end="url(#arrow)"/>
+
+  <rect x="626" y="382" width="130" height="34" rx="17" fill="#1b2430" stroke="#e6522c"/>
+  <text x="691" y="404" text-anchor="middle" font-size="12.5" font-weight="600">Prometheus</text>
+  <line class="flow" x1="756" y1="399" x2="786" y2="399" marker-end="url(#arrow)"/>
+
+  <rect class="pill" x="788" y="382" width="132" height="34" rx="17"/>
+  <text x="854" y="404" text-anchor="middle" font-size="12.5">dashboards</text>
+
+  <text x="480" y="454" text-anchor="middle" font-size="12" class="muted">counters &#183; gauges &#183; histograms &#8212; recorded in-process, harvested, exported the OpenTelemetry way</text>
+</svg>

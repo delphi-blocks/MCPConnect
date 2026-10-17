@@ -27,15 +27,15 @@ program MCPServerMetrics;
 
 uses
   Vcl.Forms,
-  Server.Config in 'Server.Config.pas',
-  Server.Tools in 'Server.Tools.pas',
-  Server.Middleware in 'Server.Middleware.pas',
-  Server.Dashboard in 'Server.Dashboard.pas' {FrameDashboard: TFrameMetricsDashboard},
-  Server.Metrics in 'Server.Metrics.pas',
-  Server.Metrics.Document in 'Server.Metrics.Document.pas',
-  Server.Metrics.Features in 'Server.Metrics.Features.pas',
-  Server.Metrics.Http in 'Server.Metrics.Http.pas',
-  Server.Metrics.Middleware in 'Server.Metrics.Middleware.pas',
+  Server.Config in '..\Server.Config.pas',
+  Server.Tools in '..\Server.Tools.pas',
+  Server.Middleware in '..\Server.Middleware.pas',
+  Server.Metrics in '..\Server.Metrics.pas',
+  Server.Metrics.Document in '..\Server.Metrics.Document.pas',
+  Server.Metrics.Features in '..\Server.Metrics.Features.pas',
+  Server.Metrics.Http in '..\Server.Metrics.Http.pas',
+  Server.Metrics.Middleware in '..\Server.Metrics.Middleware.pas',
+  Server.Form.Dashboard in 'Server.Form.Dashboard.pas' {FrameDashboard: TFrameMetricsDashboard},
   Server.Form.Main in 'Server.Form.Main.pas' {frmMain};
 
 {$R *.res}

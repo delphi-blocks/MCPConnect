@@ -1,0 +1,29 @@
+<section class="panel hero">
+  <img class="hero-art" src="/assets/hero-mcp-metrics.svg" width="960" height="480"
+       alt="An MCP client calls MCPConnect over JSON-RPC; the server records counters, histograms and gauges and exports them over OTLP to an OpenTelemetry Collector and Prometheus">
+  <img class="hero-logo" src="/assets/mcpconnect-rising-emb.png" alt="MCPConnect">
+  <div class="hero-text">
+    <h2>MCPConnect <span class="version">2.0.0</span></h2>
+    <p class="tagline">
+      A Delphi library for building Model Context Protocol servers: attribute-driven
+      tools, resources and prompts over JSON-RPC 2.0, the same configuration on WebBroker,
+      Indy and stdio, and the metrics on this page built in.
+    </p>
+    <p class="lede">
+      This deployment is a todo-list MCP server and the dashboard its operators watch it
+      with. <code>POST /mcp</code> gives MCP clients the todo tools and nothing else; every
+      call they make is recorded by a middleware and shows up here, and on
+      <a href="/metrics">/metrics</a> for anything that would rather parse JSON.
+      Embarcadero's WebStencils renders this page on the server from the metrics of the
+      process it runs in — no second service, no CORS, and no build step on the way to
+      your screen.
+    </p>
+    <p class="links">
+      <a href="https://github.com/delphi-blocks/MCPConnect">Source on GitHub</a>
+      <span class="sep">·</span>
+      <a href="https://mcpconnect.delphiblocks.dev/">Documentation</a>
+      <span class="sep">·</span>
+      <a href="/metrics">The same numbers as JSON</a>
+    </p>
+  </div>
+</section>

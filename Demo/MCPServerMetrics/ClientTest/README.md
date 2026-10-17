@@ -29,7 +29,24 @@ what a 2026-07-28 request looks like on the wire.
 Options: `-Url` (endpoint, default `http://localhost:8080/`), `-ProtocolVersion`
 (default `2026-07-28`), `-Truncate` (characters printed per answer, default 1200),
 `-SkipMrtr` (skip the part that writes to the todo list), `-SkipListen` (skip
-the `subscriptions/listen` step, which holds a stream open for a moment).
+the `subscriptions/listen` step, which holds a stream open for a moment),
+`-SkipMetrics` (skip steps 3–12, everything that needs the `metrics_*` tools,
+the live resource or the prompt), `-Workload` (with `-SkipMetrics`, how many
+rounds of todo traffic to send in their place, default 10, `0` to skip).
+
+`-SkipMetrics` is what makes the script useful against the WebStencils dashboard
+(`..\WebStencils`), whose `/mcp` endpoint serves only the todo tools:
+
+```powershell
+pwsh ./MCPClient.ps1 -Url http://localhost:8080/mcp -SkipMetrics
+pwsh ./MCPClient.ps1 -Url http://localhost:8080/mcp -SkipMetrics -Workload 50
+```
+
+That runs discovery, `tools/list`, the todo workload and the four MRTR flows,
+and every call shows up on `http://localhost:8080/dashboard`. A workload round
+is five requests — `add_task`, `list_tasks`, `complete_task`, then `delete_task`
+and its retry — and deletes the task it created, so the list is left as found.
+With the defaults that is 63 requests: 2 + 50 + 11.
 
 The client is a normal PowerShell script, so it runs on Windows PowerShell 5.1
 and PowerShell 7 alike; it needs nothing but `System.Net.Http`, which the script

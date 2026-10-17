@@ -1,0 +1,35 @@
+<section class="panel">
+  <h2>Instruments</h2>
+  <div class="note">One row per instrument, the labels folded into the totals.</div>
+  @if (Metrics.HasInstruments) {
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>meter</th><th>instrument</th><th>kind</th><th>unit</th>
+            <th class="num">series</th><th class="num">count</th><th class="num">sum</th>
+            <th class="num">avg</th><th class="num">max</th><th class="num">last</th>
+          </tr>
+        </thead>
+        <tbody>
+          @foreach (var instrument in Metrics.Instruments) {
+            <tr>
+              <td class="mono">@instrument.Meter</td>
+              <td class="mono">@instrument.Name</td>
+              <td>@instrument.Kind</td>
+              <td>@instrument.UnitText</td>
+              <td class="num">@instrument.SeriesText</td>
+              <td class="num">@instrument.CountText</td>
+              <td class="num">@instrument.SumText</td>
+              <td class="num">@instrument.AvgText</td>
+              <td class="num">@instrument.MaxText</td>
+              <td class="num">@instrument.LastText</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  } @else {
+    <p class="empty">Nothing recorded yet. Call a tool over MCP and reload.</p>
+  }
+</section>

@@ -1,0 +1,313 @@
+/*
+  The dashboard's whole look, in one file: a dark console-style theme, a
+  responsive card grid and the few primitives (table, badge, control) every
+  panel reuses. No UI framework - the only runtime dependency is the chart
+  library.
+*/
+
+:root {
+  --bg: #10141a;
+  --panel: #171d26;
+  --panel-2: #1e2632;
+  --line: #2a3341;
+  --text: #e6ecf3;
+  --muted: #93a1b3;
+  --accent: #4aa3ff;
+  --ok: #3fbf7f;
+  --warn: #e0a13a;
+  --bad: #e05a5a;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+code,
+pre,
+.mono {
+  font-family: 'Cascadia Mono', Consolas, 'Courier New', monospace;
+}
+
+a {
+  color: var(--accent);
+}
+
+#app {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 18px 20px 60px;
+}
+
+/* --- header ------------------------------------------------------------- */
+
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.app-header .sub {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.app-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+/* --- primitives --------------------------------------------------------- */
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.panel > h2 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.grid {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.grid.kpis {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.grid.two {
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+}
+
+.grid.gauges {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+button,
+select,
+input {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 6px 10px;
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+button.primary {
+  background: #1d4e7d;
+  border-color: #2a6ba8;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.badge.ok {
+  color: var(--ok);
+  border-color: #245139;
+}
+
+.badge.bad {
+  color: var(--bad);
+  border-color: #5c2a2a;
+}
+
+.badge.warn {
+  color: var(--warn);
+  border-color: #5a4520;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* --- kpi cards ---------------------------------------------------------- */
+
+.kpi {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.kpi .label {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.kpi .value {
+  margin-top: 6px;
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi .value small {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 4px;
+}
+
+.kpi .hint {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi.warn .value {
+  color: var(--warn);
+}
+
+.kpi.bad .value {
+  color: var(--bad);
+}
+
+/* --- tables ------------------------------------------------------------- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 6px 10px 6px 0;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+th {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  user-select: none;
+}
+
+th.static {
+  cursor: default;
+}
+
+tbody tr:hover {
+  background: #1b2330;
+}
+
+td.num,
+th.num {
+  text-align: right;
+}
+
+.table-scroll {
+  max-height: 420px;
+  overflow: auto;
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 6px 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.toolbar .spacer {
+  flex: 1;
+}
+
+/* --- misc --------------------------------------------------------------- */
+
+pre.raw {
+  max-height: 420px;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  background: #0d1117;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.spark {
+  display: block;
+  width: 100%;
+  height: 34px;
+}
+
+.footnote {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 10px;
+}
+
+.error-box {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid #5c2a2a;
+  border-radius: 8px;
+  background: #241a1a;
+  color: #f0b4b4;
+  font-size: 13px;
+}

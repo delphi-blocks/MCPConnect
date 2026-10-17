@@ -1,0 +1,41 @@
+# A local OpenTelemetry Collector for the MCPServerMetrics demo.
+#
+#   docker compose up
+#
+# then start the demo with the exporter pointed at it (PowerShell):
+#
+#   $env:OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:4318"
+#   .\MCPServerMetrics.exe
+#
+# Every harvest the demo runs shows up in this console, printed by the
+# collector's debug exporter, and is appended to data\metrics.jsonl by the file
+# exporter. Set OTEL_EXPORTER_OTLP_COMPRESSION=gzip to try the compressed body,
+# OTEL_SERVICE_NAME to rename the resource (it becomes the Prometheus job
+# label). Bin\OtlpSmoke.exe (built by OtlpSmoke.Build.bat) checks the whole
+# path end to end.
+#
+# Prometheus scrapes the collector and answers on http://localhost:9090;
+# README.md ("Querying the metrics with PromQL") has the PromQL that charts what the demo records.
+services:
+  otel-collector:
+    # contrib: the core image has no file exporter
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/otelcol/config.yaml"]
+    # The collector runs as a non-root user; root keeps the bind-mounted
+    # ./data folder writable whatever its host permissions are.
+    user: "0:0"
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol/config.yaml:ro
+      - ./data:/data
+    ports:
+      - "4318:4318"   # OTLP/HTTP
+      - "8889:8889"   # Prometheus exposition (/metrics)
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"   # Prometheus UI and API
+    depends_on:
+      - otel-collector

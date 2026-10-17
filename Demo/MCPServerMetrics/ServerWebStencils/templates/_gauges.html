@@ -1,0 +1,35 @@
+<section class="panel">
+  <h2>Gauges</h2>
+  <div class="note">
+    The value right now on a dial; the thin outer arc is the range the window
+    covered. A percentage runs to 100 and turns amber at 75 and red at 90; any
+    other gauge is scaled to a round number above the largest value seen.
+  </div>
+  @if (Metrics.HasGauges) {
+    <div class="grid gauges">
+      @foreach (var gauge in Metrics.Gauges) {
+        <div class="kpi gauge @gauge.Tone">
+          <div class="label">@gauge.Name</div>
+          <svg class="dial" viewBox="0 0 120 72" role="img" aria-label="@gauge.Name @gauge.ValueText @gauge.UnitText">
+            <path class="track" d="M14,62 A46,46 0 0 1 106,62" />
+            <path class="range-arc" d="@gauge.RangePath" />
+            <path class="value-arc" d="@gauge.DialPath" />
+            <text class="dial-value" x="60" y="52" text-anchor="middle">@gauge.ValueText</text>
+            <text class="dial-unit" x="60" y="62" text-anchor="middle">@gauge.UnitText</text>
+            <text class="dial-scale" x="14" y="71" text-anchor="middle">0</text>
+            <text class="dial-scale" x="106" y="71" text-anchor="middle">@gauge.ScaleMaxText</text>
+          </svg>
+          <div class="hint">@gauge.Meter · @gauge.RangeText · @gauge.Trend</div>
+          @if (gauge.HasSpark) {
+            <svg class="spark" viewBox="0 0 100 34" preserveAspectRatio="none" role="img" aria-label="@gauge.Name">
+              <polyline points="@gauge.SparkPoints" fill="none" stroke="#4aa3ff"
+                        stroke-width="1.5" vector-effect="non-scaling-stroke" />
+            </svg>
+          }
+        </div>
+      }
+    </div>
+  } @else {
+    <p class="empty">No gauge recorded yet: the metrics hub samples the host on a timer.</p>
+  }
+</section>

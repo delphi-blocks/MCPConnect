@@ -1,0 +1,9 @@
+<section class="grid kpis">
+@foreach (var kpi in Metrics.Kpis) {
+  <div class="kpi @kpi.Tone">
+    <div class="label">@kpi.LabelText</div>
+    <div class="value">@kpi.ValueText<small>@kpi.UnitText</small></div>
+    <div class="hint">@kpi.Hint</div>
+  </div>
+}
+</section>

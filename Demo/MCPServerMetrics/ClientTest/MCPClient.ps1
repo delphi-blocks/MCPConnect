@@ -47,11 +47,26 @@
     few seconds, and needs a transport that can stream - Indy, or WebBroker on
     Delphi 13.1).
 
+.PARAMETER SkipMetrics
+    Skip everything that needs the metrics surface - the metrics_* tools, the
+    resource://metrics/live resource, the subscriptions/listen on it and the
+    analyse-metrics prompt - for a server that serves only the todo tools, such
+    as the WebStencils dashboard. The todo workload (see -Workload) takes their
+    place, so the dashboard still has traffic to show.
+
+.PARAMETER Workload
+    With -SkipMetrics, how many rounds of todo traffic to send. Each round is
+    five requests - add_task, list_tasks, complete_task, then delete_task and
+    its retry - and leaves the todo list as it found it. Default: 10; 0 skips it.
+
 .EXAMPLE
     pwsh ./MCPClient.ps1
 
 .EXAMPLE
     pwsh ./MCPClient.ps1 -Url http://localhost:9090/ -Truncate 4000
+
+.EXAMPLE
+    pwsh ./MCPClient.ps1 -Url http://localhost:8080/mcp -SkipMetrics
 #>
 [CmdletBinding()]
 param(
@@ -59,7 +74,9 @@ param(
     [string]$ProtocolVersion = '2026-07-28',
     [int]$Truncate = 1200,
     [switch]$SkipMrtr,
-    [switch]$SkipListen
+    [switch]$SkipListen,
+    [switch]$SkipMetrics,
+    [int]$Workload = 10
 )
 
 $ErrorActionPreference = 'Stop'
@@ -301,43 +318,82 @@ Write-Section 'tools/list'
 $tools = Send-Mcp -Method 'tools/list'
 Write-Host (@($tools.Json.result.tools | ForEach-Object { $_.name }) -join ', ')
 
-# --- the metrics_* tools -----------------------------------------------------
-Write-Section 'tools/call metrics_snapshot'
-Show-Text (Tool-Text (Invoke-Tool 'metrics_snapshot'))
+# --- todo workload: traffic for a server without the metrics tools -----------
+# The metrics_* tools are what put numbers on the showcase's screen; a server
+# that serves only the todo tools (the WebStencils dashboard) gets this instead.
+# Each round creates a task and removes it again, so the list is left as found.
+if ($SkipMetrics -and $Workload -gt 0) {
+    Write-Section ('todo workload (' + $Workload + ' rounds, ' + ($Workload * 5) + ' requests)')
 
-Write-Section 'tools/call metrics_simulate_workload (25 operations)'
-$sim = Invoke-Tool 'metrics_simulate_workload' ([ordered]@{ operations = 25; regions = 'eu,us,apac' })
-Show-Text (Tool-Text $sim)
+    for ($round = 1; $round -le $Workload; $round++) {
+        $addText = Tool-Text (Invoke-Tool 'add_task' ([ordered]@{
+            title       = 'Workload task ' + $round
+            description = 'Created by MCPClient.ps1 -SkipMetrics'
+        }))
+        if ($addText -notmatch '#(\d+)') {
+            Write-Host ('round ' + $round + ': add_task gave no id: ' + $addText) -ForegroundColor Red
+            continue
+        }
+        $taskId = [int]$Matches[1]
 
-Write-Section 'tools/call metrics_instrument (demo.workload / orders.created)'
-Show-Text (Tool-Text (Invoke-Tool 'metrics_instrument' ([ordered]@{ meter = 'demo.workload'; name = 'orders.created' })))
+        $null = Invoke-Tool 'list_tasks'
+        $null = Invoke-Tool 'complete_task' ([ordered]@{ task_id = $taskId })
 
-Write-Section 'tools/call metrics_slowest (top 5)'
-Show-Text (Tool-Text (Invoke-Tool 'metrics_slowest' ([ordered]@{ top_n = 5 })))
-
-Write-Section 'tools/call metrics_exporters'
-Show-Text (Tool-Text (Invoke-Tool 'metrics_exporters'))
-
-Write-Section 'tools/call metrics_cardinality'
-Show-Text (Tool-Text (Invoke-Tool 'metrics_cardinality'))
-
-Write-Section 'tools/call metrics_separate_provider'
-Show-Text (Tool-Text (Invoke-Tool 'metrics_separate_provider'))
-
-# --- the live resource -------------------------------------------------------
-Write-Section 'resources/read resource://metrics/live'
-$live = Send-Mcp -Method 'resources/read' -Name 'resource://metrics/live' -Params ([ordered]@{
-    uri = 'resource://metrics/live'
-})
-if ($live.Json.result.contents) {
-    Show-Text $live.Json.result.contents[0].text
+        # delete_task always asks first (MRTR), so removing the task is two calls
+        $ask = Invoke-Tool 'delete_task' ([ordered]@{ task_id = $taskId })
+        $done = Send-Mcp -Method 'tools/call' -Name 'delete_task' -Params ([ordered]@{
+            name           = 'delete_task'
+            arguments      = [ordered]@{ task_id = $taskId }
+            requestState   = $ask.Json.result.requestState
+            inputResponses = [ordered]@{
+                delete = [ordered]@{ action = 'accept'; content = [ordered]@{ confirm = $true } }
+            }
+        })
+        Write-Host ('round ' + $round + ': task #' + $taskId + ' added, listed, completed - ' + (Tool-Text $done))
+    }
 }
-else {
-    Write-Host $live.Body -ForegroundColor DarkGray
+
+if (-not $SkipMetrics) {
+    # --- the metrics_* tools -------------------------------------------------
+    Write-Section 'tools/call metrics_snapshot'
+    Show-Text (Tool-Text (Invoke-Tool 'metrics_snapshot'))
+
+    Write-Section 'tools/call metrics_simulate_workload (25 operations)'
+    $sim = Invoke-Tool 'metrics_simulate_workload' ([ordered]@{ operations = 25; regions = 'eu,us,apac' })
+    Show-Text (Tool-Text $sim)
+
+    Write-Section 'tools/call metrics_instrument (demo.workload / orders.created)'
+    Show-Text (Tool-Text (Invoke-Tool 'metrics_instrument' ([ordered]@{ meter = 'demo.workload'; name = 'orders.created' })))
+
+    Write-Section 'tools/call metrics_slowest (top 5)'
+    Show-Text (Tool-Text (Invoke-Tool 'metrics_slowest' ([ordered]@{ top_n = 5 })))
+
+    Write-Section 'tools/call metrics_exporters'
+    Show-Text (Tool-Text (Invoke-Tool 'metrics_exporters'))
+
+    Write-Section 'tools/call metrics_cardinality'
+    Show-Text (Tool-Text (Invoke-Tool 'metrics_cardinality'))
+
+    Write-Section 'tools/call metrics_separate_provider'
+    Show-Text (Tool-Text (Invoke-Tool 'metrics_separate_provider'))
+
+    # --- the live resource ---------------------------------------------------
+    Write-Section 'resources/read resource://metrics/live'
+    $live = Send-Mcp -Method 'resources/read' -Name 'resource://metrics/live' -Params ([ordered]@{
+        uri = 'resource://metrics/live'
+    })
+    if ($live.Json.result.contents) {
+        Show-Text $live.Json.result.contents[0].text
+    }
+    else {
+        Write-Host $live.Body -ForegroundColor DarkGray
+    }
 }
 
 # --- subscriptions/listen: the stream that tells a client what changed ------
-if (-not $SkipListen) {
+# It listens on the metrics resource and changes it with a metrics tool, so it
+# goes with the rest of the metrics surface.
+if (-not $SkipListen -and -not $SkipMetrics) {
     Write-Section 'subscriptions/listen on resource://metrics/live'
 
     # A listen is a request that stays open: its answer is a stream, so it must
@@ -421,16 +477,18 @@ if (-not $SkipListen) {
 }
 
 # --- the prompt --------------------------------------------------------------
-Write-Section 'prompts/get analyse-metrics'
-$prompt = Send-Mcp -Method 'prompts/get' -Name 'analyse-metrics' -Params ([ordered]@{
-    name      = 'analyse-metrics'
-    arguments = [ordered]@{ focus = 'latency' }
-})
-if ($prompt.Json.result.messages) {
-    Show-Text $prompt.Json.result.messages[0].content.text
-}
-else {
-    Write-Host $prompt.Body -ForegroundColor DarkGray
+if (-not $SkipMetrics) {
+    Write-Section 'prompts/get analyse-metrics'
+    $prompt = Send-Mcp -Method 'prompts/get' -Name 'analyse-metrics' -Params ([ordered]@{
+        name      = 'analyse-metrics'
+        arguments = [ordered]@{ focus = 'latency' }
+    })
+    if ($prompt.Json.result.messages) {
+        Show-Text $prompt.Json.result.messages[0].content.text
+    }
+    else {
+        Write-Host $prompt.Body -ForegroundColor DarkGray
+    }
 }
 
 # --- MRTR: tools/call that answers input_required, then the retry -------------

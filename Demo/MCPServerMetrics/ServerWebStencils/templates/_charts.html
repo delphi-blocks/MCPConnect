@@ -1,0 +1,27 @@
+<section class="grid two">
+@foreach (var chart in Metrics.Charts) {
+  <section class="panel">
+    <h2>@chart.Caption</h2>
+    <div class="note">@chart.WindowText</div>
+    @if (chart.HasData) {
+      <svg class="chart" viewBox="0 0 100 34" preserveAspectRatio="none" role="img" aria-label="@chart.Caption">
+        @foreach (var series in chart.Series) {
+          <polygon points="@series.AreaPoints" fill="@series.Colour" opacity="0.13" />
+          <polyline points="@series.Points" fill="none" stroke="@series.Colour"
+                    stroke-width="1.4" vector-effect="non-scaling-stroke" />
+        }
+      </svg>
+      <div class="legend">
+        @foreach (var series in chart.Series) {
+          <span class="legend-item">
+            <i style="background:@series.Colour"></i>@series.Name
+            <em>now @series.LastText · peak @series.MaxText</em>
+          </span>
+        }
+      </div>
+    } @else {
+      <p class="empty">@chart.EmptyText</p>
+    }
+  </section>
+}
+</section>

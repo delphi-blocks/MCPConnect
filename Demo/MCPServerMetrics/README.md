@@ -132,7 +132,7 @@ Two things about it matter when it has nowhere to send:
   `Retry-After`, so without this it would retry on every harvest and log the
   same warning each time. Skips are counted in `SkippedCount`.
 
-Point it at the **collector**, not at Prometheus: `otel/docker-compose.yml`
+Point it at the **collector**, not at Prometheus: `OpenTelemetry/docker-compose.yml`
 listens for OTLP/HTTP on **4318** and Prometheus on 9090, and Prometheus does not
 speak OTLP. Note also that the exporter appends `/v1/metrics` to
 `OTEL_EXPORTER_OTLP_ENDPOINT`, so that variable is a base URL — pointing it at

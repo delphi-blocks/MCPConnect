@@ -1,0 +1,37 @@
+<section class="panel">
+  <h2>What the server says about itself</h2>
+  <div class="note">
+    The hub is in this process, so the dashboard can show its own reports without
+    a second request or a second endpoint.
+  </div>
+
+  @if (Metrics.HasAbout) {
+    <details>
+      <summary>About this server</summary>
+      <pre class="raw">@Metrics.AboutText</pre>
+    </details>
+  }
+
+  @if (Metrics.HasExporters) {
+    <details>
+      <summary>Exporters attached to the provider</summary>
+      <pre class="raw">@Metrics.ExportersText</pre>
+    </details>
+  }
+
+  @if (Metrics.HasUseCases) {
+    <details>
+      <summary>What this demo demonstrates, use case by use case</summary>
+      <pre class="raw">@Metrics.UseCasesText</pre>
+    </details>
+  }
+
+  <details>
+    <summary>The numbers without the page</summary>
+    <p class="note">
+      The same document the JSON endpoint serves, for anything that would rather
+      parse it than read it:
+      <a href="/metrics">/metrics</a> · the MCP endpoint is <code>POST /mcp</code>.
+    </p>
+  </details>
+</section>

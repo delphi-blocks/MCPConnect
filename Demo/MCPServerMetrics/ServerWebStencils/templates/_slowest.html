@@ -1,0 +1,33 @@
+<section class="panel">
+  <h2>Slowest histograms</h2>
+  <div class="note">
+    Ranked by average. A histogram keeps count, sum, min and max - not buckets -
+    so this is what there is to rank; there is no percentile to show.
+  </div>
+  @if (Metrics.HasSlowest) {
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>series</th><th class="num">count</th><th class="num">avg</th>
+            <th class="num">max</th><th class="num">min</th>
+          </tr>
+        </thead>
+        <tbody>
+          @foreach (var entry in Metrics.Slowest) {
+            <tr>
+              <td>@entry.Rank</td>
+              <td><span class="mono">@entry.Name</span> <span class="note">@entry.Labels</span></td>
+              <td class="num">@entry.CountText</td>
+              <td class="num">@entry.AvgText</td>
+              <td class="num">@entry.MaxText</td>
+              <td class="num">@entry.MinText</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  } @else {
+    <p class="empty">No histogram recorded yet.</p>
+  }
+</section>

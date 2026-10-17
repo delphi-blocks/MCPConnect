@@ -1,15 +1,15 @@
-<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <PropertyGroup>
-        <ProjectGuid>{11908C65-090B-44CE-A0C3-2380E6A5B2DB}</ProjectGuid>
+        <ProjectGuid>{7C4B9D2E-5A18-4F63-9E27-3B6D1C8A5F40}</ProjectGuid>
         <ProjectVersion>20.5</ProjectVersion>
         <FrameworkType>VCL</FrameworkType>
         <Base>True</Base>
         <Config Condition="'$(Config)'==''">Debug</Config>
         <Platform Condition="'$(Platform)'==''">Win32</Platform>
-        <ProjectName Condition="'$(ProjectName)'==''">MCPServerMetrics</ProjectName>
+        <ProjectName Condition="'$(ProjectName)'==''">MCPServerWebStencils</ProjectName>
         <TargetedPlatforms>3</TargetedPlatforms>
         <AppType>Application</AppType>
-        <MainSource>MCPServerMetrics.dpr</MainSource>
+        <MainSource>MCPServerWebStencils.dpr</MainSource>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Base' or '$(Base)'!=''">
         <Base>true</Base>
@@ -59,20 +59,20 @@
         <Base>true</Base>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base)'!=''">
-        <DCC_ExeOutput>..\</DCC_ExeOutput>
+        <DCC_DcuOutput>.\$(Platform)\$(Config)</DCC_DcuOutput>
+        <DCC_ExeOutput>.</DCC_ExeOutput>
         <DCC_E>false</DCC_E>
         <DCC_N>false</DCC_N>
         <DCC_S>false</DCC_S>
         <DCC_F>false</DCC_F>
         <DCC_K>false</DCC_K>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Vcl;Vcl.Imaging;Vcl.Touch;Vcl.Samples;Vcl.Shell;$(DCC_Namespace)</DCC_Namespace>
-        <Icon_MainIcon>$(BDS)\bin\delphi_PROJECTICON.ico</Icon_MainIcon>
+        <Icon_MainIcon>MCPServerMetricsWeb.ico</Icon_MainIcon>
         <Icns_MainIcns>$(BDS)\bin\delphi_PROJECTICNS.icns</Icns_MainIcns>
-        <SanitizedProjectName>MCPServerMetrics</SanitizedProjectName>
-        <DCC_UnitSearchPath>..\..\Source;..\..\Libs\Neon\Source;..\..\Libs\Logify\Source;..\..\Libs\JRPC\Source;..\..\Libs\JWT\Source;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <SanitizedProjectName>MCPServerWebStencils</SanitizedProjectName>
+        <DCC_UnitSearchPath>..\..\..\Source;..\..\..\Libs\Neon\Source;..\..\..\Libs\Logify\Source;..\..\..\Libs\JRPC\Source;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <VerInfo_Locale>1040</VerInfo_Locale>
         <VerInfo_Keys>CompanyName=;FileDescription=$(MSBuildProjectName);FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProgramID=com.embarcadero.$(MSBuildProjectName);ProductName=$(MSBuildProjectName);ProductVersion=1.0.0.0;Comments=</VerInfo_Keys>
-        <DCC_DcuOutput>.\$(Platform)\$(Config)</DCC_DcuOutput>
         <DCC_UNKNOWN_CUSTOM_ATTRIBUTE>error</DCC_UNKNOWN_CUSTOM_ATTRIBUTE>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base_Win32)'!=''">
@@ -81,8 +81,10 @@
         <BT_BuildType>Debug</BT_BuildType>
         <VerInfo_IncludeVerInfo>true</VerInfo_IncludeVerInfo>
         <VerInfo_Locale>1033</VerInfo_Locale>
-        <Icon_MainIcon>MCPServerMetrics.ico</Icon_MainIcon>
+        <Icon_MainIcon>MCPServerWebStencils.ico</Icon_MainIcon>
         <Manifest_File>$(BDS)\bin\default_app.manifest</Manifest_File>
+        <UWP_DelphiLogo44>$(BDS)\bin\Artwork\Windows\UWP\delphi_UwpDefault_44.png</UWP_DelphiLogo44>
+        <UWP_DelphiLogo150>$(BDS)\bin\Artwork\Windows\UWP\delphi_UwpDefault_150.png</UWP_DelphiLogo150>
         <AppDPIAwarenessMode>none</AppDPIAwarenessMode>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base_Win64)'!=''">
@@ -90,10 +92,9 @@
         <DCC_Namespace>Winapi;System.Win;Data.Win;Datasnap.Win;Web.Win;Soap.Win;Xml.Win;$(DCC_Namespace)</DCC_Namespace>
         <BT_BuildType>Debug</BT_BuildType>
         <VerInfo_IncludeVerInfo>true</VerInfo_IncludeVerInfo>
+        <VerInfo_Keys>CompanyName=;FileDescription=$(MSBuildProjectName);FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProgramID=com.embarcadero.$(MSBuildProjectName);ProductName=$(MSBuildProjectName);ProductVersion=1.0.0.0;Comments=</VerInfo_Keys>
         <VerInfo_Locale>1033</VerInfo_Locale>
-        <Icon_MainIcon>MCPServerMetrics.ico</Icon_MainIcon>
         <Manifest_File>$(BDS)\bin\default_app.manifest</Manifest_File>
-        <AppDPIAwarenessMode>none</AppDPIAwarenessMode>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_1)'!=''">
         <DCC_Define>DEBUG;$(DCC_Define)</DCC_Define>
@@ -110,6 +111,9 @@
         <AppDPIAwarenessMode>PerMonitorV2</AppDPIAwarenessMode>
         <VerInfo_IncludeVerInfo>true</VerInfo_IncludeVerInfo>
         <VerInfo_Locale>1033</VerInfo_Locale>
+        <Icon_MainIcon>MCPServerWebStencils.ico</Icon_MainIcon>
+        <UWP_DelphiLogo44>$(BDS)\bin\Artwork\Windows\UWP\delphi_UwpDefault_44.png</UWP_DelphiLogo44>
+        <UWP_DelphiLogo150>$(BDS)\bin\Artwork\Windows\UWP\delphi_UwpDefault_150.png</UWP_DelphiLogo150>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_1_Win64)'!=''">
         <AppDPIAwarenessMode>PerMonitorV2</AppDPIAwarenessMode>
@@ -130,23 +134,43 @@
         <DelphiCompile Include="$(MainSource)">
             <MainSource>MainSource</MainSource>
         </DelphiCompile>
-        <DCCReference Include="Server.Config.pas"/>
-        <DCCReference Include="Server.Tools.pas"/>
-        <DCCReference Include="Server.Middleware.pas"/>
-        <DCCReference Include="Server.Dashboard.pas">
-            <Form>FrameDashboard</Form>
-            <FormType>dfm</FormType>
-            <DesignClass>TFrameMetricsDashboard</DesignClass>
-        </DCCReference>
-        <DCCReference Include="Server.Metrics.pas"/>
-        <DCCReference Include="Server.Metrics.Document.pas"/>
-        <DCCReference Include="Server.Metrics.Features.pas"/>
-        <DCCReference Include="Server.Metrics.Http.pas"/>
-        <DCCReference Include="Server.Metrics.Middleware.pas"/>
-        <DCCReference Include="Server.Form.Main.pas">
+        <DCCReference Include="MetricsWeb.Form.Main.pas">
             <Form>frmMain</Form>
             <FormType>dfm</FormType>
         </DCCReference>
+        <DCCReference Include="MetricsWeb.WebModule.pas">
+            <Form>WebModule1</Form>
+            <FormType>dfm</FormType>
+            <DesignClass>TWebModule</DesignClass>
+        </DCCReference>
+        <DCCReference Include="MetricsWeb.View.pas"/>
+        <DCCReference Include="MetricsWeb.History.pas"/>
+        <DCCReference Include="..\Server.Config.pas"/>
+        <DCCReference Include="..\Server.Tools.pas"/>
+        <DCCReference Include="..\Server.Middleware.pas"/>
+        <DCCReference Include="..\Server.Metrics.pas"/>
+        <DCCReference Include="..\Server.Metrics.Document.pas"/>
+        <DCCReference Include="..\Server.Metrics.Middleware.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.Configuration.Auth.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.Configuration.Core.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.Configuration.MCP.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.Configuration.Neon.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.Content.Writers.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.Content.Writers.RTL.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.Content.Writers.VCL.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Attributes.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Invoker.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Server.Api.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.Base.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.Prompts.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.Resources.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Types.Tools.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Config.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.Transport.WebBroker.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.Metrics.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.Metrics.Exporters.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.Metrics.Exporters.Files.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.Metrics.Exporters.Otlp.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
@@ -165,21 +189,33 @@
         <BorlandProject>
             <Delphi.Personality>
                 <Source>
-                    <Source Name="MainSource">MCPServerMetrics.dpr</Source>
+                    <Source Name="MainSource">MCPServerWebStencils.dpr</Source>
                 </Source>
                 <Excluded_Packages>
                     <Excluded_Packages Name="$(BDSBIN)\dcloffice2k370.bpl">Microsoft Office 2000 Sample Automation Server Wrapper Components</Excluded_Packages>
                     <Excluded_Packages Name="$(BDSBIN)\dclofficexp370.bpl">Microsoft Office XP Sample Automation Server Wrapper Components</Excluded_Packages>
                     <Excluded_Packages Name="$(BDSBIN)\bcboffice2k370.bpl">Embarcadero C++Builder Office 2000 Servers Package</Excluded_Packages>
                     <Excluded_Packages Name="$(BDSBIN)\bcbofficexp370.bpl">Embarcadero C++Builder Office XP Servers Package</Excluded_Packages>
-                    <Excluded_Packages Name="C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl\Neon370.bpl">Neon Serialization Library</Excluded_Packages>
-                    <Excluded_Packages Name="C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl\WiRLDesign370.bpl">WiRL REST Components</Excluded_Packages>
                 </Excluded_Packages>
             </Delphi.Personality>
             <Deployment Version="5">
-                <DeployFile LocalName="..\..\MCPServerMetrics.exe" Configuration="Debug" Class="ProjectOutput">
+                <DeployFile LocalName="$(BDS)\bin\Artwork\Windows\UWP\delphi_UwpDefault_150.png" Configuration="Debug" Class="UWP_DelphiLogo150">
                     <Platform Name="Win32">
-                        <RemoteName>MCPServerMetrics.exe</RemoteName>
+                        <RemoteDir>Assets\</RemoteDir>
+                        <RemoteName>Logo150x150.png</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="$(BDS)\bin\Artwork\Windows\UWP\delphi_UwpDefault_44.png" Configuration="Debug" Class="UWP_DelphiLogo44">
+                    <Platform Name="Win32">
+                        <RemoteDir>Assets\</RemoteDir>
+                        <RemoteName>Logo44x44.png</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="MCPServerWebStencils.exe" Configuration="Debug" Class="ProjectOutput">
+                    <Platform Name="Win32">
+                        <RemoteName>MCPServerWebStencils.exe</RemoteName>
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>

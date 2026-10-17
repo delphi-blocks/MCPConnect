@@ -1,0 +1,42 @@
+<section class="panel">
+  <h2>Histograms</h2>
+  <div class="note">
+    A histogram here keeps count, sum, min and max - no buckets - so the band is
+    its distribution as far as it is known: from the smallest observation to the
+    largest, with the average marked in amber. The line is the average of each
+    sample interval on its own.
+  </div>
+  @if (Metrics.HasHistograms) {
+    <div class="grid instruments">
+      @foreach (var histogram in Metrics.Histograms) {
+        <article class="inst histogram" title="@histogram.Description">
+          <header>
+            <span class="inst-name mono">@histogram.Name</span>
+            <span class="inst-meter">@histogram.Meter</span>
+          </header>
+          <div class="inst-value">@histogram.AvgText<small>@histogram.UnitText avg</small></div>
+          <div class="inst-hint">@histogram.CountText observed · min @histogram.MinText · max @histogram.MaxText</div>
+          <div class="band" role="img" aria-label="@histogram.Name from @histogram.MinText to @histogram.MaxText, average @histogram.AvgText">
+            @if (histogram.HasBand) {
+              <div class="band-range" style="left:@histogram.BandLeft%;width:@histogram.BandWidth%"></div>
+              <div class="band-avg" style="left:@histogram.AvgLeft%"></div>
+            }
+          </div>
+          <div class="band-scale"><span>0</span><span>@histogram.MaxText @histogram.UnitText</span></div>
+          @if (histogram.HasSpark) {
+            <svg class="spark" viewBox="0 0 100 34" preserveAspectRatio="none" role="img" aria-label="@histogram.Name average per interval">
+              <polygon points="@histogram.SparkArea" fill="#4aa3ff" opacity="0.15" />
+              <polyline points="@histogram.SparkPoints" fill="none" stroke="#4aa3ff"
+                        stroke-width="1.5" vector-effect="non-scaling-stroke" />
+            </svg>
+          } @else {
+            <div class="spark-empty">the line appears after two samples with observations</div>
+          }
+          <div class="inst-hint">@histogram.WindowText</div>
+        </article>
+      }
+    </div>
+  } @else {
+    <p class="empty">No histogram recorded yet. Call a tool over MCP and the request durations appear.</p>
+  }
+</section>

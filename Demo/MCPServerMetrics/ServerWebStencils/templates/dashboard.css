@@ -1,0 +1,414 @@
+/*
+  The dashboard's stylesheet. Served as a file by the web module's /dashboard.css
+  action, never by the template engine - which is why the at-rules below are
+  allowed to be at-rules: WebStencils reads '@media' as a directive, and a
+  stylesheet that went through the parser would need them escaped.
+*/
+
+:root {
+  --bg: #10141a;
+  --panel: #171d26;
+  --panel-2: #1e2632;
+  --line: #2a3341;
+  --text: #e6ecf3;
+  --muted: #93a1b3;
+  --accent: #4aa3ff;
+  --ok: #3fbf7f;
+  --warn: #e0a13a;
+  --bad: #e05a5a;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+code, pre, .mono { font-family: 'Cascadia Mono', Consolas, 'Courier New', monospace; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+main, .app-header, .footnote { max-width: 1500px; margin: 0 auto; }
+
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 14px;
+  border-bottom: 3px solid #fff;
+
+  /* Sticky: the header stays at the top while the page scrolls under it, so it
+     needs an opaque background, across the whole window. It therefore spans the
+     full width, and the side padding keeps its content in the same 1500px
+     column as the rest of the page. */
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  max-width: none;
+  padding-left: max(20px, calc((100% - 1500px) / 2 + 20px));
+  padding-right: max(20px, calc((100% - 1500px) / 2 + 20px));
+
+  /* A dark circuit-board band (assets/header-bg.svg), with a gradient on top
+     that darkens the right side, where the title and the badges are read. The
+     plain colour underneath is what shows until the image has loaded. */
+  background:
+    linear-gradient(90deg, rgba(5, 7, 10, 0) 35%, rgba(5, 7, 10, 0.72) 100%),
+    url('/assets/header-bg.svg') center / cover no-repeat,
+    #05070a;
+}
+
+/* Two blocks: the logo on the left, and on the right one block holding the
+   title, its subtitle and the badges, stacked and aligned to the right edge. */
+.app-title { display: flex; gap: 14px; align-items: center; min-width: 0; }
+
+.app-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 0;
+  text-align: right;
+}
+
+.app-side .app-controls { justify-content: flex-end; margin-top: 6px; }
+.app-logo { flex: 0 0 auto; display: block; line-height: 0; }
+.app-logo img { width: 100px; height: 100px; }
+
+.app-header h1 { margin: 0; font-size: 19px; font-weight: 600; }
+.app-header .sub { color: var(--muted); font-size: 12.5px; }
+.app-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+/* --- panels ------------------------------------------------------------- */
+
+#live { padding: 0 20px; }
+
+.grid { display: grid; gap: 14px; margin: 14px 0; }
+.grid.kpis { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.grid.two { grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); }
+.grid.gauges { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.grid.instruments { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.panel.inner { background: var(--panel-2); margin: 0; }
+
+.panel > h2 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.panel h3 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+
+.note { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+.empty { color: var(--muted); font-size: 13px; padding: 4px 0; }
+
+/* --- brand hero --------------------------------------------------------- */
+
+.hero {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  margin: 14px 0;
+}
+
+/* The illustration is landscape (2:1); it takes up to 44% of the panel and the
+   text wraps beside it, until a narrow screen stacks the two. */
+.hero { align-items: center; }
+
+.hero .hero-art {
+  width: min(44%, 560px);
+  height: auto;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+
+.hero .hero-logo {
+  width: 240px;
+  height: 180px;
+  flex: 0 0 auto;
+}
+
+.hero-text { min-width: 0; }
+
+.hero h2 {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.hero h2 .version {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 6px;
+}
+
+.hero .tagline {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 13.5px;
+  max-width: 90ch;
+}
+
+.hero .lede {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+  max-width: 90ch;
+}
+
+.hero .links { margin: 0; font-size: 13px; }
+.hero .links .sep { color: var(--line); margin: 0 6px; }
+
+/* --- badges and cards --------------------------------------------------- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.badge.ok { color: var(--ok); border-color: #245139; }
+.badge:hover { border-color: var(--accent); }
+
+.dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+
+.kpi {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.kpi .label {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.kpi .value {
+  margin-top: 6px;
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi .value small { font-size: 13px; font-weight: 400; color: var(--muted); margin-left: 4px; }
+.kpi .hint { margin-top: 3px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.kpi.warn .value { color: var(--warn); }
+.kpi.bad .value { color: var(--bad); }
+
+/* --- charts ------------------------------------------------------------- */
+
+.chart {
+  display: block;
+  width: 100%;
+  height: 150px;
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px) 0 0 / 100% 25%;
+  border-bottom: 1px solid var(--line);
+}
+
+.spark { display: block; width: 100%; height: 34px; margin-top: 6px; }
+
+/* --- instrument cards: counters and histograms -------------------------- */
+
+.inst {
+  min-width: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.inst header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.inst-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
+.inst-meter { flex: 0 0 auto; color: var(--muted); font-size: 11px; }
+
+.inst-value {
+  margin-top: 6px;
+  font-size: 26px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.inst-value small { font-size: 13px; font-weight: 400; color: var(--muted); margin-left: 5px; }
+.inst-hint { margin-top: 3px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.inst .spark { height: 40px; margin-top: 10px; }
+
+.spark-empty {
+  margin-top: 10px;
+  padding: 11px 0;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 11.5px;
+  text-align: center;
+}
+
+/* a counter's total split by its first label key */
+.split-title {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.split { display: flex; height: 8px; margin-top: 5px; border-radius: 4px; overflow: hidden; background: var(--line); }
+.split span { display: block; height: 100%; }
+.split span + span { box-shadow: inset 1px 0 0 var(--panel-2); }
+
+.split-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 7px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.split-legend li { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+.split-legend i { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
+.split-legend em { font-style: normal; color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* a histogram's min..max band on a 0..max scale, the average marked on it */
+.band { position: relative; height: 12px; margin-top: 12px; border-radius: 6px; background: var(--line); }
+
+.band-range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 3px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #2a6ba8, var(--accent));
+}
+
+.band-avg {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--panel-2);
+}
+
+.band-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- gauge dials -------------------------------------------------------- */
+
+.dial { display: block; width: 100%; max-width: 200px; margin: 6px auto 0; }
+.dial path { fill: none; stroke-linecap: round; }
+.dial .track { stroke: var(--line); stroke-width: 9; }
+.dial .value-arc { stroke: var(--accent); stroke-width: 9; }
+.dial .range-arc { stroke: var(--muted); stroke-width: 2; opacity: 0.55; }
+.gauge.warn .dial .value-arc { stroke: var(--warn); }
+.gauge.bad .dial .value-arc { stroke: var(--bad); }
+
+.dial text { font-family: inherit; font-variant-numeric: tabular-nums; }
+.dial .dial-value { fill: var(--text); font-size: 17px; font-weight: 600; }
+.dial .dial-unit { fill: var(--muted); font-size: 8px; }
+.dial .dial-scale { fill: var(--muted); font-size: 7px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+.legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.legend-item i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.legend-item em { font-style: normal; color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* --- tables ------------------------------------------------------------- */
+
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 5px 10px 5px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+
+th {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+tbody tr:hover { background: #1b2330; }
+td.num, th.num { text-align: right; }
+.table-scroll { max-height: 420px; overflow: auto; }
+
+.bar-col { width: 120px; }
+.bar {
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #2a6ba8, var(--accent));
+  min-width: 2px;
+}
+
+/* --- reports ------------------------------------------------------------ */
+
+details { border-top: 1px solid var(--line); padding: 8px 0; }
+details:first-of-type { border-top: 0; }
+summary { cursor: pointer; color: var(--accent); font-size: 13px; }
+
+pre.raw {
+  max-height: 320px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 12px;
+  background: #0d1117;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.footnote {
+  color: var(--muted);
+  font-size: 12px;
+  padding: 18px 20px 40px;
+  border-top: 1px solid var(--line);
+  margin-top: 18px;
+}
+
+@media (max-width: 700px) {
+  /* Stacked, the header is too tall to keep on a phone screen: it scrolls away */
+  .app-header { flex-direction: column; align-items: flex-start; position: static; }
+  .app-side { align-items: flex-start; text-align: left; }
+  .app-side .app-controls { justify-content: flex-start; }
+  .chart { height: 110px; }
+  .hero { flex-direction: column; }
+  .hero .hero-art { width: 100%; }
+  .hero .hero-logo { width: 112px; height: 112px; }
+  .app-logo img { width: 48px; height: 48px; }
+}

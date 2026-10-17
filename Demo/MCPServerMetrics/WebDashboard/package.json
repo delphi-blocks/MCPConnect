@@ -1,0 +1,24 @@
+{
+  "name": "mcpconnect-metrics-dashboard",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Web dashboard for the metrics a MCPConnect server exposes on GET /metrics",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "type-check": "vue-tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "echarts": "^5.6.0",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.0",
+    "vue-tsc": "^2.2.0"
+  }
+}

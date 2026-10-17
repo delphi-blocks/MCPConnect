@@ -16,7 +16,7 @@ unit MCPConnect.Transport.Stdio;
 interface
 
 uses
-  System.SysUtils, System.Classes, System.IOUtils, System.JSON,
+  System.SysUtils, System.Classes, System.IOUtils, System.JSON, System.SyncObjs,
 
   Logify,
   JRPC.Server,
@@ -26,6 +26,7 @@ uses
 
 resourcestring
   SServerNotFound = 'Server not found';
+  SStdioInputClosed = 'The client closed the standard input';
 
 type
   TWorkerThread = class;
@@ -106,12 +107,19 @@ type
   ///   protocol is UTF-8, while converting to the ANSI codepage of the machine
   ///   raises an EEncodingError on every character it cannot represent (an
   ///   arrow, a dash, an emoji) and mangles several of the ones it can.
+  ///
+  ///   Thread safe: requests are handled concurrently, and every one of them
+  ///   writes here. A line goes out whole, under a lock, so two messages never
+  ///   interleave inside a line - while whole messages of different requests
+  ///   and subscriptions may follow one another in any order, which stdio
+  ///   allows since each carries its own id.
   /// </remarks>
   TStdWriter = class(TObject)
   private const
     LF = 10;
   private
     FStream: TStream;
+    FLock: TObject;
   protected
     constructor Create(AHandle: THandle);
   public
@@ -127,8 +135,22 @@ type
   end;
 
   TStdOutWriter = class(TStdWriter)
+  private
+    FHungUp: Boolean;
   public
     constructor Create;
+
+    /// <summary>
+    ///   Records that the client closed its end: stdin reached EOF.
+    /// </summary>
+    procedure HangUp;
+
+    /// <summary>
+    ///   Whether the client closed its end. Stdout may well still be read, but
+    ///   a client that sends nothing more has gone, and a stream held open for
+    ///   it is held for nobody.
+    /// </summary>
+    property HungUp: Boolean read FHungUp;
   end;
 
   TStdErrWriter = class(TStdWriter)
@@ -136,6 +158,24 @@ type
     constructor Create;
   end;
 
+  /// <summary>
+  ///   The reader of the connection: takes each line off stdin and hands it to
+  ///   a thread of its own, so that a request that takes its time - a long
+  ///   tool, a "subscriptions/listen" held open - does not hold up the next.
+  /// </summary>
+  /// <remarks>
+  ///   A "notifications/cancelled" is the exception, handled on this thread at
+  ///   once: queued behind the request it names, it would arrive too late.
+  ///
+  ///   Ordering: the next line is read only once the previous request has been
+  ///   filed in FInFlight (TMCPTransportHandler.OnDispatching), so a client
+  ///   that cancels a request it has just sent always finds it there.
+  ///
+  ///   At the end of stdin the client is gone: every request in flight is
+  ///   cancelled - a listen among them closes its subscription abruptly - and
+  ///   the reader waits for all of them to end before freeing what they write
+  ///   to.
+  /// </remarks>
   TWorkerThread = class(TThread)
   private
     FServer: TMCPServer;
@@ -144,13 +184,39 @@ type
     ///   The requests in flight on this connection - stdio is one client, so
     ///   one map - where a "notifications/cancelled" finds the one it names.
     /// </summary>
-    /// <remarks>
-    ///   Requests are still handled one at a time, so a cancellation cannot
-    ///   arrive while one runs yet; the map is what lets it, once the reader
-    ///   dispatches concurrently.
-    /// </remarks>
     FInFlight: TMCPInFlightRequests;
-    procedure HandleRequest(const ARequestContent: string; out AResponseContent: string; AStdOutWriter: TStdOutWriter);
+
+    /// <summary>
+    ///   The registry scope of this connection's listen streams: one client,
+    ///   so a second listen under an id already listening is refused.
+    /// </summary>
+    FListenScope: string;
+
+    /// <summary>
+    ///   How many requests are being handled, and the event set whenever that
+    ///   count is zero. Guarded by FActiveLock.
+    /// </summary>
+    FActive: Integer;
+    FActiveLock: TObject;
+    FIdle: TEvent;
+
+    procedure BeginDispatch;
+    procedure EndDispatch;
+
+    /// <summary>
+    ///   Hands ALine to a thread of its own, and returns once the request is
+    ///   filed and about to run - or has already ended.
+    /// </summary>
+    procedure DispatchLine(const ALine: string; AWriter: TStdOutWriter; AError: TStdErrWriter);
+
+    /// <summary>
+    ///   Whether ALine is a "notifications/cancelled", which the reader handles
+    ///   itself rather than dispatching.
+    /// </summary>
+    class function IsCancellation(const ALine: string): Boolean; static;
+
+    procedure HandleRequest(const ARequestContent: string; out AResponseContent: string;
+      AStdOutWriter: TStdOutWriter; const AOnDispatching: TProc);
   protected
     procedure Execute; override;
   public
@@ -163,6 +229,9 @@ type
   /// <remarks>
   ///   WriteComment keeps the base class's no-op: a comment is an SSE concept,
   ///   and on stdio it would be a line the client cannot parse as JSON-RPC.
+  ///   A listen stream therefore gets no keep-alive here, and needs none: there
+  ///   is no intermediary to time it out, and the end of stdin is what says
+  ///   the client has gone (Connected).
   /// </remarks>
   TMCPTransportWriterStdio = class(TMCPTransportWriter)
   private
@@ -183,6 +252,7 @@ uses
   Winapi.Windows,
   {$ENDIF}
   JRPC.Core,
+  MCPConnect.MCP.Types.Notifications,
   Neon.Core.Types,
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON;
@@ -350,18 +420,25 @@ end;
 
 procedure TStdWriter.Close;
 begin
-  FreeAndNil(FStream);
+  TMonitor.Enter(FLock);
+  try
+    FreeAndNil(FStream);
+  finally
+    TMonitor.Exit(FLock);
+  end;
 end;
 
 constructor TStdWriter.Create(AHandle: THandle);
 begin
   inherited Create;
+  FLock := TObject.Create;
   FStream := THandleStream.Create(AHandle);
 end;
 
 destructor TStdWriter.Destroy;
 begin
   FStream.Free;
+  FLock.Free;
   inherited;
 end;
 
@@ -374,15 +451,20 @@ var
   LBytes: TBytes;
   LLength: Integer;
 begin
-  if not Assigned(FStream) then
-    Exit;
-
+  // Encoded outside the lock, written inside it, in one call: the line is the
+  // unit a reader on the other end parses, so it must never be split
   LBytes := TEncoding.UTF8.GetBytes(AValue);
   LLength := Length(LBytes);
   SetLength(LBytes, LLength + 1);
   LBytes[LLength] := LF;
 
-  FStream.WriteBuffer(LBytes[0], LLength + 1);
+  TMonitor.Enter(FLock);
+  try
+    if Assigned(FStream) then
+      FStream.WriteBuffer(LBytes[0], LLength + 1);
+  finally
+    TMonitor.Exit(FLock);
+  end;
 end;
 
 { TStdOutWriter }
@@ -390,6 +472,11 @@ end;
 constructor TStdOutWriter.Create;
 begin
   inherited Create(StdOutHandle);
+end;
+
+procedure TStdOutWriter.HangUp;
+begin
+  FHungUp := True;
 end;
 
 { TStdErrWriter }
@@ -486,23 +573,46 @@ begin
   inherited;
   try
     FInFlight := TMCPInFlightRequests.Create;
+    FListenScope := TGUID.NewGuid.ToString;
+    FActive := 0;
+    FActiveLock := TObject.Create;
+    FIdle := TEvent.Create(nil, True, True, '');
     LReader := TStdInReader.Create;
     try
       LWriter := TStdOutWriter.Create;
       try
         LError := TStdErrWriter.Create;
         try
-          while not LReader.EndOfStream do
-          begin
-            LRequest := LReader.ReadLine;
-            try
-              HandleRequest(LRequest, LResponse, LWriter);
-              if LResponse <> '' then
-                LWriter.WriteLine(LResponse);
-            except
-              on E: Exception do
-                LError.WriteLine(E.Message);
+          try
+            while not LReader.EndOfStream do
+            begin
+              LRequest := LReader.ReadLine;
+              try
+                if IsCancellation(LRequest) then
+                begin
+                  // At once, on this thread: the request it names is running
+                  // on another, and a cancellation that waited its turn would
+                  // reach it when it no longer mattered
+                  HandleRequest(LRequest, LResponse, LWriter, nil);
+                  if LResponse <> '' then
+                    LWriter.WriteLine(LResponse);
+                end
+                else
+                  DispatchLine(LRequest, LWriter, LError);
+              except
+                on E: Exception do
+                  LError.WriteLine(E.Message);
+              end;
             end;
+          finally
+            // The end of stdin is the client going away. Nothing still running
+            // can deliver anything, and a listen would wait for ever on a queue
+            // nobody fills: everything in flight is cancelled - a listen closes
+            // its subscription abruptly - and this thread waits until they have
+            // all ended, since they write through what it is about to free.
+            LWriter.HangUp;
+            FInFlight.CancelAll(SStdioInputClosed);
+            FIdle.WaitFor(INFINITE);
           end;
         finally
           LError.Free;
@@ -512,6 +622,8 @@ begin
       end;
     finally
       LReader.Free;
+      FreeAndNil(FIdle);
+      FreeAndNil(FActiveLock);
       FreeAndNil(FInFlight);
     end;
 
@@ -525,7 +637,117 @@ begin
   end;
 end;
 
-procedure TWorkerThread.HandleRequest(const ARequestContent: string; out AResponseContent: string; AStdOutWriter: TStdOutWriter);
+procedure TWorkerThread.BeginDispatch;
+begin
+  TMonitor.Enter(FActiveLock);
+  try
+    Inc(FActive);
+    FIdle.ResetEvent;
+  finally
+    TMonitor.Exit(FActiveLock);
+  end;
+end;
+
+procedure TWorkerThread.EndDispatch;
+begin
+  TMonitor.Enter(FActiveLock);
+  try
+    Dec(FActive);
+    if FActive = 0 then
+      FIdle.SetEvent;
+  finally
+    TMonitor.Exit(FActiveLock);
+  end;
+end;
+
+procedure TWorkerThread.DispatchLine(const ALine: string; AWriter: TStdOutWriter; AError: TStdErrWriter);
+var
+  LStarted: TEvent;
+  LSignalled: Integer;
+  LSignal: TProc;
+  LThread: TThread;
+begin
+  // A method of its own, not a block of Execute: the anonymous methods below
+  // capture these locals, and captured locals of a loop are one variable shared
+  // by every iteration. Here each line gets its own.
+  LSignalled := 0;
+  LStarted := TEvent.Create(nil, True, False, '');
+  try
+    // Signalled once the request is filed (OnDispatching) or, should it never
+    // get that far, once it has ended - whichever comes first, and only the
+    // first touches the event: by the second, this method may have freed it
+    LSignal :=
+      procedure
+      begin
+        if TInterlocked.CompareExchange(LSignalled, 1, 0) = 0 then
+          LStarted.SetEvent;
+      end;
+
+    BeginDispatch;
+    try
+      LThread := TThread.CreateAnonymousThread(
+        procedure
+        var
+          LResponse: string;
+        begin
+          try
+            try
+              HandleRequest(ALine, LResponse, AWriter, LSignal);
+              if LResponse <> '' then
+                AWriter.WriteLine(LResponse);
+            except
+              on E: Exception do
+                AError.WriteLine(E.Message);
+            end;
+          finally
+            LSignal();
+            // Both anonymous methods live on one frame, and LSignal is a field
+            // of it holding the frame itself: cleared, or the frame never goes
+            LSignal := nil;
+            // Last: once the count reaches zero the reader may free the writers
+            EndDispatch;
+          end;
+        end);
+      LThread.Start;
+    except
+      // No thread, so nobody else will clear it
+      LSignal := nil;
+      EndDispatch;
+      raise;
+    end;
+
+    LStarted.WaitFor(INFINITE);
+  finally
+    LStarted.Free;
+  end;
+end;
+
+class function TWorkerThread.IsCancellation(const ALine: string): Boolean;
+var
+  LJSON: TJSONValue;
+  LMethod: TJSONValue;
+begin
+  // The cheap test first: most lines are not one, and parsing every line twice
+  // would be paying for the rare case on every message
+  if not ALine.Contains(MCP_NOTIFY_CANCELLED) then
+    Exit(False);
+
+  LJSON := TJSONObject.ParseJSONValue(ALine);
+  try
+    Result := False;
+    if LJSON is TJSONObject then
+    begin
+      LMethod := TJSONObject(LJSON).GetValue('method');
+      Result := (LMethod is TJSONString) and (TJSONString(LMethod).Value = MCP_NOTIFY_CANCELLED) and
+        not Assigned(TJSONObject(LJSON).GetValue('id'));
+    end;
+  finally
+    LJSON.Free;
+  end;
+end;
+
+procedure TWorkerThread.HandleRequest(const ARequestContent: string; out AResponseContent: string;
+  AStdOutWriter: TStdOutWriter; const AOnDispatching: TProc);
 var
   LMcpHandler: IMCPTransportHandler;
   LRes: string;
@@ -537,6 +759,8 @@ begin
 
   var LHandler := TMCPTransportHandler.Create(FServer, TMCPTransportWriterStdio.Create(AStdOutWriter));
   LHandler.InFlight := FInFlight;
+  LHandler.ListenScope := FListenScope;
+  LHandler.OnDispatching := AOnDispatching;
   LMcpHandler := LHandler;
 
   LMcpHandler.ProcessRequest(
@@ -575,7 +799,8 @@ end;
 
 function TMCPTransportWriterStdio.Connected: Boolean;
 begin
-  Result := True;
+  // Stdio has no socket to ask: the client is there until it closes stdin
+  Result := not FStdOutWriter.HungUp;
 end;
 
 procedure TMCPTransportWriterStdio.Write(const AValue: string);

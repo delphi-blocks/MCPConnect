@@ -245,10 +245,12 @@ type
   ///   connection owns the map and hands it to each TMCPTransportHandler it
   ///   creates (TMCPTransportHandler.InFlight).
   ///
-  ///   Stdio is one client on one connection, so it has one map. Streamable
-  ///   HTTP has none: with no sessions there is nothing to tie a cancellation,
-  ///   which arrives as a request of its own, to the request it names - and a
-  ///   request is cancelled there by closing its stream instead.
+  ///   Stdio is one client on one connection, so it has one map, and its reader
+  ///   hands every request to a thread of its own so that a cancellation can
+  ///   arrive while one runs. Streamable HTTP has none: with no sessions there
+  ///   is nothing to tie a cancellation, which arrives as a request of its own,
+  ///   to the request it names - and a request is cancelled there by closing
+  ///   its stream instead.
   ///
   ///   Thread safe. Cancel runs the request's cancellation under this map's
   ///   lock, which is what keeps a request that is finishing from freeing its
@@ -289,6 +291,18 @@ type
     ///   allows - the request may simply have finished.
     /// </summary>
     function Cancel(AId: TJSONValue; const AReason: string): Boolean;
+
+    /// <summary>
+    ///   Cancels every request in flight, for AReason: the connection is gone
+    ///   (stdin reached its end), and nothing any of them answers can be
+    ///   delivered. Answers how many there were.
+    /// </summary>
+    /// <remarks>
+    ///   A listen among them closes its subscription abruptly, through the hook
+    ///   the transport sets on its cancellation - which is what keeps its pump
+    ///   from waiting on a queue nobody will ever fill.
+    /// </remarks>
+    function CancelAll(const AReason: string): Integer;
 
     /// <summary>
     ///   How many requests are in flight.
@@ -381,6 +395,16 @@ type
     ///   See InFlight. Not owned.
     /// </summary>
     FInFlight: TMCPInFlightRequests;
+
+    /// <summary>
+    ///   See ListenScope.
+    /// </summary>
+    FListenScope: string;
+
+    /// <summary>
+    ///   See OnDispatching.
+    /// </summary>
+    FOnDispatching: TProc;
   private
     /// <summary>
     ///   Answers a "notifications/cancelled": tells the application through
@@ -528,6 +552,32 @@ type
     ///   handled here looks there for the request it names.
     /// </summary>
     property InFlight: TMCPInFlightRequests read FInFlight write FInFlight;
+
+    /// <summary>
+    ///   The registry scope a "subscriptions/listen" served here is filed
+    ///   under, or empty for a scope of its own per stream.
+    /// </summary>
+    /// <remarks>
+    ///   Empty is right for Streamable HTTP, where nothing ties two requests to
+    ///   one client. A transport that owns its connection (stdio) sets one per
+    ///   connection instead, so that a client listening twice under one id is
+    ///   refused - the one thing it could not untangle - while another client
+    ///   using the same id is not.
+    /// </remarks>
+    property ListenScope: string read FListenScope write FListenScope;
+
+    /// <summary>
+    ///   Called once the request has been parsed and filed in InFlight, just
+    ///   before it is dispatched. Not called for a request that never gets
+    ///   that far - one refused by a middleware, or answered with no POST.
+    /// </summary>
+    /// <remarks>
+    ///   What a transport that reads its connection on one thread and handles
+    ///   it on others waits for before reading the next message: from then on
+    ///   a "notifications/cancelled" naming this request finds it. Runs on the
+    ///   thread calling ProcessRequest, and must not raise.
+    /// </remarks>
+    property OnDispatching: TProc read FOnDispatching write FOnDispatching;
   end;
 
 implementation
@@ -662,6 +712,21 @@ begin
   try
     Result := FRequests.TryGetValue(LKey, LCancellation);
     if Result then
+      LCancellation.Cancel(AReason);
+  finally
+    TMonitor.Exit(FLock);
+  end;
+end;
+
+function TMCPInFlightRequests.CancelAll(const AReason: string): Integer;
+var
+  LCancellation: TMCPCancellation;
+begin
+  // Under the lock for the same reason as Cancel, and in the same order
+  TMonitor.Enter(FLock);
+  try
+    Result := FRequests.Count;
+    for LCancellation in FRequests.Values do
       LCancellation.Cancel(AReason);
   finally
     TMonitor.Exit(FLock);
@@ -1518,10 +1583,12 @@ begin
   // alternative - acknowledge, then end the subscription at once - is what a
   // client reads as a clean close, and it reconnects for ever.
   //
-  // Over HTTP only. A stdio listen keeps answering at once until that transport
-  // can dispatch concurrently: holding one open today would block it for good.
+  // Stdio included: its reader hands each message to a thread of its own, so a
+  // stream held open there occupies that thread and not the transport. A stdio
+  // client always accepts the stream and its writer always streams, so what can
+  // refuse it there is the cap.
   var LListenRequest := ListenRequestOf(LRequestList);
-  if Assigned(LListenRequest) and (FRequest.Protocol = TTransportProtocol.StreamableHTTP) then
+  if Assigned(LListenRequest) then
   begin
     var LReason: TMCPListenRefusal;
     if ListenRefusal(LReason) then
@@ -1552,9 +1619,14 @@ begin
     begin
       // A scope of its own, because the id alone is not one: two clients may
       // both listen with id 1, and with no sessions nothing else separates
-      // their streams. The queue the stream is drained from is not made here:
-      // the subscription makes and owns it, so the two live and die together.
-      LListen := TMCPListenStream.Create(TGUID.NewGuid.ToString);
+      // their streams - unless the transport owns the connection and says
+      // which one this is (ListenScope). The queue the stream is drained from
+      // is not made here: the subscription makes and owns it, so the two live
+      // and die together.
+      var LScope := FListenScope;
+      if LScope.IsEmpty then
+        LScope := TGUID.NewGuid.ToString;
+      LListen := TMCPListenStream.Create(LScope);
       FGarbage.Add(LListen);
       FContext.AddContent(LListen);
     end;
@@ -1599,6 +1671,11 @@ begin
       LInFlightRequest := nil;
     end;
   end;
+
+  // Filed, and about to run: a transport reading its connection on another
+  // thread may now read the next message, a cancellation of this one included
+  if Assigned(FOnDispatching) then
+    FOnDispatching();
 
   // This list contains the responses in case SSE channel is not active
   LResponseList := TJRPCMessages.Create(True);

@@ -112,9 +112,13 @@ type
     /// <summary>
     ///   Starts the request. AInFlight, when given, is the connection's map of
     ///   requests in flight - what a "notifications/cancelled" is routed through.
+    ///   AProtocol, AListenScope and AOnDispatching are what a stdio connection
+    ///   sets on each handler it makes.
     /// </summary>
     constructor Create(AServer: TMCPServer; AWriter: IMCPTransportWriter;
-      const ABody, AAccept: string; AInFlight: TMCPInFlightRequests = nil);
+      const ABody, AAccept: string; AInFlight: TMCPInFlightRequests = nil;
+      AProtocol: TTransportProtocol = TTransportProtocol.StreamableHTTP;
+      const AListenScope: string = ''; const AOnDispatching: TProc = nil);
     destructor Destroy; override;
 
     /// <summary>
@@ -398,7 +402,8 @@ end;
 { TListenRun }
 
 constructor TListenRun.Create(AServer: TMCPServer; AWriter: IMCPTransportWriter;
-  const ABody, AAccept: string; AInFlight: TMCPInFlightRequests);
+  const ABody, AAccept: string; AInFlight: TMCPInFlightRequests;
+  AProtocol: TTransportProtocol; const AListenScope: string; const AOnDispatching: TProc);
 begin
   inherited Create;
   FDone := TEvent.Create(nil, True, False, '');
@@ -413,13 +418,15 @@ begin
       try
         LTransport := TMCPTransportHandler.Create(AServer, AWriter);
         LTransport.InFlight := AInFlight;
+        LTransport.ListenScope := AListenScope;
+        LTransport.OnDispatching := AOnDispatching;
         LHandler := LTransport;
         LHandler.ProcessRequest(
           procedure (ARequest: TMCPTransportRequest)
           begin
             ARequest.Url := '/';
             ARequest.Command := 'POST';
-            ARequest.Protocol := TTransportProtocol.StreamableHTTP;
+            ARequest.Protocol := AProtocol;
             ARequest.Accept := AAccept;
             ARequest.Content := ABody;
           end,

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 /**
- * The dashboard: one polling feed, and the panels that read it.
+ * The dashboard: one polling feed, and the panels that read it - laid out like
+ * the WebStencils dashboard (ServerWebStencils), so the two pages read the same
+ * whether the HTML is rendered on the server or in the browser.
  *
  * Everything here is derived in the browser from GET /metrics - the endpoint is
  * a snapshot with no past, so the history a chart draws is what this tab has
@@ -9,18 +11,21 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
-import HostGauges from '@/components/HostGauges.vue'
+import BreakdownCards from '@/components/BreakdownCards.vue'
+import CounterCards from '@/components/CounterCards.vue'
+import GaugeDials from '@/components/GaugeDials.vue'
+import HeroBanner from '@/components/HeroBanner.vue'
+import HistogramCards from '@/components/HistogramCards.vue'
 import InstrumentTable from '@/components/InstrumentTable.vue'
 import KpiCards from '@/components/KpiCards.vue'
-import LabelBreakdown from '@/components/LabelBreakdown.vue'
 import LatencyChart from '@/components/LatencyChart.vue'
 import RawDocument from '@/components/RawDocument.vue'
 import SlowestTable from '@/components/SlowestTable.vue'
 import ThroughputChart from '@/components/ThroughputChart.vue'
 import { METRICS_URL } from '@/api/metrics'
 import { useMetricsFeed } from '@/composables/useMetricsFeed'
-import { formatAge, formatClock } from '@/lib/format'
-import { instrumentSeries, throughputSeries } from '@/lib/series'
+import { formatAge, formatClock, formatUptime } from '@/lib/format'
+import { throughputSeries } from '@/lib/series'
 
 const {
   document,
@@ -58,7 +63,17 @@ const intervals = [
 ]
 
 const throughput = computed(() => throughputSeries(samples.value))
+const counters = computed(() => instrumentsOfKind('counter'))
 const histograms = computed(() => instrumentsOfKind('histogram'))
+
+const serviceName = computed(() => document.value?.service.name || 'unnamed server')
+
+/** How much time the retained samples cover, as the WebStencils header says it. */
+const historySpan = computed(() => {
+  const list = samples.value
+  if (list.length < 2) return 'no history yet'
+  return formatUptime((list[list.length - 1].at - list[0].at) / 1000)
+})
 
 const statusClass = computed(() => {
   if (status.value === 'ok') return 'badge ok'
@@ -68,87 +83,83 @@ const statusClass = computed(() => {
 })
 
 const statusLabel = computed(() => {
-  if (status.value === 'ok') return 'live'
+  if (status.value === 'ok') return 'live in the browser'
   if (status.value === 'error') return 'unreachable'
   if (status.value === 'paused') return 'paused'
   return 'connecting'
 })
-
-const sparkFor = (meter: string, name: string) =>
-  instrumentSeries(instrumentHistory(meter, name), 'last')
 </script>
 
 <template>
   <header class="app-header">
-    <div>
-      <h1>MCPConnect metrics</h1>
+    <div class="app-title">
+      <a href="https://github.com/delphi-blocks/MCPConnect" class="app-logo">
+        <img src="/assets/logo.svg" alt="MCPConnect" width="64" height="64" />
+      </a>
+    </div>
+    <div class="app-side">
+      <h1>{{ document ? `${serviceName} metrics` : 'MCPConnect metrics' }}</h1>
       <div class="sub">
         <template v-if="document">
-          {{ document.service.name || 'unnamed server' }} {{ document.service.version }} ·
-          started {{ formatClock(Date.parse(document.service.startedAt)) }} · generated
-          {{ formatClock(Date.parse(document.generatedAt)) }}
+          <template v-if="document.service.description">{{ document.service.description }} · </template>
+          {{ document.service.version }} · started
+          {{ formatClock(Date.parse(document.service.startedAt)) }} · generated
+          {{ formatClock(Date.parse(document.generatedAt)) }} · {{ document.schema }}
         </template>
         <template v-else>waiting for the first answer from {{ METRICS_URL }}</template>
       </div>
-    </div>
-
-    <div class="app-controls">
-      <span :class="statusClass"><span class="dot" />{{ statusLabel }}</span>
-      <span class="badge">{{ polls }} polls · {{ formatAge(lastUpdated, now) }}</span>
-      <select
-        :value="intervalMs"
-        @change="setIntervalMs(Number(($event.target as HTMLSelectElement).value))"
-      >
-        <option v-for="option in intervals" :key="option.value" :value="option.value">
-          every {{ option.label }}
-        </option>
-      </select>
-      <button @click="pollNow">Refresh</button>
-      <button @click="togglePause">{{ status === 'paused' ? 'Resume' : 'Pause' }}</button>
-      <button @click="clearHistory">Clear history</button>
+      <div class="app-controls">
+        <span :class="statusClass"><span class="dot" />{{ statusLabel }}</span>
+        <span class="badge">{{ samples.length }} samples · {{ historySpan }}</span>
+        <span v-if="document" class="badge">
+          {{ document.summary.instruments }} instruments · {{ document.summary.meters.length }} meters
+        </span>
+        <span class="badge">{{ polls }} polls · {{ formatAge(lastUpdated, now) }}</span>
+        <select
+          class="badge"
+          :value="intervalMs"
+          @change="setIntervalMs(Number(($event.target as HTMLSelectElement).value))"
+        >
+          <option v-for="option in intervals" :key="option.value" :value="option.value">
+            every {{ option.label }}
+          </option>
+        </select>
+        <button class="badge" @click="pollNow">Refresh now</button>
+        <button class="badge" @click="togglePause">{{ status === 'paused' ? 'Resume' : 'Pause' }}</button>
+        <button class="badge" @click="clearHistory">Clear history</button>
+      </div>
     </div>
   </header>
 
-  <div v-if="status === 'error'" class="error-box">
-    {{ error }}<br />
-    <span class="empty">
-      Start the demo (MCPServerMetrics.exe) and make sure the endpoint is reachable at
-      {{ METRICS_URL }}.
-    </span>
-  </div>
+  <main>
+    <HeroBanner />
 
-  <template v-if="document">
-    <KpiCards :document="document" :rates="eventRates" :regressions="regressions" />
-
-    <div class="grid two">
-      <ThroughputChart :points="throughput" />
-      <LatencyChart :histograms="histograms" :history-for="instrumentHistory" />
+    <div v-if="status === 'error'" class="error-box">
+      {{ error }}<br />
+      <span class="empty">
+        Start the server (MCPServerMetrics.exe or MCPServerWebStencils.exe) and make sure the
+        endpoint is reachable at {{ METRICS_URL }}.
+      </span>
     </div>
 
-    <div class="grid">
-      <HostGauges :gauges="gauges" :spark-for="sparkFor" />
-    </div>
+    <template v-if="document">
+      <KpiCards :document="document" :rates="eventRates" :regressions="regressions" />
 
-    <div class="grid two">
+      <section class="grid two">
+        <ThroughputChart :points="throughput" />
+        <LatencyChart :histograms="histograms" :history-for="instrumentHistory" />
+      </section>
+
+      <CounterCards :counters="counters" :groups="document.groups" :history-for="instrumentHistory" />
+      <HistogramCards :histograms="histograms" :history-for="instrumentHistory" />
+      <GaugeDials :gauges="gauges" :history-for="instrumentHistory" />
       <InstrumentTable :instruments="document.instruments" />
-      <LabelBreakdown :groups="document.groups" />
-    </div>
-
-    <div class="grid">
+      <BreakdownCards :groups="document.groups" />
       <SlowestTable :slowest="document.slowest" />
       <RawDocument :document="document" />
-    </div>
+    </template>
 
-    <p class="footnote">
-      Polling <span class="mono">{{ METRICS_URL }}</span> every
-      {{ intervalMs / 1000 }}s · counters are cumulative across the server's
-      {{ document.fold.resetsDetected }} folded reset(s), so rates are derived from consecutive
-      samples · history is kept in this tab only ({{ samples.length }} samples retained).
-    </p>
-  </template>
-
-  <div v-else class="grid">
-    <section class="panel">
+    <section v-else class="panel">
       <h2>Connecting</h2>
       <p class="empty">
         Asking {{ METRICS_URL }} for the metrics document. In development, run
@@ -156,5 +167,12 @@ const sparkFor = (meter: string, name: string) =>
         <span class="mono">http://localhost:8080/metrics</span>.
       </p>
     </section>
-  </div>
+  </main>
+
+  <footer v-if="document" class="footnote">
+    This page is drawn in the browser from <span class="mono">{{ METRICS_URL }}</span>, polled
+    every {{ intervalMs / 1000 }} s. Counters are cumulative across the server's
+    {{ document.fold.resetsDetected }} folded reset(s), so rates are derived from consecutive
+    samples, and the history is kept in this tab only ({{ samples.length }} samples retained).
+  </footer>
 </template>

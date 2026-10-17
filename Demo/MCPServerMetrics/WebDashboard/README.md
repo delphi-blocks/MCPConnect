@@ -2,19 +2,29 @@
 
 A small Vite + Vue dashboard for the metrics `Demo/MCPServerMetrics` serves on
 **`GET /metrics`** — plain HTTP and plain JSON, no MCP protocol involved. It
-polls the endpoint and draws what it finds: throughput, latency, the instrument
-table, label breakdowns, the host gauges and the raw document.
+polls the endpoint and draws what it finds.
+
+It looks like the WebStencils dashboard (`../ServerWebStencils`) on purpose —
+same header, same brand block, same panels in the same order, same stylesheet
+rules (`src/style.css` follows `templates/dashboard.css`) and the same assets in
+`public/assets` — so the page rendered on the server and the page drawn in the
+browser can be compared side by side. What differs is where the work happens:
+here the history behind every line is kept by the browser tab.
 
 | Panel | What it shows |
 |---|---|
+| Header | logo, service, version and times; badges for the feed's status, the samples kept, instruments and polls, and the polling controls (interval, refresh, pause, clear history) |
+| Brand block | the illustration, the logo and what the page is |
 | KPI cards | uptime, requests, errors, tool calls, in-flight, latency avg/max, series count |
 | Throughput | requests, tool calls and errors per second, derived from consecutive samples |
 | Latency | one histogram over time: average (solid) and observed max (dashed) |
-| Host gauges | uptime, CPU, handles, memory — current value plus a sparkline of the window this tab has seen |
+| Counters | one card per counter: total, rate line, and the total split by its first label key |
+| Histograms | one card per histogram: average, the min..max band with the average marked, and the average of each interval |
+| Gauges | one dial per gauge, with the range the window covered and a sparkline |
 | Instruments | every instrument the server holds, filterable and sortable |
-| Breakdown | one instrument split by one of its labels ("requests by method", "orders by region") |
+| Breakdown | every instrument rolled up by each of its label keys, one card each |
 | Slowest histograms | the top series ranked by average |
-| Raw document | the endpoint's JSON exactly as it arrived |
+| What the server says about itself | the service description, the fold note, and the raw document as it arrived |
 
 ## Running it
 

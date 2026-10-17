@@ -61,6 +61,7 @@ function sortBy(key: SortKey): void {
 <template>
   <section class="panel">
     <h2>Instruments</h2>
+    <div class="note">One row per instrument, the labels folded into the totals.</div>
     <div class="toolbar">
       <input v-model="filter" type="search" placeholder="filter by meter, name, unit..." />
       <span class="spacer" />
@@ -68,7 +69,7 @@ function sortBy(key: SortKey): void {
     </div>
     <p v-if="instruments.length === 0" class="empty">Nothing recorded yet.</p>
     <div v-else class="table-scroll">
-      <table>
+      <table class="sortable">
         <thead>
           <tr>
             <th

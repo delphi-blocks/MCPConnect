@@ -13,6 +13,10 @@ defineProps<{ slowest: MetricSlowEntry[] }>()
 <template>
   <section class="panel">
     <h2>Slowest histograms</h2>
+    <div class="note">
+      Ranked by average. A histogram keeps count, sum, min and max - not buckets - so this is
+      what there is to rank; there is no percentile to show.
+    </div>
     <p v-if="slowest.length === 0" class="empty">No histogram recorded yet.</p>
     <div v-else class="table-scroll">
       <table>

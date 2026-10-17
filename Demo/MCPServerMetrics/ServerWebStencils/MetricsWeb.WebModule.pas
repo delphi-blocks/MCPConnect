@@ -345,6 +345,9 @@ var
   LViewModel: TMetricsViewModel;
   LReport: TMetricsReport;
 begin
+  // Sample the host first: a harvest reset clears the gauges until the next
+  // sample, and a page rendered in between would show none.
+  TServerMetrics.Instance.SampleSystem;
   LReport := BuildMetricsReport(SERVICE_NAME, SERVICE_VERSION, SERVICE_DESCRIPTION);
   try
     LViewModel := BuildMetricsViewModel(LReport, MetricsHistory,
@@ -468,6 +471,9 @@ procedure TWebModule1.ActionMetrics(Sender: TObject; Request: TWebRequest;
 var
   LReport: TMetricsReport;
 begin
+  // As the page does: a poll landing just after a harvest reset still gets the
+  // host gauges (the Vue dashboard polls this endpoint).
+  TServerMetrics.Instance.SampleSystem;
   LReport := BuildMetricsReport(SERVICE_NAME, SERVICE_VERSION, SERVICE_DESCRIPTION);
   try
     Response.ContentType := 'application/json; charset=utf-8';

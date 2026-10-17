@@ -211,6 +211,21 @@ type
     FLastCpuTicks: UInt64;
     FLastSampleTicks: UInt64;
 
+    /// <summary>
+    ///   The latest CPU reading, recorded again when a sample comes too soon
+    ///   after the previous one to measure a new one, so the gauge is present
+    ///   in every sample even right after a harvest reset cleared it.
+    /// </summary>
+    FLastCpuPercent: Double;
+    FHasCpuPercent: Boolean;
+
+    /// <summary>
+    ///   Serialises SampleSystem: it runs on the screen's timer and on every
+    ///   GET /metrics request thread, and the CPU reading is a difference from
+    ///   the previous one, kept in the two fields above.
+    /// </summary>
+    FSampleLock: TCriticalSection;
+
     procedure InitialiseInstruments;
     procedure AttachExporters;
     procedure ReleaseExporters;
@@ -556,11 +571,13 @@ constructor TServerMetrics.Create;
 begin
   inherited Create;
   FExporterLines := TStringList.Create;
+  FSampleLock := TCriticalSection.Create;
 end;
 
 destructor TServerMetrics.Destroy;
 begin
   Stop;
+  FSampleLock.Free;
   FExporterLines.Free;
   inherited;
 end;
@@ -727,6 +744,8 @@ begin
   FInFlight := 0;
   FLastCpuTicks := 0;
   FLastSampleTicks := 0;
+  FLastCpuPercent := 0;
+  FHasCpuPercent := False;
 
   InitialiseInstruments;
   AttachExporters;
@@ -839,6 +858,12 @@ end;
 { Recording: host metrics and workload ------------------------------------- }
 
 procedure TServerMetrics.SampleSystem;
+const
+  // Windows advances a process's CPU time in steps of about 15 ms, so a reading
+  // over a shorter wall time than this is mostly rounding - 0 % or several
+  // hundred. Two samples that close (a GET /metrics right after the timer) keep
+  // the previous CPU value and its baseline instead.
+  CPU_MIN_WALL_MS = 500;
 var
   LStatus: TMemoryStatusEx;
   LHandles: DWORD;
@@ -848,28 +873,40 @@ begin
   if not FOn then
     Exit;
 
-  FUptime.SetValue((Now - FStartedAt) * SecsPerDay, ['scope', 'process']);
+  FSampleLock.Enter;
+  try
+    FUptime.SetValue((Now - FStartedAt) * SecsPerDay, ['scope', 'process']);
 
-  if GetProcessHandleCount(GetCurrentProcess, LHandles) then
-    FHandles.SetValue(LHandles, ['scope', 'process']);
+    if GetProcessHandleCount(GetCurrentProcess, LHandles) then
+      FHandles.SetValue(LHandles, ['scope', 'process']);
 
-  LStatus.dwLength := SizeOf(LStatus);
-  if GlobalMemoryStatusEx(LStatus) then
-  begin
-    FMemoryLoad.SetValue(LStatus.dwMemoryLoad, ['scope', 'system']);
-    FMemoryAvailable.SetValue(LStatus.ullAvailPhys / (1024 * 1024), ['scope', 'system']);
-  end;
+    LStatus.dwLength := SizeOf(LStatus);
+    if GlobalMemoryStatusEx(LStatus) then
+    begin
+      FMemoryLoad.SetValue(LStatus.dwMemoryLoad, ['scope', 'system']);
+      FMemoryAvailable.SetValue(LStatus.ullAvailPhys / (1024 * 1024), ['scope', 'system']);
+    end;
 
-  if GetProcessTimes(GetCurrentProcess, LCreation, LExit, LKernel, LUser) then
-  begin
-    LCpu := FileTimeToTicks(LKernel) + FileTimeToTicks(LUser);
-    LWall := GetTickCount64 - FLastSampleTicks;
-    // LCpu is in 100 ns units, LWall in ms (1 ms = 10 000 * 100 ns)
-    if (FLastSampleTicks > 0) and (LWall > 0) and (LCpu >= FLastCpuTicks) then
-      FCpuPercent.SetValue(((LCpu - FLastCpuTicks) / (LWall * 10000)) * 100,
-        ['scope', 'process']);
-    FLastCpuTicks := LCpu;
-    FLastSampleTicks := GetTickCount64;
+    if GetProcessTimes(GetCurrentProcess, LCreation, LExit, LKernel, LUser) then
+    begin
+      LCpu := FileTimeToTicks(LKernel) + FileTimeToTicks(LUser);
+      LWall := GetTickCount64 - FLastSampleTicks;
+      if (FLastSampleTicks = 0) or (LWall >= CPU_MIN_WALL_MS) then
+      begin
+        // LCpu is in 100 ns units, LWall in ms (1 ms = 10 000 * 100 ns)
+        if (FLastSampleTicks > 0) and (LCpu >= FLastCpuTicks) then
+        begin
+          FLastCpuPercent := ((LCpu - FLastCpuTicks) / (LWall * 10000)) * 100;
+          FHasCpuPercent := True;
+        end;
+        FLastCpuTicks := LCpu;
+        FLastSampleTicks := GetTickCount64;
+      end;
+      if FHasCpuPercent then
+        FCpuPercent.SetValue(FLastCpuPercent, ['scope', 'process']);
+    end;
+  finally
+    FSampleLock.Leave;
   end;
 end;
 

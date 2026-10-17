@@ -83,6 +83,7 @@ uses
   MCPConnect.Transport.Base,
   MCPConnect.Transport.MediaType,
 
+  Server.Metrics,
   Server.Metrics.Document;
 
 { TMetricsHttpMiddleware --------------------------------------------------- }
@@ -158,6 +159,11 @@ begin
   // The numbers are only true for the moment they were read: a cached copy
   // would be a lie a browser then tells its user.
   LResponse.SetHeader('Cache-Control', 'no-store');
+
+  // Sample the host first, as the WebStencils dashboard does before each report:
+  // the gauges are cleared by every harvest reset and only come back with the
+  // next sample, so without this a poll landing in between finds none at all.
+  TServerMetrics.Instance.SampleSystem;
 
   LReport := BuildMetricsReport(LName, LVersion, LDescription);
   try

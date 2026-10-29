@@ -198,6 +198,8 @@ type
     [Test]
     procedure TestRegisterUI_NoPermissionsMemberWhenNothingRequested;
     [Test]
+    procedure TestReadResource_PublishesUiMetaOnContentItems;
+    [Test]
     procedure TestRegisterUI_NonUiSchemeRaises;
 
     [Test]
@@ -308,6 +310,38 @@ type
   end;
 
 implementation
+
+uses
+  MCPConnect.Transport.Base;
+
+type
+  /// <summary>
+  ///   A response writer that streams nothing: the reply is read back as a
+  ///   JSON document.
+  /// </summary>
+  TDocumentResponseWriter = class(TMCPTransportWriter)
+  public
+    procedure Write(const AValue: string); override;
+    function Connected: Boolean; override;
+    function SupportsStreaming: Boolean; override;
+  end;
+
+{ TDocumentResponseWriter }
+
+procedure TDocumentResponseWriter.Write(const AValue: string);
+begin
+  // Nothing streams in these tests
+end;
+
+function TDocumentResponseWriter.Connected: Boolean;
+begin
+  Result := True;
+end;
+
+function TDocumentResponseWriter.SupportsStreaming: Boolean;
+begin
+  Result := False;
+end;
 
 { TManualToolClass }
 
@@ -985,6 +1019,70 @@ begin
 
   LApp := FConfig.Resources.Registry['ui://widget'];
   Assert.IsNull(LApp.Meta.GetValue('ui'), 'An empty "ui" metadata object is not published');
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestReadResource_PublishesUiMetaOnContentItems;
+var
+  LHandler: TMCPTransportHandler;
+  LContent: string;
+  LReply: TJSONValue;
+  LContents: TJSONArray;
+  LUIMeta: TJSONObject;
+begin
+  FConfig
+    .Security
+      .SetHeaderValidation(TMCPValidationLevel.Off)
+      .SetMetaValidation(TMCPValidationLevel.Off)
+      .SetOriginPolicy(TMCPOriginPolicy.Off)
+    .BackToMCP
+    .Resources
+      .RegisterUI(TManualUIClass, 'ShowWidget', 'widget', 'ui://widget', '', '',
+        procedure(AResource: TMCPResource; AUI: TUIResourceUI)
+        begin
+          AUI.Csp.ConnectDomains := ['https://api.example.com'];
+          AUI.Permissions.Geolocation := TJSONObject.Create;
+        end)
+    .BackToMCP
+  .ApplyConfig;
+
+  LContent := '';
+  LHandler := TMCPTransportHandler.Create(FServer, TDocumentResponseWriter.Create);
+  try
+    LHandler.ProcessRequest(
+      procedure (ARequest: TMCPTransportRequest)
+      begin
+        ARequest.Url := '/';
+        ARequest.Command := 'POST';
+        ARequest.Protocol := TTransportProtocol.StreamableHTTP;
+        ARequest.Accept := 'application/json';
+        ARequest.Content := '{"jsonrpc":"2.0","id":1,"method":"resources/read",' +
+          '"params":{"uri":"ui://widget"}}';
+      end,
+      procedure (AResponse: TMCPTransportResponse)
+      begin
+        LContent := AResponse.Content;
+      end);
+  finally
+    LHandler.Free;
+  end;
+
+  LReply := TJSONObject.ParseJSONValue(LContent);
+  try
+    Assert.IsTrue(LReply is TJSONObject, 'resources/read should answer a JSON object: ' + LContent);
+
+    LContents := LReply.FindValue('result.contents') as TJSONArray;
+    Assert.IsNotNull(LContents, 'The reply should carry the contents: ' + LContent);
+    Assert.AreEqual(1, LContents.Count, 'The page is a single content item');
+
+    LUIMeta := LContents.Items[0].FindValue('_meta.ui') as TJSONObject;
+    Assert.IsNotNull(LUIMeta, 'resources/read should carry the same _meta.ui as the listing');
+    Assert.IsNotNull(LUIMeta.FindValue('csp.connectDomains'),
+      'The CSP should travel with the content item');
+    Assert.IsNotNull(LUIMeta.FindValue('permissions.geolocation'),
+      'The requested permissions should travel with the content item');
+  finally
+    LReply.Free;
+  end;
 end;
 
 procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterUI_NonUiSchemeRaises;

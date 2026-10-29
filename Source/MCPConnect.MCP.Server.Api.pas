@@ -264,6 +264,17 @@ type
 
     function InternalReadResource(AParams: TReadResourceParams; AResource: TMCPResource): TBaseResult;
     function InternalReadTemplate(AParams: TReadResourceParams; ATemplate: TMCPResourceTemplate): TBaseResult;
+
+    /// <summary>
+    ///   Copies the resource's _meta (the MCP Apps CSP, permissions, ...) onto
+    ///   every content item that does not carry its own
+    /// </summary>
+    /// <remarks>
+    ///   Only a TReadResourceResult has content items: an input_required
+    ///   result is left alone.
+    /// </remarks>
+    procedure ApplyResourceMeta(const AMeta: TJSONObject; AResult: TBaseResult);
+
     function DoResourcesList(AContext: TMiddlewareContext;
       AParams: TPaginatedRequestParams): TListResourcesResult;
     function DoReadResource(AContext: TMiddlewareContext;
@@ -662,6 +673,24 @@ end;
 
 { TMCPResourcesApi }
 
+procedure TMCPResourcesApi.ApplyResourceMeta(const AMeta: TJSONObject; AResult: TBaseResult);
+var
+  LContent: TResourceContents;
+begin
+  if (not Assigned(AMeta)) or (AMeta.Count = 0) or not (AResult is TReadResourceResult) then
+    Exit;
+
+  // The specification lets the UI metadata sit on the resource entry and on the
+  // content item, with the content taking precedence. Publish it in both places,
+  // so a host that only inspects resources/read still sees the CSP and permissions.
+  for LContent in TReadResourceResult(AResult).Contents do
+    if LContent.Meta.Count = 0 then
+    begin
+      LContent.Meta.Free;
+      LContent.Meta := AMeta.Clone as TJSONObject;
+    end;
+end;
+
 function TMCPResourcesApi.InternalReadResource(AParams: TReadResourceParams; AResource: TMCPResource): TBaseResult;
 var
   LInvoker: TMCPResourceInvoker;
@@ -674,6 +703,7 @@ begin
     LFileResult := TReadResourceResult.Create;
     Result := LFileResult;
     TMCPStaticResource.GetResource(MCPConfig, AResource, LFileResult);
+    ApplyResourceMeta(AResource.Meta, LFileResult);
     Exit;
   end;
 
@@ -686,6 +716,7 @@ begin
     try
       RPCContext.Inject(LInvoker);
       Result := LInvoker.Invoke(AParams);
+      ApplyResourceMeta(AResource.Meta, Result);
     finally
       LInvoker.Free;
     end;
@@ -708,6 +739,7 @@ begin
     try
       RPCContext.Inject(LInvoker);
       Result := LInvoker.Invoke(AParams);
+      ApplyResourceMeta(ATemplate.Meta, Result);
     finally
       LInvoker.Free;
     end;

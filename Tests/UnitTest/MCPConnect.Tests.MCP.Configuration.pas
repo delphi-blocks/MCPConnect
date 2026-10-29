@@ -193,6 +193,10 @@ type
     [Test]
     procedure TestRegisterUI_UIConfigCallbackWritesMeta;
     [Test]
+    procedure TestRegisterUI_PermissionsArePublishedAsEmptyObjects;
+    [Test]
+    procedure TestRegisterUI_NoPermissionsMemberWhenNothingRequested;
+    [Test]
     procedure TestRegisterUI_NonUiSchemeRaises;
 
     [Test]
@@ -938,6 +942,48 @@ begin
   LUIMeta := LApp.Meta.GetValue('ui') as TJSONObject;
   Assert.IsNotNull(LUIMeta, 'Meta should carry a "ui" object once the AUIConfig callback sets a value');
   Assert.AreEqual('example.com', (LUIMeta.GetValue('domain') as TJSONString).Value);
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterUI_PermissionsArePublishedAsEmptyObjects;
+var
+  LApp: TMCPResource;
+  LUIMeta: TJSONObject;
+  LPermissions: TJSONObject;
+  LGeolocation: TJSONValue;
+begin
+  FConfig.Resources.RegisterUI(TManualUIClass, 'ShowWidget', 'widget', 'ui://widget', '', '',
+    procedure(AResource: TMCPResource; AUI: TUIResourceUI)
+    begin
+      // A requested capability is an (empty) object, per the specification
+      AUI.Permissions.Geolocation := TJSONObject.Create;
+    end);
+
+  LApp := FConfig.Resources.Registry['ui://widget'];
+  LUIMeta := LApp.Meta.GetValue('ui') as TJSONObject;
+  Assert.IsNotNull(LUIMeta, 'A requested permission should publish the "ui" object');
+
+  LPermissions := LUIMeta.GetValue('permissions') as TJSONObject;
+  Assert.IsNotNull(LPermissions, 'The "permissions" member should carry the requested capability');
+  Assert.IsNull(LPermissions.GetValue('camera'), 'Capabilities that were not requested are left out');
+
+  LGeolocation := LPermissions.GetValue('geolocation');
+  Assert.IsNotNull(LGeolocation, 'geolocation should be requested');
+  Assert.IsTrue(LGeolocation is TJSONObject, 'A permission request is a JSON object');
+  Assert.AreEqual(0, (LGeolocation as TJSONObject).Count, 'A permission request is an empty object');
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterUI_NoPermissionsMemberWhenNothingRequested;
+var
+  LApp: TMCPResource;
+begin
+  FConfig.Resources.RegisterUI(TManualUIClass, 'ShowWidget', 'widget', 'ui://widget', '', '',
+    procedure(AResource: TMCPResource; AUI: TUIResourceUI)
+    begin
+      // A page that needs no browser capability requests nothing
+    end);
+
+  LApp := FConfig.Resources.Registry['ui://widget'];
+  Assert.IsNull(LApp.Meta.GetValue('ui'), 'An empty "ui" metadata object is not published');
 end;
 
 procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterUI_NonUiSchemeRaises;

@@ -176,6 +176,14 @@ function parseTasks(text) {
   return tasks;
 }
 
+// Task titles come from the model (add_task) and end up in innerHTML below:
+// anything interpolated raw could carry markup, so escape it first.
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[c]);
+}
+
 function renderTasks(tasks) {
   const list = document.getElementById('task-list');
   const spinner = document.getElementById('spinner');
@@ -193,7 +201,7 @@ function renderTasks(tasks) {
       ? `<button class="btn btn-complete" onclick="completeTask(${t.id})">&#10003;</button>`
       : '';
     return `<li class="task-item">
-      <div class="task-title">#${t.id} ${t.title}</div>
+      <div class="task-title">#${t.id} ${escapeHtml(t.title)}</div>
       <span class="badge ${badgeClass}">${label}</span>
       ${actions}
       <button class="btn btn-delete" onclick="deleteTask(${t.id})">&#10005;</button>

@@ -18,6 +18,7 @@ interface
 uses
   System.SysUtils,
   System.JSON,
+  System.Generics.Collections,
   DUnitX.TestFramework,
 
   Neon.Core.Persistence.JSON,
@@ -29,6 +30,12 @@ uses
   MCPConnect.MCP.Types;
 
 type
+  // Minimal UI resource provider, used to check what initialize advertises
+  TInitializeAppFixture = class
+  public
+    function GetUI: string;
+  end;
+
   [TestFixture]
   TMCPInitializeApiTest = class(TObject)
   private
@@ -51,6 +58,11 @@ type
     procedure TestInitialize_ClientRequestsUnsupportedVersion_FallsBackToLatestSupported;
     [Test]
     procedure TestInitialize_ClientRequestsEmptyVersion_FallsBackToLatestSupported;
+
+    [Test]
+    procedure TestInitialize_AdvertisesAppExtensionWhenAUiResourceIsRegistered;
+    [Test]
+    procedure TestInitialize_OmitsAppExtensionWithoutAppResources;
   end;
 
   [TestFixture]
@@ -117,6 +129,46 @@ begin
     Result := FApi.Initialize(LParams);
   finally
     LParams.Free;
+  end;
+end;
+
+function TInitializeAppFixture.GetUI: string;
+begin
+  Result := '<!DOCTYPE html><html><body>fixture</body></html>';
+end;
+
+procedure TMCPInitializeApiTest.TestInitialize_AdvertisesAppExtensionWhenAUiResourceIsRegistered;
+var
+  LResult: TInitializeResult;
+  LApp: TJSONObject;
+  LMimeTypes: TJSONArray;
+begin
+  FConfig.Resources.RegisterUI(TInitializeAppFixture, 'GetUI', 'fixture', 'ui://test/fixture');
+
+  LResult := Initialize(MCP_LATEST_PROTOCOL_VERSION);
+  try
+    LApp := LResult.Capabilities.Extensions.GetValue(MCP_APP_EXTENSION) as TJSONObject;
+    Assert.IsNotNull(LApp, 'A server with ui:// resources should advertise the MCP Apps extension');
+
+    LMimeTypes := LApp.GetValue('mimeTypes') as TJSONArray;
+    Assert.IsNotNull(LMimeTypes, 'The extension settings should list the supported content types');
+    Assert.AreEqual(1, LMimeTypes.Count, 'Exactly one content type is supported');
+    Assert.AreEqual(MCP_APP_MIME_TYPE, LMimeTypes.Items[0].Value);
+  finally
+    LResult.Free;
+  end;
+end;
+
+procedure TMCPInitializeApiTest.TestInitialize_OmitsAppExtensionWithoutAppResources;
+var
+  LResult: TInitializeResult;
+begin
+  LResult := Initialize(MCP_LATEST_PROTOCOL_VERSION);
+  try
+    Assert.IsNull(LResult.Capabilities.Extensions.GetValue(MCP_APP_EXTENSION),
+      'A server without ui:// resources should not advertise the extension');
+  finally
+    LResult.Free;
   end;
 end;
 

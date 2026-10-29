@@ -249,6 +249,9 @@ end;
 { TMCPInitializeApi }
 
 function TMCPInitializeApi.Initialize(AInitializeParams: TInitializeParams): TInitializeResult;
+var
+  LMimeTypes: TJSONArray;
+  LAppSettings: TJSONObject;
 begin
   Result := TInitializeResult.Create;
   try
@@ -284,6 +287,17 @@ begin
         Result.Capabilities.Prompts.ListChanged := False;
       end;
 
+    end;
+
+    // MCP Apps is negotiated in both directions: a server that serves ui://
+    // resources declares the extension, so the host knows it can render them.
+    if MCPConfig.Resources.HasAppResources then
+    begin
+      LMimeTypes := TJSONArray.Create;
+      LMimeTypes.Add(MCP_APP_MIME_TYPE);
+      LAppSettings := TJSONObject.Create;
+      LAppSettings.AddPair('mimeTypes', LMimeTypes);
+      Result.Capabilities.AddExtension(MCP_APP_EXTENSION, LAppSettings);
     end;
 
   except

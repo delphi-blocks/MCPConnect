@@ -727,6 +727,12 @@ type
     function GetResource(const AUri: string): TMCPResource;
     function GetTemplate(const AUri: string): TMCPResourceTemplate;
 
+    /// <summary>
+    ///   True when at least one MCP App resource (a ui:// page, or a resource
+    ///   published with the mcp-app content type) is registered
+    /// </summary>
+    function HasAppResources: Boolean;
+
 
     /// <summary>
     ///   Creates an instance of a class by namespace.
@@ -1367,6 +1373,16 @@ function TMCPResourcesConfig.GetResource(const AUri: string): TMCPResource;
 begin
   if not Registry.TryGetValue(AUri, Result) then
     Exit(nil);
+end;
+
+function TMCPResourcesConfig.HasAppResources: Boolean;
+begin
+  for var LPair in Registry do
+    if LPair.Key.StartsWith('ui://') or
+       SameText(LPair.Value.MimeType.Value, MCP_APP_MIME_TYPE) then
+      Exit(True);
+
+  Result := False;
 end;
 
 function TMCPResourcesConfig.GetTemplate(const AUri: string): TMCPResourceTemplate;

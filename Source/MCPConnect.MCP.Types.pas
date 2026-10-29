@@ -1,4 +1,4 @@
-﻿{******************************************************************************}
+{******************************************************************************}
 {                                                                              }
 {  Delphi MCP Connect Library                                                  }
 {                                                                              }
@@ -48,6 +48,17 @@ const
     MCP_PROTOCOL_VERSION_2025_06_18,
     MCP_PROTOCOL_VERSION_2025_11_25
   );
+
+  /// <summary>
+  ///   MCP Apps extension identifier (SEP-1865). A server that serves ui://
+  ///   resources advertises it in the extensions map of its capabilities.
+  /// </summary>
+  MCP_APP_EXTENSION = 'io.modelcontextprotocol/ui';
+
+  /// <summary>
+  ///   Content type of an MCP App UI resource, required by the specification.
+  /// </summary>
+  MCP_APP_MIME_TYPE = 'text/html;profile=mcp-app';
 
 resourcestring
   // Localizable messages for the MCP layer (MCPConnect.MCP.Types/Invoker/Server.Api)
@@ -530,6 +541,13 @@ type
     [NeonProperty('experimental'), NeonInclude(IncludeIf.NotEmpty)] &Experimental: TJSONObject;
 
     /// <summary>
+    ///   Optional MCP extensions that the server supports. Keys are extension
+    ///   identifiers (e.g. "io.modelcontextprotocol/ui") and values are the
+    ///   per-extension settings objects.
+    /// </summary>
+    [NeonInclude(IncludeIf.NotEmpty)] Extensions: TJSONObject;
+
+    /// <summary>
     ///   Present if the server supports sending log messages to the client.
     /// </summary>
     [NeonInclude(IncludeIf.NotEmpty)] Logging: TJSONObject;
@@ -557,6 +575,12 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+
+    /// <summary>
+    ///   Advertises an extension in the capabilities map, replacing the settings
+    ///   if it was already there
+    /// </summary>
+    procedure AddExtension(const AName: string; const ASettings: TJSONObject);
   end;
 
   /// <summary>
@@ -1035,6 +1059,7 @@ constructor TServerCapabilities.Create;
 begin
   Completions := TJSONObject.Create;
   &Experimental := TJSONObject.Create;
+  Extensions := TJSONObject.Create;
   Logging := TJSONObject.Create;
   Sampling := TJSONObject.Create;
 end;
@@ -1043,9 +1068,18 @@ destructor TServerCapabilities.Destroy;
 begin
   Sampling.Free;
   Logging.Free;
+  Extensions.Free;
   &Experimental.Free;
   Completions.Free;
   inherited;
+end;
+
+procedure TServerCapabilities.AddExtension(const AName: string; const ASettings: TJSONObject);
+begin
+  // RemovePair would leave the old settings behind: AddPair alone would create
+  // a duplicate key
+  Extensions.RemovePair(AName).Free;
+  Extensions.AddPair(AName, ASettings);
 end;
 
 { TAnyMapOwned }

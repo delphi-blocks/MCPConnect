@@ -78,15 +78,12 @@ end;
 procedure TMCPStringListWriter.WriteResource(const AValue: TValue; AContext: TMCPresourceContext);
 var
   LMime: string;
-  LMCP: MCPResourceAttribute;
 begin
-  LMCP := TRttiUtils.FindAttribute<MCPResourceAttribute>(AContext.Attributes);
-  if Assigned(LMCP) then
-    LMime := LMCP.MimeType
-  else
+  LMime := AContext.MimeType;
+  if LMime.IsEmpty then
     LMime := 'text/plain';
 
-  AContext.Result.Contents.AddText(LMCP.Uri, LMime, ValueAsList(AValue).CommaText);
+  AContext.Result.Contents.AddText(AContext.Uri, LMime, ValueAsList(AValue).CommaText);
 end;
 
 procedure TMCPStringListWriter.WriteTool(const AValue: TValue; AContext: TMCPToolContext);
@@ -125,20 +122,17 @@ var
   LStream: TStream;
   LBase64: string;
   LBlob: TBlobResourceContents;
-  LMCP: MCPResourceAttribute;
 begin
   LStream := AValue.AsObject as TStream;
   LStream.Position := soFromBeginning;
   LBase64 := TBase64.Encode(LStream);
 
   LBlob := TBlobResourceContents.Create;
-
-  // Read Attributes
-  LMCP := TRttiUtils.FindAttribute<MCPResourceAttribute>(AContext.Attributes);
-  if Assigned(LMCP) then
-    LBlob.MimeType := LMCP.MimeType
+  LBlob.Uri := AContext.Uri;
+  if AContext.MimeType.IsEmpty then
+    LBlob.MimeType := TMime.OctectStream
   else
-    LBlob.MimeType := TMime.OctectStream;
+    LBlob.MimeType := AContext.MimeType;
 
   LBlob.Blob := LBase64;
   AContext.Result.Contents.Add(LBlob);

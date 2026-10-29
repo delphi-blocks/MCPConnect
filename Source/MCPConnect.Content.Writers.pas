@@ -39,6 +39,18 @@ type
   TMCPresourceContext = record
     Result: TReadResourceResult;
     Attributes: TAttributes;
+
+    /// <summary>
+    ///   Uri of the resource being read: the registered uri for a resource,
+    ///   the requested (expanded) uri for a template
+    /// </summary>
+    Uri: string;
+
+    /// <summary>
+    ///   MIME type the resource or template was registered with, empty when
+    ///   none was given (the writer then picks its own default)
+    /// </summary>
+    MimeType: string;
   end;
 
   /// <summary>

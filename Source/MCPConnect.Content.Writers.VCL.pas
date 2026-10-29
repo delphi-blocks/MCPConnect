@@ -119,16 +119,13 @@ end;
 procedure TMCPGraphicWriter.WriteResource(const AValue: TValue; AContext: TMCPresourceContext);
 var
   LBlob: TBlobResourceContents;
-  LMCPAttr: MCPResourceAttribute;
 begin
   LBlob := TBlobResourceContents.Create;
-
-  // Read Attributes
-  LMCPAttr := TRttiUtils.FindAttribute<MCPResourceAttribute>(AContext.Attributes);
-  if Assigned(LMCPAttr) then
-    LBlob.MimeType := LMCPAttr.MimeType
+  LBlob.Uri := AContext.Uri;
+  if AContext.MimeType.IsEmpty then
+    LBlob.MimeType := 'image/png'
   else
-    LBlob.MimeType := 'image/png';
+    LBlob.MimeType := AContext.MimeType;
 
   LBlob.Blob := ValueToBase64(AValue);
 

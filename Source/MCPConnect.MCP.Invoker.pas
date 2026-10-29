@@ -99,7 +99,7 @@ type
     FTemplate: TMCPResourceTemplate;
     function GetParamName(AParam: TRttiParameter): string; override;
     function BuildTemplateParams(const AUri: string; const AParams: TArray<TRttiParameter>): TArray<TValue>;
-    procedure ResultToResource(const AMethodResult: TValue; AResult: TReadResourceResult);
+    procedure ResultToResource(const AMethodResult: TValue; const AUri: string; AResult: TReadResourceResult);
   public
     constructor Create(AInstance: TObject; ATemplate: TMCPResourceTemplate);
 
@@ -489,6 +489,8 @@ begin
   begin
     LContext.Result := AResult;
     LContext.Attributes := FResource.Method.GetAttributes;
+    LContext.Uri := FResource.Uri;
+    LContext.MimeType := LMime;
 
     LWriter.WriteResource(AMethodResult, LContext);
     Exit;
@@ -662,11 +664,11 @@ begin
   Result := LResourceResult;
 
   LStopwatch := TStopwatch.StartNew;
-  ResultToResource(LResult, LResourceResult);
+  ResultToResource(LResult, AParams.Uri, LResourceResult);
   Logger.LogDebug('[PERF] Template [%s] ResultToResource (result serialization): %d ms', [FTemplate.UriTemplate.Value, LStopwatch.ElapsedMilliseconds]);
 end;
 
-procedure TMCPTemplateInvoker.ResultToResource(const AMethodResult: TValue; AResult: TReadResourceResult);
+procedure TMCPTemplateInvoker.ResultToResource(const AMethodResult: TValue; const AUri: string; AResult: TReadResourceResult);
 var
   LMime: string;
   LEncoding: TMimeEncoding;
@@ -689,6 +691,8 @@ begin
   begin
     LContext.Result := AResult;
     LContext.Attributes := FTemplate.Method.GetAttributes;
+    LContext.Uri := AUri;
+    LContext.MimeType := LMime;
 
     LWriter.WriteResource(AMethodResult, LContext);
     Exit;
@@ -704,14 +708,14 @@ begin
       if LEncoding = TMimeEncoding.Plain then
       begin
         LResText := TTextResourceContents.Create();
-        LResText.Uri := FTemplate.UriTemplate;
+        LResText.Uri := AUri;
         LResText.MimeType := IfThen(LMime.IsEmpty, TMime.Text, LMime);
         LResText.Text := AMethodResult.ToString;
       end
       else
       begin
         LResBlob := TBlobResourceContents.Create();
-        LResBlob.Uri := FTemplate.UriTemplate;
+        LResBlob.Uri := AUri;
         LResBlob.MimeType := LMime;
         LResBlob.Blob := TNetEncoding.Base64.Encode(AMethodResult.ToString);
       end
@@ -728,14 +732,14 @@ begin
       if LEncoding = TMimeEncoding.Plain then
       begin
         LResText := TTextResourceContents.Create();
-        LResText.Uri := FTemplate.UriTemplate;
+        LResText.Uri := AUri;
         LResText.MimeType := IfThen(LMime.IsEmpty, TMime.Text, LMime);
         LResText.Text := AMethodResult.ToString;
       end
       else
       begin
         LResBlob := TBlobResourceContents.Create();
-        LResBlob.Uri := FTemplate.UriTemplate;
+        LResBlob.Uri := AUri;
         LResBlob.MimeType := LMime;
         LResBlob.Blob := TNetEncoding.Base64.Encode(AMethodResult.ToString);
       end;
@@ -752,14 +756,14 @@ begin
       if LEncoding = TMimeEncoding.Plain then
       begin
         LResText := TTextResourceContents.Create();
-        LResText.Uri := FTemplate.UriTemplate;
+        LResText.Uri := AUri;
         LResText.MimeType := IfThen(LMime.IsEmpty, TMime.Json, LMime);
         LResText.Text := LResult;
       end
       else
       begin
         LResBlob := TBlobResourceContents.Create();
-        LResBlob.Uri := FTemplate.UriTemplate;
+        LResBlob.Uri := AUri;
         LResBlob.MimeType := LMime;
         LResBlob.Blob := TNetEncoding.Base64.Encode(LResult);
       end;

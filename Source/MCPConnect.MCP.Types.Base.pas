@@ -85,6 +85,17 @@ const
   /// </summary>
   MCP_META_SERVER_INFO = 'io.modelcontextprotocol/serverInfo';
 
+  /// <summary>
+  ///   MCP Apps extension identifier (SEP-1865). A server that serves ui://
+  ///   resources advertises it in the extensions map of its capabilities.
+  /// </summary>
+  MCP_APP_EXTENSION = 'io.modelcontextprotocol/ui';
+
+  /// <summary>
+  ///   Content type of an MCP App UI resource, required by the specification.
+  /// </summary>
+  MCP_APP_MIME_TYPE = 'text/html;profile=mcp-app';
+
 resourcestring
   // Localizable messages for the MCP layer (MCPConnect.MCP.Types/Invoker/Server.Api)
 
@@ -761,6 +772,12 @@ type
     ///   Declares support for argument autocompletion (completion/complete).
     /// </summary>
     procedure EnableCompletions;
+
+    /// <summary>
+    ///   Advertises an extension in the capabilities map, replacing the settings
+    ///   if it was already there. The capabilities take ownership of ASettings.
+    /// </summary>
+    procedure AddExtension(const AName: string; const ASettings: TJSONObject);
 
     /// <summary>
     ///   Copies what ASource declares into this one, JSON members included.
@@ -1574,6 +1591,18 @@ procedure TServerCapabilities.EnableCompletions;
 begin
   if not Assigned(Completions) then
     Completions := TJSONObject.Create;
+end;
+
+procedure TServerCapabilities.AddExtension(const AName: string; const ASettings: TJSONObject);
+begin
+  // Assign leaves the map nil when the source had none
+  if not Assigned(Extensions) then
+    Extensions := TJSONObject.Create;
+
+  // AddPair alone would create a duplicate key, and RemovePair hands the old
+  // pair back rather than freeing it
+  Extensions.RemovePair(AName).Free;
+  Extensions.AddPair(AName, ASettings);
 end;
 
 procedure TServerCapabilities.Assign(ASource: TServerCapabilities);

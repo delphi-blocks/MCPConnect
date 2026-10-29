@@ -1023,6 +1023,8 @@ procedure TMCPServerApi.InferCapabilities(ACapabilities: TServerCapabilities);
 var
   LSupport: TMCPListenSupport;
   LListChanged: Boolean;
+  LMimeTypes: TJSONArray;
+  LAppSettings: TJSONObject;
 begin
   // Presence is the declaration: "tools" in the capabilities is what says this
   // server has tools at all. The listChanged flag beside it is a second
@@ -1048,6 +1050,17 @@ begin
   // Only advertised when something can actually answer completion/complete
   if MCPConfig.Completions.HasProviders then
     ACapabilities.EnableCompletions;
+
+  // MCP Apps is negotiated in both directions: a server that serves ui://
+  // resources declares the extension, so the host knows it can render them
+  if MCPConfig.Resources.HasAppResources then
+  begin
+    LMimeTypes := TJSONArray.Create;
+    LMimeTypes.Add(MCP_APP_MIME_TYPE);
+    LAppSettings := TJSONObject.Create;
+    LAppSettings.AddPair('mimeTypes', LMimeTypes);
+    ACapabilities.AddExtension(MCP_APP_EXTENSION, LAppSettings);
+  end;
 end;
 
 { TMCPSubscriptionsApi }

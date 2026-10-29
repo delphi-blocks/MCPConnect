@@ -97,6 +97,13 @@ type
     procedure TestAnExplicitSetCanAdvertiseLessThanIsRegistered();
 
     [Test]
+    procedure TestTheAppExtensionIsAdvertisedWithAUiResource();
+    [Test]
+    procedure TestTheAppExtensionIsAbsentWithoutAppResources();
+    [Test]
+    procedure TestExplicitCapabilitiesGetNoAppExtension();
+
+    [Test]
     procedure TestInstructionsAreReportedWhenSet();
     [Test]
     procedure TestInstructionsAreAbsentWhenNotSet();
@@ -122,6 +129,17 @@ type
     [McpPrompt('greet', 'Greet', 'Greets someone')]
     function Greet: TPromptMessages;
   end;
+
+  TDiscoverApp = class(TObject)
+  public
+    [McpAppUI('fixture', 'ui://test/fixture', 'An MCP App page')]
+    function Page: string;
+  end;
+
+function TDiscoverApp.Page: string;
+begin
+  Result := '<!DOCTYPE html><html><body>fixture</body></html>';
+end;
 
 function TDiscoverTools.Ping: string;
 begin
@@ -464,6 +482,79 @@ begin
     LCaps := CapabilitiesOf(LResult);
     Assert.IsNotNull(LCaps.GetValue('tools'), LCaps.ToJSON);
     Assert.IsNull(LCaps.GetValue('prompts'), LCaps.ToJSON);
+  finally
+    LResult.Free;
+  end;
+end;
+
+procedure TDiscoverTest.TestTheAppExtensionIsAdvertisedWithAUiResource;
+var
+  LResult: TJSONObject;
+  LApp: TJSONValue;
+  LMimeTypes: TJSONArray;
+begin
+  ConfigureBare();
+
+  FServer.Plugin.Configure<IMCPConfig>
+    .Resources
+      .RegisterClass(TDiscoverApp)
+    .BackToMCP
+  .ApplyConfig;
+
+  // MCP Apps is negotiated in both directions: a server with a ui:// page says
+  // so, and the host learns it can render one
+  LResult := Discover;
+  try
+    // Not FindValue: the extension identifier has dots of its own
+    LApp := CapabilitiesOf(LResult).GetValue('extensions');
+    if LApp is TJSONObject then
+      LApp := TJSONObject(LApp).GetValue(MCP_APP_EXTENSION);
+    Assert.IsTrue(LApp is TJSONObject, 'The MCP Apps extension should be advertised: ' + LResult.ToJSON);
+
+    LMimeTypes := TJSONObject(LApp).GetValue('mimeTypes') as TJSONArray;
+    Assert.IsNotNull(LMimeTypes, 'The extension settings should list the supported content types');
+    Assert.AreEqual(1, LMimeTypes.Count, 'Exactly one content type is supported');
+    Assert.AreEqual(MCP_APP_MIME_TYPE, LMimeTypes.Items[0].Value);
+  finally
+    LResult.Free;
+  end;
+end;
+
+procedure TDiscoverTest.TestTheAppExtensionIsAbsentWithoutAppResources;
+var
+  LResult: TJSONObject;
+begin
+  ConfigureFull();
+
+  LResult := Discover;
+  try
+    Assert.IsFalse(LResult.ToJSON.Contains(MCP_APP_EXTENSION),
+      'A server without ui:// resources should not advertise MCP Apps: ' + LResult.ToJSON);
+  finally
+    LResult.Free;
+  end;
+end;
+
+procedure TDiscoverTest.TestExplicitCapabilitiesGetNoAppExtension;
+var
+  LResult: TJSONObject;
+begin
+  ConfigureBare();
+
+  // Explicit capabilities are reported verbatim, the extensions map included:
+  // a server that sets its own declares the extension itself, or does not
+  FServer.Plugin.Configure<IMCPConfig>
+    .Server
+      .SetCapabilities([TMCPCapability.Resources])
+    .BackToMCP
+    .Resources
+      .RegisterClass(TDiscoverApp)
+    .BackToMCP
+  .ApplyConfig;
+
+  LResult := Discover;
+  try
+    Assert.IsFalse(LResult.ToJSON.Contains(MCP_APP_EXTENSION), LResult.ToJSON);
   finally
     LResult.Free;
   end;

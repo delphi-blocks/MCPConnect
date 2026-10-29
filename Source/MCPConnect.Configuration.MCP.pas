@@ -1129,6 +1129,11 @@ type
     function GetResource(const AUri: string): TMCPResource;
     function GetTemplate(const AUri: string): TMCPResourceTemplate;
 
+    /// <summary>
+    ///   True when at least one MCP App resource (a ui:// page, or a resource
+    ///   published with the mcp-app content type) is registered
+    /// </summary>
+    function HasAppResources: Boolean;
 
     /// <summary>
     ///   Creates an instance of a class by namespace.
@@ -2323,6 +2328,16 @@ begin
   end;
 end;
 
+function TMCPResourcesConfig.HasAppResources: Boolean;
+begin
+  for var LPair in Registry do
+    if LPair.Key.StartsWith('ui://') or
+       SameText(LPair.Value.MimeType.Value, MCP_APP_MIME_TYPE) then
+      Exit(True);
+
+  Result := False;
+end;
+
 function TMCPResourcesConfig.GetUriParams(const AUri: string): TArray<string>;
 begin
   Result := [];
@@ -2355,7 +2370,7 @@ begin
   try
     LRes.Name := AAttr.Name;
     LRes.Uri := AAttr.Uri;
-    LRes.MimeType := 'text/html;profile=mcp-app';
+    LRes.MimeType := MCP_APP_MIME_TYPE;
     LRes.Description := AAttr.Description;
     LRes.ResourceClass := AClass;
     LRes.Method := AMethod;
@@ -2667,7 +2682,7 @@ begin
     LApp.RequiredScopes := GetRequiredScopes(AClass, LMethod);
     LApp.Name := AName;
     LApp.Uri := AUri;
-    LApp.MimeType := 'text/html;profile=mcp-app';
+    LApp.MimeType := MCP_APP_MIME_TYPE;
     LApp.Description := ADescription;
     ApplyResourceTags(LApp, ATags);
 

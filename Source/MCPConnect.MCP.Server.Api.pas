@@ -52,6 +52,12 @@ type
         TMCPResource): TReadResourceResult;
     function InternalReadTemplate(AParams: TReadResourceParams; ATemplate:
         TMCPResourceTemplate): TReadResourceResult;
+
+    /// <summary>
+    ///   Copies the resource's _meta (the MCP Apps CSP, permissions, ...) onto
+    ///   every content item that does not carry its own
+    /// </summary>
+    procedure ApplyResourceMeta(const AMeta: TJSONObject; AResult: TReadResourceResult);
   public
     [Context] RPCContext: TJRPCContext;
     [Context] MCPConfig: TMCPConfig;
@@ -288,6 +294,24 @@ end;
 
 { TMCPResourcesApi }
 
+procedure TMCPResourcesApi.ApplyResourceMeta(const AMeta: TJSONObject; AResult: TReadResourceResult);
+var
+  LContent: TResourceContents;
+begin
+  if (not Assigned(AMeta)) or (AMeta.Count = 0) or (not Assigned(AResult)) then
+    Exit;
+
+  // The specification lets the UI metadata sit on the resource entry and on the
+  // content item, with the content taking precedence. Publish it in both places,
+  // so a host that only inspects resources/read still sees the CSP and permissions.
+  for LContent in AResult.Contents do
+    if LContent.Meta.Count = 0 then
+    begin
+      LContent.Meta.Free;
+      LContent.Meta := AMeta.Clone as TJSONObject;
+    end;
+end;
+
 function TMCPResourcesApi.InternalReadResource(AParams: TReadResourceParams;
     AResource: TMCPResource): TReadResourceResult;
 var
@@ -299,6 +323,7 @@ begin
   begin
     Result := TReadResourceResult.Create;
     TMCPStaticResource.GetResource(MCPConfig, AResource, Result);
+    ApplyResourceMeta(AResource.Meta, Result);
     Exit;
   end;
 
@@ -311,6 +336,7 @@ begin
     try
       RPCContext.Inject(LInvoker);
       Result := LInvoker.Invoke(AParams);
+      ApplyResourceMeta(AResource.Meta, Result);
     finally
       LInvoker.Free;
     end;
@@ -334,6 +360,7 @@ begin
     try
       RPCContext.Inject(LInvoker);
       Result := LInvoker.Invoke(AParams);
+      ApplyResourceMeta(ATemplate.Meta, Result);
     finally
       LInvoker.Free;
     end;

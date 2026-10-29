@@ -21,11 +21,13 @@ uses
 
   MCPConnect.JRPC.Server,
   MCPConnect.JRPC.Core,
+  MCPConnect.JRPC.Classes,
   MCPConnect.Configuration.MCP,
   MCPConnect.MCP.Tools,
   MCPConnect.MCP.Resources,
   MCPConnect.MCP.Prompts,
   MCPConnect.MCP.Types,
+  MCPConnect.MCP.Server.Api,
   MCPConnect.MCP.Attributes;
 
 type
@@ -196,6 +198,8 @@ type
     procedure TestRegisterUI_PermissionsArePublishedAsEmptyObjects;
     [Test]
     procedure TestRegisterUI_NoPermissionsMemberWhenNothingRequested;
+    [Test]
+    procedure TestReadResource_PublishesUiMetaOnContentItems;
     [Test]
     procedure TestRegisterUI_NonUiSchemeRaises;
 
@@ -984,6 +988,54 @@ begin
 
   LApp := FConfig.Resources.Registry['ui://widget'];
   Assert.IsNull(LApp.Meta.GetValue('ui'), 'An empty "ui" metadata object is not published');
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestReadResource_PublishesUiMetaOnContentItems;
+var
+  LApi: TMCPResourcesApi;
+  LContext: TJRPCContext;
+  LGarbage: IGarbageCollector;
+  LParams: TReadResourceParams;
+  LResult: TReadResourceResult;
+  LUIMeta: TJSONObject;
+begin
+  FConfig.Resources.RegisterUI(TManualUIClass, 'ShowWidget', 'widget', 'ui://widget', '', '',
+    procedure(AResource: TMCPResource; AUI: TUIResourceUI)
+    begin
+      AUI.Csp.ConnectDomains := ['https://api.example.com'];
+      AUI.Permissions.Geolocation := TJSONObject.Create;
+    end);
+
+  LContext := TJRPCContext.Create;
+  LApi := TMCPResourcesApi.Create;
+  LParams := TReadResourceParams.Create;
+  try
+    LGarbage := TGarbageCollector.CreateInstance;
+    LContext.AddContent(FServer);
+    LContext.AddContent(LGarbage);
+    LApi.RPCContext := LContext;
+    LApi.MCPConfig := FServer.GetConfiguration<TMCPConfig>;
+    LParams.Uri := 'ui://widget';
+
+    LResult := LApi.ReadResource(LParams);
+    try
+      Assert.AreEqual(1, LResult.Contents.Count, 'The page is a single content item');
+
+      LUIMeta := LResult.Contents[0].Meta.GetValue('ui') as TJSONObject;
+      Assert.IsNotNull(LUIMeta, 'resources/read should carry the same _meta.ui as the listing');
+      Assert.IsNotNull((LUIMeta.GetValue('csp') as TJSONObject).GetValue('connectDomains'),
+        'The CSP should travel with the content item');
+      Assert.IsNotNull((LUIMeta.GetValue('permissions') as TJSONObject).GetValue('geolocation'),
+        'The requested permissions should travel with the content item');
+    finally
+      LResult.Free;
+    end;
+  finally
+    LParams.Free;
+    LApi.Free;
+    LContext.Free;
+    LGarbage := nil;
+  end;
 end;
 
 procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterUI_NonUiSchemeRaises;

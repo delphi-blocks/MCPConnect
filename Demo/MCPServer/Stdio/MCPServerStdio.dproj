@@ -132,6 +132,8 @@
         <DCCReference Include="..\..\..\Source\MCPConnect.MCP.Invoker.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.Content.Writers.pas"/>
         <DCCReference Include="..\..\..\Source\MCPConnect.Transport.Stdio.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.Install.pas"/>
+        <DCCReference Include="..\..\..\Source\MCPConnect.Install.Agents.pas"/>
         <DCCReference Include="..\MCPServer.Tools.pas"/>
         <DCCReference Include="..\MCPServer.Config.pas"/>
         <DCCReference Include="..\MCPServer.Resources.pas"/>

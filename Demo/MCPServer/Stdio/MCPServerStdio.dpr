@@ -57,6 +57,8 @@ uses
   MCPConnect.MCP.Invoker in '..\..\..\Source\MCPConnect.MCP.Invoker.pas',
   MCPConnect.Content.Writers in '..\..\..\Source\MCPConnect.Content.Writers.pas',
   MCPConnect.Transport.Stdio in '..\..\..\Source\MCPConnect.Transport.Stdio.pas',
+  MCPConnect.Install in '..\..\..\Source\MCPConnect.Install.pas',
+  MCPConnect.Install.Agents in '..\..\..\Source\MCPConnect.Install.Agents.pas',
   MCPServer.Tools in '..\MCPServer.Tools.pas',
   MCPServer.Config in '..\MCPServer.Config.pas',
   MCPServer.Resources in '..\MCPServer.Resources.pas',
@@ -89,6 +91,12 @@ end;
 begin
   ReportMemoryLeaksOnShutdown := True;
   try
+    // "MCPServerStdio /mcp:install" registers this server in the MCP agents
+    // found on the machine (/mcp:help for the options): handle it before
+    // starting the server, and stop there when it was an install command.
+    if TMCPInstaller.HandleCommandLine then
+      Exit;
+
     StartServer;
   except
     on E: Exception do

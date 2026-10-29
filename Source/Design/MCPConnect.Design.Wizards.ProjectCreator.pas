@@ -210,7 +210,9 @@ begin
   LBuilder := TSourceBuilder.FromResource(GetProjectTemplateName)
     .Add('PROJECT_NAME', FProjectName)
     .Add('SERVER_PORT', IntToStr(FConfig.ServerPort))
-    .Add('MCP_PATH', FConfig.McpPath);
+    .Add('MCP_PATH', FConfig.McpPath)
+    .Add('INSTALL_UNITS', TMCPCodeGen.BuildInstallUses(FConfig))
+    .Add('INSTALL_CODE', TMCPCodeGen.BuildInstallCode(FConfig, ProjectSourceIndentLevel));
 
   // A console STDIO or Indy project has no host module, so the fluent
   // configuration goes straight into the .dpr. The sample unit is added to the

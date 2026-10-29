@@ -7,7 +7,7 @@ program %PROJECT_NAME%;
 uses
   System.SysUtils,
   MCPConnect.MCP.Server,
-  MCPConnect.Transport.Stdio,
+  MCPConnect.Transport.Stdio%INSTALL_UNITS%,
 %EXTRA_UNITS%
 
 procedure StartServer;
@@ -25,7 +25,7 @@ end;
 
 begin
   try
-    StartServer;
+%INSTALL_CODE%    StartServer;
   except
     on E: Exception do
       Writeln(ErrOutput, E.ClassName, ': ', E.Message);

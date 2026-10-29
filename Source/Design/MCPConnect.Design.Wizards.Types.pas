@@ -104,6 +104,13 @@ type
 
     CreateSampleUnit: Boolean;
 
+    /// <summary>
+    ///   Handles the /mcp:install, /mcp:uninstall, ... switches (TMCPInstaller),
+    ///   which register the server in the MCP agents of the machine. Console
+    ///   hosts only, see CanSelfInstall
+    /// </summary>
+    SelfInstall: Boolean;
+
     class function CreateDefault: TMCPProjectConfig; static;
 
     /// <summary>
@@ -122,6 +129,12 @@ type
     ///   True when the token location needs an explicit header or cookie name
     /// </summary>
     function TokenNeedsCustomHeader: Boolean;
+
+    /// <summary>
+    ///   The installer writes its report to the console, so only a console
+    ///   host can install itself
+    /// </summary>
+    function CanSelfInstall: Boolean;
   end;
 
 implementation
@@ -155,6 +168,12 @@ begin
   Result.LegacyCompatibility := False;
 
   Result.CreateSampleUnit := True;
+  Result.SelfInstall := True;
+end;
+
+function TMCPProjectConfig.CanSelfInstall: Boolean;
+begin
+  Result := AppKind = TMCPAppKind.Console;
 end;
 
 function TMCPProjectConfig.IsHttpTransport: Boolean;

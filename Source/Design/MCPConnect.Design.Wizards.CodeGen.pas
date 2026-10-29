@@ -35,6 +35,11 @@ type
     class function IndentLines(const AText: string; ALevel: Integer): string; static;
     class function TokenLocationLiteral(ALocation: TMCPTokenLocation): string; static;
     class function TokenValidatorClass(const AConfig: TMCPProjectConfig): string; static;
+    /// <summary>
+    ///   Pascal expression of the url the agents connect to, built on the
+    ///   ServerPort constant that every HTTP console template declares
+    /// </summary>
+    class function InstallUrl(const AConfig: TMCPProjectConfig): string; static;
   public
     /// <summary>
     ///   Returns the MCPConnect uses entries needed by the generated
@@ -49,6 +54,21 @@ type
     /// </summary>
     class function BuildConfigCode(const AConfig: TMCPProjectConfig;
       const AReceiver: string; AIndent: Integer): string; static;
+
+    /// <summary>
+    ///   Returns the uses entries of the self-installation, each preceded by a
+    ///   comma, to be appended to the last unit of a uses clause. Empty when
+    ///   the self-installation is off.
+    /// </summary>
+    class function BuildInstallUses(const AConfig: TMCPProjectConfig): string; static;
+
+    /// <summary>
+    ///   Returns the code handling the self-installation switches, indented by
+    ///   AIndent levels and followed by a blank line, to be put before the line
+    ///   starting the server. Empty when the self-installation is off.
+    /// </summary>
+    class function BuildInstallCode(const AConfig: TMCPProjectConfig;
+      AIndent: Integer): string; static;
   end;
 
 implementation
@@ -110,6 +130,24 @@ begin
     Result := 'TJoseTokenValidator'
   else
     Result := 'TClaimsTokenValidator';
+end;
+
+class function TMCPCodeGen.InstallUrl(const AConfig: TMCPProjectConfig): string;
+var
+  LPath: string;
+begin
+  // The Indy server answers on any path, the WebBroker one on its path info only
+  if AConfig.Transport = TMCPTransportKind.WebBroker then
+    LPath := AConfig.McpPath
+  else
+    LPath := TMCPProjectConfig.DefaultMcpPath;
+  if not LPath.StartsWith('/') then
+    LPath := '/' + LPath;
+
+  // A Pascal expression built on the ServerPort constant of the generated
+  // project, so that changing the port there updates the registered url too
+  Result := 'Format(' + QuotedPascalString('http://localhost:%d' +
+    StringReplace(LPath, '%', '%%', [rfReplaceAll])) + ', [ServerPort])';
 end;
 
 class function TMCPCodeGen.QuotedPascalString(const AValue: string): string;
@@ -290,6 +328,51 @@ begin
 
     Result := Result + ';';
     Result := IndentLines(Result, AIndent).TrimRight;
+  finally
+    LCode.Free;
+  end;
+end;
+
+class function TMCPCodeGen.BuildInstallUses(const AConfig: TMCPProjectConfig): string;
+begin
+  if not AConfig.SelfInstall or not AConfig.CanSelfInstall then
+    Exit('');
+
+  Result := ',' + sLineBreak + '  MCPConnect.Install,' + sLineBreak + '  MCPConnect.Install.Agents';
+end;
+
+class function TMCPCodeGen.BuildInstallCode(const AConfig: TMCPProjectConfig;
+  AIndent: Integer): string;
+var
+  LCode: TStringBuilder;
+begin
+  if not AConfig.SelfInstall or not AConfig.CanSelfInstall then
+    Exit('');
+
+  LCode := TStringBuilder.Create;
+  try
+    if AConfig.IsHttpTransport then
+    begin
+      // An HTTP server is registered by url: the agents connect to it while
+      // it runs, they do not start it
+      LCode.AppendLine('// "/mcp:install" registers the url of this server in the MCP agents');
+      LCode.AppendLine('// found on the machine (/mcp:help for the options): handle it before');
+      LCode.AppendLine('// starting the server, and stop there when it was an install command');
+      LCode.AppendLine('TMCPInstaller.Config');
+      LCode.AppendLine('  .SetTransport(TMCPInstallTransport.Http)');
+      LCode.AppendLine('  .SetUrl(' + InstallUrl(AConfig) + ');');
+    end
+    else
+    begin
+      LCode.AppendLine('// "/mcp:install" registers this server in the MCP agents found on the');
+      LCode.AppendLine('// machine (/mcp:help for the options): handle it before starting the');
+      LCode.AppendLine('// server, and stop there when it was an install command');
+    end;
+    LCode.AppendLine('if TMCPInstaller.HandleCommandLine then');
+    LCode.AppendLine('  Exit;');
+    LCode.AppendLine('');
+
+    Result := IndentLines(LCode.ToString, AIndent);
   finally
     LCode.Free;
   end;

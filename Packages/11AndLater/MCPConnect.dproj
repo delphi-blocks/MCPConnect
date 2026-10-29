@@ -161,6 +161,8 @@
         <DCCReference Include="..\..\Source\MCPConnect.Transport.Base.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Transport.Indy.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Transport.Stdio.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Install.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Install.Agents.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Transport.WebBroker.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>

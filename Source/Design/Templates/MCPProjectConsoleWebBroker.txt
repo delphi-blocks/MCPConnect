@@ -8,7 +8,7 @@ uses
   System.SysUtils,
   Web.WebReq,
   Web.WebBroker,
-  IdHTTPWebBrokerBridge;
+  IdHTTPWebBrokerBridge%INSTALL_UNITS%;
 
 const
   ServerPort = %SERVER_PORT%;
@@ -35,7 +35,7 @@ end;
 
 begin
   try
-    if WebRequestHandler <> nil then
+%INSTALL_CODE%    if WebRequestHandler <> nil then
       WebRequestHandler.WebModuleClass := WebModuleClass;
     RunServer;
   except

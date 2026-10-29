@@ -546,6 +546,35 @@ object FormMCPProjectWizard: TFormMCPProjectWizard
           OnClick = OptionChanged
         end
       end
+      object GroupInstall: TGroupBox
+        Left = 16
+        Top = 262
+        Width = 385
+        Height = 113
+        Caption = ' Installation '
+        TabOrder = 2
+        object LabelInstallHint: TLabel
+          Left = 34
+          Top = 60
+          Width = 335
+          Height = 45
+          AutoSize = False
+          Caption =
+            'Handles the /mcp:install, /mcp:uninstall and /mcp:status switch' +
+            'es, which register the server in the MCP agents found on the mac' +
+            'hine. Console applications only.'
+          WordWrap = True
+        end
+        object CheckSelfInstall: TCheckBox
+          Left = 16
+          Top = 36
+          Width = 353
+          Height = 17
+          Caption = 'Install the server in the MCP agents from the command line'
+          TabOrder = 0
+          OnClick = OptionChanged
+        end
+      end
     end
     object TabSummary: TTabSheet
       Caption = 'Summary'

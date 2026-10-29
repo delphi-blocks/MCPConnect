@@ -7,7 +7,7 @@ program %PROJECT_NAME%;
 uses
   System.SysUtils,
   MCPConnect.MCP.Server,
-  MCPConnect.Transport.Indy,
+  MCPConnect.Transport.Indy%INSTALL_UNITS%,
 %EXTRA_UNITS%
 
 const
@@ -36,7 +36,7 @@ end;
 
 begin
   try
-    RunServer;
+%INSTALL_CODE%    RunServer;
   except
     on E: Exception do
       Writeln(ErrOutput, E.ClassName, ': ', E.Message);

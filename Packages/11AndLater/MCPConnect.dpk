@@ -103,6 +103,8 @@ contains
   MCPConnect.Transport.Base in '..\..\Source\MCPConnect.Transport.Base.pas',
   MCPConnect.Transport.Indy in '..\..\Source\MCPConnect.Transport.Indy.pas',
   MCPConnect.Transport.Stdio in '..\..\Source\MCPConnect.Transport.Stdio.pas',
+  MCPConnect.Install in '..\..\Source\MCPConnect.Install.pas',
+  MCPConnect.Install.Agents in '..\..\Source\MCPConnect.Install.Agents.pas',
   MCPConnect.Transport.WebBroker in '..\..\Source\MCPConnect.Transport.WebBroker.pas';
 
 end.

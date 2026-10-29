@@ -98,6 +98,9 @@ type
     GroupCompatibility: TGroupBox;
     CheckLegacy: TCheckBox;
     LabelLegacyWarning: TLabel;
+    GroupInstall: TGroupBox;
+    CheckSelfInstall: TCheckBox;
+    LabelInstallHint: TLabel;
 
     TabSummary: TTabSheet;
     MemoSummary: TMemo;
@@ -153,7 +156,7 @@ resourcestring
   STitleSecurity = 'Security';
   SHintSecurity = 'Cross origin policy and authentication of incoming requests.';
   STitleOptions = 'Options';
-  SHintOptions = 'Sample code and compatibility with older clients.';
+  SHintOptions = 'Sample code, compatibility with older clients and installation in the MCP agents.';
   STitleSummary = 'Summary';
   SHintSummary = 'Review the choices, then press Finish to create the project.';
 
@@ -272,6 +275,7 @@ begin
 
   CheckSamples.Checked := FConfig.CreateSampleUnit;
   CheckLegacy.Checked := FConfig.LegacyCompatibility;
+  CheckSelfInstall.Checked := FConfig.SelfInstall;
 
   UpdateControlsState;
   UpdateNavigation;
@@ -310,6 +314,9 @@ begin
 
   FConfig.CreateSampleUnit := CheckSamples.Checked;
   FConfig.LegacyCompatibility := CheckLegacy.Checked;
+  // The check box keeps its state while disabled, so that switching the
+  // application type back and forth does not lose the choice
+  FConfig.SelfInstall := CheckSelfInstall.Checked and FConfig.CanSelfInstall;
 end;
 
 function TFormMCPProjectWizard.SelectedAppKind: TMCPAppKind;
@@ -501,6 +508,10 @@ begin
   LabelMcpPath.Enabled := LIsWebBroker;
   EditMcpPath.Enabled := LIsWebBroker;
 
+  // The installer reports to the console: other hosts cannot install themselves
+  CheckSelfInstall.Enabled := LIsConsole;
+  LabelInstallHint.Enabled := LIsConsole;
+
   LabelServiceName.Visible := SelectedAppKind = TMCPAppKind.Service;
   EditServiceName.Visible := LabelServiceName.Visible;
 
@@ -613,6 +624,8 @@ begin
     LLines.Add('Legacy clients  : ' + OnOff(FConfig.LegacyCompatibility));
     if FConfig.LegacyCompatibility then
       LLines.Add('  (subset of the features only)');
+    if FConfig.CanSelfInstall then
+      LLines.Add('Self-install  . : ' + OnOff(FConfig.SelfInstall));
   finally
     LLines.EndUpdate;
   end;

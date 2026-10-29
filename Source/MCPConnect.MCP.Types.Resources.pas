@@ -173,22 +173,38 @@ type
     procedure AddSiteException(const ASite: string);
   end;
 
+  /// <summary>
+  ///   Browser capabilities the page asks the host for (camera, microphone, ...).
+  /// </summary>
+  /// <remarks>
+  ///   The specification models a request as an empty object - {"geolocation": {}} -
+  ///   so a capability is requested by assigning an object to it and left nil
+  ///   otherwise. The instance owns what is assigned and frees it with itself.
+  /// </remarks>
   TUIResourcePermissions = class
   public
-    [NeonInclude(IncludeIf.NotEmpty)] Camera: TJSONObject;
-    [NeonInclude(IncludeIf.NotEmpty)] Microphone: TJSONObject;
-    [NeonInclude(IncludeIf.NotEmpty)] Geolocation: TJSONObject;
-    [NeonInclude(IncludeIf.NotEmpty)] ClipboardWrite: TJSONObject;
+    Camera: TJSONObject;
+    Microphone: TJSONObject;
+    Geolocation: TJSONObject;
+    ClipboardWrite: TJSONObject;
   public
     constructor Create;
     destructor Destroy; override;
 
+    /// <summary>
+    ///   Builds the spec representation, one object per requested capability, empty
+    ///   unless the caller put options in it. Returns nil when nothing is requested,
+    ///   so the caller can leave the "permissions" member out.
+    /// </summary>
+    function ToJSON: TJSONObject;
   end;
 
   TUIResourceUI = class
   public
     [NeonInclude(IncludeIf.NotEmpty)] Csp: TUIResourceCSP;
-    [NeonInclude(IncludeIf.NotEmpty)] Permissions: TUIResourcePermissions;
+    // Permissions are written by ToJSON: Neon drops empty objects, and an empty
+    // object is exactly how the spec represents a requested permission.
+    [NeonIgnore] Permissions: TUIResourcePermissions;
     Domain: NullString;
     PrefersBorder: NullBoolean;
   public
@@ -410,12 +426,22 @@ begin
       Exit(par);
 end;
 
+procedure AddPermission(const AName: string; const AValue: TJSONObject; const AResult: TJSONObject);
+begin
+  if not Assigned(AValue) then
+    Exit;
+
+  // The spec represents a requested permission as an object with no members;
+  // anything the caller put in it is kept for the options it may grow later.
+  if AValue.Count > 0 then
+    AResult.AddPair(AName, AValue.Clone as TJSONObject)
+  else
+    AResult.AddPair(AName, TJSONObject.Create);
+end;
+
 constructor TUIResourcePermissions.Create;
 begin
-  Camera := TJSONObject.Create;
-  Microphone := TJSONObject.Create;
-  Geolocation := TJSONObject.Create;
-  ClipboardWrite := TJSONObject.Create;
+  // Nothing is requested by default: assign an object to ask for a capability
 end;
 
 destructor TUIResourcePermissions.Destroy;
@@ -426,6 +452,21 @@ begin
   ClipboardWrite.Free;
 
   inherited;
+end;
+
+function TUIResourcePermissions.ToJSON: TJSONObject;
+begin
+  Result := nil;
+
+  if not (Assigned(Camera) or Assigned(Microphone) or
+    Assigned(Geolocation) or Assigned(ClipboardWrite)) then
+    Exit;
+
+  Result := TJSONObject.Create;
+  AddPermission('camera', Camera, Result);
+  AddPermission('microphone', Microphone, Result);
+  AddPermission('geolocation', Geolocation, Result);
+  AddPermission('clipboardWrite', ClipboardWrite, Result);
 end;
 
 { TUIResourceUI }
@@ -445,8 +486,17 @@ begin
 end;
 
 function TUIResourceUI.ToJSON: TJSONObject;
+var
+  LPermissions: TJSONObject;
 begin
   Result := TNeon.ObjectToJSON(Self, MCPNeonConfig) as TJSONObject;
+
+  if Assigned(Permissions) then
+  begin
+    LPermissions := Permissions.ToJSON;
+    if Assigned(LPermissions) then
+      Result.AddPair('permissions', LPermissions);
+  end;
 end;
 
 { TUIResourceCSP }

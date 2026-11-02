@@ -946,6 +946,14 @@ begin
       for var tag in LToolAttr.Tags.TagMap do
         LTool.Tags.TagMap.Add(tag.Key, tag.Value);
 
+      // The [McpApp] tags apply to the tool too. They go on the tool, not on the
+      // attribute (RTTI caches attributes for the process lifetime); on a clash
+      // the [McpTool] tags win, and 'app' always comes from the UI uri
+      if Assigned(LAppAttr) then
+        for var tag in LAppAttr.Tags.TagMap do
+          if not LTool.Tags.TagMap.ContainsKey(tag.Key) then
+            LTool.Tags.TagMap.Add(tag.Key, tag.Value);
+
       // Fill the tool's parameters
       for var par in LMethod.GetParameters do
       begin
@@ -1435,6 +1443,9 @@ begin
     LRes.ResourceClass := AClass;
     LRes.Method := AMethod;
     LRes.RequiredScopes := GetRequiredScopes(AClass, AMethod);
+    LRes.Tags.Parse(AAttr.AdditionalTags);
+    LRes.Category := LRes.Tags.GetValueAs<string>('category');
+    LRes.Disabled := LRes.Tags.GetBoolValue('disabled');
 
     Registry.Add(LRes.Uri, LRes);
   except
@@ -1462,6 +1473,9 @@ begin
     LRes.ResourceClass := AClass;
     LRes.Method := AMethod;
     LRes.RequiredScopes := GetRequiredScopes(AClass, AMethod);
+    LRes.Tags.Parse(AAttr.AdditionalTags);
+    LRes.Category := LRes.Tags.GetValueAs<string>('category');
+    LRes.Disabled := LRes.Tags.GetBoolValue('disabled');
     Registry.Add(LRes.Uri, LRes);
   except
     LRes.Free;
@@ -1658,6 +1672,9 @@ begin
     LTpl.ResourceClass := AClass;
     LTpl.Method := AMethod;
     LTpl.RequiredScopes := GetRequiredScopes(AClass, AMethod);
+    LTpl.Tags.Parse(AAttr.AdditionalTags);
+    LTpl.Category := LTpl.Tags.GetValueAs<string>('category');
+    LTpl.Disabled := LTpl.Tags.GetBoolValue('disabled');
 
     for var par in AMethod.GetParameters do
     begin

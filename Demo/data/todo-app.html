@@ -98,45 +98,47 @@
     <script>
 let _reqId = 1;
 const _pending = {};
+let _gotToolResult = false;
+
+// Joins the text items of a CallToolResult
+function resultText(result) {
+  if (!result || !result.content) return '';
+  return result.content.map(c => c.text || '').join('');
+}
 
 window.addEventListener('message', (event) => {
+  // The page cannot know the host's origin in advance (hence '*' when posting),
+  // so accept messages only from the frame that embeds us
+  if (event.source !== window.parent) return;
+
   const msg = event.data;
   if (!msg || msg.jsonrpc !== '2.0') return;
 
+  // The host's reply to ui/initialize
   if (msg.id === 'init') {
     window.parent.postMessage({
       jsonrpc: '2.0',
       method: 'ui/notifications/initialized',
       params: {}
     }, '*');
-    refreshTasks();
+    // The host now sends the list_tasks result (ui/notifications/tool-result).
+    // Fall back to asking for it ourselves if it never arrives.
+    setTimeout(() => { if (!_gotToolResult) refreshTasks(); }, 1500);
     return;
   }
 
+  // The result of the tool call that opened the page
   if (msg.method === 'ui/notifications/tool-result') {
-    const r = msg.params;
-    const reqId = r.requestId || r._requestId;
-    const cb = _pending[reqId];
-    if (cb) {
-      delete _pending[reqId];
-      let text = '';
-      if (r.content && r.content.length > 0) {
-        text = r.content.map(c => c.text || '').join('');
-      }
-      cb(text);
-    }
+    _gotToolResult = true;
+    renderTasks(parseTasks(resultText(msg.params)));
     return;
   }
 
-  if (msg.id && _pending[msg.id]) {
-    // Direct response
-    const cb = _pending[msg.id];
+  // The response to one of our own tools/call requests
+  if (msg.id !== undefined && _pending[msg.id]) {
+    const resolve = _pending[msg.id];
     delete _pending[msg.id];
-    let text = '';
-    if (msg.result && msg.result.content) {
-      text = msg.result.content.map(c => c.text || '').join('');
-    }
-    cb(text);
+    resolve(resultText(msg.result));
   }
 });
 
@@ -145,8 +147,10 @@ window.parent.postMessage({
   id: 'init',
   method: 'ui/initialize',
   params: {
+    // MCP Apps protocol version, not the core MCP one
+    protocolVersion: '2026-01-26',
     appInfo: { name: 'Todo App', version: '1.0.0' },
-    capabilities: {}
+    appCapabilities: {}
   }
 }, '*');
 

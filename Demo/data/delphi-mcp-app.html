@@ -17,6 +17,9 @@ let _reqId = 1;
 
 // 1. Listen for messages from the host
 window.addEventListener('message', (event) => {
+  // Accept messages only from the frame that embeds us
+  if (event.source !== window.parent) return;
+
   const msg = event.data;
   if (!msg || msg.jsonrpc !== '2.0') return;
 
@@ -44,8 +47,10 @@ window.parent.postMessage({
   id: 'init',
   method: 'ui/initialize',
   params: {
+    // MCP Apps protocol version, not the core MCP one
+    protocolVersion: '2026-01-26',
     appInfo: { name: 'My App', version: '1.0.0' },
-    capabilities: {}
+    appCapabilities: {}
   }
 }, '*');	
 	

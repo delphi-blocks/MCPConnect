@@ -220,6 +220,9 @@ type
     procedure TestRegisterUI_UIConfigCallbackWritesMeta;
     [Test]
     procedure TestRegisterUI_PermissionsArePublishedAsEmptyObjects;
+
+    [Test]
+    procedure TestRegisterUI_UnsetSectionsAreOmitted;
     [Test]
     procedure TestRegisterUI_NoPermissionsMemberWhenNothingRequested;
     [Test]
@@ -1011,6 +1014,30 @@ begin
   LUIMeta := LApp.Meta.GetValue('ui') as TJSONObject;
   Assert.IsNotNull(LUIMeta, 'Meta should carry a "ui" object once the AUIConfig callback sets a value');
   Assert.AreEqual('example.com', (LUIMeta.GetValue('domain') as TJSONString).Value);
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterUI_UnsetSectionsAreOmitted;
+var
+  LApp: TMCPResource;
+begin
+  // The configuration shown in the MCP Apps article: CSP directives, domain and
+  // permissions that are never set must not appear in _meta.ui at all
+  FConfig.Resources.RegisterUI(TManualUIClass, 'ShowWidget', 'dashboard', 'ui://ops/dashboard',
+    'Live warehouse dashboard', '',
+    procedure(AResource: TMCPResource; AUI: TUIResourceUI)
+    begin
+      AUI.Csp.ConnectDomains  := ['https://api.example.com', 'wss://events.example.com'];
+      AUI.Csp.ResourceDomains := ['https://cdn.jsdelivr.net'];
+      AUI.Permissions.Geolocation := TJSONObject.Create;
+      AUI.PrefersBorder := True;
+    end);
+
+  LApp := FConfig.Resources.Registry['ui://ops/dashboard'];
+  Assert.AreEqual(
+    '{"ui":{"csp":{"connectDomains":["https://api.example.com","wss://events.example.com"],' +
+    '"resourceDomains":["https://cdn.jsdelivr.net"]},"prefersBorder":true,' +
+    '"permissions":{"geolocation":{}}}}',
+    LApp.Meta.ToJSON);
 end;
 
 procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterUI_PermissionsArePublishedAsEmptyObjects;

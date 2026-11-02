@@ -39,6 +39,7 @@ uses
   Logify.Adapter.Debug,
 
   MCPServer.Resources,
+  MCPServer.Apps,
   MCPServer.Tools,
   MCPServer.Tools.Mrtr,
   MCPServer.Prompts,
@@ -76,6 +77,7 @@ begin
 
       .Resources
         .RegisterClass(TTodoResources)
+        .RegisterClass(TTodoAppUI)     // the ui:// app linked from list_tasks
       .BackToMCP
 
       .Prompts
@@ -113,6 +115,7 @@ begin
 
   .Resources
     .UnregisterClass(TTodoResources)
+    .UnregisterClass(TTodoAppUI)
   .BackToMCP
 
   .Prompts

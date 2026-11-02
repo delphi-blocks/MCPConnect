@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Todo List</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #fff;
+        --fg: #1a1a1a;
+        --border: #ddd;
+        --badge-pending-bg: #fff3cd;
+        --badge-pending-fg: #856404;
+        --badge-done-bg: #d4edda;
+        --badge-done-fg: #155724;
+        --card-bg: #f8f9fa;
+        --btn-bg: #0d6efd;
+        --btn-fg: #fff;
+        --btn-danger-bg: #dc3545;
+        --btn-success-bg: #198754;
+        --empty-fg: #888;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #1e1e1e;
+          --fg: #e0e0e0;
+          --border: #444;
+          --badge-pending-bg: #4a3d00;
+          --badge-pending-fg: #ffc107;
+          --badge-done-bg: #0d3320;
+          --badge-done-fg: #75d99a;
+          --card-bg: #2a2a2a;
+          --btn-bg: #3b82f6;
+          --btn-fg: #fff;
+          --btn-danger-bg: #b91c1c;
+          --btn-success-bg: #15803d;
+          --empty-fg: #777;
+        }
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 1.5rem 1rem;
+      }
+      h1 { font-size: 1.4rem; margin-bottom: 1rem; }
+      .task-list { list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }
+      .task-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem;
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+      }
+      .task-title { flex: 1; font-weight: 500; }
+      .task-desc { font-size: 0.85rem; color: var(--empty-fg); margin-top: 0.15rem; font-weight: normal; }
+      .badge {
+        font-size: 0.7rem;
+        font-weight: 600;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      .badge-pending { background: var(--badge-pending-bg); color: var(--badge-pending-fg); }
+      .badge-done { background: var(--badge-done-bg); color: var(--badge-done-fg); }
+      .btn {
+        border: none;
+        padding: 0.3rem 0.6rem;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.8rem;
+        color: var(--btn-fg);
+      }
+      .btn-complete { background: var(--btn-success-bg); }
+      .btn-delete { background: var(--btn-danger-bg); }
+      .btn:hover { opacity: 0.85; }
+      .empty-msg { text-align: center; padding: 2rem; color: var(--empty-fg); }
+      .toolbar { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+      .toolbar button {
+        background: var(--btn-bg);
+        color: var(--btn-fg);
+        border: none;
+        padding: 0.4rem 0.8rem;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.85rem;
+      }
+      .toolbar button:hover { opacity: 0.85; }
+      .spinner { display: none; text-align: center; padding: 2rem; color: var(--empty-fg); }
+    </style>
+    <script>
+let _reqId = 1;
+const _pending = {};
+let _gotToolResult = false;
+
+// Joins the text items of a CallToolResult
+function resultText(result) {
+  if (!result || !result.content) return '';
+  return result.content.map(c => c.text || '').join('');
+}
+
+window.addEventListener('message', (event) => {
+  // The page cannot know the host's origin in advance (hence '*' when posting),
+  // so accept messages only from the frame that embeds us
+  if (event.source !== window.parent) return;
+
+  const msg = event.data;
+  if (!msg || msg.jsonrpc !== '2.0') return;
+
+  // The host's reply to ui/initialize
+  if (msg.id === 'init') {
+    window.parent.postMessage({
+      jsonrpc: '2.0',
+      method: 'ui/notifications/initialized',
+      params: {}
+    }, '*');
+    // The host now sends the list_tasks result (ui/notifications/tool-result).
+    // Fall back to asking for it ourselves if it never arrives.
+    setTimeout(() => { if (!_gotToolResult) refreshTasks(); }, 1500);
+    return;
+  }
+
+  // The result of the tool call that opened the page
+  if (msg.method === 'ui/notifications/tool-result') {
+    _gotToolResult = true;
+    renderTasks(parseTasks(resultText(msg.params)));
+    return;
+  }
+
+  // The response to one of our own tools/call requests
+  if (msg.id !== undefined && _pending[msg.id]) {
+    const resolve = _pending[msg.id];
+    delete _pending[msg.id];
+    resolve(resultText(msg.result));
+  }
+});
+
+window.parent.postMessage({
+  jsonrpc: '2.0',
+  id: 'init',
+  method: 'ui/initialize',
+  params: {
+    // MCP Apps protocol version, not the core MCP one
+    protocolVersion: '2026-01-26',
+    appInfo: { name: 'Todo App', version: '1.0.0' },
+    appCapabilities: {}
+  }
+}, '*');
+
+function callTool(name, args) {
+  return new Promise((resolve) => {
+    const id = String(_reqId++);
+    _pending[id] = resolve;
+    window.parent.postMessage({
+      jsonrpc: '2.0',
+      id: id,
+      method: 'tools/call',
+      params: { name: name, arguments: args }
+    }, '*');
+  });
+}
+
+function parseTasks(text) {
+  const tasks = [];
+  const lines = text.split('\n');
+  for (const line of lines) {
+    const m = line.match(/^\s*#(\d+)\s+\[(PENDING|DONE)\]\s+(.+)/);
+    if (m) {
+      const task = { id: parseInt(m[1]), status: m[2], title: m[3].trim() };
+      tasks.push(task);
+    }
+  }
+  return tasks;
+}
+
+// Task titles come from the model (add_task) and end up in innerHTML below:
+// anything interpolated raw could carry markup, so escape it first.
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[c]);
+}
+
+function renderTasks(tasks) {
+  const list = document.getElementById('task-list');
+  const spinner = document.getElementById('spinner');
+  spinner.style.display = 'none';
+
+  if (tasks.length === 0) {
+    list.innerHTML = '<li class="empty-msg">No tasks yet.</li>';
+    return;
+  }
+
+  list.innerHTML = tasks.map(t => {
+    const badgeClass = t.status === 'DONE' ? 'badge-done' : 'badge-pending';
+    const label = t.status === 'DONE' ? 'Done' : 'Pending';
+    const actions = t.status === 'PENDING'
+      ? `<button class="btn btn-complete" onclick="completeTask(${t.id})">&#10003;</button>`
+      : '';
+    return `<li class="task-item">
+      <div class="task-title">#${t.id} ${escapeHtml(t.title)}</div>
+      <span class="badge ${badgeClass}">${label}</span>
+      ${actions}
+      <button class="btn btn-delete" onclick="deleteTask(${t.id})">&#10005;</button>
+    </li>`;
+  }).join('');
+}
+
+async function refreshTasks() {
+  const spinner = document.getElementById('spinner');
+  spinner.style.display = 'block';
+  const text = await callTool('list_tasks', {});
+  const tasks = parseTasks(text);
+  renderTasks(tasks);
+}
+
+async function completeTask(id) {
+  await callTool('complete_task', { task_id: id });
+  refreshTasks();
+}
+
+async function deleteTask(id) {
+  await callTool('delete_task', { task_id: id });
+  refreshTasks();
+}
+    </script>
+  </head>
+  <body>
+    <h1>Todo List</h1>
+    <div class="toolbar">
+      <button onclick="refreshTasks()">Refresh</button>
+    </div>
+    <div id="spinner" class="spinner">Loading tasks...</div>
+    <ul id="task-list" class="task-list"></ul>
+  </body>
+</html>

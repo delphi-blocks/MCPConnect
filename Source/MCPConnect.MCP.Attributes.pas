@@ -296,6 +296,7 @@ constructor MCPAppAttribute.Create(const AUI, AAdditionalTags: string);
 begin
   inherited Create;
   FUI := AUI;
+  FAdditionalTags := AAdditionalTags;
 end;
 
 { MCPPromptAttribute }

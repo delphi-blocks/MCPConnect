@@ -1723,6 +1723,14 @@ begin
       for var tag in LToolAttr.Tags.TagMap do
         LTool.Tags.TagMap.Add(tag.Key, tag.Value);
 
+      // The [McpApp] tags apply to the tool too. They go on the tool, not on the
+      // attribute (RTTI caches attributes for the process lifetime); on a clash
+      // the [McpTool] tags win, and 'app' always comes from the UI uri
+      if Assigned(LAppAttr) then
+        for var tag in LAppAttr.Tags.TagMap do
+          if not LTool.Tags.TagMap.ContainsKey(tag.Key) then
+            LTool.Tags.TagMap.Add(tag.Key, tag.Value);
+
       // Fill the tool's parameters
       for var par in LMethod.GetParameters do
       begin

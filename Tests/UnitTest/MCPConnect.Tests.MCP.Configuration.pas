@@ -59,6 +59,14 @@ type
     function ShowApp: string;
   end;
 
+  // [McpApp] carrying its own tags, one of which clashes with the [McpTool] ones
+  TTaggedAppToolClass = class
+  public
+    [McpTool('tagged_app_tool', 'A tool with a tagged UI', 'category=tool')]
+    [McpApp('ui://test/tagged-app', 'category=app,readonly')]
+    function ShowApp: string;
+  end;
+
   [TestFixture]
   TMCPToolsConfigRegisterToolTest = class(TObject)
   private
@@ -99,6 +107,9 @@ type
 
     [Test]
     procedure TestRegisterClass_SameClassTwiceWithAppAttributeDoesNotRaise;
+
+    [Test]
+    procedure TestRegisterClass_AppAttributeTagsApplyToTool;
 
     [Test]
     procedure TestUnregisterTool_RemovesToolFromRegistry;
@@ -156,6 +167,19 @@ type
     function GetAttrRes: string;
   end;
 
+  // Attribute-based resource, template and App UI, each carrying tags
+  TTaggedAttrResourceClass = class
+  public
+    [McpResource('tagged_res', 'res://tagged', 'text/plain', 'A tagged resource', 'category=docs')]
+    function GetRes: string;
+
+    [McpTemplate('tagged_tpl', 'res://tagged/{id}', 'text/plain', 'A tagged template', 'category=items,disabled')]
+    function GetItem([McpParam('id', 'Item id')] const AId: string): string;
+
+    [McpAppUI('tagged_ui', 'ui://tagged', 'A tagged App UI', 'category=apps,disabled')]
+    function GetUI: string;
+  end;
+
   [TestFixture]
   TMCPResourcesConfigRegisterResourceTest = class(TObject)
   private
@@ -195,6 +219,9 @@ type
     procedure TestRegisterUI_UIConfigCallbackWritesMeta;
     [Test]
     procedure TestRegisterUI_PermissionsArePublishedAsEmptyObjects;
+
+    [Test]
+    procedure TestRegisterUI_UnsetSectionsAreOmitted;
     [Test]
     procedure TestRegisterUI_NoPermissionsMemberWhenNothingRequested;
     [Test]
@@ -229,6 +256,9 @@ type
     procedure TestUnregisterClass_NoMatchingResourcesIsNoOp;
     [Test]
     procedure TestUnregisterClass_WorksForAttributeRegisteredResources;
+
+    [Test]
+    procedure TestRegisterClass_AttributeTagsApplyCategoryAndDisabled;
 
     [Test]
     procedure TestClearAll_RemovesAllResourcesAndTemplatesFromRegistries;
@@ -374,6 +404,13 @@ end;
 { TAppToolClass }
 
 function TAppToolClass.ShowApp: string;
+begin
+  Result := 'app';
+end;
+
+{ TTaggedAppToolClass }
+
+function TTaggedAppToolClass.ShowApp: string;
 begin
   Result := 'app';
 end;
@@ -650,6 +687,20 @@ begin
   end;
 end;
 
+procedure TMCPToolsConfigRegisterToolTest.TestRegisterClass_AppAttributeTagsApplyToTool;
+var
+  LTool: TMCPTool;
+begin
+  FConfig.Tools.RegisterClass(TTaggedAppToolClass);
+
+  LTool := FConfig.Tools.Registry['tagged_app_tool'];
+  Assert.AreEqual('ui://test/tagged-app', LTool.UI.ResourceUri.Value);
+  // A tag only [McpApp] carries reaches the tool...
+  Assert.IsTrue(LTool.Annotations.ReadOnlyHint.HasValue and LTool.Annotations.ReadOnlyHint.Value);
+  // ...but on a clash the [McpTool] tag wins
+  Assert.AreEqual('tool', LTool.Category);
+end;
+
 procedure TMCPToolsConfigRegisterToolTest.TestUnregisterTool_RemovesToolFromRegistry;
 begin
   FConfig.Tools.RegisterTool(TManualToolClass, 'NoParams', 'no_params', 'y').EndTool;
@@ -807,6 +858,23 @@ end;
 function TAttrResourceClass.GetAttrRes: string;
 begin
   Result := 'attr resource contents';
+end;
+
+{ TTaggedAttrResourceClass }
+
+function TTaggedAttrResourceClass.GetRes: string;
+begin
+  Result := 'res';
+end;
+
+function TTaggedAttrResourceClass.GetItem(const AId: string): string;
+begin
+  Result := AId;
+end;
+
+function TTaggedAttrResourceClass.GetUI: string;
+begin
+  Result := '<html></html>';
 end;
 
 { TMCPResourcesConfigRegisterResourceTest }
@@ -977,6 +1045,30 @@ begin
   LUIMeta := LApp.Meta.GetValue('ui') as TJSONObject;
   Assert.IsNotNull(LUIMeta, 'Meta should carry a "ui" object once the AUIConfig callback sets a value');
   Assert.AreEqual('example.com', (LUIMeta.GetValue('domain') as TJSONString).Value);
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterUI_UnsetSectionsAreOmitted;
+var
+  LApp: TMCPResource;
+begin
+  // The configuration shown in the MCP Apps article: CSP directives, domain and
+  // permissions that are never set must not appear in _meta.ui at all
+  FConfig.Resources.RegisterUI(TManualUIClass, 'ShowWidget', 'dashboard', 'ui://ops/dashboard',
+    'Live warehouse dashboard', '',
+    procedure(AResource: TMCPResource; AUI: TUIResourceUI)
+    begin
+      AUI.Csp.ConnectDomains  := ['https://api.example.com', 'wss://events.example.com'];
+      AUI.Csp.ResourceDomains := ['https://cdn.jsdelivr.net'];
+      AUI.Permissions.Geolocation := TJSONObject.Create;
+      AUI.PrefersBorder := True;
+    end);
+
+  LApp := FConfig.Resources.Registry['ui://ops/dashboard'];
+  Assert.AreEqual(
+    '{"ui":{"csp":{"connectDomains":["https://api.example.com","wss://events.example.com"],' +
+    '"resourceDomains":["https://cdn.jsdelivr.net"]},"prefersBorder":true,' +
+    '"permissions":{"geolocation":{}}}}',
+    LApp.Meta.ToJSON);
 end;
 
 procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterUI_PermissionsArePublishedAsEmptyObjects;
@@ -1224,6 +1316,26 @@ begin
   FConfig.Resources.UnregisterClass(TAttrResourceClass);
 
   Assert.IsFalse(FConfig.Resources.Registry.ContainsKey('res://attr'));
+end;
+
+procedure TMCPResourcesConfigRegisterResourceTest.TestRegisterClass_AttributeTagsApplyCategoryAndDisabled;
+var
+  LRes, LUI: TMCPResource;
+  LTpl: TMCPResourceTemplate;
+begin
+  FConfig.Resources.RegisterClass(TTaggedAttrResourceClass);
+
+  LRes := FConfig.Resources.Registry['res://tagged'];
+  Assert.AreEqual('docs', LRes.Category);
+  Assert.IsFalse(LRes.Disabled);
+
+  LTpl := FConfig.Resources.TemplateRegistry['res://tagged/{id}'];
+  Assert.AreEqual('items', LTpl.Category);
+  Assert.IsTrue(LTpl.Disabled);
+
+  LUI := FConfig.Resources.Registry['ui://tagged'];
+  Assert.AreEqual('apps', LUI.Category);
+  Assert.IsTrue(LUI.Disabled);
 end;
 
 procedure TMCPResourcesConfigRegisterResourceTest.TestClearAll_RemovesAllResourcesAndTemplatesFromRegistries;

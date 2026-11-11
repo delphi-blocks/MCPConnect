@@ -19,6 +19,7 @@ uses
   System.SysUtils, System.Classes, System.JSON, System.Rtti,
   DUnitX.TestFramework,
 
+  Neon.Core.Persistence,
   Neon.Core.Persistence.JSON.Schema,
 
   JRPC.Core,
@@ -191,6 +192,9 @@ type
 
     [Test]
     procedure TestOutputSchema_MethodTagsApply;
+
+    [Test]
+    procedure TestInputSchema_ClosedSchemaClosesArguments;
   end;
 
   // Plain classes with no MCP attributes at all, registered purely through the
@@ -1041,6 +1045,24 @@ begin
   LTool := FConfig.Tools.Registry['total'];
   Assert.AreEqual('integer', LTool.OutputSchema.GetValue('type').Value);
   Assert.AreEqual('The total', LTool.OutputSchema.GetValue('description').Value);
+end;
+
+procedure TMCPToolsConfigRegisterToolTest.TestInputSchema_ClosedSchemaClosesArguments;
+var
+  LSchema: TJSONObject;
+begin
+  FConfig.Tools
+    .SetSchemaNeonConfig(TNeonConfiguration.Camel.SetClosedSchema(True))
+    .RegisterTool(TSchemaToolClass, 'Locate', 'locate', 'Locates a point')
+      .WithParam('APoint', 'point', 'Where to look')
+      .EndTool;
+
+  // The arguments object as well as the record it holds: the first is built by
+  // MethodParamsToSchema, not by the writer that closes classes and records
+  LSchema := FConfig.Tools.Registry['locate'].InputSchema;
+  Assert.IsFalse((LSchema.GetValue('additionalProperties') as TJSONBool).AsBoolean);
+  Assert.IsFalse((SchemaProp(FConfig.Tools.Registry['locate'], 'point')
+    .GetValue('additionalProperties') as TJSONBool).AsBoolean);
 end;
 
 { TSchemaToolClass }

@@ -16,8 +16,10 @@ unit MCPConnect.Tests.MCP.Configuration;
 interface
 
 uses
-  System.SysUtils, System.JSON, System.Rtti,
+  System.SysUtils, System.Classes, System.JSON, System.Rtti,
   DUnitX.TestFramework,
+
+  Neon.Core.Persistence.JSON.Schema,
 
   JRPC.Core,
   MCPConnect.MCP.Server,
@@ -65,6 +67,34 @@ type
     [McpTool('tagged_app_tool', 'A tool with a tagged UI', 'category=tool')]
     [McpApp('ui://test/tagged-app', 'category=app,readonly')]
     function ShowApp: string;
+  end;
+
+  TSchemaNode = record
+    Name: string;
+    Children: TArray<TSchemaNode>;
+  end;
+
+  [JsonSchema('description=A point on the plane')]
+  TSchemaPoint = record
+    X: Integer;
+    Y: Integer;
+  end;
+
+  /// <summary>
+  ///   Signatures whose inputSchema/outputSchema the schema tests inspect.
+  ///   Registered through RegisterTool, never called.
+  /// </summary>
+  TSchemaToolClass = class
+  public
+    function Walk(const ARoot: TSchemaNode; const AOther: TSchemaNode): Integer;
+    function Fire(AEvent: TNotifyEvent): Integer;
+    function Split(const AInput: string; out ARest: string): string;
+    function Named([JsonSchema('minLength=2,description=Tagged name')] const AName: string): string;
+    function Locate(const APoint: TSchemaPoint): string;
+    function Pair(A, B: Integer): Integer;
+
+    [JsonSchema('description=The total')]
+    function Total(AValue: Integer): Integer;
   end;
 
   [TestFixture]
@@ -134,6 +164,33 @@ type
 
     [Test]
     procedure TestBackToMCP_ReturnsLiveConfigAfterUnregisterClassChain;
+
+    [Test]
+    procedure TestInputSchema_RecursiveParamTypeHasRootDefinitions;
+
+    [Test]
+    procedure TestInputSchema_ParamWithoutSchemaIsUnconstrained;
+
+    [Test]
+    procedure TestInputSchema_OutParamIsLeftOut;
+
+    [Test]
+    procedure TestInputSchema_ParamTagsAreApplied;
+
+    [Test]
+    procedure TestInputSchema_ParamDescriptionReplacesTagDescription;
+
+    [Test]
+    procedure TestInputSchema_EmptyParamDescriptionKeepsTagDescription;
+
+    [Test]
+    procedure TestInputSchema_TypeDescriptionIsNotDuplicated;
+
+    [Test]
+    procedure TestInputSchema_DuplicateParamNameRaises;
+
+    [Test]
+    procedure TestOutputSchema_MethodTagsApply;
   end;
 
   // Plain classes with no MCP attributes at all, registered purely through the
@@ -820,6 +877,208 @@ begin
 
   Assert.IsNotNull(LResult, 'BackToMCP must return the live IMCPConfig, not a discarded/nil interface');
   Assert.AreSame(FConfig.Tools, LResult.Tools, 'BackToMCP should return the IMCPConfig this Tools section belongs to');
+end;
+
+function CountPairs(AObject: TJSONObject; const AName: string): Integer;
+var
+  LPair: TJSONPair;
+begin
+  Result := 0;
+  for LPair in AObject do
+    if LPair.JsonString.Value = AName then
+      Inc(Result);
+end;
+
+function SchemaProp(ATool: TMCPTool; const AName: string): TJSONObject;
+begin
+  Result := (ATool.InputSchema.GetValue('properties') as TJSONObject).GetValue(AName) as TJSONObject;
+end;
+
+procedure TMCPToolsConfigRegisterToolTest.TestInputSchema_RecursiveParamTypeHasRootDefinitions;
+const
+  DEFS_PREFIX = '#/$defs/';
+var
+  LTool: TMCPTool;
+  LDefs: TJSONObject;
+  LRef: string;
+begin
+  FConfig.Tools.RegisterTool(TSchemaToolClass, 'Walk', 'walk', 'Walks two trees')
+    .WithParam('ARoot', 'root', 'The first tree')
+    .WithParam('AOther', 'other', 'The second tree')
+    .EndTool;
+
+  LTool := FConfig.Tools.Registry['walk'];
+
+  // A "$ref" is resolved against the root of the document, so the definitions
+  // have to be there - not inside the property that happens to use them first
+  LDefs := LTool.InputSchema.GetValue('$defs') as TJSONObject;
+  Assert.IsNotNull(LDefs, 'the definitions belong at the root of the inputSchema');
+  Assert.AreEqual(1, LDefs.Count, 'one definition shared by both parameters');
+  Assert.IsNull(SchemaProp(LTool, 'root').GetValue('$defs'));
+  Assert.IsNull(SchemaProp(LTool, 'other').GetValue('$defs'));
+
+  LRef := SchemaProp(LTool, 'root').GetValue('$ref').Value;
+  Assert.IsTrue(LRef.StartsWith(DEFS_PREFIX), LRef);
+  Assert.IsNotNull(LDefs.GetValue(LRef.Substring(DEFS_PREFIX.Length)), 'the reference resolves');
+  Assert.AreEqual(LRef, SchemaProp(LTool, 'other').GetValue('$ref').Value);
+  Assert.AreEqual('The first tree', SchemaProp(LTool, 'root').GetValue('description').Value);
+end;
+
+procedure TMCPToolsConfigRegisterToolTest.TestInputSchema_ParamWithoutSchemaIsUnconstrained;
+var
+  LEvent: TJSONObject;
+begin
+  // A method pointer has no JSON form: this used to be an access violation
+  FConfig.Tools.RegisterTool(TSchemaToolClass, 'Fire', 'fire', 'Fires an event')
+    .WithParam('AEvent', 'event', 'The event')
+    .EndTool;
+
+  LEvent := SchemaProp(FConfig.Tools.Registry['fire'], 'event');
+  Assert.IsNotNull(LEvent);
+  Assert.IsNull(LEvent.GetValue('type'));
+  Assert.AreEqual('The event', LEvent.GetValue('description').Value);
+end;
+
+procedure TMCPToolsConfigRegisterToolTest.TestInputSchema_OutParamIsLeftOut;
+var
+  LTool: TMCPTool;
+  LRequired: TJSONArray;
+begin
+  FConfig.Tools.RegisterTool(TSchemaToolClass, 'Split', 'split', 'Splits a string')
+    .WithParam('AInput', 'input', 'The string')
+    .WithParam('ARest', 'rest', 'What is left')
+    .EndTool;
+
+  LTool := FConfig.Tools.Registry['split'];
+  Assert.IsNotNull(SchemaProp(LTool, 'input'));
+  Assert.IsNull(SchemaProp(LTool, 'rest'), 'an out parameter is no input');
+
+  LRequired := LTool.InputSchema.GetValue('required') as TJSONArray;
+  Assert.AreEqual(1, LRequired.Count);
+  Assert.AreEqual('input', LRequired.Items[0].Value);
+end;
+
+procedure TMCPToolsConfigRegisterToolTest.TestInputSchema_ParamTagsAreApplied;
+var
+  LName: TJSONObject;
+begin
+  FConfig.Tools.RegisterTool(TSchemaToolClass, 'Named', 'named', 'Takes a name')
+    .WithParam('AName', 'name', 'The name')
+    .EndTool;
+
+  LName := SchemaProp(FConfig.Tools.Registry['named'], 'name');
+  Assert.AreEqual('string', LName.GetValue('type').Value);
+  Assert.AreEqual(2, (LName.GetValue('minLength') as TJSONNumber).AsInt,
+    'the [JsonSchema] on the parameter itself is read');
+end;
+
+procedure TMCPToolsConfigRegisterToolTest.TestInputSchema_ParamDescriptionReplacesTagDescription;
+var
+  LName: TJSONObject;
+begin
+  FConfig.Tools.RegisterTool(TSchemaToolClass, 'Named', 'named', 'Takes a name')
+    .WithParam('AName', 'name', 'The name')
+    .EndTool;
+
+  LName := SchemaProp(FConfig.Tools.Registry['named'], 'name');
+  Assert.AreEqual(1, CountPairs(LName, 'description'), 'replaced, not written a second time');
+  Assert.AreEqual('The name', LName.GetValue('description').Value);
+  Assert.AreEqual(2, (LName.GetValue('minLength') as TJSONNumber).AsInt, 'the other tags stay');
+end;
+
+procedure TMCPToolsConfigRegisterToolTest.TestInputSchema_EmptyParamDescriptionKeepsTagDescription;
+var
+  LName: TJSONObject;
+begin
+  FConfig.Tools.RegisterTool(TSchemaToolClass, 'Named', 'named', 'Takes a name')
+    .WithParam('AName', 'name', '')
+    .EndTool;
+
+  LName := SchemaProp(FConfig.Tools.Registry['named'], 'name');
+  Assert.AreEqual(1, CountPairs(LName, 'description'));
+  Assert.AreEqual('Tagged name', LName.GetValue('description').Value);
+end;
+
+procedure TMCPToolsConfigRegisterToolTest.TestInputSchema_TypeDescriptionIsNotDuplicated;
+var
+  LPoint: TJSONObject;
+begin
+  // The schema used to be generated from the type alone, which wrote the
+  // type's own description, and the parameter's was then added beside it
+  FConfig.Tools.RegisterTool(TSchemaToolClass, 'Locate', 'locate', 'Locates a point')
+    .WithParam('APoint', 'point', 'Where to look')
+    .EndTool;
+
+  LPoint := SchemaProp(FConfig.Tools.Registry['locate'], 'point');
+  Assert.AreEqual(1, CountPairs(LPoint, 'description'));
+  Assert.AreEqual('Where to look', LPoint.GetValue('description').Value);
+end;
+
+procedure TMCPToolsConfigRegisterToolTest.TestInputSchema_DuplicateParamNameRaises;
+begin
+  Assert.WillRaiseWithMessage(
+    procedure
+    begin
+      FConfig.Tools.RegisterTool(TSchemaToolClass, 'Pair', 'pair', 'Takes two numbers')
+        .WithParam('A', 'value', 'The first')
+        .WithParam('B', 'value', 'The second')
+        .EndTool;
+    end,
+    EMCPException,
+    'Tool [pair]: Parameters [A] and [B] are both described as [value]');
+
+  Assert.IsFalse(FConfig.Tools.Registry.ContainsKey('pair'));
+end;
+
+procedure TMCPToolsConfigRegisterToolTest.TestOutputSchema_MethodTagsApply;
+var
+  LTool: TMCPTool;
+begin
+  FConfig.Tools.RegisterTool(TSchemaToolClass, 'Total', 'total', 'Adds up', 'structured')
+    .WithParam('AValue', 'value', 'The value')
+    .EndTool;
+
+  LTool := FConfig.Tools.Registry['total'];
+  Assert.AreEqual('integer', LTool.OutputSchema.GetValue('type').Value);
+  Assert.AreEqual('The total', LTool.OutputSchema.GetValue('description').Value);
+end;
+
+{ TSchemaToolClass }
+
+function TSchemaToolClass.Fire(AEvent: TNotifyEvent): Integer;
+begin
+  Result := 0;
+end;
+
+function TSchemaToolClass.Locate(const APoint: TSchemaPoint): string;
+begin
+  Result := '';
+end;
+
+function TSchemaToolClass.Named(const AName: string): string;
+begin
+  Result := AName;
+end;
+
+function TSchemaToolClass.Pair(A, B: Integer): Integer;
+begin
+  Result := A + B;
+end;
+
+function TSchemaToolClass.Split(const AInput: string; out ARest: string): string;
+begin
+  ARest := '';
+  Result := AInput;
+end;
+
+function TSchemaToolClass.Total(AValue: Integer): Integer;
+begin
+  Result := AValue;
+end;
+
+function TSchemaToolClass.Walk(const ARoot, AOther: TSchemaNode): Integer;
+begin
+  Result := 0;
 end;
 
 { TManualResourceClass }

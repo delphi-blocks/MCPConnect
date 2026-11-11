@@ -52,6 +52,7 @@ resourcestring
   SMethodInClassNotFoundFmt = 'Method [%s] in class [%s] not found';
   SToolMustBeFunction = 'Tool must be a function';
   SToolResponseNeedsPayloadFmt = 'Tool [%s] asks for structured output but answers with a bare TMCPResponse: declare TMCPResponse<T>, so that the outputSchema has a type to describe';
+  SToolSchemaFailedFmt = 'Tool [%s]: %s';
   SNonConfiguredParamsNotPermitted = 'Non-configured params are not permitted';
   SParamHasNoConfigurationFmt = 'The [%s] parameter has no configuration';
   SNonAnnotatedParamsNotPermitted = 'Non-annotated params are not permitted';
@@ -755,9 +756,25 @@ type
   TMCPToolsConfig = class(TMCPBaseConfig)
   private
     Configs: TObjectList<TMCPToolConfig>;
+    /// <summary>
+    ///   Writes the tool's inputSchema with Neon's MethodParamsToSchema, the
+    ///   names, descriptions and required list coming from the tool's
+    ///   parameter configuration rather than from Neon's attributes.
+    /// </summary>
     procedure WriteInputSchema(ATool: TMCPTool);
+
+    /// <summary>
+    ///   Writes the outputSchema of a structured tool: the type it answers
+    ///   with (T for a TMCPResponse&lt;T&gt;), with the method's own Neon
+    ///   attributes applied.
+    /// </summary>
     procedure WriteOutputSchema(ATool: TMCPTool);
-    procedure WriteParams(AConfig: TMCPTool; AProps: TJSONObject; ARequired: TJSONArray); overload;
+
+    /// <summary>
+    ///   Writes the "x-mcp-header" annotations of every parameter that asks for
+    ///   one into the properties of the finished input schema.
+    /// </summary>
+    procedure WriteParamHeaders(ATool: TMCPTool; ASchema: TJSONObject);
 
     /// <summary>
     ///   Writes the "x-mcp-header" annotation a parameter's "header=" tag asks
@@ -1473,6 +1490,7 @@ uses
   System.TypInfo,
   System.IOUtils,
   System.RegularExpressions,
+  Neon.Core.Types,
   Neon.Core.Utils,
   Neon.Core.Persistence.JSON.Schema,
 
@@ -1907,29 +1925,45 @@ end;
 
 procedure TMCPToolsConfig.WriteInputSchema(ATool: TMCPTool);
 var
-  LProps, LInputSchema: TJSONObject;
-  LRequired: TJSONArray;
+  LInputSchema: TJSONObject;
 begin
-  LProps := TJSONObject.Create;
-  LRequired := TJSONArray.Create;
+  if ATool.MethodParams.Count <> Length(ATool.Method.GetParameters) then
+    raise EJRPCException.Create(SNonConfiguredParamsNotPermitted);
+
+  // One generator for the whole method, so that a type several parameters
+  // reference - or one that references itself - gets a single definition at
+  // the root of the inputSchema, where its "$ref" points
   try
-    WriteParams(ATool, LProps, LRequired);
+    LInputSchema := TNeonSchemaGenerator.MethodParamsToSchema(ATool.Method, NeonConfig,
+      procedure (AParam: TRttiParameter; var AInfo: TNeonParamSchemaInfo)
+      var
+        LToolParam: TMCPToolParam;
+      begin
+        LToolParam := ATool.FindMCPParam(AParam.Name);
+        if not Assigned(LToolParam) then
+          raise EJRPCException.CreateFmt(SParamHasNoConfigurationFmt, [AParam.Name]);
+
+        AInfo.Name := LToolParam.Name;
+        // Empty keeps whatever a [JsonSchema('description=...')] wrote
+        AInfo.Description := LToolParam.Description;
+        // The invoker reads every argument by name, so all of them are asked
+        // for. Skip stays as Neon set it: a pure "out" parameter (or one marked
+        // [NeonIgnore]) is not an input the client can supply
+        AInfo.Required := True;
+      end);
   except
-    LProps.Free;
-    LRequired.Free;
-    raise;
+    // Neon knows the parameters but not the tool they belong to, and during a
+    // RegisterClass the tool is what tells the developer where to look
+    on E: ENeonException do
+      raise EMCPException.CreateFmt(SToolSchemaFailedFmt, [ATool.Name, E.Message]);
   end;
 
-  LInputSchema := TJSONObject.Create
-    .AddPair('type', 'object')
-    .AddPair('properties', LProps);
-    //.AddPair('additionalProperties', False);
-    //.AddPair('$schema', 'http://json-schema.org/draft-07/schema#');
-
-  if LRequired.Count > 0 then
-    LInputSchema.AddPair('required', LRequired)
-  else
-    LRequired.Free;
+  try
+    WriteParamHeaders(ATool, LInputSchema);
+  except
+    LInputSchema.Free;
+    raise;
+  end;
 
   ATool.ExchangeInputSchema(LInputSchema);
 end;
@@ -1961,38 +1995,43 @@ begin
   // be an object - a tool that returns a list of users describes a list. Only
   // the *input* schema still has a root type it must have, tool arguments being
   // JSON objects by definition (see WriteInputSchema).
-  LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LType, NeonConfig);
+  // The method's [JsonSchema] (description, ...) applies to the payload too:
+  // Delphi has nowhere else to put an attribute about a result
+  try
+    LJSONObj := TNeonSchemaGenerator.MethodResultToSchema(ATool.Method, LType, NeonConfig);
+  except
+    on E: ENeonException do
+      raise EMCPException.CreateFmt(SToolSchemaFailedFmt, [ATool.Name, E.Message]);
+  end;
 
   ATool.ExchangeOutputSchema(LJSONObj);
 end;
 
-procedure TMCPToolsConfig.WriteParams(AConfig: TMCPTool; AProps: TJSONObject; ARequired: TJSONArray);
+procedure TMCPToolsConfig.WriteParamHeaders(ATool: TMCPTool; ASchema: TJSONObject);
 var
-  LJSONObj: TJSONObject;
-  LParam: TRttiParameter;
+  LProps: TJSONObject;
+  LParamSchema: TJSONObject;
   LHeaders: TDictionary<string, string>;
 begin
-  if AConfig.MethodParams.Count <> Length(AConfig.Method.GetParameters) then
-    raise EJRPCException.Create(SNonConfiguredParamsNotPermitted);
+  LProps := ASchema.GetValue('properties') as TJSONObject;
 
   // Header name (lowercased) -> the parameter that claimed it, so that the
   // uniqueness rule can name both sides of a collision
   LHeaders := TDictionary<string, string>.Create;
   try
-    for LParam in AConfig.Method.GetParameters do
+    // Declaration order, so that a collision is reported the same way round
+    // whichever API registered the parameters
+    for var LParam in ATool.Method.GetParameters do
     begin
-      var par := AConfig.FindMCPParam(LParam.Name);
-      if not Assigned(par) then
-        raise EJRPCException.CreateFmt(SParamHasNoConfigurationFmt, [LParam.Name]);
+      var par := ATool.FindMCPParam(LParam.Name);
 
-      LJSONObj := TNeonSchemaGenerator.TypeToJSONSchema(LParam.ParamType, NeonConfig);
+      // A parameter the schema left out (an "out" one) is no input, and has
+      // no value a client could mirror into a header
+      LParamSchema := LProps.GetValue(par.Name) as TJSONObject;
+      if not Assigned(LParamSchema) then
+        Continue;
 
-      LJSONObj.AddPair('description', TJSONString.Create(par.Description));
-      AProps.AddPair(par.Name, LJSONObj);
-      ARequired.Add(par.Name);
-
-      // After AddPair, so that a refusal leaves the schema for AProps to free
-      WriteParamHeader(AConfig, par, LJSONObj, LHeaders);
+      WriteParamHeader(ATool, par, LParamSchema, LHeaders);
     end;
   finally
     LHeaders.Free;

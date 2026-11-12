@@ -1052,7 +1052,7 @@ var
   LSchema: TJSONObject;
 begin
   FConfig.Tools
-    .SetSchemaNeonConfig(TNeonConfiguration.Camel.SetClosedSchema(True))
+    .SetSchemaNeonConfig(TNeonSchemaConfiguration.Camel.SetClosedSchema(True))
     .RegisterTool(TSchemaToolClass, 'Locate', 'locate', 'Locates a point')
       .WithParam('APoint', 'point', 'Where to look')
       .EndTool;

@@ -478,8 +478,9 @@ begin
   if not Assigned(AType) then
     raise EMCPException.Create(SMCPElicitTypeNoRtti);
 
-  Result := TNeonSchemaGenerator.TypeToJSONSchema(AType, SchemaConfig(AConfig),
-    TNeonJSchemaVersion.None);
+  // A fragment (no "$schema"): it ends up inside the requestedSchema
+  Result := TNeonSchemaGenerator.TypeToJSONSchema(AType,
+    TNeonSchemaConfiguration.Wrap(SchemaConfig(AConfig)));
 end;
 
 /// <summary>

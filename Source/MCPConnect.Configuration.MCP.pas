@@ -25,6 +25,7 @@ uses
   Neon.Core.Tags,
   Neon.Core.Nullables,
   Neon.Core.Persistence,
+  Neon.Core.Persistence.JSON.Schema,
 
   JRPC.Core,
   JRPC.Classes,
@@ -796,7 +797,22 @@ type
     procedure EndTool(AConfig: TMCPToolConfig);
   public
     Registry: TMCPToolRegistry;
+
+    /// <summary>
+    ///   The configuration tool results are serialized with. Always the Neon
+    ///   configuration SchemaConfig wraps, so that the schemas describe what
+    ///   the tools actually answer with.
+    /// </summary>
     NeonConfig: INeonConfiguration;
+
+    /// <summary>
+    ///   The configuration the input and output schemas are generated with:
+    ///   NeonConfig plus the settings that only concern a schema (closed
+    ///   objects, draft version). Its ParamResolver is not used: the input
+    ///   schema always takes names, descriptions and the required list from the
+    ///   tool's own parameter configuration.
+    /// </summary>
+    SchemaConfig: INeonSchemaConfiguration;
 
     /// <summary>
     ///   The caching hints tools/list answers with. Unset by default, which
@@ -859,7 +875,25 @@ type
     /// </summary>
     function RequireScope(const AName, AScopes: string): TMCPToolsConfig;
 
-    function SetSchemaNeonConfig(ANeonConfig: INeonConfiguration): TMCPToolsConfig;
+    /// <summary>
+    ///   The Neon configuration the tool schemas are generated with and the
+    ///   tool results serialized with, wrapped in a schema configuration with
+    ///   the default schema settings.
+    /// </summary>
+    /// <returns>
+    ///   Self for fluent chaining
+    /// </returns>
+    function SetSchemaNeonConfig(const ANeonConfig: INeonConfiguration): TMCPToolsConfig; overload;
+
+    /// <summary>
+    ///   As the overload taking an INeonConfiguration, with the schema settings
+    ///   (SetClosedSchema, SetVersion) taken from ASchemaConfig as well. Its
+    ///   Neon configuration is the one tool results are serialized with.
+    /// </summary>
+    /// <returns>
+    ///   Self for fluent chaining
+    /// </returns>
+    function SetSchemaNeonConfig(const ASchemaConfig: INeonSchemaConfiguration): TMCPToolsConfig; overload;
 
     /// <summary>
     ///   Creates an instance of a class by namespace.
@@ -1492,7 +1526,6 @@ uses
   System.RegularExpressions,
   Neon.Core.Types,
   Neon.Core.Utils,
-  Neon.Core.Persistence.JSON.Schema,
 
   MCPConnect.JRPC.Middleware,
   MCPConnect.MCP.Middleware.Default,
@@ -1627,7 +1660,7 @@ begin
   inherited;
   Registry := TMCPToolRegistry.Create([doOwnsValues]);
   Configs := TObjectList<TMCPToolConfig>.Create(False);
-  NeonConfig := TNeonConfiguration.Camel;
+  SetSchemaNeonConfig(TNeonConfiguration.Camel);
 end;
 
 destructor TMCPToolsConfig.Destroy;
@@ -1887,9 +1920,21 @@ begin
       AList.Tools.Add(pair.Value);
 end;
 
-function TMCPToolsConfig.SetSchemaNeonConfig(ANeonConfig: INeonConfiguration): TMCPToolsConfig;
+function TMCPToolsConfig.SetSchemaNeonConfig(const ANeonConfig: INeonConfiguration): TMCPToolsConfig;
 begin
-  NeonConfig := ANeonConfig;
+  Result := SetSchemaNeonConfig(TNeonSchemaConfiguration.Wrap(ANeonConfig));
+end;
+
+function TMCPToolsConfig.SetSchemaNeonConfig(const ASchemaConfig: INeonSchemaConfiguration): TMCPToolsConfig;
+begin
+  if Assigned(ASchemaConfig) then
+    SchemaConfig := ASchemaConfig
+  else
+    SchemaConfig := TNeonSchemaConfiguration.Default;
+
+  // Wrap substitutes Neon's default for a nil configuration, so this is never
+  // nil: the invoker serializes results with it
+  NeonConfig := SchemaConfig.Neon;
   Result := Self;
 end;
 
@@ -1926,15 +1971,23 @@ end;
 procedure TMCPToolsConfig.WriteInputSchema(ATool: TMCPTool);
 var
   LInputSchema: TJSONObject;
+  LSchemaConfig: INeonSchemaConfiguration;
 begin
   if ATool.MethodParams.Count <> Length(ATool.Method.GetParameters) then
     raise EJRPCException.Create(SNonConfiguredParamsNotPermitted);
+
+  // A configuration of its own for this tool, since the resolver captures it:
+  // setting the resolver on the shared SchemaConfig would race with a tool
+  // registered on another thread. The Neon configuration is shared, not copied
+  LSchemaConfig := TNeonSchemaConfiguration.Wrap(SchemaConfig.Neon)
+    .SetVersion(SchemaConfig.Version)
+    .SetClosedSchema(SchemaConfig.ClosedSchema);
 
   // One generator for the whole method, so that a type several parameters
   // reference - or one that references itself - gets a single definition at
   // the root of the inputSchema, where its "$ref" points
   try
-    LInputSchema := TNeonSchemaGenerator.MethodParamsToSchema(ATool.Method, NeonConfig,
+    LSchemaConfig.SetParamResolver(
       procedure (AParam: TRttiParameter; var AInfo: TNeonParamSchemaInfo)
       var
         LToolParam: TMCPToolParam;
@@ -1951,6 +2004,8 @@ begin
         // [NeonIgnore]) is not an input the client can supply
         AInfo.Required := True;
       end);
+
+    LInputSchema := TNeonSchemaGenerator.MethodParamsToSchema(ATool.Method, LSchemaConfig);
   except
     // Neon knows the parameters but not the tool they belong to, and during a
     // RegisterClass the tool is what tells the developer where to look
@@ -1998,7 +2053,7 @@ begin
   // The method's [JsonSchema] (description, ...) applies to the payload too:
   // Delphi has nowhere else to put an attribute about a result
   try
-    LJSONObj := TNeonSchemaGenerator.MethodResultToSchema(ATool.Method, LType, NeonConfig);
+    LJSONObj := TNeonSchemaGenerator.MethodResultToSchema(ATool.Method, LType, SchemaConfig);
   except
     on E: ENeonException do
       raise EMCPException.CreateFmt(SToolSchemaFailedFmt, [ATool.Name, E.Message]);

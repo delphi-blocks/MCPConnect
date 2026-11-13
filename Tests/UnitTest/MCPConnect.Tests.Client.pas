@@ -37,14 +37,22 @@ uses
   MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Notifications,
   MCPConnect.MCP.Types.Tools,
+  MCPConnect.MCP.Types.Errors,
+  MCPConnect.MCP.Response,
   MCPConnect.Transport.Indy,
   MCPConnect.Client,
   MCPConnect.Client.Transport.HTTP;
 
 type
+  /// <summary>The structured content one test tool returns.</summary>
+  TClientStructured = record
+    Answer: Integer;
+    LabelText: string;
+  end;
+
   /// <summary>
   ///   A tool class the client tests call: one tool reports progress and logs,
-  ///   the other answers a plain string.
+  ///   one answers mixed content, one structured content, one a failure.
   /// </summary>
   [McpScope('clienttest')]
   TClientTestTools = class
@@ -57,6 +65,18 @@ type
 
     [McpTool('echo', 'Answers echo')]
     function Echo: string;
+
+    [McpTool('echo_arg', 'Echoes the text it is given')]
+    function EchoArg([McpParam('text', 'The text to echo')] const AText: string): string;
+
+    [McpTool('mix', 'Answers every content type')]
+    function Mix: TContentList;
+
+    [McpTool('structured', 'Answers structured content', 'structured')]
+    function Structured: TClientStructured;
+
+    [McpTool('fail', 'Reports a failure to the model')]
+    function Fail: TCallToolResult;
   end;
 
   [TestFixture]
@@ -75,6 +95,11 @@ type
     [Test] procedure TestCallReturnsRawResult;
     [Test] procedure TestProgressAndLogNotifications;
     [Test] procedure TestRemoteErrorIsTyped;
+    [Test] procedure TestCallToolContentMapping;
+    [Test] procedure TestCallToolArguments;
+    [Test] procedure TestCallToolStructured;
+    [Test] procedure TestCallToolIsError;
+    [Test] procedure TestErrorDataDecoding;
   end;
 
 implementation
@@ -94,6 +119,42 @@ end;
 function TClientTestTools.Echo: string;
 begin
   Result := 'echo';
+end;
+
+function TClientTestTools.EchoArg(const AText: string): string;
+begin
+  Result := AText;
+end;
+
+function TClientTestTools.Mix: TContentList;
+var
+  LEmbedded: TEmbeddedResourceText;
+begin
+  Result := TContentList.Create;
+  Result.AddText('first');
+  Result.AddImage('image/png', 'aGVsbG8=');       // base64 of 'hello'
+  Result.AddAudio('audio/wav', 'YXVkaW8=');       // base64 of 'audio'
+  Result.AddLink('text/html', 'https://example.com', 'Example');
+  Result.AddBlob('application/octet-stream', 'YmxvYg==');  // base64 of 'blob'
+
+  // The embedded resource has two shapes; the blob one came from AddBlob, this
+  // is the text one.
+  LEmbedded := TEmbeddedResourceText.Create;
+  LEmbedded.Resource.Uri := 'resource://embedded';
+  LEmbedded.Resource.MimeType := 'text/plain';
+  LEmbedded.Resource.Text := 'embedded';
+  Result.Add(LEmbedded);
+end;
+
+function TClientTestTools.Structured: TClientStructured;
+begin
+  Result.Answer := 42;
+  Result.LabelText := 'structured';
+end;
+
+function TClientTestTools.Fail: TCallToolResult;
+begin
+  Result := TCallToolReply.Fail('boom');
 end;
 
 { TMCPClientTest }
@@ -149,9 +210,13 @@ var
 begin
   LTools := FClient.ListTools;
   try
-    Assert.AreEqual(2, LTools.Count);
+    Assert.AreEqual(6, LTools.Count);
     Assert.AreEqual('clienttest_echo', LTools[0].Name);
-    Assert.AreEqual('clienttest_ping', LTools[1].Name);
+    Assert.AreEqual('clienttest_echo_arg', LTools[1].Name);
+    Assert.AreEqual('clienttest_fail', LTools[2].Name);
+    Assert.AreEqual('clienttest_mix', LTools[3].Name);
+    Assert.AreEqual('clienttest_ping', LTools[4].Name);
+    Assert.AreEqual('clienttest_structured', LTools[5].Name);
   finally
     LTools.Free;
   end;
@@ -236,6 +301,139 @@ begin
     end;
   finally
     LParams.Free;
+  end;
+end;
+
+procedure TMCPClientTest.TestCallToolContentMapping;
+var
+  LResult: TCallToolResult;
+begin
+  LResult := FClient.CallTool('clienttest_mix');
+  try
+    Assert.AreEqual(6, LResult.Content.Count);
+
+    Assert.IsTrue(LResult.Content[0] is TTextContent, LResult.Content[0].ClassName);
+    Assert.AreEqual('first', TTextContent(LResult.Content[0]).Text);
+
+    Assert.IsTrue(LResult.Content[1] is TImageContent, LResult.Content[1].ClassName);
+    Assert.AreEqual('image/png', TImageContent(LResult.Content[1]).MimeType);
+    Assert.AreEqual('aGVsbG8=', TImageContent(LResult.Content[1]).Data);
+
+    Assert.IsTrue(LResult.Content[2] is TAudioContent, LResult.Content[2].ClassName);
+    Assert.AreEqual('audio/wav', TAudioContent(LResult.Content[2]).MimeType);
+
+    Assert.IsTrue(LResult.Content[3] is TResourceLink, LResult.Content[3].ClassName);
+    Assert.AreEqual('https://example.com', TResourceLink(LResult.Content[3]).Uri);
+    Assert.AreEqual('Example', TResourceLink(LResult.Content[3]).Description);
+
+    Assert.IsTrue(LResult.Content[4] is TEmbeddedResourceBlob,
+      LResult.Content[4].ClassName);
+    Assert.IsTrue(TEmbeddedResourceBlob(LResult.Content[4]).Resource.MimeType =
+      'application/octet-stream');
+    Assert.IsTrue(TEmbeddedResourceBlob(LResult.Content[4]).Resource.Blob =
+      'YmxvYg==');
+
+    Assert.IsTrue(LResult.Content[5] is TEmbeddedResourceText,
+      LResult.Content[5].ClassName);
+    Assert.AreEqual('embedded', TEmbeddedResourceText(LResult.Content[5]).Resource.Text);
+  finally
+    LResult.Free;
+  end;
+end;
+
+procedure TMCPClientTest.TestCallToolArguments;
+var
+  LArguments: TJSONObject;
+  LResult: TCallToolResult;
+begin
+  LArguments := TJSONObject.Create;
+  try
+    LArguments.AddPair('text', 'hello');
+
+    LResult := FClient.CallTool('clienttest_echo_arg', LArguments);
+    try
+      Assert.AreEqual(1, LResult.Content.Count);
+      Assert.IsTrue(LResult.Content[0] is TTextContent, LResult.Content[0].ClassName);
+      Assert.AreEqual('hello', TTextContent(LResult.Content[0]).Text);
+    finally
+      LResult.Free;
+    end;
+
+    // CallTool clones the arguments, so the caller still owns and holds them.
+    Assert.IsNotNull(LArguments.GetValue('text'));
+  finally
+    LArguments.Free;
+  end;
+end;
+
+procedure TMCPClientTest.TestCallToolStructured;
+var
+  LResult: TCallToolResult;
+  LStructured: TJSONObject;
+begin
+  LResult := FClient.CallTool('clienttest_structured');
+  try
+    Assert.IsNotNull(LResult.StructuredContent);
+    Assert.IsTrue(LResult.StructuredContent is TJSONObject,
+      LResult.StructuredContent.ClassName);
+
+    LStructured := TJSONObject(LResult.StructuredContent);
+    Assert.AreEqual(42, LStructured.GetValue<Integer>('answer'));
+    Assert.AreEqual('structured', LStructured.GetValue<string>('labelText'));
+  finally
+    LResult.Free;
+  end;
+end;
+
+procedure TMCPClientTest.TestCallToolIsError;
+var
+  LResult: TCallToolResult;
+begin
+  LResult := FClient.CallTool('clienttest_fail');
+  try
+    Assert.IsTrue(LResult.IsError.HasValue, 'isError must be present');
+    Assert.IsTrue(LResult.IsError.Value, 'the tool reported a failure');
+
+    Assert.IsTrue(LResult.Content.Count >= 1);
+    Assert.IsTrue(LResult.Content[0] is TTextContent, LResult.Content[0].ClassName);
+    Assert.IsTrue(TTextContent(LResult.Content[0]).Text.Contains('boom'));
+  finally
+    LResult.Free;
+  end;
+end;
+
+procedure TMCPClientTest.TestErrorDataDecoding;
+var
+  LError: EJRPCRemoteError;
+  LData: TMCPUnsupportedVersionErrorData;
+  LCaps: TMCPClientCapabilities;
+begin
+  LError := EJRPCRemoteError.Create(MCP_UNSUPPORTED_PROTOCOL_VERSION, 'unsupported',
+    TJSONObject.ParseJSONValue(
+      '{"requested":"2025-11-25","supported":["2026-07-28","2025-11-25"]}'));
+  try
+    Assert.IsTrue(TMCPClientErrors.TryUnsupportedVersion(LError, LData));
+    try
+      Assert.AreEqual('2025-11-25', LData.Requested);
+      Assert.AreEqual(2, Length(LData.Supported));
+      Assert.AreEqual('2026-07-28', LData.Supported[0]);
+    finally
+      LData.Free;
+    end;
+  finally
+    LError.Free;
+  end;
+
+  LError := EJRPCRemoteError.Create(MCP_MISSING_REQUIRED_CLIENT_CAPABILITY, 'missing',
+    TJSONObject.ParseJSONValue(
+      '{"requiredCapabilities":{"elicitation":{"form":{}},"roots":{}}}'));
+  try
+    Assert.IsTrue(TMCPClientErrors.TryRequiredCapabilities(LError, LCaps));
+    Assert.IsTrue(TMCPClientCapability.Elicitation in LCaps);
+    Assert.IsTrue(TMCPClientCapability.ElicitationForm in LCaps);
+    Assert.IsTrue(TMCPClientCapability.Roots in LCaps);
+  finally
+    LError.Free;
   end;
 end;
 

@@ -31,6 +31,9 @@ uses
   MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Tool,
   MCPConnect.MCP.Types.Tools,
+  MCPConnect.MCP.Types.Resources,
+  MCPConnect.MCP.Types.Prompts,
+  MCPConnect.MCP.Types.Completion,
   MCPConnect.MCP.Types.Mrtr,
   MCPConnect.MCP.Types.Subscriptions,
   MCPConnect.MCP.Types.Errors;
@@ -54,12 +57,13 @@ const
 resourcestring
   SMCPClientParamsRequired = 'The request params are required: they carry the per-request "_meta"';
   SMCPClientParamsSerialization = 'The request params could not be serialized to JSON';
-  SMCPClientResultNotObject = 'The tool result is not a JSON object';
+  SMCPClientResultNotObject = 'The result is not a JSON object';
   SMCPClientUnknownContent = 'Unknown tool result content type [%s]';
   SMCPClientInputRequired = 'The server requires input this client cannot provide: no handler is configured for it';
   SMCPClientUnknownInputRequest = 'Unknown input request [%s]';
   SMCPClientInputHandlerNil = 'The input handler for [%s] returned no result';
   SMCPClientTooManyRounds = 'The tool call still requires input after %d rounds';
+  SMCPClientInvalidPromptMessage = 'A prompt message is missing its content';
   SMCPListenOverConnection = 'subscriptions/listen is not implemented over a connection transport yet';
   SMCPListenNoTransport = 'No transport factory for subscriptions/listen';
   SMCPListenFilterRequired = 'A subscription filter is required';
@@ -229,8 +233,13 @@ type
     function TryNegotiateVersion(E: EJRPCRemoteError): Boolean;
     function ParseCallToolResult(AValue: TJSONObject): TCallToolResult;
     function ParseInputRequired(AValue: TJSONObject): TInputRequiredResult;
-    function Fulfill(AParams: TCallToolRequestParams;
-      AResult: TInputRequiredResult): Boolean;
+    function ExecuteMrtr(const AMethod: string; AParams: TInputRequestParams): TJSONObject;
+    function Fulfill(AParams: TInputRequestParams; AResult: TInputRequiredResult): Boolean;
+    class function ParseResourceContent(AValue: TJSONObject): TResourceContents; static;
+    function ParseReadResourceResult(AValue: TJSONObject): TReadResourceResult;
+    function ParseGetPromptResult(AValue: TJSONObject): TGetPromptResult;
+    function ParsePromptMessage(AValue: TJSONObject): TPromptMessageBase;
+    function NewPromptMessage<T: TToolContent, constructor>(ARole: TRole; AContent: TJSONObject): TPromptMessageBase;
     class function ParseContent(AValue: TJSONObject): TToolContent; static;
     class function IsInputRequired(AValue: TJSONObject): Boolean; static;
   public
@@ -264,6 +273,61 @@ type
     ///   The caller owns the list and its tools.
     /// </summary>
     function ListTools: TMCPTools;
+
+    /// <summary>
+    ///   The whole resources/list, following nextCursor until the list ends.
+    ///   The caller owns the list and its resources.
+    /// </summary>
+    function ListResources: TMCPResources;
+
+    /// <summary>
+    ///   The whole resources/templates/list, following nextCursor. The caller
+    ///   owns the list and its templates.
+    /// </summary>
+    function ListResourceTemplates: TMCPTemplates;
+
+    /// <summary>
+    ///   Reads a resource and returns its typed contents: each item is either
+    ///   a TTextResourceContents or a TBlobResourceContents.
+    /// </summary>
+    /// <remarks>
+    ///   resources/read may answer "input_required"; the client runs the MRTR
+    ///   round trip with the same handlers tools/call uses.
+    /// </remarks>
+    function ReadResource(const AUri: string): TReadResourceResult;
+
+    /// <summary>
+    ///   The whole prompts/list, following nextCursor until the list ends.
+    ///   The caller owns the list and its prompts.
+    /// </summary>
+    function ListPrompts: TMCPPrompts;
+
+    /// <summary>
+    ///   Gets a prompt with its arguments and returns the typed messages:
+    ///   each is a TPromptMessage<T> with the concrete content class.
+    /// </summary>
+    /// <remarks>
+    ///   prompts/get may answer "input_required"; the client runs the MRTR
+    ///   round trip with the same handlers tools/call uses.
+    /// </remarks>
+    function GetPrompt(const AName: string; AArguments: TJSONObject = nil): TGetPromptResult; overload;
+
+    /// <summary>
+    ///   The same get with params the caller built. AParams stays the caller's.
+    /// </summary>
+    function GetPrompt(AParams: TGetPromptRequestParams): TGetPromptResult; overload;
+
+    /// <summary>
+    ///   Asks for completions with params the caller built. AParams stays the
+    ///   caller's.
+    /// </summary>
+    function Complete(AParams: TCompleteRequestParams): TCompleteResult; overload;
+
+    /// <summary>
+    ///   Asks for completions of one argument of ARef, copying the reference's
+    ///   fields into the request.
+    /// </summary>
+    function Complete(const ARef: TMCPCompletionReference; const AArgumentName, AArgumentValue: string): TCompleteResult; overload;
 
     /// <summary>
     ///   Sends AMethod with AParams and returns the raw "result" (caller
@@ -767,7 +831,7 @@ begin
   end;
 end;
 
-function TMCPClient.CallTool(AParams: TCallToolRequestParams): TCallToolResult;
+function TMCPClient.ExecuteMrtr(const AMethod: string; AParams: TInputRequestParams): TJSONObject;
 var
   LValue: TJSONValue;
   LInput: TInputRequiredResult;
@@ -777,17 +841,23 @@ begin
 
   while True do
   begin
-    LValue := Call('tools/call', AParams);
+    LValue := Call(AMethod, AParams);
     try
       if not (LValue is TJSONObject) then
         raise EJRPCClientError.Create(SMCPClientResultNotObject);
 
       if not IsInputRequired(TJSONObject(LValue)) then
-        Exit(ParseCallToolResult(TJSONObject(LValue)));
+      begin
+        // Hand the result to the caller; the finally must not free it.
+        Result := TJSONObject(LValue);
+        LValue := nil;
+        Exit;
+      end;
 
       Inc(LRounds);
       if LRounds > MCP_CLIENT_MAX_ROUNDS then
-        raise EJRPCClientError.CreateFmt(SMCPClientTooManyRounds, [LRounds]);
+        raise EJRPCClientError.CreateFmt(SMCPClientTooManyRounds,
+          [MCP_CLIENT_MAX_ROUNDS]);
 
       LInput := ParseInputRequired(TJSONObject(LValue));
       try
@@ -805,6 +875,357 @@ begin
   end;
 end;
 
+function TMCPClient.CallTool(AParams: TCallToolRequestParams): TCallToolResult;
+var
+  LValue: TJSONObject;
+begin
+  LValue := ExecuteMrtr('tools/call', AParams);
+  try
+    Result := ParseCallToolResult(LValue);
+  finally
+    LValue.Free;
+  end;
+end;
+
+function TMCPClient.ListResources: TMCPResources;
+var
+  LParams: TPaginatedRequestParams;
+  LPage: TListResourcesResult;
+  LResource: TMCPResource;
+  LCursor: string;
+begin
+  Result := TMCPResources.Create(True);
+  try
+    LCursor := '';
+    repeat
+      LParams := TPaginatedRequestParams.Create;
+      try
+        if LCursor <> '' then
+          LParams.Cursor := LCursor;
+
+        LPage := ExecuteAs<TListResourcesResult>('resources/list', LParams);
+        try
+          // The page gives its items up to the caller's list.
+          LPage.Resources.OwnsObjects := False;
+          for LResource in LPage.Resources do
+            Result.Add(LResource);
+
+          if LPage.NextCursor.HasValue then
+            LCursor := LPage.NextCursor.Value
+          else
+            LCursor := '';
+        finally
+          LPage.Free;
+        end;
+      finally
+        LParams.Free;
+      end;
+    until LCursor = '';
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+function TMCPClient.ListResourceTemplates: TMCPTemplates;
+var
+  LParams: TPaginatedRequestParams;
+  LPage: TListResourceTemplatesResult;
+  LTemplate: TMCPResourceTemplate;
+  LCursor: string;
+begin
+  Result := TMCPTemplates.Create(True);
+  try
+    LCursor := '';
+    repeat
+      LParams := TPaginatedRequestParams.Create;
+      try
+        if LCursor <> '' then
+          LParams.Cursor := LCursor;
+
+        LPage := ExecuteAs<TListResourceTemplatesResult>(
+          'resources/templates/list', LParams);
+        try
+          LPage.ResourceTemplates.OwnsObjects := False;
+          for LTemplate in LPage.ResourceTemplates do
+            Result.Add(LTemplate);
+
+          if LPage.NextCursor.HasValue then
+            LCursor := LPage.NextCursor.Value
+          else
+            LCursor := '';
+        finally
+          LPage.Free;
+        end;
+      finally
+        LParams.Free;
+      end;
+    until LCursor = '';
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+function TMCPClient.ReadResource(const AUri: string): TReadResourceResult;
+var
+  LParams: TReadResourceParams;
+  LValue: TJSONObject;
+begin
+  LParams := TReadResourceParams.Create;
+  try
+    LParams.Uri := AUri;
+
+    LValue := ExecuteMrtr('resources/read', LParams);
+    try
+      Result := ParseReadResourceResult(LValue);
+    finally
+      LValue.Free;
+    end;
+  finally
+    LParams.Free;
+  end;
+end;
+
+function TMCPClient.ListPrompts: TMCPPrompts;
+var
+  LParams: TPaginatedRequestParams;
+  LPage: TListPromptsResult;
+  LPrompt: TMCPPrompt;
+  LCursor: string;
+begin
+  Result := TMCPPrompts.Create(True);
+  try
+    LCursor := '';
+    repeat
+      LParams := TPaginatedRequestParams.Create;
+      try
+        if LCursor <> '' then
+          LParams.Cursor := LCursor;
+
+        LPage := ExecuteAs<TListPromptsResult>('prompts/list', LParams);
+        try
+          LPage.Prompts.OwnsObjects := False;
+          for LPrompt in LPage.Prompts do
+            Result.Add(LPrompt);
+
+          if LPage.NextCursor.HasValue then
+            LCursor := LPage.NextCursor.Value
+          else
+            LCursor := '';
+        finally
+          LPage.Free;
+        end;
+      finally
+        LParams.Free;
+      end;
+    until LCursor = '';
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+function TMCPClient.GetPrompt(const AName: string; AArguments: TJSONObject): TGetPromptResult;
+var
+  LParams: TGetPromptRequestParams;
+begin
+  LParams := TGetPromptRequestParams.Create;
+  try
+    LParams.Name := AName;
+
+    if Assigned(AArguments) then
+    begin
+      LParams.Arguments.Free;
+      LParams.Arguments := AArguments.Clone as TJSONObject;
+    end;
+
+    Result := GetPrompt(LParams);
+  finally
+    LParams.Free;
+  end;
+end;
+
+function TMCPClient.GetPrompt(AParams: TGetPromptRequestParams): TGetPromptResult;
+var
+  LValue: TJSONObject;
+begin
+  LValue := ExecuteMrtr('prompts/get', AParams);
+  try
+    Result := ParseGetPromptResult(LValue);
+  finally
+    LValue.Free;
+  end;
+end;
+
+function TMCPClient.Complete(AParams: TCompleteRequestParams): TCompleteResult;
+begin
+  Result := ExecuteAs<TCompleteResult>('completion/complete', AParams);
+end;
+
+function TMCPClient.Complete(const ARef: TMCPCompletionReference; const AArgumentName, AArgumentValue: string): TCompleteResult;
+var
+  LParams: TCompleteRequestParams;
+begin
+  LParams := TCompleteRequestParams.Create;
+  try
+    LParams.Ref.&Type := ARef.&Type;
+    LParams.Ref.Name := ARef.Name;
+    LParams.Ref.Title := ARef.Title;
+    LParams.Ref.Uri := ARef.Uri;
+
+    LParams.Argument.Name := AArgumentName;
+    LParams.Argument.Value := AArgumentValue;
+
+    Result := Complete(LParams);
+  finally
+    LParams.Free;
+  end;
+end;
+
+class function TMCPClient.ParseResourceContent(AValue: TJSONObject): TResourceContents;
+var
+  LBlob: TJSONValue;
+begin
+  LBlob := AValue.GetValue('blob');
+  if LBlob is TJSONString then
+    Result := TBlobResourceContents.Create
+  else
+    Result := TTextResourceContents.Create;
+
+  try
+    // The concrete class is known now, so Neon binds "text" or "blob"
+    // instead of dropping it on the base TResourceContents.
+    TNeon.JSONToObject(Result, AValue, MCPNeonConfig);
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+function TMCPClient.ParseReadResourceResult(AValue: TJSONObject): TReadResourceResult;
+var
+  LContents, LMeta, LTtl, LScope, LItem: TJSONValue;
+begin
+  Result := TReadResourceResult.Create;
+  try
+    LMeta := AValue.GetValue('_meta');
+    if LMeta is TJSONObject then
+      TNeon.JSONToObject(Result.ResultMeta, TJSONObject(LMeta), MCPNeonConfig);
+
+    LTtl := AValue.GetValue('ttlMs');
+    if LTtl is TJSONNumber then
+      Result.TtlMs := UInt64(TJSONNumber(LTtl).AsInt64);
+
+    LScope := AValue.GetValue('cacheScope');
+    if LScope is TJSONString then
+    begin
+      if SameText(LScope.Value, 'public') then
+        Result.CacheScope := TCacheScope.ScopePublic
+      else if SameText(LScope.Value, 'private') then
+        Result.CacheScope := TCacheScope.ScopePrivate;
+    end;
+
+    LContents := AValue.GetValue('contents');
+    if LContents is TJSONArray then
+      for LItem in TJSONArray(LContents) do
+        if LItem is TJSONObject then
+          Result.AddContent(ParseResourceContent(TJSONObject(LItem)));
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+function TMCPClient.ParseGetPromptResult(AValue: TJSONObject): TGetPromptResult;
+var
+  LMessages, LMeta, LDescription, LItem: TJSONValue;
+begin
+  Result := TGetPromptResult.Create;
+  try
+    LMeta := AValue.GetValue('_meta');
+    if LMeta is TJSONObject then
+      TNeon.JSONToObject(Result.ResultMeta, TJSONObject(LMeta), MCPNeonConfig);
+
+    LDescription := AValue.GetValue('description');
+    if LDescription is TJSONString then
+      Result.Description := TJSONString(LDescription).Value;
+
+    LMessages := AValue.GetValue('messages');
+    if LMessages is TJSONArray then
+      for LItem in TJSONArray(LMessages) do
+        if LItem is TJSONObject then
+          Result.Messages.Add(ParsePromptMessage(TJSONObject(LItem)));
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+function TMCPClient.ParsePromptMessage(AValue: TJSONObject): TPromptMessageBase;
+var
+  LRole: TRole;
+  LRoleValue, LContentValue, LTypeValue, LResource, LBlob: TJSONValue;
+  LType: string;
+begin
+  LRole := TRole.Assistant;
+  LRoleValue := AValue.GetValue('role');
+  if (LRoleValue is TJSONString) and SameText(LRoleValue.Value, 'user') then
+    LRole := TRole.User;
+
+  LContentValue := AValue.GetValue('content');
+  if not (LContentValue is TJSONObject) then
+    raise EJRPCClientError.Create(SMCPClientInvalidPromptMessage);
+
+  LTypeValue := TJSONObject(LContentValue).GetValue('type');
+  if Assigned(LTypeValue) then
+    LType := LTypeValue.Value
+  else
+    LType := '';
+
+  if LType = MCP_CONTENT_TEXT then
+    Result := NewPromptMessage<TTextContent>(LRole, TJSONObject(LContentValue))
+  else if LType = MCP_CONTENT_IMAGE then
+    Result := NewPromptMessage<TImageContent>(LRole, TJSONObject(LContentValue))
+  else if LType = MCP_CONTENT_AUDIO then
+    Result := NewPromptMessage<TAudioContent>(LRole, TJSONObject(LContentValue))
+  else if LType = 'resource_link' then
+    Result := NewPromptMessage<TResourceLink>(LRole, TJSONObject(LContentValue))
+  else if LType = 'resource' then
+  begin
+    // An embedded resource is text or blob, discriminated inside "resource".
+    LResource := TJSONObject(LContentValue).GetValue('resource');
+    if LResource is TJSONObject then
+      LBlob := TJSONObject(LResource).GetValue('blob')
+    else
+      LBlob := nil;
+
+    if Assigned(LBlob) then
+      Result := NewPromptMessage<TEmbeddedResourceBlob>(LRole,
+        TJSONObject(LContentValue))
+    else
+      Result := NewPromptMessage<TEmbeddedResourceText>(LRole,
+        TJSONObject(LContentValue));
+  end
+  else
+    raise EJRPCClientError.CreateFmt(SMCPClientUnknownContent, [LType]);
+end;
+
+function TMCPClient.NewPromptMessage<T>(ARole: TRole; AContent: TJSONObject): TPromptMessageBase;
+var
+  LMessage: TPromptMessage<T>;
+begin
+  LMessage := TPromptMessage<T>.Create(ARole);
+  try
+    TNeon.JSONToObject(LMessage.Content, AContent, MCPNeonConfig);
+  except
+    LMessage.Free;
+    raise;
+  end;
+
+  Result := LMessage;
+end;
+
 function TMCPClient.ParseInputRequired(AValue: TJSONObject): TInputRequiredResult;
 begin
   Result := TInputRequiredResult.Create;
@@ -816,8 +1237,7 @@ begin
   end;
 end;
 
-function TMCPClient.Fulfill(AParams: TCallToolRequestParams;
-  AResult: TInputRequiredResult): Boolean;
+function TMCPClient.Fulfill(AParams: TInputRequestParams; AResult: TInputRequiredResult): Boolean;
 var
   LPair: TPair<string, TInputRequest>;
   LRequest: TInputRequest;

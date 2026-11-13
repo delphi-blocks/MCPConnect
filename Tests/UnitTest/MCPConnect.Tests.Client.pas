@@ -37,6 +37,9 @@ uses
   MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Notifications,
   MCPConnect.MCP.Types.Tools,
+  MCPConnect.MCP.Types.Resources,
+  MCPConnect.MCP.Types.Prompts,
+  MCPConnect.MCP.Types.Completion,
   MCPConnect.MCP.Types.Errors,
   MCPConnect.MCP.Response,
   MCPConnect.Transport.Indy,
@@ -95,6 +98,33 @@ type
     function Notify: string;
   end;
 
+  [McpScope('clienttest')]
+  TClientTestResources = class
+  public
+    [McpResource('greeting', 'clienttest://greeting', 'text/plain', 'A greeting')]
+    function Greeting: string;
+
+    [McpResource('blob', 'clienttest://blob', 'application/octet-stream', 'A blob')]
+    function Blob: TStream;
+
+    [McpTemplate('item', 'clienttest://items/{id}', 'text/plain', 'One item')]
+    function Item([McpParam('id', 'The item id')] const id: string): string;
+  end;
+
+  [McpScope('clienttest')]
+  TClientTestPrompts = class
+  public
+    [McpPrompt('greet', 'Greeting', 'Greets someone')]
+    function Greet([McpArgument('name', 'Who to greet')] const name: string): TPromptMessages;
+  end;
+
+  [McpScope('clienttest')]
+  TClientTestCompletions = class
+  public
+    [McpComplete('greet', 'name')]
+    function CompleteName(const AValue: string): TArray<string>;
+  end;
+
   [TestFixture]
   TMCPClientTest = class
   private
@@ -119,6 +149,12 @@ type
     [Test] procedure TestCallToolMrtrWithoutCapability;
     [Test] procedure TestListenReceivesNotification;
     [Test] procedure TestListenCancellation;
+    [Test] procedure TestListResources;
+    [Test] procedure TestReadResourceText;
+    [Test] procedure TestReadResourceBlob;
+    [Test] procedure TestListPrompts;
+    [Test] procedure TestGetPrompt;
+    [Test] procedure TestComplete;
     [Test] procedure TestErrorDataDecoding;
   end;
 
@@ -147,6 +183,7 @@ uses
   System.Generics.Collections, System.SyncObjs,
 
   JRPC.Client,
+  MCPConnect.Content.Writers.RTL,
   MCPConnect.MCP.Types.Subscriptions;
 
 { stdio server }
@@ -243,24 +280,91 @@ begin
   Result := 'notified';
 end;
 
+{ TClientTestResources }
+
+function TClientTestResources.Greeting: string;
+begin
+  Result := 'hello from the resource';
+end;
+
+function TClientTestResources.Blob: TStream;
+var
+  LBytes: TBytes;
+begin
+  LBytes := [1, 2, 3];
+  Result := TBytesStream.Create(LBytes);
+end;
+
+function TClientTestResources.Item(const id: string): string;
+begin
+  Result := 'item ' + id;
+end;
+
+{ TClientTestPrompts }
+
+function TClientTestPrompts.Greet(const name: string): TPromptMessages;
+begin
+  Result := TPromptMessages.Create;
+  Result.AddText(TRole.User, 'Hello ' + name);
+end;
+
+{ TClientTestCompletions }
+
+function TClientTestCompletions.CompleteName(const AValue: string): TArray<string>;
+begin
+  if (AValue = '') or SameText(AValue, 'a') then
+    Result := ['Ada', 'Alan']
+  else if SameText(AValue, 'ad') then
+    Result := ['Ada']
+  else
+    Result := [];
+end;
+
 { TMCPClientTest }
 
 procedure TMCPClientTest.Setup;
 var
   LBinding: TIdSocketHandle;
+  LConfig: IMCPConfig;
 begin
   FServer := TMCPIndyServer.CreateMCPServer(nil);
-  FServer.MCPServer.Plugin.Configure<IMCPConfig>
-    .Server
-      .SetName('mcp-client-test')
-      .SetVersion('1.0')
-      // One tool per page, so tools/list has to follow the cursor.
-      .SetPageSize(1)
-    .BackToMCP
-    .Tools
-      .RegisterClass(TClientTestTools)
-    .BackToMCP
-  .ApplyConfig;
+  LConfig := FServer.MCPServer.Plugin.Configure<IMCPConfig>;
+  LConfig.Server
+    .SetName('mcp-client-test')
+    .SetVersion('1.0')
+    // One tool per page, so tools/list has to follow the cursor.
+    .SetPageSize(1)
+    .RegisterWriter(TMCPStreamWriter);
+
+  try
+    LConfig.Tools.RegisterClass(TClientTestTools);
+  except
+    on E: Exception do
+      raise Exception.Create('tools: ' + E.Message);
+  end;
+
+  try
+    LConfig.Resources.RegisterClass(TClientTestResources);
+  except
+    on E: Exception do
+      raise Exception.Create('resources: ' + E.Message);
+  end;
+
+  try
+    LConfig.Prompts.RegisterClass(TClientTestPrompts);
+  except
+    on E: Exception do
+      raise Exception.Create('prompts: ' + E.Message);
+  end;
+
+  try
+    LConfig.Completions.RegisterClass(TClientTestCompletions);
+  except
+    on E: Exception do
+      raise Exception.Create('completions: ' + E.Message);
+  end;
+
+  LConfig.ApplyConfig;
 
   LBinding := FServer.Bindings.Add;
   LBinding.IP := '127.0.0.1';
@@ -624,6 +728,132 @@ begin
   finally
     LFilter.Free;
     FClient.TransportFactory := nil;
+  end;
+end;
+
+procedure TMCPClientTest.TestListResources;
+var
+  LResources: TMCPResources;
+  LTemplates: TMCPTemplates;
+begin
+  LResources := FClient.ListResources;
+  try
+    Assert.AreEqual(2, LResources.Count);
+    Assert.AreEqual('clienttest://blob', LResources[0].Uri);
+    Assert.AreEqual('clienttest://greeting', LResources[1].Uri);
+  finally
+    LResources.Free;
+  end;
+
+  LTemplates := FClient.ListResourceTemplates;
+  try
+    Assert.AreEqual(1, LTemplates.Count);
+    Assert.AreEqual('clienttest://items/{id}', LTemplates[0].UriTemplate.Value);
+  finally
+    LTemplates.Free;
+  end;
+end;
+
+procedure TMCPClientTest.TestReadResourceText;
+var
+  LResult: TReadResourceResult;
+  LItem: TReadResourceResult;
+begin
+  LResult := FClient.ReadResource('clienttest://greeting');
+  try
+    Assert.AreEqual(1, LResult.Contents.Count);
+    Assert.IsTrue(LResult.Contents[0] is TTextResourceContents);
+    Assert.AreEqual('hello from the resource',
+      TTextResourceContents(LResult.Contents[0]).Text);
+    Assert.AreEqual('text/plain', LResult.Contents[0].MimeType.Value);
+    // The test server sets no hints, so the honest defaults travel.
+    Assert.AreEqual(UInt64(0), LResult.TtlMs);
+    Assert.AreEqual(TCacheScope.ScopePrivate, LResult.CacheScope);
+  finally
+    LResult.Free;
+  end;
+
+  // The template is read like any other resource.
+  LItem := FClient.ReadResource('clienttest://items/7');
+  try
+    Assert.AreEqual('item 7', TTextResourceContents(LItem.Contents[0]).Text);
+  finally
+    LItem.Free;
+  end;
+end;
+
+procedure TMCPClientTest.TestReadResourceBlob;
+var
+  LResult: TReadResourceResult;
+begin
+  LResult := FClient.ReadResource('clienttest://blob');
+  try
+    Assert.AreEqual(1, LResult.Contents.Count);
+    Assert.IsTrue(LResult.Contents[0] is TBlobResourceContents);
+    Assert.AreEqual('AQID', TBlobResourceContents(LResult.Contents[0]).Blob);
+  finally
+    LResult.Free;
+  end;
+end;
+
+procedure TMCPClientTest.TestListPrompts;
+var
+  LPrompts: TMCPPrompts;
+begin
+  LPrompts := FClient.ListPrompts;
+  try
+    Assert.AreEqual(1, LPrompts.Count);
+    Assert.AreEqual('clienttest_greet', LPrompts[0].Name);
+  finally
+    LPrompts.Free;
+  end;
+end;
+
+procedure TMCPClientTest.TestGetPrompt;
+var
+  LArgs: TJSONObject;
+  LResult: TGetPromptResult;
+  LMessage: TPromptMessageBase;
+begin
+  LArgs := TJSONObject.ParseJSONValue('{"name":"Ada"}') as TJSONObject;
+  try
+    LResult := FClient.GetPrompt('clienttest_greet', LArgs);
+    try
+      Assert.AreEqual(1, LResult.Messages.Count);
+
+      LMessage := LResult.Messages[0];
+      Assert.IsTrue(LMessage is TPromptMessage<TTextContent>);
+      Assert.AreEqual(TRole.User, LMessage.Role);
+      Assert.AreEqual('Hello Ada',
+        (LMessage as TPromptMessage<TTextContent>).Content.Text);
+    finally
+      LResult.Free;
+    end;
+  finally
+    LArgs.Free;
+  end;
+end;
+
+procedure TMCPClientTest.TestComplete;
+var
+  LRef: TMCPCompletionReference;
+  LResult: TCompleteResult;
+begin
+  LRef := TMCPCompletionReference.Create;
+  try
+    LRef.&Type := MCP_REF_PROMPT;
+    LRef.Name := 'clienttest_greet';
+
+    LResult := FClient.Complete(LRef, 'name', 'A');
+    try
+      Assert.AreEqual(2, Length(LResult.Completion.Values));
+      Assert.AreEqual('Ada', LResult.Completion.Values[0]);
+      Assert.AreEqual('Alan', LResult.Completion.Values[1]);
+    finally
+      LResult.Free;
+    end;
+  finally
+    LRef.Free;
   end;
 end;
 

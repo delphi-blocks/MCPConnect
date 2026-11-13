@@ -55,6 +55,8 @@ uses
   MCPConnect.MCP.Types.Errors in '..\..\Source\MCPConnect.MCP.Types.Errors.pas',
   MCPConnect.Client in '..\..\Source\MCPConnect.Client.pas',
   MCPConnect.Client.Transport.HTTP in '..\..\Source\MCPConnect.Client.Transport.HTTP.pas',
+  MCPConnect.Client.Transport.Stdio in '..\..\Source\MCPConnect.Client.Transport.Stdio.pas',
+  MCPConnect.Transport.Stdio in '..\..\Source\MCPConnect.Transport.Stdio.pas',
   MCPConnect.MCP.Response in '..\..\Source\MCPConnect.MCP.Response.pas',
   MCPConnect.MCP.Server in '..\..\Source\MCPConnect.MCP.Server.pas',
   MCPConnect.MCP.Server.Api in '..\..\Source\MCPConnect.MCP.Server.Api.pas',
@@ -127,6 +129,13 @@ var
   logger : ITestLogger;
   nunitLogger : ITestLogger;
 begin
+  // The client tests spawn this executable as a stdio MCP server.
+  if (ParamCount = 1) and SameText(ParamStr(1), '--stdio-server') then
+  begin
+    MCPConnect.Tests.Client.RunStdioServer;
+    Exit;
+  end;
+
   ReportMemoryLeaksOnShutdown := True;
 {$IFDEF TESTINSIGHT}
   TestInsight.DUnitX.RunRegisteredTests;

@@ -159,6 +159,8 @@
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Errors.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Client.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Client.Transport.HTTP.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Client.Transport.Stdio.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Transport.Stdio.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Server.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Server.Api.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Security.Jwks.pas"/>

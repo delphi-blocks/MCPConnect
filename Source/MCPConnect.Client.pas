@@ -17,13 +17,16 @@ unit MCPConnect.Client;
 interface
 
 uses
-  System.SysUtils, System.JSON, System.Generics.Collections,
+  System.SysUtils, System.JSON, System.Rtti, System.TypInfo,
+  System.Generics.Collections,
 
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
+  Neon.Core.Utils,
 
   JRPC.Core,
   JRPC.Client,
+  JRPC.Connection,
 
   MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Tool,
@@ -147,6 +150,8 @@ type
   TMCPClient = class
   private
     FJRPC: TJRPCClient;
+    FConnection: TJRPCConnection;
+    FCallTimeout: Cardinal;
     FProtocolVersion: string;
     FServerInfo: TImplementation;
     FCapabilities: TServerCapabilities;
@@ -157,12 +162,15 @@ type
     FOnSampling: TMCPSamplingHandler;
     FOnRoots: TMCPRootsHandler;
 
+    procedure InitState;
     procedure ForwardNotification(const ANotification: TJRPCNotification);
     procedure ForwardError(E: Exception);
     procedure ApplyMeta(AParams: TRequestMetaParams);
     procedure PatchCapabilities(AValue: TJSONObject);
     function BuildCapabilitiesJSON: TJSONObject;
     function BuildRequest(const AMethod: string; AParams: TRequestMetaParams): TJRPCRequest;
+    function ExecuteRequest(ARequest: TJRPCRequest): TJSONValue;
+    function DeserializeResult<T>(AValue: TJSONValue): T;
     function Discover: TDiscoverResult;
     function TryNegotiateVersion(E: EJRPCRemoteError): Boolean;
     function ParseCallToolResult(AValue: TJSONObject): TCallToolResult;
@@ -173,10 +181,18 @@ type
     class function IsInputRequired(AValue: TJSONObject): Boolean; static;
   public
     /// <summary>
-    ///   Takes the transport. Connect performs discovery and version
-    ///   negotiation.
+    ///   A client over a streaming transport (Streamable HTTP): each call is
+    ///   one request and its streamed answer.
     /// </summary>
-    constructor Create(const ATransport: IJRPCStreamingTransport);
+    constructor Create(const ATransport: IJRPCStreamingTransport); overload;
+
+    /// <summary>
+    ///   A client over a bidirectional message transport (stdio): the client
+    ///   owns a TJRPCConnection, whose reader thread multiplexes replies,
+    ///   notifications and peer requests.
+    /// </summary>
+    constructor Create(const ATransport: IJRPCMessageTransport); overload;
+
     destructor Destroy; override;
 
     /// <summary>
@@ -237,6 +253,12 @@ type
     /// <summary>The version negotiated by Connect.</summary>
     property ProtocolVersion: string read FProtocolVersion;
 
+    /// <summary>
+    ///   Milliseconds Call waits for an answer on a connection transport; 0
+    ///   waits forever. The HTTP transport has its own timeouts.
+    /// </summary>
+    property CallTimeout: Cardinal read FCallTimeout write FCallTimeout;
+
     /// <summary>The server identity reported in server/discover.</summary>
     property ServerInfo: TImplementation read FServerInfo;
 
@@ -282,13 +304,18 @@ implementation
 
 { TMCPClient }
 
-constructor TMCPClient.Create(const ATransport: IJRPCStreamingTransport);
+procedure TMCPClient.InitState;
 begin
-  inherited Create;
-
   FProtocolVersion := MCP_LATEST_PROTOCOL_VERSION;
   FServerInfo := TImplementation.Create;
   FCapabilities := TServerCapabilities.Create;
+  FCallTimeout := 0;
+end;
+
+constructor TMCPClient.Create(const ATransport: IJRPCStreamingTransport);
+begin
+  inherited Create;
+  InitState;
 
   FJRPC := TJRPCClient.Create(nil);
   FJRPC.Transport := ATransport;
@@ -298,8 +325,20 @@ begin
   FJRPC.OnError := ForwardError;
 end;
 
+constructor TMCPClient.Create(const ATransport: IJRPCMessageTransport);
+begin
+  inherited Create;
+  InitState;
+
+  FConnection := TJRPCConnection.Create(ATransport);
+  FConnection.OnNotification := ForwardNotification;
+  FConnection.OnError := ForwardError;
+  FConnection.Open;
+end;
+
 destructor TMCPClient.Destroy;
 begin
+  FConnection.Free;
   FJRPC.Free;
   FCapabilities.Free;
   FServerInfo.Free;
@@ -516,13 +555,52 @@ begin
   end;
 end;
 
+function TMCPClient.ExecuteRequest(ARequest: TJRPCRequest): TJSONValue;
+var
+  LResponse: TJRPCResponse;
+begin
+  if Assigned(FConnection) then
+  begin
+    LResponse := FConnection.Call(ARequest, FCallTimeout);
+    try
+      Result := LResponse.Result.Clone as TJSONValue;
+    finally
+      LResponse.Free;
+    end;
+  end
+  else
+    Result := FJRPC.ExecuteAsJSONValue(ARequest);
+end;
+
+function TMCPClient.DeserializeResult<T>(AValue: TJSONValue): T;
+var
+  LType: TRttiType;
+  LObject: TObject;
+  LResult: TValue;
+begin
+  LType := TRttiUtils.Context.GetType(TypeInfo(T));
+  if not Assigned(LType) then
+    raise EJRPCClientError.Create(SJRPCClientUnknownResultType);
+
+  // The same split the JRPC client uses: a class goes through JSONToObject
+  // and is created here, anything else through JSONToValue.
+  if LType.IsInstance then
+  begin
+    LObject := TNeon.JSONToObject(LType, AValue, MCPNeonConfig);
+    TValue.Make(@LObject, LType.Handle, LResult);
+    Result := LResult.AsType<T>;
+  end
+  else
+    Result := TNeon.JSONToValue<T>(AValue, MCPNeonConfig);
+end;
+
 function TMCPClient.Call(const AMethod: string; AParams: TRequestMetaParams): TJSONValue;
 var
   LRequest: TJRPCRequest;
 begin
   LRequest := BuildRequest(AMethod, AParams);
   try
-    Result := FJRPC.ExecuteAsJSONValue(LRequest);
+    Result := ExecuteRequest(LRequest);
   finally
     LRequest.Free;
   end;
@@ -531,10 +609,21 @@ end;
 function TMCPClient.ExecuteAs<T>(const AMethod: string; AParams: TRequestMetaParams): T;
 var
   LRequest: TJRPCRequest;
+  LValue: TJSONValue;
 begin
   LRequest := BuildRequest(AMethod, AParams);
   try
-    Result := FJRPC.ExecuteAs<T>(LRequest);
+    if Assigned(FConnection) then
+    begin
+      LValue := ExecuteRequest(LRequest);
+      try
+        Result := DeserializeResult<T>(LValue);
+      finally
+        LValue.Free;
+      end;
+    end
+    else
+      Result := FJRPC.ExecuteAs<T>(LRequest);
   finally
     LRequest.Free;
   end;
@@ -626,8 +715,6 @@ begin
       LRequest := LPair.Value;
       if not LRequest.Resolve then
         raise EJRPCClientError.CreateFmt(SMCPClientUnknownInputRequest, [LPair.Key]);
-
-      LAnswer := nil;
 
       if LRequest.Method = MCP_INPUT_ELICITATION then
       begin

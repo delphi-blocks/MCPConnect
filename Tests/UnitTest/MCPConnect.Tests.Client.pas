@@ -40,8 +40,16 @@ uses
   MCPConnect.MCP.Types.Errors,
   MCPConnect.MCP.Response,
   MCPConnect.Transport.Indy,
+  MCPConnect.Transport.Stdio,
   MCPConnect.Client,
-  MCPConnect.Client.Transport.HTTP;
+  MCPConnect.Client.Transport.HTTP,
+  MCPConnect.Client.Transport.Stdio;
+
+/// <summary>
+///   Runs this executable as a stdio MCP server: the client tests spawn it
+///   with --stdio-server and talk to it over the pipes.
+/// </summary>
+procedure RunStdioServer;
 
 type
   /// <summary>The structured content one test tool returns.</summary>
@@ -108,10 +116,53 @@ type
     [Test] procedure TestErrorDataDecoding;
   end;
 
+  /// <summary>
+  ///   The same client over stdio: this executable is spawned with
+  ///   --stdio-server and driven through a real child process and pipes.
+  /// </summary>
+  [TestFixture]
+  TMCPStdioClientTest = class
+  private
+    FTransport: TMCPStdioTransport;
+    FClient: TMCPClient;
+  public
+    [Setup] procedure Setup;
+    [TearDown] procedure TearDown;
+
+    [Test] procedure TestStdioConnect;
+    [Test] procedure TestStdioListTools;
+    [Test] procedure TestStdioCallToolWithMrtr;
+    [Test] procedure TestStdioProgress;
+  end;
+
 implementation
 
 uses
   System.Generics.Collections;
+
+{ stdio server }
+
+procedure RunStdioServer;
+var
+  LServer: TMCPStdioServer;
+begin
+  LServer := TMCPStdioServer.CreateMCPServer(nil);
+  try
+    LServer.MCPServer.Plugin.Configure<IMCPConfig>
+      .Server
+        .SetName('stdio-test')
+        .SetVersion('1.0')
+      .BackToMCP
+      .Tools
+        .RegisterClass(TClientTestTools)
+      .BackToMCP
+    .ApplyConfig;
+
+    LServer.StartServerAndWait;
+  finally
+    LServer.Free;
+  end;
+end;
 
 { TClientTestTools }
 
@@ -512,7 +563,108 @@ begin
   end;
 end;
 
+procedure TMCPStdioClientTest.Setup;
+begin
+  FTransport := TMCPStdioTransport.Create(
+    Format('"%s" --stdio-server', [ParamStr(0)]));
+
+  FClient := TMCPClient.Create(FTransport);
+  FClient.CallTimeout := 15000;
+  FClient.Connect;
+end;
+
+procedure TMCPStdioClientTest.TearDown;
+begin
+  FClient.Free;
+  // The connection held the transport's only interface reference.
+  FTransport := nil;
+end;
+
+procedure TMCPStdioClientTest.TestStdioConnect;
+begin
+  Assert.AreEqual('2026-07-28', FClient.ProtocolVersion);
+  Assert.AreEqual('stdio-test', FClient.ServerInfo.Name);
+  Assert.AreEqual('1.0', FClient.ServerInfo.Version);
+end;
+
+procedure TMCPStdioClientTest.TestStdioListTools;
+var
+  LTools: TMCPTools;
+begin
+  LTools := FClient.ListTools;
+  try
+    Assert.AreEqual(7, LTools.Count);
+    Assert.AreEqual('clienttest_echo', LTools[1].Name);
+  finally
+    LTools.Free;
+  end;
+end;
+
+procedure TMCPStdioClientTest.TestStdioCallToolWithMrtr;
+var
+  LResult: TCallToolResult;
+begin
+  FClient.OnElicitation :=
+    function(const ARequest: TElicitRequestParams): TElicitResult
+    begin
+      Result := TElicitResult.Create;
+      Result.Action := TElicitAction.Accept;
+      Result.Content := TJSONObject.ParseJSONValue('{"confirm":true}');
+    end;
+
+  try
+    LResult := FClient.CallTool('clienttest_confirm_delete');
+    try
+      Assert.AreEqual(1, LResult.Content.Count);
+      Assert.AreEqual('confirmed', TTextContent(LResult.Content[0]).Text);
+    finally
+      LResult.Free;
+    end;
+  finally
+    FClient.OnElicitation := nil;
+  end;
+end;
+
+procedure TMCPStdioClientTest.TestStdioProgress;
+var
+  LParams: TCallToolRequestParams;
+  LResult: TJSONValue;
+  LMethods: TStringList;
+begin
+  LMethods := TStringList.Create;
+  try
+    FClient.OnNotification :=
+      procedure(const ANotification: TJRPCNotification)
+      begin
+        LMethods.Add(ANotification.Method);
+      end;
+
+    LParams := TCallToolRequestParams.Create;
+    try
+      LParams.Name := 'clienttest_ping';
+      LParams.RequestMeta.SetProgressToken('stdio-progress');
+      LParams.RequestMeta.LogLevel := TMCPLogLevel.Warning;
+
+      LResult := FClient.Call('tools/call', LParams);
+      try
+        Assert.IsTrue(LResult.ToJSON.Contains('pong'), LResult.ToJSON);
+      finally
+        LResult.Free;
+      end;
+    finally
+      LParams.Free;
+    end;
+
+    Assert.IsTrue(LMethods.IndexOf('notifications/progress') >= 0, LMethods.Text);
+    Assert.IsTrue(LMethods.IndexOf('notifications/message') >= 0, LMethods.Text);
+  finally
+    FClient.OnNotification := nil;
+    LMethods.Free;
+  end;
+end;
+
 initialization
   TDUnitX.RegisterTestFixture(TMCPClientTest);
+  TDUnitX.RegisterTestFixture(TMCPStdioClientTest);
 
 end.

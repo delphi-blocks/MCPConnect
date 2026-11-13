@@ -1,4 +1,4 @@
-﻿{******************************************************************************}
+{******************************************************************************}
 {                                                                              }
 {  Delphi MCP Connect Library                                                  }
 {                                                                              }
@@ -514,6 +514,33 @@ type
     ///   given, is owned by the request.
     /// </summary>
     procedure SetRoots(AParams: TListRootsParams = nil);
+
+    /// <summary>
+    ///   Fills Method and the typed params from Raw, which is how the request
+    ///   arrived. Idempotent: a request the server built is already resolved.
+    /// </summary>
+    /// <remarks>
+    ///   A client reads a request from its Raw envelope; Neon cannot bind the
+    ///   typed fields directly because they are all [NeonIgnore]. This is the
+    ///   read mirror of SetElicitation / SetSampling / SetRoots.
+    /// </remarks>
+    function Resolve: Boolean;
+
+    /// <summary>
+    ///   The params when this is an elicitation/create request, nil otherwise.
+    /// </summary>
+    function AsElicitation: TElicitRequestParams;
+
+    /// <summary>
+    ///   The params when this is a sampling/createMessage request, nil
+    ///   otherwise.
+    /// </summary>
+    function AsSampling: TCreateMessageRequestParams;
+
+    /// <summary>
+    ///   The params when this is a roots/list request, nil otherwise.
+    /// </summary>
+    function AsRoots: TListRootsParams;
   end;
 
   /// <summary>
@@ -606,6 +633,24 @@ type
     ///   Decodes Raw as the answer to a "roots/list".
     /// </summary>
     function AsRoots: TListRootsResult;
+
+    /// <summary>
+    ///   Populates this response as an "elicitation/create" answer, taking
+    ///   ownership of AValue and rendering it into Raw.
+    /// </summary>
+    procedure SetElicitation(AValue: TElicitResult);
+
+    /// <summary>
+    ///   Populates this response as a "sampling/createMessage" answer, taking
+    ///   ownership of AValue.
+    /// </summary>
+    procedure SetSampling(AValue: TCreateMessageResult);
+
+    /// <summary>
+    ///   Populates this response as a "roots/list" answer, taking ownership of
+    ///   AValue.
+    /// </summary>
+    procedure SetRoots(AValue: TListRootsResult);
   end;
 
   /// <summary>
@@ -634,6 +679,24 @@ type
     ///   The roots answer under AKey, or nil.
     /// </summary>
     function RootsFor(const AKey: string): TListRootsResult;
+
+    /// <summary>
+    ///   Stores AResult as the answer to the elicitation request under AKey,
+    ///   taking ownership of it.
+    /// </summary>
+    function AddElicitation(const AKey: string; AResult: TElicitResult): TInputResponse;
+
+    /// <summary>
+    ///   Stores AResult as the answer to the sampling request under AKey,
+    ///   taking ownership of it.
+    /// </summary>
+    function AddSampling(const AKey: string; AResult: TCreateMessageResult): TInputResponse;
+
+    /// <summary>
+    ///   Stores AResult as the answer to the roots request under AKey, taking
+    ///   ownership of it.
+    /// </summary>
+    function AddRoots(const AKey: string; AResult: TListRootsResult): TInputResponse;
   end;
 
 
@@ -1004,6 +1067,82 @@ begin
   Raw := BuildInputRequestRaw(Method, AParams);
 end;
 
+function TInputRequest.Resolve: Boolean;
+var
+  LValue: TJSONValue;
+  LParams: TJSONValue;
+begin
+  Result := False;
+
+  if Method = '' then
+  begin
+    if not (Raw is TJSONObject) then
+      Exit;
+
+    LValue := TJSONObject(Raw).GetValue('method');
+    if not (LValue is TJSONString) then
+      Exit;
+
+    Method := LValue.Value;
+  end;
+
+  if (Method <> MCP_INPUT_ELICITATION) and
+    (Method <> MCP_INPUT_SAMPLING) and
+    (Method <> MCP_INPUT_ROOTS) then
+    Exit(False);
+
+  LParams := nil;
+  if Raw is TJSONObject then
+    LParams := TJSONObject(Raw).GetValue('params');
+
+  if Method = MCP_INPUT_ELICITATION then
+  begin
+    if not Assigned(Elicitation) then
+    begin
+      Elicitation := TElicitRequestParams.Create;
+      if LParams is TJSONObject then
+        TNeon.JSONToObject(Elicitation, TJSONObject(LParams), MCPNeonConfig);
+    end;
+  end
+  else if Method = MCP_INPUT_SAMPLING then
+  begin
+    if not Assigned(Sampling) then
+    begin
+      Sampling := TCreateMessageRequestParams.Create;
+      if LParams is TJSONObject then
+        TNeon.JSONToObject(Sampling, TJSONObject(LParams), MCPNeonConfig);
+    end;
+  end
+  else if not Assigned(Roots) then
+    Roots := TListRootsParams.Create;
+
+  Result := True;
+end;
+
+function TInputRequest.AsElicitation: TElicitRequestParams;
+begin
+  if Resolve and (Method = MCP_INPUT_ELICITATION) then
+    Result := Elicitation
+  else
+    Result := nil;
+end;
+
+function TInputRequest.AsSampling: TCreateMessageRequestParams;
+begin
+  if Resolve and (Method = MCP_INPUT_SAMPLING) then
+    Result := Sampling
+  else
+    Result := nil;
+end;
+
+function TInputRequest.AsRoots: TListRootsParams;
+begin
+  if Resolve and (Method = MCP_INPUT_ROOTS) then
+    Result := Roots
+  else
+    Result := nil;
+end;
+
 { TInputRequests }
 
 function TInputRequests.AddElicitation(const AKey: string;
@@ -1048,7 +1187,12 @@ var
   LRequest: TInputRequest;
 begin
   if TryGetValue(AKey, LRequest) then
-    Result := LRequest.Method
+  begin
+    // A request read from JSON has its method inside Raw; a request the server
+    // built already carries it.
+    LRequest.Resolve;
+    Result := LRequest.Method;
+  end
   else
     Result := '';
 end;
@@ -1097,6 +1241,39 @@ begin
   Result := Roots;
 end;
 
+function InputResponseJSON(AValue: TObject): TJSONObject;
+begin
+  if not Assigned(AValue) then
+    Exit(nil);
+
+  Result := TJSONObject.ParseJSONValue(
+    TNeon.ObjectToJSONString(AValue, MCPNeonConfig)) as TJSONObject;
+end;
+
+procedure TInputResponse.SetElicitation(AValue: TElicitResult);
+begin
+  Elicitation.Free;
+  Elicitation := AValue;
+  Raw.Free;
+  Raw := InputResponseJSON(AValue);
+end;
+
+procedure TInputResponse.SetSampling(AValue: TCreateMessageResult);
+begin
+  Sampling.Free;
+  Sampling := AValue;
+  Raw.Free;
+  Raw := InputResponseJSON(AValue);
+end;
+
+procedure TInputResponse.SetRoots(AValue: TListRootsResult);
+begin
+  Roots.Free;
+  Roots := AValue;
+  Raw.Free;
+  Raw := InputResponseJSON(AValue);
+end;
+
 { TInputResponses }
 
 function TInputResponses.Find(const AKey: string): TInputResponse;
@@ -1136,6 +1313,42 @@ begin
     Result := LResponse.AsRoots
   else
     Result := nil;
+end;
+
+function TInputResponses.AddElicitation(const AKey: string; AResult: TElicitResult): TInputResponse;
+begin
+  Result := TInputResponse.Create;
+  try
+    Result.SetElicitation(AResult);
+    Add(AKey, Result);
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+function TInputResponses.AddSampling(const AKey: string; AResult: TCreateMessageResult): TInputResponse;
+begin
+  Result := TInputResponse.Create;
+  try
+    Result.SetSampling(AResult);
+    Add(AKey, Result);
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+function TInputResponses.AddRoots(const AKey: string; AResult: TListRootsResult): TInputResponse;
+begin
+  Result := TInputResponse.Create;
+  try
+    Result.SetRoots(AResult);
+    Add(AKey, Result);
+  except
+    Result.Free;
+    raise;
+  end;
 end;
 
 { TMrtrRequestParams }

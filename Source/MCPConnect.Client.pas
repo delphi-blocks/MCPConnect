@@ -17,7 +17,7 @@ unit MCPConnect.Client;
 interface
 
 uses
-  System.SysUtils, System.JSON,
+  System.SysUtils, System.JSON, System.Generics.Collections,
 
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
@@ -28,6 +28,7 @@ uses
   MCPConnect.MCP.Types.Base,
   MCPConnect.MCP.Types.Tool,
   MCPConnect.MCP.Types.Tools,
+  MCPConnect.MCP.Types.Mrtr,
   MCPConnect.MCP.Types.Errors;
 
 const
@@ -41,18 +42,49 @@ const
   /// </summary>
   MCP_CLIENT_VERSION = '1.0';
 
+  /// <summary>
+  ///   How many input rounds one tool call may take before the client gives up.
+  /// </summary>
+  MCP_CLIENT_MAX_ROUNDS = 10;
+
 resourcestring
   SMCPClientParamsRequired = 'The request params are required: they carry the per-request "_meta"';
   SMCPClientParamsSerialization = 'The request params could not be serialized to JSON';
   SMCPClientResultNotObject = 'The tool result is not a JSON object';
   SMCPClientUnknownContent = 'Unknown tool result content type [%s]';
-  SMCPClientInputRequired = 'The server requires additional input, and this client does not implement MRTR yet';
+  SMCPClientInputRequired =
+    'The server requires input this client cannot provide: no handler is configured for it';
+  SMCPClientUnknownInputRequest = 'Unknown input request [%s]';
+  SMCPClientInputHandlerNil = 'The input handler for [%s] returned no result';
+  SMCPClientTooManyRounds = 'The tool call still requires input after %d rounds';
 
 type
   /// <summary>
-  ///   Raised when tools/call answers "input_required": the server needs more
-  ///   from the client (MRTR), which step 3 implements. The raw interim result
-  ///   is carried so nothing the server sent is lost.
+  ///   Called with an "elicitation/create" request from the server.
+  /// </summary>
+  /// <remarks>
+  ///   Return a result the client takes ownership of. The request belongs to
+  ///   the client and is valid only for the duration of the call.
+  /// </remarks>
+  TMCPElicitationHandler = reference to function(
+    const ARequest: TElicitRequestParams): TElicitResult;
+
+  /// <summary>
+  ///   Called with a "sampling/createMessage" request from the server.
+  /// </summary>
+  TMCPSamplingHandler = reference to function(
+    const ARequest: TCreateMessageRequestParams): TCreateMessageResult;
+
+  /// <summary>
+  ///   Called with a "roots/list" request from the server.
+  /// </summary>
+  TMCPRootsHandler = reference to function(
+    const ARequest: TListRootsParams): TListRootsResult;
+
+  /// <summary>
+  ///   Raised when tools/call answers "input_required" and the client has no
+  ///   handler for one of the requests in it. The raw interim result is
+  ///   carried so nothing the server sent is lost.
   /// </summary>
   EMCPClientInputRequiredError = class(EJRPCException)
   private
@@ -107,9 +139,10 @@ type
   ///   "_meta" every request must carry, and the typed results.
   ///
   ///   CallTool parses a tools/call result into content of the right concrete
-  ///   class, structuredContent and isError. MRTR is not implemented yet: an
-  ///   "input_required" answer raises EMCPClientInputRequiredError carrying
-  ///   the interim result.
+  ///   class, structuredContent and isError. An "input_required" answer is
+  ///   fulfilled through OnElicitation / OnSampling / OnRoots and retried with
+  ///   the answers and the requestState, up to MCP_CLIENT_MAX_ROUNDS times;
+  ///   missing handlers raise EMCPClientInputRequiredError.
   /// </remarks>
   TMCPClient = class
   private
@@ -120,14 +153,22 @@ type
     FInstructions: string;
     FOnNotification: TJRPCNotificationProc;
     FOnError: TJRPCErrorProc;
+    FOnElicitation: TMCPElicitationHandler;
+    FOnSampling: TMCPSamplingHandler;
+    FOnRoots: TMCPRootsHandler;
 
     procedure ForwardNotification(const ANotification: TJRPCNotification);
     procedure ForwardError(E: Exception);
     procedure ApplyMeta(AParams: TRequestMetaParams);
+    procedure PatchCapabilities(AValue: TJSONObject);
+    function BuildCapabilitiesJSON: TJSONObject;
     function BuildRequest(const AMethod: string; AParams: TRequestMetaParams): TJRPCRequest;
     function Discover: TDiscoverResult;
     function TryNegotiateVersion(E: EJRPCRemoteError): Boolean;
     function ParseCallToolResult(AValue: TJSONObject): TCallToolResult;
+    function ParseInputRequired(AValue: TJSONObject): TInputRequiredResult;
+    function Fulfill(AParams: TCallToolRequestParams;
+      AResult: TInputRequiredResult): Boolean;
     class function ParseContent(AValue: TJSONObject): TToolContent; static;
     class function IsInputRequired(AValue: TJSONObject): Boolean; static;
   public
@@ -186,6 +227,11 @@ type
     ///   token or a log level is attached to a typed call. AParams stays the
     ///   caller's.
     /// </summary>
+    /// <remarks>
+    ///   The object is the carrier of the round trip: the client writes the
+    ///   answers it receives into InputResponses and the server's
+    ///   RequestState into it before retrying.
+    /// </remarks>
     function CallTool(AParams: TCallToolRequestParams): TCallToolResult; overload;
 
     /// <summary>The version negotiated by Connect.</summary>
@@ -205,6 +251,26 @@ type
     ///   messages, in the order the server sent them.
     /// </summary>
     property OnNotification: TJRPCNotificationProc read FOnNotification write FOnNotification;
+
+    /// <summary>
+    ///   Answers "elicitation/create" requests the server embeds in an interim
+    ///   tool result. Assigning it also declares the elicitation/form client
+    ///   capability in every request.
+    /// </summary>
+    property OnElicitation: TMCPElicitationHandler
+      read FOnElicitation write FOnElicitation;
+
+    /// <summary>
+    ///   Answers "sampling/createMessage" requests. Assigning it declares the
+    ///   sampling capability.
+    /// </summary>
+    property OnSampling: TMCPSamplingHandler read FOnSampling write FOnSampling;
+
+    /// <summary>
+    ///   Answers "roots/list" requests. Assigning it declares the roots
+    ///   capability.
+    /// </summary>
+    property OnRoots: TMCPRootsHandler read FOnRoots write FOnRoots;
 
     /// <summary>
     ///   A failure of the call itself, reported once per call.
@@ -279,6 +345,9 @@ begin
     raise EJRPCClientError.Create(SMCPClientParamsSerialization);
   end;
 
+  // Declare only the capabilities the configured handlers actually provide.
+  PatchCapabilities(TJSONObject(LParamsJSON));
+
   Result := TJRPCRequest.Create;
   try
     Result.Method := AMethod;
@@ -288,6 +357,49 @@ begin
     Result.Free;
     raise;
   end;
+end;
+
+procedure TMCPClient.PatchCapabilities(AValue: TJSONObject);
+var
+  LMeta: TJSONValue;
+  LOld: TJSONPair;
+  LCaps: TJSONObject;
+begin
+  LMeta := AValue.GetValue('_meta');
+  if not (LMeta is TJSONObject) then
+    Exit;
+
+  LCaps := BuildCapabilitiesJSON;
+  try
+    LOld := TJSONObject(LMeta).RemovePair(MCP_META_CLIENT_CAPABILITIES);
+    LOld.Free;
+    TJSONObject(LMeta).AddPair(MCP_META_CLIENT_CAPABILITIES, LCaps);
+    // The meta object owns it now.
+    LCaps := nil;
+  finally
+    LCaps.Free;
+  end;
+end;
+
+function TMCPClient.BuildCapabilitiesJSON: TJSONObject;
+var
+  LElicitation: TJSONObject;
+begin
+  Result := TJSONObject.Create;
+
+  if Assigned(FOnElicitation) then
+  begin
+    // The form mode only: url elicitation is not implemented.
+    LElicitation := TJSONObject.Create;
+    LElicitation.AddPair('form', TJSONObject.Create);
+    Result.AddPair('elicitation', LElicitation);
+  end;
+
+  if Assigned(FOnSampling) then
+    Result.AddPair('sampling', TJSONObject.Create);
+
+  if Assigned(FOnRoots) then
+    Result.AddPair('roots', TJSONObject.Create);
 end;
 
 function TMCPClient.Discover: TDiscoverResult;
@@ -452,21 +564,112 @@ end;
 function TMCPClient.CallTool(AParams: TCallToolRequestParams): TCallToolResult;
 var
   LValue: TJSONValue;
+  LInput: TInputRequiredResult;
+  LRounds: Integer;
 begin
-  LValue := Call('tools/call', AParams);
+  LRounds := 0;
+
+  while True do
+  begin
+    LValue := Call('tools/call', AParams);
+    try
+      if not (LValue is TJSONObject) then
+        raise EJRPCClientError.Create(SMCPClientResultNotObject);
+
+      if not IsInputRequired(TJSONObject(LValue)) then
+        Exit(ParseCallToolResult(TJSONObject(LValue)));
+
+      Inc(LRounds);
+      if LRounds > MCP_CLIENT_MAX_ROUNDS then
+        raise EJRPCClientError.CreateFmt(SMCPClientTooManyRounds, [LRounds]);
+
+      LInput := ParseInputRequired(TJSONObject(LValue));
+      try
+        if not Fulfill(AParams, LInput) then
+          // Nobody configured for this kind: the interim result is kept whole
+          // so the caller can continue by hand or report precisely.
+          raise EMCPClientInputRequiredError.Create(
+            TJSONObject(LValue).Clone as TJSONObject);
+      finally
+        LInput.Free;
+      end;
+    finally
+      LValue.Free;
+    end;
+  end;
+end;
+
+function TMCPClient.ParseInputRequired(AValue: TJSONObject): TInputRequiredResult;
+begin
+  Result := TInputRequiredResult.Create;
   try
-    if not (LValue is TJSONObject) then
-      raise EJRPCClientError.Create(SMCPClientResultNotObject);
+    TNeon.JSONToObject(Result, AValue, MCPNeonConfig);
+  except
+    Result.Free;
+    raise;
+  end;
+end;
 
-    if IsInputRequired(TJSONObject(LValue)) then
-      // The interim result is kept whole: step 3 reads inputRequests and
-      // requestState from it and retries.
-      raise EMCPClientInputRequiredError.Create(
-        TJSONObject(LValue).Clone as TJSONObject);
+function TMCPClient.Fulfill(AParams: TCallToolRequestParams;
+  AResult: TInputRequiredResult): Boolean;
+var
+  LPair: TPair<string, TInputRequest>;
+  LRequest: TInputRequest;
+  LResponses: TInputResponses;
+  LAnswer: TObject;
+begin
+  Result := False;
+  LResponses := TInputResponses.Create([doOwnsValues]);
+  try
+    for LPair in AResult.InputRequests do
+    begin
+      LRequest := LPair.Value;
+      if not LRequest.Resolve then
+        raise EJRPCClientError.CreateFmt(SMCPClientUnknownInputRequest, [LPair.Key]);
 
-    Result := ParseCallToolResult(TJSONObject(LValue));
+      LAnswer := nil;
+
+      if LRequest.Method = MCP_INPUT_ELICITATION then
+      begin
+        if not Assigned(FOnElicitation) then
+          Exit;
+        LAnswer := FOnElicitation(LRequest.AsElicitation);
+      end
+      else if LRequest.Method = MCP_INPUT_SAMPLING then
+      begin
+        if not Assigned(FOnSampling) then
+          Exit;
+        LAnswer := FOnSampling(LRequest.AsSampling);
+      end
+      else if LRequest.Method = MCP_INPUT_ROOTS then
+      begin
+        if not Assigned(FOnRoots) then
+          Exit;
+        LAnswer := FOnRoots(LRequest.AsRoots);
+      end
+      else
+        raise EJRPCClientError.CreateFmt(SMCPClientUnknownInputRequest, [LPair.Key]);
+
+      if not Assigned(LAnswer) then
+        raise EJRPCClientError.CreateFmt(SMCPClientInputHandlerNil, [LPair.Key]);
+
+      if LRequest.Method = MCP_INPUT_ELICITATION then
+        LResponses.AddElicitation(LPair.Key, TElicitResult(LAnswer))
+      else if LRequest.Method = MCP_INPUT_SAMPLING then
+        LResponses.AddSampling(LPair.Key, TCreateMessageResult(LAnswer))
+      else
+        LResponses.AddRoots(LPair.Key, TListRootsResult(LAnswer));
+    end;
+
+    // The next round carries these answers and the server's continuation token.
+    AParams.InputResponses.Free;
+    AParams.InputResponses := LResponses;
+    LResponses := nil;
+    AParams.RequestState := AResult.RequestState;
+
+    Result := True;
   finally
-    LValue.Free;
+    LResponses.Free;
   end;
 end;
 

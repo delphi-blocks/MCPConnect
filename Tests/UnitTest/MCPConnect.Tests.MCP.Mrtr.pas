@@ -16,7 +16,7 @@ unit MCPConnect.Tests.MCP.Mrtr;
 interface
 
 uses
-  System.SysUtils, System.JSON,
+  System.SysUtils, System.JSON, System.Generics.Collections,
   DUnitX.TestFramework,
 
   Neon.Core.Persistence.JSON,
@@ -148,11 +148,28 @@ type
     procedure TestRetryCarriesRequestState;
   end;
 
+  /// <summary>
+  ///   The read half of MRTR: a request received from a server (its method and
+  ///   params live in Raw) and a response the client builds (Raw must be
+  ///   rendered from the typed result).
+  /// </summary>
+  [TestFixture]
+  TMrtrReadHalfTest = class(TObject)
+  private
+    function DecodeRequest(const AJson: string): TInputRequest;
+  public
+    [Test] procedure TestRequestResolvesElicitation;
+    [Test] procedure TestRequestResolvesSampling;
+    [Test] procedure TestRequestResolvesRoots;
+    [Test] procedure TestRequestRejectsAnotherMethod;
+    [Test] procedure TestResponseSetElicitation;
+    [Test] procedure TestResponsesAddElicitation;
+  end;
+
   TMrtrTools = class
   public
     [McpTool('who', 'Needs to know who you are first')]
     function Who: TInputRequiredResult;
-
     [McpTool('plain', 'An ordinary tool')]
     function Plain: string;
   end;
@@ -830,10 +847,137 @@ begin
   end;
 end;
 
+{ TMrtrReadHalfTest }
+
+function TMrtrReadHalfTest.DecodeRequest(const AJson: string): TInputRequest;
+var
+  LValue: TJSONValue;
+begin
+  LValue := TJSONObject.ParseJSONValue(AJson);
+  try
+    Result := TInputRequest.Create;
+    try
+      TNeon.JSONToObject(Result, LValue, MCPNeonConfig);
+    except
+      Result.Free;
+      raise;
+    end;
+  finally
+    LValue.Free;
+  end;
+end;
+
+procedure TMrtrReadHalfTest.TestRequestResolvesElicitation;
+var
+  LRequest: TInputRequest;
+begin
+  LRequest := DecodeRequest(
+    '{"method":"elicitation/create","params":{"message":"Your name?",' +
+    '"requestedSchema":{"type":"object","properties":{"name":{"type":"string"}}}}}');
+  try
+    Assert.IsTrue(LRequest.Resolve);
+    Assert.AreEqual(MCP_INPUT_ELICITATION, LRequest.Method);
+    Assert.IsNotNull(LRequest.AsElicitation);
+    Assert.AreEqual('Your name?', LRequest.AsElicitation.Message);
+  finally
+    LRequest.Free;
+  end;
+end;
+
+procedure TMrtrReadHalfTest.TestRequestResolvesSampling;
+var
+  LRequest: TInputRequest;
+begin
+  LRequest := DecodeRequest(
+    '{"method":"sampling/createMessage","params":{"messages":[],"maxTokens":100}}');
+  try
+    Assert.IsTrue(LRequest.Resolve);
+    Assert.AreEqual(MCP_INPUT_SAMPLING, LRequest.Method);
+    Assert.IsNotNull(LRequest.AsSampling);
+    Assert.AreEqual(100, LRequest.AsSampling.MaxTokens);
+  finally
+    LRequest.Free;
+  end;
+end;
+
+procedure TMrtrReadHalfTest.TestRequestResolvesRoots;
+var
+  LRequest: TInputRequest;
+begin
+  LRequest := DecodeRequest('{"method":"roots/list","params":{}}');
+  try
+    Assert.IsTrue(LRequest.Resolve);
+    Assert.AreEqual(MCP_INPUT_ROOTS, LRequest.Method);
+    Assert.IsNotNull(LRequest.AsRoots);
+    Assert.IsNull(LRequest.AsElicitation);
+  finally
+    LRequest.Free;
+  end;
+end;
+
+procedure TMrtrReadHalfTest.TestRequestRejectsAnotherMethod;
+var
+  LRequest: TInputRequest;
+begin
+  LRequest := DecodeRequest('{"method":"other/method","params":{}}');
+  try
+    Assert.IsFalse(LRequest.Resolve);
+    Assert.IsNull(LRequest.AsElicitation);
+  finally
+    LRequest.Free;
+  end;
+end;
+
+procedure TMrtrReadHalfTest.TestResponseSetElicitation;
+var
+  LResponse: TInputResponse;
+  LResult: TElicitResult;
+begin
+  LResult := TElicitResult.Create;
+  LResult.Action := TElicitAction.Accept;
+  LResult.Content := TJSONObject.ParseJSONValue('{"name":"Ada"}');
+
+  LResponse := TInputResponse.Create;
+  try
+    // Takes ownership of LResult and renders it into Raw.
+    LResponse.SetElicitation(LResult);
+
+    Assert.IsTrue(LResponse.Raw is TJSONObject);
+    Assert.AreEqual('accept', TJSONObject(LResponse.Raw).GetValue<string>('action'));
+
+    Assert.AreEqual(TElicitAction.Accept, LResponse.AsElicitation.Action);
+    Assert.AreEqual('Ada',
+      TJSONObject(LResponse.AsElicitation.Content).GetValue<string>('name'));
+  finally
+    LResponse.Free;
+  end;
+end;
+
+procedure TMrtrReadHalfTest.TestResponsesAddElicitation;
+var
+  LResponses: TInputResponses;
+  LResult: TElicitResult;
+begin
+  LResponses := TInputResponses.Create([doOwnsValues]);
+  try
+    LResult := TElicitResult.Create;
+    LResult.Action := TElicitAction.Decline;
+
+    LResponses.AddElicitation('answer', LResult);
+
+    Assert.IsNotNull(LResponses.Find('answer'));
+    Assert.AreEqual(TElicitAction.Decline,
+      LResponses.ElicitationFor('answer').Action);
+  finally
+    LResponses.Free;
+  end;
+end;
+
 initialization
   TDUnitX.RegisterTestFixture(TMCPInputRequestsTest);
   TDUnitX.RegisterTestFixture(TMCPSamplingMessageTest);
   TDUnitX.RegisterTestFixture(TMCPInputResponsesTest);
   TDUnitX.RegisterTestFixture(TMCPToolCallResultUnionTest);
+  TDUnitX.RegisterTestFixture(TMrtrReadHalfTest);
 
 end.

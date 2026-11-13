@@ -59,6 +59,7 @@ type
   private
     [Context] FProgress: TMCPProgress;
     [Context] FLog: TMCPLog;
+    [Context] FParams: TCallToolRequestParams;
   public
     [McpTool('ping', 'Answers pong and reports progress')]
     function Ping: string;
@@ -77,6 +78,9 @@ type
 
     [McpTool('fail', 'Reports a failure to the model')]
     function Fail: TCallToolResult;
+
+    [McpTool('confirm_delete', 'Asks for confirmation before answering')]
+    function ConfirmDelete: TMCPResponse<string>;
   end;
 
   [TestFixture]
@@ -99,6 +103,8 @@ type
     [Test] procedure TestCallToolArguments;
     [Test] procedure TestCallToolStructured;
     [Test] procedure TestCallToolIsError;
+    [Test] procedure TestCallToolMrtrElicitation;
+    [Test] procedure TestCallToolMrtrWithoutCapability;
     [Test] procedure TestErrorDataDecoding;
   end;
 
@@ -157,6 +163,19 @@ begin
   Result := TCallToolReply.Fail('boom');
 end;
 
+function TClientTestTools.ConfirmDelete: TMCPResponse<string>;
+begin
+  // No answer yet: ask, carrying a requestState the retry will echo back.
+  if not FParams.InputResponses.Confirmed('confirm') then
+  begin
+    var LInput := TMCPInput.New('confirm-state');
+    LInput.Confirm('confirm', 'Proceed?');
+    Exit(TMCPResponse<string>.Needs(LInput));
+  end;
+
+  Result := TMCPResponse<string>.Value('confirmed');
+end;
+
 { TMCPClientTest }
 
 procedure TMCPClientTest.Setup;
@@ -210,13 +229,14 @@ var
 begin
   LTools := FClient.ListTools;
   try
-    Assert.AreEqual(6, LTools.Count);
-    Assert.AreEqual('clienttest_echo', LTools[0].Name);
-    Assert.AreEqual('clienttest_echo_arg', LTools[1].Name);
-    Assert.AreEqual('clienttest_fail', LTools[2].Name);
-    Assert.AreEqual('clienttest_mix', LTools[3].Name);
-    Assert.AreEqual('clienttest_ping', LTools[4].Name);
-    Assert.AreEqual('clienttest_structured', LTools[5].Name);
+    Assert.AreEqual(7, LTools.Count);
+    Assert.AreEqual('clienttest_confirm_delete', LTools[0].Name);
+    Assert.AreEqual('clienttest_echo', LTools[1].Name);
+    Assert.AreEqual('clienttest_echo_arg', LTools[2].Name);
+    Assert.AreEqual('clienttest_fail', LTools[3].Name);
+    Assert.AreEqual('clienttest_mix', LTools[4].Name);
+    Assert.AreEqual('clienttest_ping', LTools[5].Name);
+    Assert.AreEqual('clienttest_structured', LTools[6].Name);
   finally
     LTools.Free;
   end;
@@ -399,6 +419,61 @@ begin
     Assert.IsTrue(TTextContent(LResult.Content[0]).Text.Contains('boom'));
   finally
     LResult.Free;
+  end;
+end;
+
+procedure TMCPClientTest.TestCallToolMrtrElicitation;
+var
+  LResult: TCallToolResult;
+  LCalls: Integer;
+begin
+  LCalls := 0;
+  FClient.OnElicitation :=
+    function(const ARequest: TElicitRequestParams): TElicitResult
+    begin
+      Inc(LCalls);
+      Assert.AreEqual('Proceed?', ARequest.Message);
+
+      Result := TElicitResult.Create;
+      Result.Action := TElicitAction.Accept;
+      Result.Content := TJSONObject.ParseJSONValue('{"confirm":true}');
+    end;
+
+  try
+    LResult := FClient.CallTool('clienttest_confirm_delete');
+    try
+      Assert.AreEqual(1, LResult.Content.Count);
+      Assert.AreEqual('confirmed', TTextContent(LResult.Content[0]).Text);
+    finally
+      LResult.Free;
+    end;
+
+    Assert.AreEqual(1, LCalls, 'the interim round asked once');
+  finally
+    FClient.OnElicitation := nil;
+  end;
+end;
+
+procedure TMCPClientTest.TestCallToolMrtrWithoutCapability;
+var
+  LCaps: TMCPClientCapabilities;
+begin
+  // No elicitation handler: the client declares no such capability, and the
+  // server refuses the interim result with -32021 instead of asking.
+  FClient.OnElicitation := nil;
+
+  try
+    FClient.CallTool('clienttest_confirm_delete').Free;
+    Assert.Fail('expected EJRPCRemoteError');
+  except
+    on E: EJRPCRemoteError do
+    begin
+      Assert.AreEqual(MCP_MISSING_REQUIRED_CLIENT_CAPABILITY, E.Code, E.Message);
+      Assert.IsTrue(TMCPClientErrors.TryRequiredCapabilities(E, LCaps));
+      // No mode was declared at all, so the server asks for elicitation as a
+      // whole rather than for the form mode specifically.
+      Assert.IsTrue(TMCPClientCapability.Elicitation in LCaps);
+    end;
   end;
 end;
 

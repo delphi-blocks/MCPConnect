@@ -53,6 +53,8 @@ uses
   MCPConnect.MCP.Types.Elicitation in '..\..\Source\MCPConnect.MCP.Types.Elicitation.pas',
   MCPConnect.MCP.Types.Notifications in '..\..\Source\MCPConnect.MCP.Types.Notifications.pas',
   MCPConnect.MCP.Types.Errors in '..\..\Source\MCPConnect.MCP.Types.Errors.pas',
+  MCPConnect.Client in '..\..\Source\MCPConnect.Client.pas',
+  MCPConnect.Client.Transport.HTTP in '..\..\Source\MCPConnect.Client.Transport.HTTP.pas',
   MCPConnect.MCP.Response in '..\..\Source\MCPConnect.MCP.Response.pas',
   MCPConnect.MCP.Server in '..\..\Source\MCPConnect.MCP.Server.pas',
   MCPConnect.MCP.Server.Api in '..\..\Source\MCPConnect.MCP.Server.Api.pas',
@@ -116,7 +118,8 @@ uses
   MCPConnect.Tests.Logging.Memory in 'MCPConnect.Tests.Logging.Memory.pas',
   MCPConnect.Tests.Metrics in 'MCPConnect.Tests.Metrics.pas',
   MCPConnect.Tests.Metrics.Otlp in 'MCPConnect.Tests.Metrics.Otlp.pas',
-  MCPConnect.Tests.MCP.ToolCall in 'MCPConnect.Tests.MCP.ToolCall.pas';
+  MCPConnect.Tests.MCP.ToolCall in 'MCPConnect.Tests.MCP.ToolCall.pas',
+  MCPConnect.Tests.Client in 'MCPConnect.Tests.Client.pas';
 
 var
   runner : ITestRunner;

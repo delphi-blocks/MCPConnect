@@ -157,6 +157,8 @@
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Elicitation.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Notifications.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Types.Errors.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Client.pas"/>
+        <DCCReference Include="..\..\Source\MCPConnect.Client.Transport.HTTP.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Server.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.MCP.Server.Api.pas"/>
         <DCCReference Include="..\..\Source\MCPConnect.Security.Jwks.pas"/>
@@ -220,6 +222,7 @@
         <DCCReference Include="MCPConnect.Tests.Metrics.pas"/>
         <DCCReference Include="MCPConnect.Tests.Metrics.Otlp.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.ToolCall.pas"/>
+        <DCCReference Include="MCPConnect.Tests.Client.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

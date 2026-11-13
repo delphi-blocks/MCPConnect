@@ -83,7 +83,7 @@ var
   end;
 
 begin
-  Result.URL := 'http://localhost:8080/';
+  Result.URL := 'http://localhost:8080/mcp';
   Result.ListenSeconds := 0;
 
   I := 1;
@@ -130,7 +130,7 @@ begin
   Writeln('Usage: MCPClient [options]');
   Writeln;
   Writeln('Connection:');
-  Writeln('  --http URL          MCP endpoint (default http://localhost:8080/)');
+  Writeln('  --http URL          MCP endpoint (default http://localhost:8080/mcp)');
   Writeln('  --stdio COMMAND     launch COMMAND and speak MCP on its stdin/stdout');
   Writeln('  --token TOKEN       bearer token for HTTP');
   Writeln;

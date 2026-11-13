@@ -29,7 +29,7 @@ from `..\..\Source`, so there is nothing to install.
 
 ## Run
 
-Against the Indy demo server (it listens on `http://localhost:8080/`):
+Against the Indy demo server (it answers on every path, `/mcp` included):
 
 ```
 MCPServerIndy.exe
@@ -49,7 +49,7 @@ arguments). Each section prints the typed result the client produced.
 ## Options
 
 ```
---http URL          MCP endpoint (default http://localhost:8080/)
+--http URL          MCP endpoint (default http://localhost:8080/mcp)
 --stdio COMMAND     launch COMMAND and speak MCP on its stdin/stdout
 --token TOKEN       bearer token for HTTP
 --list              only list tools/resources/prompts, then stop
@@ -100,7 +100,9 @@ answer; the server returns the deletion result. `summarize_tasks` exercises
 
 `--listen` opens the stream, then adds a task so the demo server publishes
 `notifications/resources/updated` for `text://todo/summary`; the notification
-is printed and the stream is closed after the requested time. Each listen uses
-its own transport (`TMCPClient.TransportFactory`), so the client's own
-transport remains free for the `add_task` call. Over stdio, `Listen` is not
-implemented yet and the demo reports that instead of failing.
+is printed and the stream is closed after the requested time. A server that
+has no such resource (or publishes nothing for the filter) acknowledges the
+stream but stays silent - the demo says so and still closes cleanly. Each
+listen uses its own transport (`TMCPClient.TransportFactory`), so the client's
+own transport remains free for the `add_task` call. Over stdio, `Listen` is
+not implemented yet and the demo reports that instead of failing.

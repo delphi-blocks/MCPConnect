@@ -17,8 +17,8 @@ unit MCPConnect.Client;
 interface
 
 uses
-  System.SysUtils, System.JSON, System.Rtti, System.TypInfo,
-  System.Generics.Collections,
+  System.SysUtils, System.Classes, System.JSON, System.Rtti, System.TypInfo,
+  System.Generics.Collections, System.SyncObjs,
 
   Neon.Core.Persistence,
   Neon.Core.Persistence.JSON,
@@ -32,6 +32,7 @@ uses
   MCPConnect.MCP.Types.Tool,
   MCPConnect.MCP.Types.Tools,
   MCPConnect.MCP.Types.Mrtr,
+  MCPConnect.MCP.Types.Subscriptions,
   MCPConnect.MCP.Types.Errors;
 
 const
@@ -55,11 +56,16 @@ resourcestring
   SMCPClientParamsSerialization = 'The request params could not be serialized to JSON';
   SMCPClientResultNotObject = 'The tool result is not a JSON object';
   SMCPClientUnknownContent = 'Unknown tool result content type [%s]';
-  SMCPClientInputRequired =
-    'The server requires input this client cannot provide: no handler is configured for it';
+  SMCPClientInputRequired = 'The server requires input this client cannot provide: no handler is configured for it';
   SMCPClientUnknownInputRequest = 'Unknown input request [%s]';
   SMCPClientInputHandlerNil = 'The input handler for [%s] returned no result';
   SMCPClientTooManyRounds = 'The tool call still requires input after %d rounds';
+  SMCPListenOverConnection = 'subscriptions/listen is not implemented over a connection transport yet';
+  SMCPListenNoTransport = 'No transport factory for subscriptions/listen';
+  SMCPListenFilterRequired = 'A subscription filter is required';
+  SMCPListenAckTimeout = 'The server did not acknowledge the subscription in time';
+  SMCPListenInvalidFrame = 'The subscription stream carried an unreadable message';
+  SMCPListenRefused = 'The subscription was refused: %s';
 
 type
   /// <summary>
@@ -83,6 +89,52 @@ type
   /// </summary>
   TMCPRootsHandler = reference to function(
     const ARequest: TListRootsParams): TListRootsResult;
+
+  /// <summary>
+  ///   Called with a notification that arrived on a subscription stream.
+  /// </summary>
+  /// <remarks>
+  ///   The object belongs to the stream and is valid only for the duration of
+  ///   the callback.
+  /// </remarks>
+  TMCPSubscriptionNotification = reference to procedure(const ANotification: TJRPCNotification);
+
+  /// <summary>
+  ///   An open subscriptions/listen stream.
+  /// </summary>
+  /// <remarks>
+  ///   Listen waits for the server's acknowledgement before returning one of
+  ///   these, and raises when the server refuses the stream instead.
+  ///   Blocking is a read on the stream's own thread; Close aborts it, and
+  ///   Wait blocks until the stream has ended for any reason.
+  /// </remarks>
+  IMCPSubscription = interface
+  ['{B4C5D6E7-F809-4A12-9BDE-3F4A5B6C7D8E}']
+    /// <summary>
+    ///   Stops the stream (aborting the read). Idempotent.
+    /// </summary>
+    procedure Close;
+
+    /// <summary>
+    ///   True once the stream has ended, locally or by the server.
+    /// </summary>
+    function Completed: Boolean;
+
+    /// <summary>
+    ///   Waits for the stream to end. False on timeout; 0 waits forever.
+    /// </summary>
+    function Wait(ATimeout: Cardinal): Boolean; overload;
+
+    /// <summary>
+    ///   Waits for the stream to end, with no timeout.
+    /// </summary>
+    function Wait: Boolean; overload;
+
+    /// <summary>
+    ///   True once the server acknowledged the subscription.
+    /// </summary>
+    function Acknowledged: Boolean;
+  end;
 
   /// <summary>
   ///   Raised when tools/call answers "input_required" and the client has no
@@ -161,6 +213,8 @@ type
     FOnElicitation: TMCPElicitationHandler;
     FOnSampling: TMCPSamplingHandler;
     FOnRoots: TMCPRootsHandler;
+    FTransportFactory: TFunc<IJRPCStreamingTransport>;
+    FListenTimeout: Cardinal;
 
     procedure InitState;
     procedure ForwardNotification(const ANotification: TJRPCNotification);
@@ -250,6 +304,22 @@ type
     /// </remarks>
     function CallTool(AParams: TCallToolRequestParams): TCallToolResult; overload;
 
+    /// <summary>
+    ///   Opens a subscriptions/listen stream and returns once the server has
+    ///   acknowledged it.
+    /// </summary>
+    /// <remarks>
+    ///   Each listen needs a transport of its own because the stream stays
+    ///   open: assign TransportFactory (a new HTTP transport with no read
+    ///   timeout) before listening while other calls are in flight. Without a
+    ///   factory the client's own transport is reused, which is only safe when
+    ///   nothing else is called until the subscription closes.
+    ///
+    ///   Over a connection transport (stdio) listen is not implemented yet and
+    ///   raises EJRPCClientError.
+    /// </remarks>
+    function Listen(const AFilter: TSubscriptionFilter; const AOnNotification: TMCPSubscriptionNotification): IMCPSubscription;
+
     /// <summary>The version negotiated by Connect.</summary>
     property ProtocolVersion: string read FProtocolVersion;
 
@@ -258,6 +328,19 @@ type
     ///   waits forever. The HTTP transport has its own timeouts.
     /// </summary>
     property CallTimeout: Cardinal read FCallTimeout write FCallTimeout;
+
+    /// <summary>
+    ///   Milliseconds Listen waits for the server's acknowledgement; 0 waits
+    ///   forever. Default 10000.
+    /// </summary>
+    property ListenTimeout: Cardinal read FListenTimeout write FListenTimeout;
+
+    /// <summary>
+    ///   Creates the transport a subscription stream runs on. Each listen
+    ///   needs its own transport (one long-lived HTTP request), so set this
+    ///   before listening while other calls are in flight.
+    /// </summary>
+    property TransportFactory: TFunc<IJRPCStreamingTransport> read FTransportFactory write FTransportFactory;
 
     /// <summary>The server identity reported in server/discover.</summary>
     property ServerInfo: TImplementation read FServerInfo;
@@ -302,6 +385,39 @@ type
 
 implementation
 
+type
+  /// <summary>
+  ///   The stream behind IMCPSubscription: frames arrive on the JRPC stream
+  ///   thread, the acknowledgement wakes Listen, and Wait polls the stream's
+  ///   completion.
+  /// </summary>
+  TMCPSubscription = class(TInterfacedObject, IMCPSubscription)
+  private
+    FClient: TJRPCClient;
+    FStream: IJRPCStream;
+    FOnNotification: TMCPSubscriptionNotification;
+    FWake: TEvent;
+    FAcknowledged: Boolean;
+    FCompleted: Boolean;
+    FErrorMessage: string;
+    FClosed: Integer;
+    function HandleFrame(const AJSON: string): Boolean;
+    procedure HandleError(E: Exception);
+    procedure Fail(const AMessage: string);
+  public
+    constructor Create(AClient: TJRPCClient; const AOnNotification: TMCPSubscriptionNotification);
+    destructor Destroy; override;
+
+    procedure Attach(const AStream: IJRPCStream);
+    function WaitForAck(ATimeout: Cardinal): Boolean;
+
+    procedure Close;
+    function Completed: Boolean;
+    function Wait(ATimeout: Cardinal): Boolean; overload;
+    function Wait: Boolean; overload;
+    function Acknowledged: Boolean;
+  end;
+
 { TMCPClient }
 
 procedure TMCPClient.InitState;
@@ -310,6 +426,7 @@ begin
   FServerInfo := TImplementation.Create;
   FCapabilities := TServerCapabilities.Create;
   FCallTimeout := 0;
+  FListenTimeout := 10000;
 end;
 
 constructor TMCPClient.Create(const ATransport: IJRPCStreamingTransport);
@@ -760,6 +877,87 @@ begin
   end;
 end;
 
+function TMCPClient.Listen(const AFilter: TSubscriptionFilter; const AOnNotification: TMCPSubscriptionNotification): IMCPSubscription;
+var
+  LTransport: IJRPCStreamingTransport;
+  LJRPC: TJRPCClient;
+  LSub: TMCPSubscription;
+  LRequest: TJRPCRequest;
+  LParams: TSubscriptionsListenRequestParams;
+  LReturned: Boolean;
+begin
+  if Assigned(FConnection) then
+    raise EJRPCClientError.Create(SMCPListenOverConnection);
+
+  if not Assigned(AFilter) then
+    raise EJRPCClientError.Create(SMCPListenFilterRequired);
+
+  if Assigned(FTransportFactory) then
+    LTransport := FTransportFactory()
+  else if Assigned(FJRPC) then
+  begin
+    // The client's own transport: safe only while nothing else is called. A
+    // transport without streaming support cannot hold a listen stream.
+    if not Supports(FJRPC.Transport, IJRPCStreamingTransport, LTransport) then
+      LTransport := nil;
+  end
+  else
+    LTransport := nil;
+
+  if not Assigned(LTransport) then
+    raise EJRPCClientError.Create(SMCPListenNoTransport);
+
+  LSub := nil;
+  LJRPC := nil;
+  LRequest := nil;
+  LReturned := False;
+  try
+    LJRPC := TJRPCClient.Create(nil);
+
+    LParams := TSubscriptionsListenRequestParams.Create;
+    try
+      AFilter.AssignTo(LParams.Notifications);
+      LRequest := BuildRequest('subscriptions/listen', LParams);
+    finally
+      LParams.Free;
+    end;
+
+    LJRPC.Transport := LTransport;
+    LJRPC.NeonConfig := MCPNeonConfig;
+
+    LSub := TMCPSubscription.Create(LJRPC, AOnNotification);
+    LJRPC.OnError := LSub.HandleError;
+
+    // The frame proc is a method of LSub: keep the subscription alive until
+    // the stream completes (Close and Wait before releasing it).
+    LSub.Attach(LJRPC.ExecuteStream(LRequest,
+      function(const AJSON: string): Boolean
+      begin
+        Result := LSub.HandleFrame(AJSON);
+      end));
+
+    if not LSub.WaitForAck(FListenTimeout) then
+    begin
+      LSub.Close;
+      raise EJRPCClientError.Create(SMCPListenAckTimeout);
+    end;
+
+    Result := LSub;
+    LReturned := True;
+  finally
+    LRequest.Free;
+
+    // Once created, LSub owns the client; when the subscription is handed to
+    // the caller it owns both.
+    if LReturned then
+      // The caller owns LSub and, through it, LJRPC.
+    else if Assigned(LSub) then
+      LSub.Free
+    else
+      LJRPC.Free;
+  end;
+end;
+
 function TMCPClient.ParseCallToolResult(AValue: TJSONObject): TCallToolResult;
 var
   LContent, LMeta, LStructured, LIsError, LItem: TJSONValue;
@@ -895,6 +1093,191 @@ begin
     ACapabilities := MCPClientCapabilitiesFromJSON(TJSONObject(LValue));
     Result := True;
   end;
+end;
+
+{ TMCPSubscription }
+
+constructor TMCPSubscription.Create(AClient: TJRPCClient; const AOnNotification: TMCPSubscriptionNotification);
+begin
+  inherited Create;
+  FClient := AClient;
+  FOnNotification := AOnNotification;
+  FWake := TEvent.Create(nil, True, False, '');
+end;
+
+destructor TMCPSubscription.Destroy;
+begin
+  // The contract is Close and Wait before releasing, but a caller that drops
+  // the interface still gets a clean shutdown: abort, wait for the reader,
+  // then free the client it was using.
+  if Assigned(FStream) then
+  begin
+    FStream.Close;
+    if not FStream.Completed then
+      FStream.Wait(5000);
+  end;
+
+  FStream := nil;
+  FClient.Free;
+  FWake.Free;
+  inherited;
+end;
+
+procedure TMCPSubscription.Attach(const AStream: IJRPCStream);
+begin
+  FStream := AStream;
+end;
+
+procedure TMCPSubscription.Fail(const AMessage: string);
+begin
+  if FErrorMessage = '' then
+    FErrorMessage := AMessage;
+  FCompleted := True;
+  FWake.SetEvent;
+end;
+
+procedure TMCPSubscription.HandleError(E: Exception);
+begin
+  Fail(E.Message);
+end;
+
+function TMCPSubscription.HandleFrame(const AJSON: string): Boolean;
+var
+  LDocument: TJSONValue;
+  LMessages: TJRPCMessages;
+  LMessage: TJRPCMessage;
+  LNotification: TJRPCNotification;
+begin
+  Result := FClosed = 0;
+  if not Result then
+    Exit;
+
+  LDocument := TJSONObject.ParseJSONValue(AJSON);
+  if not Assigned(LDocument) then
+  begin
+    Fail(SMCPListenInvalidFrame);
+    Exit(False);
+  end;
+
+  try
+    LMessages := TJRPCMessages.CreateFromJson(LDocument);
+    try
+      if LMessages.Count <> 1 then
+      begin
+        Fail(SMCPListenInvalidFrame);
+        Exit(False);
+      end;
+
+      LMessage := LMessages.List[0];
+
+      if LMessage is TJRPCNotification then
+      begin
+        LNotification := LMessage as TJRPCNotification;
+
+        if LNotification.Method = MCP_NOTIFY_SUBSCRIPTIONS_ACKNOWLEDGED then
+        begin
+          FAcknowledged := True;
+          FWake.SetEvent;
+        end
+        else if Assigned(FOnNotification) then
+          FOnNotification(LNotification);
+      end
+      else if LMessage is TJRPCResponse then
+      begin
+        // The server closed the stream gracefully: the listen result.
+        FCompleted := True;
+        FWake.SetEvent;
+        Result := False;
+      end
+      else if LMessage is TJRPCError then
+      begin
+        Fail(Format(SMCPListenRefused,
+          [(LMessage as TJRPCError).Error.Message.Value]));
+        Result := False;
+      end
+      else
+      begin
+        Fail(SMCPListenInvalidFrame);
+        Result := False;
+      end;
+    finally
+      LMessages.Free;
+    end;
+  finally
+    LDocument.Free;
+  end;
+
+  if FClosed <> 0 then
+    Result := False;
+end;
+
+function TMCPSubscription.WaitForAck(ATimeout: Cardinal): Boolean;
+var
+  LWait: TWaitResult;
+begin
+  if ATimeout = 0 then
+    LWait := FWake.WaitFor($FFFFFFFF)
+  else
+    LWait := FWake.WaitFor(ATimeout);
+
+  if LWait <> wrSignaled then
+    Exit(False);
+
+  if FErrorMessage <> '' then
+    raise EJRPCClientError.Create(FErrorMessage);
+
+  Result := FAcknowledged;
+end;
+
+procedure TMCPSubscription.Close;
+begin
+  if TInterlocked.Exchange(FClosed, 1) = 0 then
+  begin
+    if Assigned(FStream) then
+      FStream.Close;
+    FWake.SetEvent;
+  end;
+end;
+
+function TMCPSubscription.Completed: Boolean;
+begin
+  if FCompleted then
+    Exit(True);
+
+  if Assigned(FStream) and FStream.Completed then
+  begin
+    FCompleted := True;
+    Exit(True);
+  end;
+
+  Result := False;
+end;
+
+function TMCPSubscription.Wait(ATimeout: Cardinal): Boolean;
+var
+  LStart: UInt64;
+begin
+  LStart := TThread.GetTickCount64;
+
+  while not Completed do
+  begin
+    if (ATimeout <> 0) and
+      (TThread.GetTickCount64 - LStart >= UInt64(ATimeout)) then
+      Exit(False);
+    Sleep(20);
+  end;
+
+  Result := True;
+end;
+
+function TMCPSubscription.Wait: Boolean;
+begin
+  Result := Wait(0);
+end;
+
+function TMCPSubscription.Acknowledged: Boolean;
+begin
+  Result := FAcknowledged;
 end;
 
 end.

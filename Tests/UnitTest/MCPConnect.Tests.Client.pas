@@ -68,6 +68,7 @@ type
     [Context] FProgress: TMCPProgress;
     [Context] FLog: TMCPLog;
     [Context] FParams: TCallToolRequestParams;
+    [Context] FConfig: TMCPConfig;
   public
     [McpTool('ping', 'Answers pong and reports progress')]
     function Ping: string;
@@ -89,6 +90,9 @@ type
 
     [McpTool('confirm_delete', 'Asks for confirmation before answering')]
     function ConfirmDelete: TMCPResponse<string>;
+
+    [McpTool('notify', 'Publishes a tools/list_changed notification')]
+    function Notify: string;
   end;
 
   [TestFixture]
@@ -113,6 +117,8 @@ type
     [Test] procedure TestCallToolIsError;
     [Test] procedure TestCallToolMrtrElicitation;
     [Test] procedure TestCallToolMrtrWithoutCapability;
+    [Test] procedure TestListenReceivesNotification;
+    [Test] procedure TestListenCancellation;
     [Test] procedure TestErrorDataDecoding;
   end;
 
@@ -138,7 +144,10 @@ type
 implementation
 
 uses
-  System.Generics.Collections;
+  System.Generics.Collections, System.SyncObjs,
+
+  JRPC.Client,
+  MCPConnect.MCP.Types.Subscriptions;
 
 { stdio server }
 
@@ -227,6 +236,13 @@ begin
   Result := TMCPResponse<string>.Value('confirmed');
 end;
 
+function TClientTestTools.Notify: string;
+begin
+  // Fans out to every open subscriptions/listen stream.
+  FConfig.Subscriptions.ToolsChanged;
+  Result := 'notified';
+end;
+
 { TMCPClientTest }
 
 procedure TMCPClientTest.Setup;
@@ -280,14 +296,15 @@ var
 begin
   LTools := FClient.ListTools;
   try
-    Assert.AreEqual(7, LTools.Count);
+    Assert.AreEqual(8, LTools.Count);
     Assert.AreEqual('clienttest_confirm_delete', LTools[0].Name);
     Assert.AreEqual('clienttest_echo', LTools[1].Name);
     Assert.AreEqual('clienttest_echo_arg', LTools[2].Name);
     Assert.AreEqual('clienttest_fail', LTools[3].Name);
     Assert.AreEqual('clienttest_mix', LTools[4].Name);
-    Assert.AreEqual('clienttest_ping', LTools[5].Name);
-    Assert.AreEqual('clienttest_structured', LTools[6].Name);
+    Assert.AreEqual('clienttest_notify', LTools[5].Name);
+    Assert.AreEqual('clienttest_ping', LTools[6].Name);
+    Assert.AreEqual('clienttest_structured', LTools[7].Name);
   finally
     LTools.Free;
   end;
@@ -528,6 +545,88 @@ begin
   end;
 end;
 
+procedure TMCPClientTest.TestListenReceivesNotification;
+var
+  LFilter: TSubscriptionFilter;
+  LSub: IMCPSubscription;
+  LReceived: TEvent;
+  LMethod: string;
+begin
+  FClient.TransportFactory :=
+    function: IJRPCStreamingTransport
+    begin
+      // A dedicated transport for the stream: no read timeout, since a listen
+      // stays open until it is closed.
+      Result := TMCPHTTPTransport.Create(FURL, '', 0);
+    end;
+
+  LFilter := TSubscriptionFilter.Create;
+  try
+    LFilter.ToolsListChanged := True;
+
+    LReceived := TEvent.Create(nil, True, False, '');
+    try
+      LMethod := '';
+      LSub := FClient.Listen(LFilter,
+        procedure(const ANotification: TJRPCNotification)
+        begin
+          LMethod := ANotification.Method;
+          LReceived.SetEvent;
+        end);
+      try
+        Assert.IsTrue(LSub.Acknowledged, 'Listen returns only after the ack');
+
+        // A call on the client's own transport, while the listen stream is
+        // open on its dedicated one.
+        FClient.CallTool('clienttest_notify').Free;
+
+        Assert.IsTrue(LReceived.WaitFor(5000) = wrSignaled,
+          'the subscription notification must arrive');
+        Assert.AreEqual('notifications/tools/list_changed', LMethod);
+      finally
+        LSub.Close;
+        Assert.IsTrue(LSub.Wait(5000), 'the stream must end after Close');
+        LSub := nil;
+      end;
+    finally
+      LReceived.Free;
+    end;
+  finally
+    LFilter.Free;
+    FClient.TransportFactory := nil;
+  end;
+end;
+
+procedure TMCPClientTest.TestListenCancellation;
+var
+  LFilter: TSubscriptionFilter;
+  LSub: IMCPSubscription;
+begin
+  FClient.TransportFactory :=
+    function: IJRPCStreamingTransport
+    begin
+      Result := TMCPHTTPTransport.Create(FURL, '', 0);
+    end;
+
+  LFilter := TSubscriptionFilter.Create;
+  try
+    LFilter.ResourcesListChanged := True;
+
+    LSub := FClient.Listen(LFilter, nil);
+    try
+      Assert.IsTrue(LSub.Acknowledged);
+    finally
+      LSub.Close;
+    end;
+
+    Assert.IsTrue(LSub.Wait(5000), 'Close must end the stream');
+    Assert.IsTrue(LSub.Completed);
+  finally
+    LFilter.Free;
+    FClient.TransportFactory := nil;
+  end;
+end;
+
 procedure TMCPClientTest.TestErrorDataDecoding;
 var
   LError: EJRPCRemoteError;
@@ -593,7 +692,7 @@ var
 begin
   LTools := FClient.ListTools;
   try
-    Assert.AreEqual(7, LTools.Count);
+    Assert.AreEqual(8, LTools.Count);
     Assert.AreEqual('clienttest_echo', LTools[1].Name);
   finally
     LTools.Free;

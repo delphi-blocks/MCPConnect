@@ -72,9 +72,9 @@ type
   ///   end only when it is a JSON-RPC message (a -32020 HeaderMismatch, a
   ///   -32022 version refusal), and anything else becomes an HTTP status error.
   ///
-  ///   Abort interrupts the call in progress at the next chunk; a transport is
-  ///   meant to serve one long-lived stream at a time (a listen), while
-  ///   ordinary calls can share one.
+  ///   Abort cancels the call in progress, ending even a read that is waiting
+  ///   on a silent server; a transport is meant to serve one long-lived stream
+  ///   at a time (a listen), while ordinary calls can share one.
   ///
   ///   A tools/call carries an Mcp-Param-* header for every argument the
   ///   tool's inputSchema annotates with "x-mcp-header". The annotations come
@@ -94,7 +94,11 @@ type
     FToolHeaders: TDictionary<string, TArray<TMCPParamHeader>>;
     FToolHeadersKnown: Boolean;
     FToolHeadersLock: TCriticalSection;
+    FRequestLock: TCriticalSection;
+    FRequest: IHTTPRequest;
 
+    procedure SetCurrentRequest(const ARequest: IHTTPRequest);
+    procedure ClearCurrentRequest(const ARequest: IHTTPRequest);
     function BuildHeaders(const ARequest: string): TNetHeaders;
     function BuildParamHeaders(const ARequest: string): TNetHeaders;
     function ParamHeadersOf(const ATool: string): TArray<TMCPParamHeader>;
@@ -134,8 +138,13 @@ type
     procedure SendAndReceiveFrames(const ARequest: string; const AOnFrame: TJRPCFrameProc);
 
     /// <summary>
-    ///   Interrupts the call in progress at its next chunk.
+    ///   Interrupts the call in progress, from any thread.
     /// </summary>
+    /// <remarks>
+    ///   The request is cancelled, which closes its connection: a read waiting
+    ///   on a server that sends nothing returns at once rather than at the
+    ///   next chunk. A call that has not started yet stops before sending.
+    /// </remarks>
     procedure Abort;
 
     /// <summary>
@@ -579,13 +588,38 @@ begin
   FToolHeaders := TDictionary<string, TArray<TMCPParamHeader>>.Create;
   FToolHeadersKnown := False;
   FToolHeadersLock := TCriticalSection.Create;
+  FRequestLock := TCriticalSection.Create;
 end;
 
 destructor TMCPHTTPTransport.Destroy;
 begin
+  FRequest := nil;
+  FRequestLock.Free;
   FToolHeadersLock.Free;
   FToolHeaders.Free;
   inherited;
+end;
+
+procedure TMCPHTTPTransport.SetCurrentRequest(const ARequest: IHTTPRequest);
+begin
+  FRequestLock.Enter;
+  try
+    FRequest := ARequest;
+  finally
+    FRequestLock.Leave;
+  end;
+end;
+
+procedure TMCPHTTPTransport.ClearCurrentRequest(const ARequest: IHTTPRequest);
+begin
+  FRequestLock.Enter;
+  try
+    // Only our own: a call that started since has replaced it
+    if FRequest = ARequest then
+      FRequest := nil;
+  finally
+    FRequestLock.Leave;
+  end;
 end;
 
 class procedure TMCPHTTPTransport.CollectParamHeaders(ASchema: TJSONObject;
@@ -900,6 +934,7 @@ var
   LResponse: IHTTPResponse;
   LReceiver: TMCPHTTPReceiver;
   LSink: TMCPHTTPSink;
+  LRequest: IHTTPRequest;
 begin
   // A new call starts clean: Abort only speaks for the stream in progress.
   TInterlocked.Exchange(FAborted, 0);
@@ -914,26 +949,45 @@ begin
 
     LSource := TStringStream.Create(ARequest, TEncoding.UTF8);
     try
+      // Post would build the same request; building it here is what lets
+      // Abort reach it and cancel a read that no chunk would ever end.
+      LRequest := LHTTP.GetRequest('POST', FURL);
+      LRequest.SourceStream := LSource;
+      SetCurrentRequest(LRequest);
       try
-        LResponse := LHTTP.Post(FURL, LSource, LSink, BuildHeaders(ARequest));
-      except
-        // A frame callback that raised - a remote error, an id mismatch, an
-        // unreadable frame - is not a transport failure: let it through as the
-        // type it already has.
-        on E: EJRPCException do
-          raise;
-        on E: Exception do
-        begin
-          // Aborting the read is not a failure: the caller asked for it.
-          if (FAborted <> 0) or LReceiver.Stopped then
-            Exit;
-          raise EJRPCClientError.CreateFmt(SMCPHTTPTransportError,
-            [FURL, E.Message]);
+        // Execute undoes a cancel that came before it started: an Abort that
+        // already arrived is honoured here instead.
+        if FAborted <> 0 then
+          Exit;
+
+        try
+          LResponse := LHTTP.Execute(LRequest, LSink, BuildHeaders(ARequest));
+        except
+          // A frame callback that raised - a remote error, an id mismatch, an
+          // unreadable frame - is not a transport failure: let it through as
+          // the type it already has.
+          on E: EJRPCException do
+            raise;
+          on E: Exception do
+          begin
+            // Aborting the read is not a failure: the caller asked for it.
+            if (FAborted <> 0) or LReceiver.Stopped then
+              Exit;
+            raise EJRPCClientError.CreateFmt(SMCPHTTPTransportError,
+              [FURL, E.Message]);
+          end;
         end;
+      finally
+        ClearCurrentRequest(LRequest);
       end;
     finally
       LSource.Free;
     end;
+
+    // A cancelled read can end without an exception: what it left half read
+    // is not an answer.
+    if FAborted <> 0 then
+      Exit;
 
     if Assigned(LResponse) then
       LReceiver.Finish(LResponse.StatusCode)
@@ -998,8 +1052,23 @@ begin
 end;
 
 procedure TMCPHTTPTransport.Abort;
+var
+  LRequest: IHTTPRequest;
 begin
+  // The flag first: the call checks it before it starts, and between chunks.
   TInterlocked.Exchange(FAborted, 1);
+
+  FRequestLock.Enter;
+  try
+    LRequest := FRequest;
+  finally
+    FRequestLock.Leave;
+  end;
+
+  // Cancelling closes the request's connection, which is what ends a read
+  // blocked on a server that sends nothing (no keep-alive, a dead network).
+  if Assigned(LRequest) then
+    LRequest.Cancel;
 end;
 
 end.

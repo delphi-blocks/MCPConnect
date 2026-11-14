@@ -483,25 +483,60 @@ implementation
 
 type
   /// <summary>
-  ///   The stream behind IMCPSubscription: frames arrive on the JRPC stream
-  ///   thread, the acknowledgement wakes Listen, and Wait polls the stream's
-  ///   completion.
+  ///   What the stream thread reaches: the frame handler of a listen.
   /// </summary>
-  TMCPSubscription = class(TInterfacedObject, IMCPSubscription)
+  IMCPListenState = interface
+  ['{0E7A4C52-9B1D-4F38-A6E2-5C1D8B3F7A90}']
+    function HandleFrame(const AJSON: string): Boolean;
+  end;
+
+  /// <summary>
+  ///   Everything of a listen that its stream thread touches: the JRPC client
+  ///   the stream runs on (owned), the frame and error handlers, and the state
+  ///   they report into.
+  /// </summary>
+  /// <remarks>
+  ///   Reference counted, and referenced by the frame proc the stream holds,
+  ///   so it lives as long as the stream does - and the stream lives until
+  ///   its thread has finished. Releasing the subscription can therefore
+  ///   never free something the thread is still using, however long its read
+  ///   takes to end.
+  /// </remarks>
+  TMCPListenState = class(TInterfacedObject, IMCPListenState)
   private
     FClient: TJRPCClient;
-    FStream: IJRPCStream;
     FOnNotification: TMCPSubscriptionNotification;
     FWake: TEvent;
     FAcknowledged: Boolean;
     FCompleted: Boolean;
     FErrorMessage: string;
     FClosed: Integer;
+  public
+    /// <summary>
+    ///   Takes ownership of AClient.
+    /// </summary>
+    constructor Create(AClient: TJRPCClient; const AOnNotification: TMCPSubscriptionNotification);
+    destructor Destroy; override;
+
     function HandleFrame(const AJSON: string): Boolean;
     procedure HandleError(E: Exception);
     procedure Fail(const AMessage: string);
+
+    property Client: TJRPCClient read FClient;
+  end;
+
+  /// <summary>
+  ///   The stream behind IMCPSubscription: frames arrive on the JRPC stream
+  ///   thread, the acknowledgement wakes Listen, and Wait polls the stream's
+  ///   completion.
+  /// </summary>
+  TMCPSubscription = class(TInterfacedObject, IMCPSubscription)
+  private
+    FState: TMCPListenState;
+    FStateRef: IMCPListenState;
+    FStream: IJRPCStream;
   public
-    constructor Create(AClient: TJRPCClient; const AOnNotification: TMCPSubscriptionNotification);
+    constructor Create(AState: TMCPListenState);
     destructor Destroy; override;
 
     procedure Attach(const AStream: IJRPCStream);
@@ -1371,6 +1406,8 @@ function TMCPClient.Listen(const AFilter: TSubscriptionFilter; const AOnNotifica
 var
   LTransport: IJRPCStreamingTransport;
   LJRPC: TJRPCClient;
+  LState: TMCPListenState;
+  LStateRef: IMCPListenState;
   LSub: TMCPSubscription;
   LRequest: TJRPCRequest;
   LParams: TSubscriptionsListenRequestParams;
@@ -1399,6 +1436,7 @@ begin
 
   LSub := nil;
   LJRPC := nil;
+  LState := nil;
   LRequest := nil;
   LReturned := False;
   try
@@ -1415,15 +1453,19 @@ begin
     LJRPC.Transport := LTransport;
     LJRPC.NeonConfig := MCPNeonConfig;
 
-    LSub := TMCPSubscription.Create(LJRPC, AOnNotification);
-    LJRPC.OnError := LSub.HandleError;
+    // From here the state owns LJRPC, and goes when its last reference does
+    LState := TMCPListenState.Create(LJRPC, AOnNotification);
+    LStateRef := LState;
 
-    // The frame proc is a method of LSub: keep the subscription alive until
-    // the stream completes (Close and Wait before releasing it).
+    LSub := TMCPSubscription.Create(LState);
+
+    // The frame proc holds the state, not the subscription: the stream keeps
+    // its frame proc until the stream thread is done, so the state and the
+    // client it runs on outlive the thread whenever the subscription goes.
     LSub.Attach(LJRPC.ExecuteStream(LRequest,
       function(const AJSON: string): Boolean
       begin
-        Result := LSub.HandleFrame(AJSON);
+        Result := LStateRef.HandleFrame(AJSON);
       end));
 
     if not LSub.WaitForAck(FListenTimeout) then
@@ -1437,13 +1479,13 @@ begin
   finally
     LRequest.Free;
 
-    // Once created, LSub owns the client; when the subscription is handed to
-    // the caller it owns both.
     if LReturned then
-      // The caller owns LSub and, through it, LJRPC.
+      // The caller owns LSub; the state goes with the last of LSub and the
+      // stream.
     else if Assigned(LSub) then
+      // Never handed out, so nothing holds a reference to it
       LSub.Free
-    else
+    else if not Assigned(LState) then
       LJRPC.Free;
   end;
 end;
@@ -1585,40 +1627,32 @@ begin
   end;
 end;
 
-{ TMCPSubscription }
+{ TMCPListenState }
 
-constructor TMCPSubscription.Create(AClient: TJRPCClient; const AOnNotification: TMCPSubscriptionNotification);
+constructor TMCPListenState.Create(AClient: TJRPCClient; const AOnNotification: TMCPSubscriptionNotification);
 begin
   inherited Create;
   FClient := AClient;
   FOnNotification := AOnNotification;
   FWake := TEvent.Create(nil, True, False, '');
+
+  // Wired here, not in Listen: OnError is an anonymous method type, and a
+  // method assigned to it inside Listen is wrapped in Listen's closure frame -
+  // the frame that holds the state, which would then hold itself through its
+  // own client.
+  FClient.OnError := HandleError;
 end;
 
-destructor TMCPSubscription.Destroy;
+destructor TMCPListenState.Destroy;
 begin
-  // The contract is Close and Wait before releasing, but a caller that drops
-  // the interface still gets a clean shutdown: abort, wait for the reader,
-  // then free the client it was using.
-  if Assigned(FStream) then
-  begin
-    FStream.Close;
-    if not FStream.Completed then
-      FStream.Wait(5000);
-  end;
-
-  FStream := nil;
+  // Reached only once the stream has released its frame proc, i.e. after its
+  // thread has finished: nothing can be using the client any more.
   FClient.Free;
   FWake.Free;
   inherited;
 end;
 
-procedure TMCPSubscription.Attach(const AStream: IJRPCStream);
-begin
-  FStream := AStream;
-end;
-
-procedure TMCPSubscription.Fail(const AMessage: string);
+procedure TMCPListenState.Fail(const AMessage: string);
 begin
   if FErrorMessage = '' then
     FErrorMessage := AMessage;
@@ -1626,12 +1660,12 @@ begin
   FWake.SetEvent;
 end;
 
-procedure TMCPSubscription.HandleError(E: Exception);
+procedure TMCPListenState.HandleError(E: Exception);
 begin
   Fail(E.Message);
 end;
 
-function TMCPSubscription.HandleFrame(const AJSON: string): Boolean;
+function TMCPListenState.HandleFrame(const AJSON: string): Boolean;
 var
   LDocument: TJSONValue;
   LMessages: TJRPCMessages;
@@ -1701,42 +1735,76 @@ begin
     Result := False;
 end;
 
+
+{ TMCPSubscription }
+
+constructor TMCPSubscription.Create(AState: TMCPListenState);
+begin
+  inherited Create;
+  FState := AState;
+  FStateRef := AState;
+end;
+
+destructor TMCPSubscription.Destroy;
+begin
+  // The contract is Close and Wait before releasing. A caller that drops the
+  // interface still gets a clean shutdown: Close cancels the read, so the
+  // wait is short. The wait is a courtesy, not what keeps this safe: the
+  // client the stream runs on belongs to the state, which outlives the
+  // stream thread however long it takes to end.
+  if Assigned(FStream) then
+  begin
+    Close;
+    if not FStream.Completed then
+      FStream.Wait(5000);
+  end;
+
+  FStream := nil;
+  FStateRef := nil;
+  inherited;
+end;
+
+procedure TMCPSubscription.Attach(const AStream: IJRPCStream);
+begin
+  FStream := AStream;
+end;
+
 function TMCPSubscription.WaitForAck(ATimeout: Cardinal): Boolean;
 var
   LWait: TWaitResult;
 begin
   if ATimeout = 0 then
-    LWait := FWake.WaitFor($FFFFFFFF)
+    LWait := FState.FWake.WaitFor($FFFFFFFF)
   else
-    LWait := FWake.WaitFor(ATimeout);
+    LWait := FState.FWake.WaitFor(ATimeout);
 
   if LWait <> wrSignaled then
     Exit(False);
 
-  if FErrorMessage <> '' then
-    raise EJRPCClientError.Create(FErrorMessage);
+  if FState.FErrorMessage <> '' then
+    raise EJRPCClientError.Create(FState.FErrorMessage);
 
-  Result := FAcknowledged;
+  Result := FState.FAcknowledged;
 end;
 
 procedure TMCPSubscription.Close;
 begin
-  if TInterlocked.Exchange(FClosed, 1) = 0 then
+  if TInterlocked.Exchange(FState.FClosed, 1) = 0 then
   begin
     if Assigned(FStream) then
       FStream.Close;
-    FWake.SetEvent;
+    FState.FWake.SetEvent;
   end;
 end;
 
 function TMCPSubscription.Completed: Boolean;
 begin
-  if FCompleted then
+  if FState.FCompleted then
     Exit(True);
 
   if Assigned(FStream) and FStream.Completed then
   begin
-    FCompleted := True;
+    FState.FCompleted := True;
     Exit(True);
   end;
 
@@ -1767,7 +1835,7 @@ end;
 
 function TMCPSubscription.Acknowledged: Boolean;
 begin
-  Result := FAcknowledged;
+  Result := FState.FAcknowledged;
 end;
 
 end.

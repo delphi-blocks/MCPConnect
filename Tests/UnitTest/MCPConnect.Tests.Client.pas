@@ -23,7 +23,7 @@ unit MCPConnect.Tests.Client;
 interface
 
 uses
-  System.SysUtils, System.Classes, System.JSON,
+  System.SysUtils, System.Classes, System.JSON, System.SyncObjs,
 
   DUnitX.TestFramework,
 
@@ -182,22 +182,31 @@ type
     [TestCase('OAuthJson', '401,application/json,{"error":"invalid_token"}', ',')]
     procedure TestHttpErrorWithoutJsonRpcBody(AStatus: Integer;
       const AContentType, ABody: string);
+    [Test] procedure TestListenSilentServerTimesOut;
   end;
 
   /// <summary>
   ///   Not an MCP server: answers every request with one fixed status and
   ///   body, the way a proxy or an OAuth layer in front of one would.
   /// </summary>
+  /// <remarks>
+  ///   With AHoldMs it first sits on the request that long - or until it is
+  ///   destroyed - sending nothing at all, the way a server that accepted a
+  ///   connection and went silent would.
+  /// </remarks>
   TFixedAnswerServer = class
   private
     FServer: TIdHTTPServer;
     FStatus: Integer;
     FContentType: string;
     FBody: string;
+    FHoldMs: Cardinal;
+    FRelease: TEvent;
     procedure CommandGet(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo;
       AResponseInfo: TIdHTTPResponseInfo);
   public
-    constructor Create(AStatus: Integer; const AContentType, ABody: string);
+    constructor Create(AStatus: Integer; const AContentType, ABody: string;
+      AHoldMs: Cardinal = 0);
     destructor Destroy; override;
     function URL: string;
   end;
@@ -224,7 +233,7 @@ type
 implementation
 
 uses
-  System.Generics.Collections, System.SyncObjs,
+  System.Generics.Collections, System.Diagnostics,
 
   JRPC.Client,
   MCPConnect.Content.Writers.RTL,
@@ -1060,9 +1069,61 @@ begin
   end;
 end;
 
+procedure TMCPClientTest.TestListenSilentServerTimesOut;
+var
+  LServer: TFixedAnswerServer;
+  LClient: TMCPClient;
+  LFilter: TSubscriptionFilter;
+  LWatch: TStopwatch;
+begin
+  // A server that takes the listen and never says a word: no headers, no
+  // acknowledgement, no keep-alive. The listen transport has no timeout, so
+  // only Close can end the read - and the subscription it belonged to is
+  // released while the stream thread is still in it.
+  LServer := TFixedAnswerServer.Create(200, 'text/event-stream', '', 30000);
+  try
+    LClient := TMCPClient.Create(TMCPHTTPTransport.Create(LServer.URL) as IJRPCStreamingTransport);
+    try
+      LClient.ListenTimeout := 300;
+      LClient.TransportFactory :=
+        function: IJRPCStreamingTransport
+        begin
+          Result := TMCPHTTPTransport.Create(LServer.URL, '', 0);
+        end;
+
+      LFilter := TSubscriptionFilter.Create;
+      try
+        LFilter.ResourcesListChanged := True;
+
+        LWatch := TStopwatch.StartNew;
+        Assert.WillRaise(
+          procedure
+          begin
+            LClient.Listen(LFilter, nil);
+          end,
+          EJRPCClientError);
+        LWatch.Stop;
+      finally
+        LFilter.Free;
+      end;
+
+      // Close has to cancel the blocked read: a subscription that could only
+      // wait for the next chunk would sit out its whole 5 s grace period and
+      // then free the client under a thread that is still reading.
+      Assert.IsTrue(LWatch.ElapsedMilliseconds < 3000,
+        Format('Listen took %d ms to give up', [LWatch.ElapsedMilliseconds]));
+    finally
+      LClient.Free;
+    end;
+  finally
+    LServer.Free;
+  end;
+end;
+
 { TFixedAnswerServer }
 
-constructor TFixedAnswerServer.Create(AStatus: Integer; const AContentType, ABody: string);
+constructor TFixedAnswerServer.Create(AStatus: Integer; const AContentType, ABody: string;
+  AHoldMs: Cardinal);
 var
   LBinding: TIdSocketHandle;
 begin
@@ -1070,6 +1131,8 @@ begin
   FStatus := AStatus;
   FContentType := AContentType;
   FBody := ABody;
+  FHoldMs := AHoldMs;
+  FRelease := TEvent.Create(nil, True, False, '');
 
   FServer := TIdHTTPServer.Create(nil);
   FServer.OnCommandGet := CommandGet;
@@ -1081,14 +1144,20 @@ end;
 
 destructor TFixedAnswerServer.Destroy;
 begin
+  // A held request is let go, or deactivating would wait for it
+  FRelease.SetEvent;
   FServer.Active := False;
   FServer.Free;
+  FRelease.Free;
   inherited;
 end;
 
 procedure TFixedAnswerServer.CommandGet(AContext: TIdContext;
   ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
 begin
+  if FHoldMs > 0 then
+    FRelease.WaitFor(FHoldMs);
+
   AResponseInfo.ResponseNo := FStatus;
   AResponseInfo.ContentType := FContentType;
   AResponseInfo.ContentText := FBody;

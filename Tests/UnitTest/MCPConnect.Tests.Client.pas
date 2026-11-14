@@ -27,7 +27,7 @@ uses
 
   DUnitX.TestFramework,
 
-  IdSocketHandle,
+  IdSocketHandle, IdContext, IdCustomHTTPServer, IdHTTPServer,
 
   JRPC.Core,
   JRPC.Classes,
@@ -176,6 +176,30 @@ type
     [Test] procedure TestCallToolParamHeaders;
     [Test] procedure TestCallToolParamHeadersEncoded;
     [Test] procedure TestCallToolParamHeadersAfterListTools;
+    [Test] procedure TestHttpRefusalBodyIsRemoteError;
+    [Test]
+    [TestCase('HtmlPage', '502,text/html,<html><body>Bad Gateway</body></html>', ',')]
+    [TestCase('OAuthJson', '401,application/json,{"error":"invalid_token"}', ',')]
+    procedure TestHttpErrorWithoutJsonRpcBody(AStatus: Integer;
+      const AContentType, ABody: string);
+  end;
+
+  /// <summary>
+  ///   Not an MCP server: answers every request with one fixed status and
+  ///   body, the way a proxy or an OAuth layer in front of one would.
+  /// </summary>
+  TFixedAnswerServer = class
+  private
+    FServer: TIdHTTPServer;
+    FStatus: Integer;
+    FContentType: string;
+    FBody: string;
+    procedure CommandGet(AContext: TIdContext; ARequestInfo: TIdHTTPRequestInfo;
+      AResponseInfo: TIdHTTPResponseInfo);
+  public
+    constructor Create(AStatus: Integer; const AContentType, ABody: string);
+    destructor Destroy; override;
+    function URL: string;
   end;
 
   /// <summary>
@@ -977,6 +1001,102 @@ begin
   // has nothing left to learn.
   FClient.ListTools.Free;
   Assert.AreEqual('us-east|7|True|n', CallRouted(FClient, 'us-east', 7, True));
+end;
+
+procedure TMCPClientTest.TestHttpRefusalBodyIsRemoteError;
+var
+  LParams: TCallToolRequestParams;
+begin
+  // Call goes around CallTool, so the transport never learns the x-mcp-header
+  // annotations and the Mcp-Param-* headers are missing: the server refuses
+  // with 400 and a JSON-RPC body, which must reach the caller as the remote
+  // error it is rather than as a bare "HTTP 400".
+  LParams := TCallToolRequestParams.Create;
+  try
+    LParams.Name := 'routed_query';
+    LParams.Arguments.AddPair('region', 'eu-west');
+    LParams.Arguments.AddPair('page', TJSONNumber.Create(1));
+    LParams.Arguments.AddPair('flag', TJSONBool.Create(True));
+    LParams.Arguments.AddPair('note', 'n');
+
+    try
+      FClient.Call('tools/call', LParams).Free;
+      Assert.Fail('expected EJRPCRemoteError');
+    except
+      on E: EJRPCRemoteError do
+        Assert.AreEqual(MCP_HEADER_MISMATCH, E.Code, E.Message);
+    end;
+  finally
+    LParams.Free;
+  end;
+end;
+
+procedure TMCPClientTest.TestHttpErrorWithoutJsonRpcBody(AStatus: Integer;
+  const AContentType, ABody: string);
+var
+  LServer: TFixedAnswerServer;
+  LClient: TMCPClient;
+begin
+  // The body is not a JSON-RPC message: reading it as one would report a
+  // malformed reply and hide the status, which is what the caller needs.
+  LServer := TFixedAnswerServer.Create(AStatus, AContentType, ABody);
+  try
+    LClient := TMCPClient.Create(TMCPHTTPTransport.Create(LServer.URL) as IJRPCStreamingTransport);
+    try
+      try
+        LClient.Connect;
+        Assert.Fail('expected EJRPCClientError');
+      except
+        on E: EJRPCRemoteError do
+          Assert.Fail('a non JSON-RPC body was read as a remote error: ' + E.Message);
+        on E: EJRPCClientError do
+          Assert.Contains(E.Message, Format('HTTP %d', [AStatus]), E.Message);
+      end;
+    finally
+      LClient.Free;
+    end;
+  finally
+    LServer.Free;
+  end;
+end;
+
+{ TFixedAnswerServer }
+
+constructor TFixedAnswerServer.Create(AStatus: Integer; const AContentType, ABody: string);
+var
+  LBinding: TIdSocketHandle;
+begin
+  inherited Create;
+  FStatus := AStatus;
+  FContentType := AContentType;
+  FBody := ABody;
+
+  FServer := TIdHTTPServer.Create(nil);
+  FServer.OnCommandGet := CommandGet;
+  LBinding := FServer.Bindings.Add;
+  LBinding.IP := '127.0.0.1';
+  LBinding.Port := 0;
+  FServer.Active := True;
+end;
+
+destructor TFixedAnswerServer.Destroy;
+begin
+  FServer.Active := False;
+  FServer.Free;
+  inherited;
+end;
+
+procedure TFixedAnswerServer.CommandGet(AContext: TIdContext;
+  ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
+begin
+  AResponseInfo.ResponseNo := FStatus;
+  AResponseInfo.ContentType := FContentType;
+  AResponseInfo.ContentText := FBody;
+end;
+
+function TFixedAnswerServer.URL: string;
+begin
+  Result := Format('http://127.0.0.1:%d/mcp', [FServer.Bindings[0].Port]);
 end;
 
 procedure TMCPStdioClientTest.Setup;

@@ -125,6 +125,23 @@ type
     function CompleteName(const AValue: string): TArray<string>;
   end;
 
+  /// <summary>
+  ///   A tool whose arguments are mirrored into Mcp-Param-* headers. The test
+  ///   server validates headers Strict (the default), so a call that does not
+  ///   carry them is refused with HeaderMismatch.
+  /// </summary>
+  [McpScope('routed')]
+  TClientRoutedTools = class
+  public
+    [McpTool('query', 'Answers the arguments it was routed with')]
+    function Query(
+      [McpParam('region', 'The region to run in', 'header=Region')] const region: string;
+      [McpParam('page', 'The page index', 'header=Page')] const page: Integer;
+      [McpParam('flag', 'A switch', 'header=Flag')] const flag: Boolean;
+      [McpParam('note', 'Not mirrored')] const note: string
+    ): string;
+  end;
+
   [TestFixture]
   TMCPClientTest = class
   private
@@ -156,6 +173,9 @@ type
     [Test] procedure TestGetPrompt;
     [Test] procedure TestComplete;
     [Test] procedure TestErrorDataDecoding;
+    [Test] procedure TestCallToolParamHeaders;
+    [Test] procedure TestCallToolParamHeadersEncoded;
+    [Test] procedure TestCallToolParamHeadersAfterListTools;
   end;
 
   /// <summary>
@@ -320,6 +340,14 @@ begin
     Result := [];
 end;
 
+{ TClientRoutedTools }
+
+function TClientRoutedTools.Query(const region: string; const page: Integer;
+  const flag: Boolean; const note: string): string;
+begin
+  Result := Format('%s|%d|%s|%s', [region, page, BoolToStr(flag, True), note]);
+end;
+
 { TMCPClientTest }
 
 procedure TMCPClientTest.Setup;
@@ -338,6 +366,7 @@ begin
 
   try
     LConfig.Tools.RegisterClass(TClientTestTools);
+    LConfig.Tools.RegisterClass(TClientRoutedTools);
   except
     on E: Exception do
       raise Exception.Create('tools: ' + E.Message);
@@ -400,7 +429,7 @@ var
 begin
   LTools := FClient.ListTools;
   try
-    Assert.AreEqual(8, LTools.Count);
+    Assert.AreEqual(9, LTools.Count);
     Assert.AreEqual('clienttest_confirm_delete', LTools[0].Name);
     Assert.AreEqual('clienttest_echo', LTools[1].Name);
     Assert.AreEqual('clienttest_echo_arg', LTools[2].Name);
@@ -409,6 +438,7 @@ begin
     Assert.AreEqual('clienttest_notify', LTools[5].Name);
     Assert.AreEqual('clienttest_ping', LTools[6].Name);
     Assert.AreEqual('clienttest_structured', LTools[7].Name);
+    Assert.AreEqual('routed_query', LTools[8].Name);
   finally
     LTools.Free;
   end;
@@ -890,6 +920,63 @@ begin
   finally
     LError.Free;
   end;
+end;
+
+/// <summary>
+///   Calls routed_query and answers the text it returned. The tool is not
+///   listed first: the call itself has to learn the annotations.
+/// </summary>
+function CallRouted(AClient: TMCPClient; const ARegion: string; APage: Integer;
+  AFlag: Boolean): string;
+var
+  LArguments: TJSONObject;
+  LResult: TCallToolResult;
+begin
+  LArguments := TJSONObject.Create;
+  try
+    LArguments.AddPair('region', ARegion);
+    LArguments.AddPair('page', TJSONNumber.Create(APage));
+    LArguments.AddPair('flag', TJSONBool.Create(AFlag));
+    LArguments.AddPair('note', 'n');
+
+    LResult := AClient.CallTool('routed_query', LArguments);
+    try
+      Assert.AreEqual(1, LResult.Content.Count);
+      Result := (LResult.Content[0] as TTextContent).Text;
+    finally
+      LResult.Free;
+    end;
+  finally
+    LArguments.Free;
+  end;
+end;
+
+procedure TMCPClientTest.TestCallToolParamHeaders;
+begin
+  // The server validates Strict: without Mcp-Param-Region/-Page/-Flag the
+  // call is refused with HeaderMismatch before the tool runs.
+  Assert.AreEqual('eu-west|3|True|n', CallRouted(FClient, 'eu-west', 3, True));
+end;
+
+procedure TMCPClientTest.TestCallToolParamHeadersEncoded;
+var
+  LRegion: string;
+begin
+  // Non-ASCII, and a trailing blank: neither can travel as a plain header
+  // value, so both go in the Base64 sentinel the server decodes.
+  LRegion := 'citt' + #$00E0 + ' ';
+  Assert.AreEqual(LRegion + '|0|False|n', CallRouted(FClient, LRegion, 0, False));
+
+  // The empty string is a value, not an absent header
+  Assert.AreEqual('|1|True|n', CallRouted(FClient, '', 1, True));
+end;
+
+procedure TMCPClientTest.TestCallToolParamHeadersAfterListTools;
+begin
+  // An explicit listing hands the annotations over too; the call after it
+  // has nothing left to learn.
+  FClient.ListTools.Free;
+  Assert.AreEqual('us-east|7|True|n', CallRouted(FClient, 'us-east', 7, True));
 end;
 
 procedure TMCPStdioClientTest.Setup;

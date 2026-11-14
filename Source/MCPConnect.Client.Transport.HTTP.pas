@@ -18,12 +18,15 @@ interface
 
 uses
   System.SysUtils, System.Classes, System.SyncObjs, System.JSON,
+  System.Generics.Collections,
   System.Net.HttpClient, System.Net.URLClient,
 
   JRPC.Core,
   JRPC.Client,
 
-  MCPConnect.MCP.Types.Base;
+  MCPConnect.MCP.Types.Base,
+  MCPConnect.MCP.Types.Tools,
+  MCPConnect.Client;
 
 const
   /// <summary>The MCP methods that carry an Mcp-Name header.</summary>
@@ -36,6 +39,21 @@ resourcestring
   SMCPHTTPStatusError = 'HTTP %d from [%s]: %s';
 
 type
+  /// <summary>
+  ///   One tool argument to mirror into a request header.
+  /// </summary>
+  TMCPParamHeader = record
+    /// <summary>
+    ///   The "x-mcp-header" value: the header is "Mcp-Param-" + Name.
+    /// </summary>
+    Name: string;
+
+    /// <summary>
+    ///   Where the argument sits in "arguments", one "properties" key per step.
+    /// </summary>
+    Path: TArray<string>;
+  end;
+
   /// <summary>
   ///   Streamable HTTP transport for the MCP client: a POST per request, with
   ///   the Streamable HTTP request headers and an SSE reader for the answers
@@ -52,18 +70,34 @@ type
   ///   Abort interrupts the call in progress at the next chunk; a transport is
   ///   meant to serve one long-lived stream at a time (a listen), while
   ///   ordinary calls can share one.
+  ///
+  ///   A tools/call carries an Mcp-Param-* header for every argument the
+  ///   tool's inputSchema annotates with "x-mcp-header". The annotations come
+  ///   from the client (IMCPToolHeadersTransport), which hands over every
+  ///   tools/list it reads.
   /// </remarks>
-  TMCPHTTPTransport = class(TInterfacedObject, 
+  TMCPHTTPTransport = class(TInterfacedObject,
     IJRPCClientTransport,
-    IJRPCStreamingTransport, 
-	IJRPCAbortableTransport)
+    IJRPCStreamingTransport,
+    IJRPCAbortableTransport,
+    IMCPToolHeadersTransport)
   private
     FURL: string;
     FToken: string;
     FTimeout: Cardinal;
     FAborted: Integer;
+    FToolHeaders: TDictionary<string, TArray<TMCPParamHeader>>;
+    FToolHeadersKnown: Boolean;
+    FToolHeadersLock: TCriticalSection;
 
     function BuildHeaders(const ARequest: string): TNetHeaders;
+    function BuildParamHeaders(const ARequest: string): TNetHeaders;
+    function ParamHeadersOf(const ATool: string): TArray<TMCPParamHeader>;
+    class procedure CollectParamHeaders(ASchema: TJSONObject;
+      const APath: TArray<string>; var AHeaders: TArray<TMCPParamHeader>); static;
+    class function ArgumentAt(AArguments: TJSONObject;
+      const APath: TArray<string>): TJSONValue; static;
+    class function ParamHeaderValue(AValue: TJSONValue; out AText: string): Boolean; static;
     function ExtractField(const ARequest, AName: string): string;
     function ExtractParam(const ARequest, AName: string): string;
     function ExtractVersion(const ARequest: string): string;
@@ -74,6 +108,7 @@ type
     ///   timeout, which is what a long-lived stream wants.
     /// </summary>
     constructor Create(const AURL: string; const AToken: string = ''; ATimeout: Cardinal = 30000);
+    destructor Destroy; override;
 
     /// <summary>
     ///   The whole answer as one string. Not used by a streaming client; the
@@ -98,6 +133,17 @@ type
     /// </summary>
     procedure Abort;
 
+    /// <summary>
+    ///   Replaces the known "x-mcp-header" annotations with those of ATools.
+    ///   Thread safe; the list stays the caller's.
+    /// </summary>
+    procedure UpdateToolHeaders(ATools: TMCPTools);
+
+    /// <summary>
+    ///   True once UpdateToolHeaders has run.
+    /// </summary>
+    function ToolHeadersKnown: Boolean;
+
     property URL: string read FURL write FURL;
     property Token: string read FToken write FToken;
     property Timeout: Cardinal read FTimeout write FTimeout;
@@ -106,7 +152,10 @@ type
 implementation
 
 uses
-  System.NetEncoding;
+  System.NetEncoding,
+
+  MCPConnect.MCP.Types.Tool,
+  MCPConnect.MCP.Middleware.Headers;
 
 type
   TMCPHTTPMode = (Unknown, Json, SSE);
@@ -359,6 +408,199 @@ begin
   FToken := AToken;
   FTimeout := ATimeout;
   FAborted := 0;
+  FToolHeaders := TDictionary<string, TArray<TMCPParamHeader>>.Create;
+  FToolHeadersKnown := False;
+  FToolHeadersLock := TCriticalSection.Create;
+end;
+
+destructor TMCPHTTPTransport.Destroy;
+begin
+  FToolHeadersLock.Free;
+  FToolHeaders.Free;
+  inherited;
+end;
+
+class procedure TMCPHTTPTransport.CollectParamHeaders(ASchema: TJSONObject;
+  const APath: TArray<string>; var AHeaders: TArray<TMCPParamHeader>);
+var
+  LProperties: TJSONValue;
+  LPair: TJSONPair;
+  LAnnotation: TJSONValue;
+  LHeader: TMCPParamHeader;
+  LKnown: TMCPParamHeader;
+  LDuplicate: Boolean;
+begin
+  if not Assigned(ASchema) then
+    Exit;
+
+  LProperties := ASchema.GetValue('properties');
+  if not (LProperties is TJSONObject) then
+    Exit;
+
+  for LPair in TJSONObject(LProperties) do
+  begin
+    if not (LPair.JsonValue is TJSONObject) then
+      Continue;
+
+    LHeader.Path := APath + [LPair.JsonString.Value];
+
+    LAnnotation := TJSONObject(LPair.JsonValue).GetValue(MCP_SCHEMA_HEADER_KEYWORD);
+    if (LAnnotation is TJSONString) and (TJSONString(LAnnotation).Value <> '') then
+    begin
+      LHeader.Name := TJSONString(LAnnotation).Value;
+
+      // Case-insensitively unique within one schema. The server keeps the
+      // first of two and ignores the other, and so does the client, so both
+      // sides agree on which argument the header speaks for.
+      LDuplicate := False;
+      for LKnown in AHeaders do
+        if SameText(LKnown.Name, LHeader.Name) then
+        begin
+          LDuplicate := True;
+          Break;
+        end;
+
+      if not LDuplicate then
+        AHeaders := AHeaders + [LHeader];
+    end;
+
+    // Nested objects are reachable as long as every step is a "properties" key
+    CollectParamHeaders(TJSONObject(LPair.JsonValue), LHeader.Path, AHeaders);
+  end;
+end;
+
+procedure TMCPHTTPTransport.UpdateToolHeaders(ATools: TMCPTools);
+var
+  LTool: TMCPTool;
+  LHeaders: TArray<TMCPParamHeader>;
+begin
+  FToolHeadersLock.Enter;
+  try
+    FToolHeaders.Clear;
+
+    if Assigned(ATools) then
+      for LTool in ATools do
+      begin
+        LHeaders := [];
+        CollectParamHeaders(LTool.InputSchema, [], LHeaders);
+        // Only the tools that annotate something: the rest need no lookup
+        if Length(LHeaders) > 0 then
+          FToolHeaders.AddOrSetValue(LTool.Name, LHeaders);
+      end;
+
+    FToolHeadersKnown := True;
+  finally
+    FToolHeadersLock.Leave;
+  end;
+end;
+
+function TMCPHTTPTransport.ToolHeadersKnown: Boolean;
+begin
+  FToolHeadersLock.Enter;
+  try
+    Result := FToolHeadersKnown;
+  finally
+    FToolHeadersLock.Leave;
+  end;
+end;
+
+function TMCPHTTPTransport.ParamHeadersOf(const ATool: string): TArray<TMCPParamHeader>;
+begin
+  FToolHeadersLock.Enter;
+  try
+    if not FToolHeaders.TryGetValue(ATool, Result) then
+      Result := [];
+  finally
+    FToolHeadersLock.Leave;
+  end;
+end;
+
+class function TMCPHTTPTransport.ArgumentAt(AArguments: TJSONObject;
+  const APath: TArray<string>): TJSONValue;
+var
+  LIndex: Integer;
+begin
+  Result := AArguments;
+  for LIndex := 0 to High(APath) do
+  begin
+    if not (Result is TJSONObject) then
+      Exit(nil);
+    // Values[] matches the key whole: a property name may contain dots
+    Result := TJSONObject(Result).Values[APath[LIndex]];
+  end;
+end;
+
+class function TMCPHTTPTransport.ParamHeaderValue(AValue: TJSONValue;
+  out AText: string): Boolean;
+begin
+  AText := '';
+
+  // Value is the number as the body spells it: the header mirrors the body
+  // text, not a re-rendering. The server compares numbers numerically anyway.
+  if AValue is TJSONNumber then
+    AText := TJSONNumber(AValue).Value
+  else if AValue is TJSONString then
+    AText := TJSONString(AValue).Value
+  else if AValue is TJSONBool then
+    AText := BoolToStr(TJSONBool(AValue).AsBoolean, True).ToLower
+  else
+    // Absent and null mean no header; objects and arrays cannot be mirrored
+    Exit(False);
+
+  Result := True;
+end;
+
+function TMCPHTTPTransport.BuildParamHeaders(const ARequest: string): TNetHeaders;
+var
+  LDocument: TJSONValue;
+  LParams, LName, LArguments, LValue: TJSONValue;
+  LHeaders: TArray<TMCPParamHeader>;
+  LHeader: TMCPParamHeader;
+  LText: string;
+begin
+  Result := [];
+
+  LDocument := TJSONObject.ParseJSONValue(ARequest);
+  try
+    if not (LDocument is TJSONObject) then
+      Exit;
+
+    LParams := TJSONObject(LDocument).GetValue('params');
+    if not (LParams is TJSONObject) then
+      Exit;
+
+    LName := TJSONObject(LParams).GetValue('name');
+    if not (LName is TJSONString) then
+      Exit;
+
+    LHeaders := ParamHeadersOf(TJSONString(LName).Value);
+    if Length(LHeaders) = 0 then
+      Exit;
+
+    LArguments := TJSONObject(LParams).GetValue('arguments');
+    if not (LArguments is TJSONObject) then
+      Exit;
+
+    for LHeader in LHeaders do
+    begin
+      LValue := ArgumentAt(TJSONObject(LArguments), LHeader.Path);
+      if not ParamHeaderValue(LValue, LText) then
+        Continue;
+
+      if LText = '' then
+        // An empty header is indistinguishable from an absent one: the empty
+        // string travels in the Base64 sentinel, which decodes back to it.
+        LText := MCP_HEADER_ENCODED_PREFIX + MCP_HEADER_ENCODED_SUFFIX
+      else
+        // Non-ASCII, or whitespace at either end, has to be wrapped
+        LText := TMCPHeaderValue.Encode(LText);
+
+      Result := Result + [TNameValuePair.Create(
+        MCP_HEADER_PARAM_PREFIX + LHeader.Name, LText)];
+    end;
+  finally
+    LDocument.Free;
+  end;
 end;
 
 function TMCPHTTPTransport.ExtractField(const ARequest, AName: string): string;
@@ -475,6 +717,9 @@ begin
 
   if LName <> '' then
     Result := Result + [TNameValuePair.Create('Mcp-Name', LName)];
+
+  if LMethod = MCP_METHOD_TOOLS_CALL then
+    Result := Result + BuildParamHeaders(ARequest);
 
   if FToken <> '' then
     Result := Result + [TNameValuePair.Create('Authorization', 'Bearer ' + FToken)];

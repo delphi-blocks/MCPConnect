@@ -141,6 +141,31 @@ type
   end;
 
   /// <summary>
+  ///   A transport that mirrors tool arguments into Mcp-Param-* request
+  ///   headers, as the "x-mcp-header" annotations of each tool's inputSchema
+  ///   ask.
+  /// </summary>
+  /// <remarks>
+  ///   Which arguments to mirror is only known from the tool definitions, so
+  ///   the client hands them over: every ListTools replaces what the transport
+  ///   knows, and the first CallTool lists the tools itself when nothing was
+  ///   listed yet. A transport with no headers (stdio) does not implement it.
+  /// </remarks>
+  IMCPToolHeadersTransport = interface
+  ['{6C8E1395-4DE0-445A-98F6-29C2FC9BB2AB}']
+    /// <summary>
+    ///   Replaces the header annotations known to the transport with those of
+    ///   ATools. The list stays the caller's.
+    /// </summary>
+    procedure UpdateToolHeaders(ATools: TMCPTools);
+
+    /// <summary>
+    ///   True once UpdateToolHeaders has run at least once.
+    /// </summary>
+    function ToolHeadersKnown: Boolean;
+  end;
+
+  /// <summary>
   ///   Raised when tools/call answers "input_required" and the client has no
   ///   handler for one of the requests in it. The raw interim result is
   ///   carried so nothing the server sent is lost.
@@ -242,6 +267,8 @@ type
     function NewPromptMessage<T: TToolContent, constructor>(ARole: TRole; AContent: TJSONObject): TPromptMessageBase;
     class function ParseContent(AValue: TJSONObject): TToolContent; static;
     class function IsInputRequired(AValue: TJSONObject): Boolean; static;
+    function ToolHeadersTransport: IMCPToolHeadersTransport;
+    procedure EnsureToolHeaders;
   public
     /// <summary>
     ///   A client over a streaming transport (Streamable HTTP): each call is
@@ -272,6 +299,11 @@ type
     ///   The whole tools/list, following nextCursor until the list ends.
     ///   The caller owns the list and its tools.
     /// </summary>
+    /// <remarks>
+    ///   Over a transport that mirrors arguments into headers
+    ///   (IMCPToolHeadersTransport) the list also refreshes which arguments
+    ///   each tool asks to have mirrored.
+    /// </remarks>
     function ListTools: TMCPTools;
 
     /// <summary>
@@ -699,6 +731,7 @@ var
   LResult: TListToolsResult;
   LCursor: string;
   LTool: TMCPTool;
+  LHeaders: IMCPToolHeadersTransport;
 begin
   Result := TMCPTools.Create(True);
 
@@ -730,9 +763,44 @@ begin
         LParams.Free;
       end;
     until LCursor = '';
+
+    // The definitions are what says which arguments travel as Mcp-Param-*
+    // headers: a fresh list replaces what the transport knew.
+    LHeaders := ToolHeadersTransport;
+    if Assigned(LHeaders) then
+      LHeaders.UpdateToolHeaders(Result);
   except
     Result.Free;
     raise;
+  end;
+end;
+
+function TMCPClient.ToolHeadersTransport: IMCPToolHeadersTransport;
+begin
+  Result := nil;
+  if Assigned(FJRPC) then
+    Supports(FJRPC.Transport, IMCPToolHeadersTransport, Result);
+end;
+
+procedure TMCPClient.EnsureToolHeaders;
+var
+  LHeaders: IMCPToolHeadersTransport;
+begin
+  LHeaders := ToolHeadersTransport;
+  if not Assigned(LHeaders) or LHeaders.ToolHeadersKnown then
+    Exit;
+
+  // A tool that annotates a parameter with x-mcp-header must be called with
+  // the matching Mcp-Param-* header, and the annotation is only in its
+  // definition: list the tools once, which hands them to the transport.
+  try
+    ListTools.Free;
+  except
+    on EJRPCException do
+      // The call goes ahead without the headers. A server that requires them
+      // refuses it with a HeaderMismatch of its own, which says more than a
+      // failed tools/list would.
+      ;
   end;
 end;
 
@@ -879,6 +947,8 @@ function TMCPClient.CallTool(AParams: TCallToolRequestParams): TCallToolResult;
 var
   LValue: TJSONObject;
 begin
+  EnsureToolHeaders;
+
   LValue := ExecuteMrtr('tools/call', AParams);
   try
     Result := ParseCallToolResult(LValue);

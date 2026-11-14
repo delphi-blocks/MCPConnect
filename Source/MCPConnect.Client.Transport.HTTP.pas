@@ -917,8 +917,13 @@ begin
     TNameValuePair.Create('Mcp-Method', LMethod)
   ];
 
+  // A resource URI or a prompt name may carry what a header cannot: non-ASCII
+  // text (file:///docs/città.md), blanks at either end, or a value that looks
+  // like the sentinel itself. Those go in the "=?base64?...?=" sentinel the
+  // server decodes, the same rule as for Mcp-Param-*; anything else is sent
+  // as it is.
   if LName <> '' then
-    Result := Result + [TNameValuePair.Create('Mcp-Name', LName)];
+    Result := Result + [TNameValuePair.Create('Mcp-Name', TMCPHeaderValue.Encode(LName))];
 
   if LMethod = MCP_METHOD_TOOLS_CALL then
     Result := Result + BuildParamHeaders(ARequest);

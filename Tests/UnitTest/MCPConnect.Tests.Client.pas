@@ -195,6 +195,7 @@ type
     [TestCase('Templates', 'resourceTemplates')]
     [TestCase('Prompts', 'prompts')]
     procedure TestListRepeatedCursorRaises(const AKey: string);
+    [Test] procedure TestReadResourceWithUnsafeNameHeader;
     [Test] procedure TestListEndlessPagingRaises;
   end;
 
@@ -1190,6 +1191,32 @@ begin
   finally
     LServer.Free;
   end;
+end;
+
+procedure TMCPClientTest.TestReadResourceWithUnsafeNameHeader;
+
+  function ReadText(const AUri: string): string;
+  var
+    LResult: TReadResourceResult;
+  begin
+    LResult := FClient.ReadResource(AUri);
+    try
+      Assert.AreEqual(1, LResult.Contents.Count);
+      Result := (LResult.Contents[0] as TTextResourceContents).Text;
+    finally
+      LResult.Free;
+    end;
+  end;
+
+var
+  LAccented: string;
+begin
+  // Mcp-Name mirrors the URI, and the server checks the two agree (Strict).
+  // Non-ASCII text cannot travel as a plain header value, and a blank at the
+  // end would be trimmed by any intermediary: both go Base64-wrapped.
+  LAccented := 'citt' + #$00E0;
+  Assert.AreEqual('item ' + LAccented, ReadText('clienttest://items/' + LAccented));
+  Assert.AreEqual('item x ', ReadText('clienttest://items/x '));
 end;
 
 /// <summary>

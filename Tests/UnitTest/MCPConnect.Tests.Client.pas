@@ -187,6 +187,7 @@ type
     [Test] procedure TestCallToolIsError;
     [Test] procedure TestCallToolMrtrElicitation;
     [Test] procedure TestCallToolMrtrWithoutCapability;
+    [Test] procedure TestCallToolMrtrParamsReusable;
     [Test] procedure TestListenReceivesNotification;
     [Test] procedure TestListenCancellation;
     [Test] procedure TestListResources;
@@ -277,6 +278,7 @@ uses
 
   JRPC.Client,
   JRPC.Connection,
+  MCPConnect.MCP.Types.Mrtr,
   MCPConnect.Content.Writers.RTL,
   MCPConnect.MCP.Types.Subscriptions;
 
@@ -776,6 +778,55 @@ begin
 
     Assert.AreEqual(1, LCalls, 'the interim round asked once');
   finally
+    FClient.OnElicitation := nil;
+  end;
+end;
+
+procedure TMCPClientTest.TestCallToolMrtrParamsReusable;
+var
+  LParams: TCallToolRequestParams;
+  LOriginal: TInputResponses;
+  LResult: TCallToolResult;
+  LCalls: Integer;
+  LRound: Integer;
+begin
+  LCalls := 0;
+  FClient.OnElicitation :=
+    function(const ARequest: TElicitRequestParams): TElicitResult
+    begin
+      Inc(LCalls);
+      Result := TElicitResult.Create;
+      Result.Action := TElicitAction.Accept;
+      Result.Content := TJSONObject.ParseJSONValue('{"confirm":true}');
+    end;
+
+  LParams := TCallToolRequestParams.Create;
+  try
+    LParams.Name := 'clienttest_confirm_delete';
+    LOriginal := LParams.InputResponses;
+
+    // Two calls with the same params object. Each is a call of its own and
+    // must go through its own confirmation: if the first left its answers and
+    // requestState behind, the second would go out as a retry of the first
+    // and be "confirmed" without ever asking.
+    for LRound := 1 to 2 do
+    begin
+      LResult := FClient.CallTool(LParams);
+      try
+        Assert.AreEqual('confirmed', TTextContent(LResult.Content[0]).Text);
+      finally
+        LResult.Free;
+      end;
+
+      Assert.IsTrue(LParams.InputResponses = LOriginal,
+        'the caller''s InputResponses must be put back');
+      Assert.AreEqual(0, LParams.InputResponses.Count, 'no answers left behind');
+      Assert.IsFalse(LParams.RequestState.HasValue, 'no requestState left behind');
+    end;
+
+    Assert.AreEqual(2, LCalls, 'each call asks for its own confirmation');
+  finally
+    LParams.Free;
     FClient.OnElicitation := nil;
   end;
 end;

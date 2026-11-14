@@ -274,7 +274,7 @@ type
     function ParseCallToolResult(AValue: TJSONObject): TCallToolResult;
     function ParseInputRequired(AValue: TJSONObject): TInputRequiredResult;
     function ExecuteMrtr(const AMethod: string; AParams: TInputRequestParams): TJSONObject;
-    function Fulfill(AParams: TInputRequestParams; AResult: TInputRequiredResult): Boolean;
+    function Fulfill(AResult: TInputRequiredResult; out AResponses: TInputResponses): Boolean;
     class function ParseResourceContent(AValue: TJSONObject): TResourceContents; static;
     function ParseReadResourceResult(AValue: TJSONObject): TReadResourceResult;
     function ParseGetPromptResult(AValue: TJSONObject): TGetPromptResult;
@@ -412,7 +412,9 @@ type
     /// <remarks>
     ///   The object is the carrier of the round trip: the client writes the
     ///   answers it receives into InputResponses and the server's
-    ///   RequestState into it before retrying.
+    ///   RequestState into it before retrying. Both are put back as the
+    ///   caller left them when the call ends, however it ends, so the same
+    ///   object can be reused for another call.
     /// </remarks>
     function CallTool(AParams: TCallToolRequestParams): TCallToolResult; overload;
 
@@ -508,6 +510,8 @@ type
 implementation
 
 uses
+  Neon.Core.Nullables,
+
   MCPConnect.MCP.Types.Notifications;
 
 type
@@ -1039,42 +1043,68 @@ var
   LValue: TJSONValue;
   LInput: TInputRequiredResult;
   LRounds: Integer;
+  LAnswers: TInputResponses;
+  LCallerResponses: TInputResponses;
+  LCallerState: NullString;
+  LRoundResponses: TInputResponses;
 begin
   LRounds := 0;
 
-  while True do
-  begin
-    LValue := Call(AMethod, AParams);
-    try
-      if not (LValue is TJSONObject) then
-        raise EJRPCClientError.Create(SMCPClientResultNotObject);
-
-      if not IsInputRequired(TJSONObject(LValue)) then
-      begin
-        // Hand the result to the caller; the finally must not free it.
-        Result := TJSONObject(LValue);
-        LValue := nil;
-        Exit;
-      end;
-
-      Inc(LRounds);
-      if LRounds > MCP_CLIENT_MAX_ROUNDS then
-        raise EJRPCClientError.CreateFmt(SMCPClientTooManyRounds,
-          [MCP_CLIENT_MAX_ROUNDS]);
-
-      LInput := ParseInputRequired(TJSONObject(LValue));
+  // The params are the caller's, and only borrowed for the rounds. What the
+  // caller put in them (nothing, or a continuation made by hand) is set aside
+  // and put back on the way out, so the next call made with the same object
+  // does not go out carrying this call's answers and requestState - which a
+  // server would take for a retry of this one.
+  LCallerResponses := AParams.InputResponses;
+  LCallerState := AParams.RequestState;
+  LRoundResponses := nil;
+  try
+    while True do
+    begin
+      LValue := Call(AMethod, AParams);
       try
-        if not Fulfill(AParams, LInput) then
-          // Nobody configured for this kind: the interim result is kept whole
-          // so the caller can continue by hand or report precisely.
-          raise EMCPClientInputRequiredError.Create(
-            TJSONObject(LValue).Clone as TJSONObject);
+        if not (LValue is TJSONObject) then
+          raise EJRPCClientError.Create(SMCPClientResultNotObject);
+
+        if not IsInputRequired(TJSONObject(LValue)) then
+        begin
+          // Hand the result to the caller; the finally must not free it.
+          Result := TJSONObject(LValue);
+          LValue := nil;
+          Exit;
+        end;
+
+        Inc(LRounds);
+        if LRounds > MCP_CLIENT_MAX_ROUNDS then
+          raise EJRPCClientError.CreateFmt(SMCPClientTooManyRounds,
+            [MCP_CLIENT_MAX_ROUNDS]);
+
+        LInput := ParseInputRequired(TJSONObject(LValue));
+        try
+          if not Fulfill(LInput, LAnswers) then
+            // Nobody configured for this kind: the interim result is kept
+            // whole so the caller can continue by hand or report precisely.
+            raise EMCPClientInputRequiredError.Create(
+              TJSONObject(LValue).Clone as TJSONObject);
+
+          // The next round carries these answers and the server's
+          // continuation token. The previous round's answers are this call's
+          // own, never the caller's.
+          AParams.InputResponses := LAnswers;
+          LRoundResponses.Free;
+          LRoundResponses := LAnswers;
+          AParams.RequestState := LInput.RequestState;
+        finally
+          LInput.Free;
+        end;
       finally
-        LInput.Free;
+        LValue.Free;
       end;
-    finally
-      LValue.Free;
     end;
+  finally
+    AParams.InputResponses := LCallerResponses;
+    AParams.RequestState := LCallerState;
+    LRoundResponses.Free;
   end;
 end;
 
@@ -1460,7 +1490,7 @@ begin
   end;
 end;
 
-function TMCPClient.Fulfill(AParams: TInputRequestParams; AResult: TInputRequiredResult): Boolean;
+function TMCPClient.Fulfill(AResult: TInputRequiredResult; out AResponses: TInputResponses): Boolean;
 var
   LPair: TPair<string, TInputRequest>;
   LRequest: TInputRequest;
@@ -1468,6 +1498,7 @@ var
   LAnswer: TObject;
 begin
   Result := False;
+  AResponses := nil;
   LResponses := TInputResponses.Create([doOwnsValues]);
   try
     for LPair in AResult.InputRequests do
@@ -1508,11 +1539,9 @@ begin
         LResponses.AddRoots(LPair.Key, TListRootsResult(LAnswer));
     end;
 
-    // The next round carries these answers and the server's continuation token.
-    AParams.InputResponses.Free;
-    AParams.InputResponses := LResponses;
+    // Handed to ExecuteMrtr, which installs them for the next round
+    AResponses := LResponses;
     LResponses := nil;
-    AParams.RequestState := AResult.RequestState;
 
     Result := True;
   finally

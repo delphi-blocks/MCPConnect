@@ -54,6 +54,16 @@ const
   /// </summary>
   MCP_CLIENT_MAX_ROUNDS = 10;
 
+  /// <summary>
+  ///   How many pages one list call may follow before the client gives up.
+  /// </summary>
+  /// <remarks>
+  ///   A guard against a server that never stops paging, not a size limit
+  ///   anyone should reach: at a typical page size it is tens of thousands of
+  ///   items.
+  /// </remarks>
+  MCP_CLIENT_MAX_PAGES = 1000;
+
 resourcestring
   SMCPClientParamsRequired = 'The request params are required: they carry the per-request "_meta"';
   SMCPClientParamsSerialization = 'The request params could not be serialized to JSON';
@@ -63,6 +73,8 @@ resourcestring
   SMCPClientUnknownInputRequest = 'Unknown input request [%s]';
   SMCPClientInputHandlerNil = 'The input handler for [%s] returned no result';
   SMCPClientTooManyRounds = 'The tool call still requires input after %d rounds';
+  SMCPClientCursorRepeated = 'The server returned the %s cursor [%s] a second time: the list would never end';
+  SMCPClientTooManyPages = 'The server is still paging %s after %d pages';
   SMCPClientInvalidPromptMessage = 'A prompt message is missing its content';
   SMCPListenOverConnection = 'subscriptions/listen is not implemented over a connection transport yet';
   SMCPListenNoTransport = 'No transport factory for subscriptions/listen';
@@ -268,6 +280,7 @@ type
     function NewPromptMessage<T: TToolContent, constructor>(ARole: TRole; AContent: TJSONObject): TPromptMessageBase;
     class function ParseContent(AValue: TJSONObject): TToolContent; static;
     class function IsInputRequired(AValue: TJSONObject): Boolean; static;
+    class procedure CheckCursor(const AMethod, ACursor: string; var ASeen: TArray<string>); static;
     function ToolHeadersTransport: IMCPToolHeadersTransport;
     procedure EnsureToolHeaders;
   public
@@ -771,6 +784,7 @@ var
   LParams: TPaginatedRequestParams;
   LResult: TListToolsResult;
   LCursor: string;
+  LSeen: TArray<string>;
   LTool: TMCPTool;
   LHeaders: IMCPToolHeadersTransport;
 begin
@@ -778,6 +792,7 @@ begin
 
   try
     LCursor := '';
+    LSeen := [];
     repeat
       LParams := TPaginatedRequestParams.Create;
       try
@@ -797,6 +812,10 @@ begin
             LCursor := LResult.NextCursor.Value
           else
             LCursor := '';
+
+          // A server that hands back a cursor it already gave, or never stops
+          // paging, would keep this loop going until memory runs out.
+          CheckCursor('tools/list', LCursor, LSeen);
         finally
           LResult.Free;
         end;
@@ -814,6 +833,27 @@ begin
     Result.Free;
     raise;
   end;
+end;
+
+class procedure TMCPClient.CheckCursor(const AMethod, ACursor: string; var ASeen: TArray<string>);
+var
+  LSeen: string;
+begin
+  // The last page: nothing more to follow
+  if ACursor = '' then
+    Exit;
+
+  // A cursor names a position, so the same one twice means the server has
+  // gone round in a circle: following it would only repeat what came before.
+  for LSeen in ASeen do
+    if LSeen = ACursor then
+      raise EJRPCClientError.CreateFmt(SMCPClientCursorRepeated, [AMethod, ACursor]);
+
+  // Fresh cursors forever are a loop too, just one a set cannot see
+  if Length(ASeen) >= MCP_CLIENT_MAX_PAGES then
+    raise EJRPCClientError.CreateFmt(SMCPClientTooManyPages, [AMethod, MCP_CLIENT_MAX_PAGES]);
+
+  ASeen := ASeen + [ACursor];
 end;
 
 function TMCPClient.ToolHeadersTransport: IMCPToolHeadersTransport;
@@ -1004,10 +1044,12 @@ var
   LPage: TListResourcesResult;
   LResource: TMCPResource;
   LCursor: string;
+  LSeen: TArray<string>;
 begin
   Result := TMCPResources.Create(True);
   try
     LCursor := '';
+    LSeen := [];
     repeat
       LParams := TPaginatedRequestParams.Create;
       try
@@ -1025,6 +1067,10 @@ begin
             LCursor := LPage.NextCursor.Value
           else
             LCursor := '';
+
+          // A server that hands back a cursor it already gave, or never stops
+          // paging, would keep this loop going until memory runs out.
+          CheckCursor('resources/list', LCursor, LSeen);
         finally
           LPage.Free;
         end;
@@ -1044,10 +1090,12 @@ var
   LPage: TListResourceTemplatesResult;
   LTemplate: TMCPResourceTemplate;
   LCursor: string;
+  LSeen: TArray<string>;
 begin
   Result := TMCPTemplates.Create(True);
   try
     LCursor := '';
+    LSeen := [];
     repeat
       LParams := TPaginatedRequestParams.Create;
       try
@@ -1065,6 +1113,10 @@ begin
             LCursor := LPage.NextCursor.Value
           else
             LCursor := '';
+
+          // A server that hands back a cursor it already gave, or never stops
+          // paging, would keep this loop going until memory runs out.
+          CheckCursor('resources/templates/list', LCursor, LSeen);
         finally
           LPage.Free;
         end;
@@ -1104,10 +1156,12 @@ var
   LPage: TListPromptsResult;
   LPrompt: TMCPPrompt;
   LCursor: string;
+  LSeen: TArray<string>;
 begin
   Result := TMCPPrompts.Create(True);
   try
     LCursor := '';
+    LSeen := [];
     repeat
       LParams := TPaginatedRequestParams.Create;
       try
@@ -1124,6 +1178,10 @@ begin
             LCursor := LPage.NextCursor.Value
           else
             LCursor := '';
+
+          // A server that hands back a cursor it already gave, or never stops
+          // paging, would keep this loop going until memory runs out.
+          CheckCursor('prompts/list', LCursor, LSeen);
         finally
           LPage.Free;
         end;

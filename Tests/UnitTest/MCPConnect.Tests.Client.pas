@@ -189,6 +189,13 @@ type
     [TestCase('HtmlPage', '200,text/html,<html>not a stream</html>', ',')]
     procedure TestListenEndsWithoutAck(AStatus: Integer;
       const AContentType, ABody: string);
+    [Test]
+    [TestCase('Tools', 'tools')]
+    [TestCase('Resources', 'resources')]
+    [TestCase('Templates', 'resourceTemplates')]
+    [TestCase('Prompts', 'prompts')]
+    procedure TestListRepeatedCursorRaises(const AKey: string);
+    [Test] procedure TestListEndlessPagingRaises;
   end;
 
   /// <summary>
@@ -1185,6 +1192,83 @@ begin
   end;
 end;
 
+/// <summary>
+///   Calls the list method whose result carries its items under AKey.
+/// </summary>
+procedure ListByKey(AClient: TMCPClient; const AKey: string);
+begin
+  if AKey = 'tools' then
+    AClient.ListTools.Free
+  else if AKey = 'resources' then
+    AClient.ListResources.Free
+  else if AKey = 'resourceTemplates' then
+    AClient.ListResourceTemplates.Free
+  else if AKey = 'prompts' then
+    AClient.ListPrompts.Free
+  else
+    raise Exception.CreateFmt('Unknown list [%s]', [AKey]);
+end;
+
+procedure TMCPClientTest.TestListRepeatedCursorRaises(const AKey: string);
+var
+  LServer: TFixedAnswerServer;
+  LClient: TMCPClient;
+  LMessage: string;
+begin
+  // A server that answers every page with the same nextCursor: following it
+  // would never end, and every page would add its items again.
+  LServer := TFixedAnswerServer.Create(200, 'application/json',
+    '{"jsonrpc":"2.0","id":{{id}},"result":{"' + AKey + '":[],"nextCursor":"again"}}');
+  try
+    LClient := TMCPClient.Create(TMCPHTTPTransport.Create(LServer.URL) as IJRPCStreamingTransport);
+    try
+      LMessage := '';
+      try
+        ListByKey(LClient, AKey);
+        Assert.Fail('expected EJRPCClientError');
+      except
+        on E: EJRPCClientError do
+          LMessage := E.Message;
+      end;
+      Assert.IsTrue(LMessage.Contains('[again]'), LMessage);
+    finally
+      LClient.Free;
+    end;
+  finally
+    LServer.Free;
+  end;
+end;
+
+procedure TMCPClientTest.TestListEndlessPagingRaises;
+var
+  LServer: TFixedAnswerServer;
+  LClient: TMCPClient;
+  LMessage: string;
+begin
+  // A fresh cursor every time - the request id - so no cursor repeats: only
+  // the page cap can stop it.
+  LServer := TFixedAnswerServer.Create(200, 'application/json',
+    '{"jsonrpc":"2.0","id":{{id}},"result":{"prompts":[],"nextCursor":"c{{id}}"}}');
+  try
+    LClient := TMCPClient.Create(TMCPHTTPTransport.Create(LServer.URL) as IJRPCStreamingTransport);
+    try
+      LMessage := '';
+      try
+        LClient.ListPrompts.Free;
+        Assert.Fail('expected EJRPCClientError');
+      except
+        on E: EJRPCClientError do
+          LMessage := E.Message;
+      end;
+      Assert.IsTrue(LMessage.Contains(IntToStr(MCP_CLIENT_MAX_PAGES)), LMessage);
+    finally
+      LClient.Free;
+    end;
+  finally
+    LServer.Free;
+  end;
+end;
+
 { TFixedAnswerServer }
 
 constructor TFixedAnswerServer.Create(AStatus: Integer; const AContentType, ABody: string;
@@ -1219,13 +1303,43 @@ end;
 
 procedure TFixedAnswerServer.CommandGet(AContext: TIdContext;
   ARequestInfo: TIdHTTPRequestInfo; AResponseInfo: TIdHTTPResponseInfo);
+var
+  LBody: string;
+  LRequest: TJSONValue;
+  LId: TJSONValue;
+  LText: TStringStream;
 begin
   if FHoldMs > 0 then
     FRelease.WaitFor(FHoldMs);
 
+  // "{{id}}" in the body is the id of the request being answered, so a fixed
+  // answer can still be one the client accepts as its reply.
+  LBody := FBody;
+  if LBody.Contains('{{id}}') and Assigned(ARequestInfo.PostStream) then
+  begin
+    LText := TStringStream.Create('', TEncoding.UTF8);
+    try
+      ARequestInfo.PostStream.Position := 0;
+      LText.CopyFrom(ARequestInfo.PostStream, 0);
+      LRequest := TJSONObject.ParseJSONValue(LText.DataString);
+      try
+        if LRequest is TJSONObject then
+        begin
+          LId := TJSONObject(LRequest).GetValue('id');
+          if Assigned(LId) then
+            LBody := LBody.Replace('{{id}}', LId.ToJSON, [rfReplaceAll]);
+        end;
+      finally
+        LRequest.Free;
+      end;
+    finally
+      LText.Free;
+    end;
+  end;
+
   AResponseInfo.ResponseNo := FStatus;
   AResponseInfo.ContentType := FContentType;
-  AResponseInfo.ContentText := FBody;
+  AResponseInfo.ContentText := LBody;
 end;
 
 function TFixedAnswerServer.URL: string;

@@ -54,6 +54,13 @@ uses
 /// </summary>
 procedure RunStdioServer;
 
+/// <summary>
+///   Runs this executable as a stdio server that never ends on its own: it
+///   writes its process id as one line, then ignores stdin and its EOF and
+///   stays alive for a minute with stdout and stderr open.
+/// </summary>
+procedure RunStubbornStdioServer;
+
 type
   /// <summary>The structured content one test tool returns.</summary>
   TClientStructured = record
@@ -238,6 +245,7 @@ type
     [Setup] procedure Setup;
     [TearDown] procedure TearDown;
 
+    [Test] procedure TestStdioCloseEndsTheWholeTree;
     [Test] procedure TestStdioConnect;
     [Test] procedure TestStdioListTools;
     [Test] procedure TestStdioCallToolWithMrtr;
@@ -248,12 +256,29 @@ implementation
 
 uses
   System.Generics.Collections, System.Diagnostics,
+  Winapi.Windows,
 
   JRPC.Client,
+  JRPC.Connection,
   MCPConnect.Content.Writers.RTL,
   MCPConnect.MCP.Types.Subscriptions;
 
 { stdio server }
+
+procedure RunStubbornStdioServer;
+var
+  LLine: UTF8String;
+  LWritten: Cardinal;
+begin
+  // Written straight to the handle: no buffering between the line and the
+  // pipe, and nothing read from stdin, so its EOF changes nothing.
+  LLine := UTF8String(IntToStr(GetCurrentProcessId) + #10);
+  WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), LLine[1], Length(LLine), LWritten, nil);
+
+  // Long enough to outlive any Close that only waits for it; short enough
+  // that a regression leaves no process behind for long.
+  Sleep(60000);
+end;
 
 procedure RunStdioServer;
 var
@@ -1389,6 +1414,43 @@ begin
   FClient.Free;
   // The connection held the transport's only interface reference.
   FTransport := nil;
+end;
+
+procedure TMCPStdioClientTest.TestStdioCloseEndsTheWholeTree;
+var
+  LTransport: TMCPStdioTransport;
+  LRef: IJRPCMessageTransport;
+  LLine: string;
+  LPid: Cardinal;
+  LServer: THandle;
+  LWatch: TStopwatch;
+begin
+  // The server behind a wrapper: "cmd /c" is the direct child, the server is
+  // its child and ignores stdin's EOF. Terminating the wrapper alone left the
+  // server running and holding stdout/stderr, so Close waited on the stderr
+  // thread forever and the server was orphaned.
+  LTransport := TMCPStdioTransport.Create(Format('"%s" /c ""%s" --stdio-stubborn"',
+    [GetEnvironmentVariable('ComSpec'), ParamStr(0)]));
+  LRef := LTransport;
+  LTransport.CloseTimeout := 300;
+
+  Assert.IsTrue(LTransport.Receive(LLine), 'the server must report its pid');
+  LPid := StrToInt(LLine.Trim);
+
+  LServer := OpenProcess(SYNCHRONIZE, False, LPid);
+  Assert.IsTrue(LServer <> 0, 'the server must be running');
+  try
+    LWatch := TStopwatch.StartNew;
+    LTransport.Close;
+    LWatch.Stop;
+
+    Assert.IsTrue(LWatch.ElapsedMilliseconds < 5000,
+      Format('Close took %d ms', [LWatch.ElapsedMilliseconds]));
+    Assert.IsTrue(WaitForSingleObject(LServer, 3000) = WAIT_OBJECT_0,
+      'the server behind the wrapper must be gone after Close');
+  finally
+    CloseHandle(LServer);
+  end;
 end;
 
 procedure TMCPStdioClientTest.TestStdioConnect;

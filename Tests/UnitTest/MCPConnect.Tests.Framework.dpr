@@ -136,6 +136,13 @@ begin
     Exit;
   end;
 
+  // ... and as a stdio server that never ends on its own, to test Close.
+  if (ParamCount = 1) and SameText(ParamStr(1), '--stdio-stubborn') then
+  begin
+    MCPConnect.Tests.Client.RunStubbornStdioServer;
+    Exit;
+  end;
+
   ReportMemoryLeaksOnShutdown := True;
 {$IFDEF TESTINSIGHT}
   TestInsight.DUnitX.RunRegisteredTests;

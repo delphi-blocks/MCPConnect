@@ -42,13 +42,25 @@ type
   ///   and discarded - a full pipe would block the child, and stdout is the
   ///   protocol channel.
   ///
-  ///   Closing shuts the child's stdin (EOF ends a well-behaved stdio server),
-  ///   waits up to five seconds, then terminates it. The pipe handles are
-  ///   closed by the destructor, after the connection has joined its reader.
+  ///   The child runs in a job object of its own, created suspended and
+  ///   assigned before its first instruction, so everything it starts - the
+  ///   real server behind a "cmd /c" or "npx" wrapper, a helper - is in the
+  ///   job too. Closing shuts the child's stdin (EOF ends a well-behaved stdio
+  ///   server), waits CloseTimeout for it, then terminates the whole job: a
+  ///   survivor anywhere in the tree would keep the stdout and stderr pipes
+  ///   open and the reads waiting forever. The job is also set to kill on
+  ///   close, so the tree goes with the transport even if this process dies.
+  ///   Where a job cannot be used (an enclosing job that forbids nesting),
+  ///   only the child itself is terminated, and reads still blocked are
+  ///   cancelled rather than waited for.
+  ///
+  ///   The pipe handles are closed by the destructor, after the connection
+  ///   has joined its reader.
   /// </remarks>
   TMCPStdioTransport = class(TInterfacedObject, IJRPCMessageTransport)
   private
     FProcess: THandle;
+    FJob: THandle;
     FStdin: THandle;
     FStdout: THandle;
     FStderr: THandle;
@@ -56,6 +68,10 @@ type
     FSendLock: TCriticalSection;
     FStderrThread: TThread;
     FClosed: Boolean;
+    FCloseTimeout: Cardinal;
+
+    function CreateKillOnCloseJob: THandle;
+    procedure JoinStderrThread;
 
     function ReadChunk: Boolean;
     function ExtractLine(out AText: string): Boolean;
@@ -86,13 +102,20 @@ type
     procedure Send(const AText: string);
 
     /// <summary>
-    ///   Ends the child: stdin closes first, then a termination after the
-    ///   grace period. Idempotent.
+    ///   Ends the child and everything it started: stdin closes first, and
+    ///   whatever is still running after CloseTimeout is terminated.
+    ///   Idempotent.
     /// </summary>
     procedure Close;
 
     /// <summary>The child's process id, or 0 when it is not running.</summary>
     function ProcessId: Cardinal;
+
+    /// <summary>
+    ///   Milliseconds Close gives the child to exit on its own once its stdin
+    ///   is closed. Default 5000.
+    /// </summary>
+    property CloseTimeout: Cardinal read FCloseTimeout write FCloseTimeout;
   end;
 
 implementation
@@ -156,10 +179,12 @@ begin
 
   FSendLock := TCriticalSection.Create;
   FProcess := 0;
+  FJob := 0;
   FStdin := 0;
   FStdout := 0;
   FStderr := 0;
   FClosed := False;
+  FCloseTimeout := 5000;
 
   FillChar(LSecurity, SizeOf(LSecurity), 0);
   LSecurity.nLength := SizeOf(LSecurity);
@@ -208,8 +233,10 @@ begin
   else
     LCurrentDir := PChar(LWorkingDir);
 
+  // Created suspended: the child is put in the job before it runs a single
+  // instruction, so nothing it starts can be born outside it.
   if not CreateProcessW(nil, PChar(LCommandLine), nil, nil, True,
-    CREATE_NO_WINDOW, nil, LCurrentDir, LStartup, LProcess) then
+    CREATE_NO_WINDOW or CREATE_SUSPENDED, nil, LCurrentDir, LStartup, LProcess) then
   begin
     LError := GetLastError;
 
@@ -224,6 +251,16 @@ begin
       [ACommandLine, LError]);
   end;
 
+  // Best effort: without a job (one could not be created, or an enclosing job
+  // refuses nesting) Close falls back to terminating the child alone.
+  FJob := CreateKillOnCloseJob;
+  if (FJob <> 0) and not AssignProcessToJobObject(FJob, LProcess.hProcess) then
+  begin
+    CloseHandle(FJob);
+    FJob := 0;
+  end;
+
+  ResumeThread(LProcess.hThread);
   CloseHandle(LProcess.hThread);
 
   // The child's ends stay only in the child.
@@ -249,9 +286,48 @@ begin
     CloseHandle(FStderr);
   if FProcess <> 0 then
     CloseHandle(FProcess);
+  // Kill-on-close: anything Close could not reach goes with the last handle
+  if FJob <> 0 then
+    CloseHandle(FJob);
 
   FSendLock.Free;
   inherited;
+end;
+
+function TMCPStdioTransport.CreateKillOnCloseJob: THandle;
+var
+  LLimits: TJobObjectExtendedLimitInformation;
+begin
+  Result := CreateJobObject(nil, nil);
+  if Result = 0 then
+    Exit;
+
+  FillChar(LLimits, SizeOf(LLimits), 0);
+  LLimits.BasicLimitInformation.LimitFlags := JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+  if not SetInformationJobObject(Result, JobObjectExtendedLimitInformation,
+    @LLimits, SizeOf(LLimits)) then
+  begin
+    CloseHandle(Result);
+    Result := 0;
+  end;
+end;
+
+procedure TMCPStdioTransport.JoinStderrThread;
+begin
+  if not Assigned(FStderrThread) then
+    Exit;
+
+  FStderrThread.Terminate;
+
+  // Once the tree is gone the pipe reaches EOF and the thread ends by itself.
+  // A process outside the job (one that broke away, or inherited the pipe
+  // from somewhere else) could still hold its write end: then the blocked
+  // read is cancelled instead of waited for - repeatedly, since a cancel that
+  // lands between two reads has nothing to cancel.
+  while WaitForSingleObject(FStderrThread.Handle, 200) <> WAIT_OBJECT_0 do
+    CancelSynchronousIo(FStderrThread.Handle);
+
+  FreeAndNil(FStderrThread);
 end;
 
 procedure TMCPStdioTransport.StartDrainStderr;
@@ -367,21 +443,28 @@ begin
     FStdin := 0;
   end;
 
+  // The grace period, for a server that ends on EOF
   if FProcess <> 0 then
-  begin
-    if WaitForSingleObject(FProcess, 5000) <> WAIT_OBJECT_0 then
-    begin
-      TerminateProcess(FProcess, 1);
-      WaitForSingleObject(FProcess, 5000);
-    end;
-  end;
+    WaitForSingleObject(FProcess, FCloseTimeout);
 
-  // The child is gone, so its stderr reached EOF; the thread can be joined.
-  if Assigned(FStderrThread) then
-  begin
-    FStderrThread.WaitFor;
-    FreeAndNil(FStderrThread);
-  end;
+  // Then whatever is left of the tree. Not only a stuck child: behind a
+  // wrapper the direct child may be "cmd" while the real server lives on as
+  // its child, holding the write ends of stdout and stderr - terminating the
+  // wrapper alone would leave the reads waiting on it forever.
+  if FJob <> 0 then
+    TerminateJobObject(FJob, 1)
+  else if (FProcess <> 0) and (WaitForSingleObject(FProcess, 0) <> WAIT_OBJECT_0) then
+    TerminateProcess(FProcess, 1);
+
+  if FProcess <> 0 then
+    WaitForSingleObject(FProcess, 5000);
+
+  JoinStderrThread;
+
+  // The connection's reader may be blocked on stdout just the same; with the
+  // tree gone it sees EOF, and this covers a writer outside the job.
+  if FStdout <> 0 then
+    CancelIoEx(FStdout, nil);
 end;
 
 function TMCPStdioTransport.ProcessId: Cardinal;

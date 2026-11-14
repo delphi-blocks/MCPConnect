@@ -105,6 +105,22 @@ type
     function Notify: string;
   end;
 
+  /// <summary>
+  ///   Registered on the stdio test server only: a slow tool that a client
+  ///   timeout should cancel, and a tool that says how the slow one ended.
+  /// </summary>
+  [McpScope('stdiotest')]
+  TStdioSlowTools = class
+  private
+    [Context] FCancel: TMCPCancellation;
+  public
+    [McpTool('slow', 'Waits up to ten seconds, or until it is cancelled')]
+    function Slow: string;
+
+    [McpTool('slow_state', 'How the last slow call ended')]
+    function SlowState: string;
+  end;
+
   [McpScope('clienttest')]
   TClientTestResources = class
   public
@@ -246,6 +262,7 @@ type
     [TearDown] procedure TearDown;
 
     [Test] procedure TestStdioCloseEndsTheWholeTree;
+    [Test] procedure TestStdioTimeoutCancelsOnTheServer;
     [Test] procedure TestStdioConnect;
     [Test] procedure TestStdioListTools;
     [Test] procedure TestStdioCallToolWithMrtr;
@@ -293,6 +310,7 @@ begin
       .BackToMCP
       .Tools
         .RegisterClass(TClientTestTools)
+        .RegisterClass(TStdioSlowTools)
       .BackToMCP
     .ApplyConfig;
 
@@ -370,6 +388,40 @@ begin
   // Fans out to every open subscriptions/listen stream.
   FConfig.Subscriptions.ToolsChanged;
   Result := 'notified';
+end;
+
+{ TStdioSlowTools }
+
+var
+  // How the last slow call ended, in the stdio server process: 0 never ran,
+  // 1 running, 2 cancelled, 3 ran to the end. Set from the request's thread.
+  GSlowState: Integer = 0;
+
+function TStdioSlowTools.Slow: string;
+begin
+  TInterlocked.Exchange(GSlowState, 1);
+
+  // True as soon as the client's notifications/cancelled reaches the request
+  if FCancel.WaitFor(10000) then
+  begin
+    TInterlocked.Exchange(GSlowState, 2);
+    // A cancelled request answers nothing at all
+    FCancel.CheckCancelled;
+  end;
+
+  TInterlocked.Exchange(GSlowState, 3);
+  Result := 'finished';
+end;
+
+function TStdioSlowTools.SlowState: string;
+begin
+  case TInterlocked.CompareExchange(GSlowState, 0, 0) of
+    1: Result := 'running';
+    2: Result := 'cancelled';
+    3: Result := 'finished';
+  else
+    Result := 'idle';
+  end;
 end;
 
 { TClientTestResources }
@@ -1453,6 +1505,53 @@ begin
   end;
 end;
 
+procedure TMCPStdioClientTest.TestStdioTimeoutCancelsOnTheServer;
+
+  function SlowState: string;
+  var
+    LResult: TCallToolResult;
+  begin
+    LResult := FClient.CallTool('stdiotest_slow_state');
+    try
+      Result := (LResult.Content[0] as TTextContent).Text;
+    finally
+      LResult.Free;
+    end;
+  end;
+
+var
+  LMessage: string;
+  LState: string;
+  LWaited: Integer;
+begin
+  // The client gives up after 300 ms; the tool would run for ten seconds. The
+  // timeout must reach the server as notifications/cancelled, or the tool
+  // keeps working for an answer nobody will read.
+  FClient.CallTimeout := 300;
+  LMessage := '';
+  try
+    FClient.CallTool('stdiotest_slow').Free;
+  except
+    on E: EJRPCClientError do
+      LMessage := E.Message;
+  end;
+  Assert.IsTrue(LMessage.Contains('300'), 'expected the timeout, got: ' + LMessage);
+
+  FClient.CallTimeout := 15000;
+
+  LWaited := 0;
+  repeat
+    LState := SlowState;
+    if LState = 'cancelled' then
+      Break;
+    Sleep(50);
+    Inc(LWaited, 50);
+  until LWaited >= 3000;
+
+  Assert.AreEqual('cancelled', LState,
+    'the server must have been told the call was given up');
+end;
+
 procedure TMCPStdioClientTest.TestStdioConnect;
 begin
   Assert.AreEqual('2026-07-28', FClient.ProtocolVersion);
@@ -1466,7 +1565,8 @@ var
 begin
   LTools := FClient.ListTools;
   try
-    Assert.AreEqual(8, LTools.Count);
+    // The eight clienttest_* tools and the two stdiotest_* ones
+    Assert.AreEqual(10, LTools.Count);
     Assert.AreEqual('clienttest_echo', LTools[1].Name);
   finally
     LTools.Free;

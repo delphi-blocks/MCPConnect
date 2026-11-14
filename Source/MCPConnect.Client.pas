@@ -73,7 +73,8 @@ resourcestring
   SMCPClientUnknownInputRequest = 'Unknown input request [%s]';
   SMCPClientInputHandlerNil = 'The input handler for [%s] returned no result';
   SMCPClientTooManyRounds = 'The tool call still requires input after %d rounds';
-  SMCPClientCursorRepeated = 'The server returned the %s cursor [%s] a second time: the list would never end';
+  SMCPClientCallTimedOut = 'The client stopped waiting after %d ms';
+  SMCPClientCursorRepeated ='The server returned the %s cursor [%s] a second time: the list would never end';
   SMCPClientTooManyPages = 'The server is still paging %s after %d pages';
   SMCPClientInvalidPromptMessage = 'A prompt message is missing its content';
   SMCPListenOverConnection = 'subscriptions/listen is not implemented over a connection transport yet';
@@ -266,6 +267,7 @@ type
     function BuildCapabilitiesJSON: TJSONObject;
     function BuildRequest(const AMethod: string; AParams: TRequestMetaParams): TJRPCRequest;
     function ExecuteRequest(ARequest: TJRPCRequest): TJSONValue;
+    procedure NotifyCancelled(const AId: TJRPCID; const AReason: string);
     function DeserializeResult<T>(AValue: TJSONValue): T;
     function Discover: TDiscoverResult;
     function TryNegotiateVersion(E: EJRPCRemoteError): Boolean;
@@ -437,6 +439,11 @@ type
     ///   Milliseconds Call waits for an answer on a connection transport; 0
     ///   waits forever. The HTTP transport has its own timeouts.
     /// </summary>
+    /// <remarks>
+    ///   A call that times out is cancelled on the server too: the client
+    ///   sends "notifications/cancelled" for it, which a stdio server routes
+    ///   to the running request, before raising EJRPCClientError.
+    /// </remarks>
     property CallTimeout: Cardinal read FCallTimeout write FCallTimeout;
 
     /// <summary>
@@ -499,6 +506,9 @@ type
   end;
 
 implementation
+
+uses
+  MCPConnect.MCP.Types.Notifications;
 
 type
   /// <summary>
@@ -887,19 +897,63 @@ end;
 
 function TMCPClient.ExecuteRequest(ARequest: TJRPCRequest): TJSONValue;
 var
+  LCall: IJRPCCall;
+  LError: Exception;
   LResponse: TJRPCResponse;
 begin
-  if Assigned(FConnection) then
+  if not Assigned(FConnection) then
+    Exit(FJRPC.ExecuteAsJSONValue(ARequest));
+
+  // TJRPCConnection.Call, with one step it cannot take: on a timeout the
+  // server is told. Giving up locally only stops this side waiting - the
+  // server would run the request to the end, for an answer that is dropped.
+  LCall := FConnection.CallAsync(ARequest);
+
+  if FCallTimeout = 0 then
+    LCall.Wait
+  else if not LCall.Wait(FCallTimeout) then
   begin
-    LResponse := FConnection.Call(ARequest, FCallTimeout);
-    try
-      Result := LResponse.Result.Clone as TJSONValue;
-    finally
-      LResponse.Free;
-    end;
-  end
+    LCall.Cancel;
+    NotifyCancelled(ARequest.Id, Format(SMCPClientCallTimedOut, [FCallTimeout]));
+    raise EJRPCClientError.CreateFmt(SJRPCConnectionTimeout, [FCallTimeout]);
+  end;
+
+  LError := LCall.TakeError;
+  if Assigned(LError) then
+    raise LError;
+
+  LResponse := LCall.TakeResponse;
+  if not Assigned(LResponse) then
+    raise EJRPCClientError.Create(SJRPCConnectionNoResponse);
+
+  try
+    Result := LResponse.Result.Clone as TJSONValue;
+  finally
+    LResponse.Free;
+  end;
+end;
+
+procedure TMCPClient.NotifyCancelled(const AId: TJRPCID; const AReason: string);
+var
+  LNotification: TJRPCNotification;
+begin
+  if AId.IsString then
+    LNotification := TMCPNotification.Cancelled(AId.AsString, AReason)
   else
-    Result := FJRPC.ExecuteAsJSONValue(ARequest);
+    LNotification := TMCPNotification.Cancelled(StrToInt64(AId.AsString), AReason);
+
+  try
+    try
+      FConnection.Notify(LNotification);
+    except
+      // Best effort: the connection may be gone, and the caller is about to
+      // get the timeout either way. The failure still reaches OnError.
+      on E: Exception do
+        ForwardError(E);
+    end;
+  finally
+    LNotification.Free;
+  end;
 end;
 
 function TMCPClient.DeserializeResult<T>(AValue: TJSONValue): T;

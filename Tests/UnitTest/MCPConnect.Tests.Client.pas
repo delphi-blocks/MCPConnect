@@ -183,6 +183,12 @@ type
     procedure TestHttpErrorWithoutJsonRpcBody(AStatus: Integer;
       const AContentType, ABody: string);
     [Test] procedure TestListenSilentServerTimesOut;
+    [Test]
+    [TestCase('EmptyStream', '200,text/event-stream,EMPTY', ',')]
+    [TestCase('Accepted', '202,text/plain,EMPTY', ',')]
+    [TestCase('HtmlPage', '200,text/html,<html>not a stream</html>', ',')]
+    procedure TestListenEndsWithoutAck(AStatus: Integer;
+      const AContentType, ABody: string);
   end;
 
   /// <summary>
@@ -1112,6 +1118,65 @@ begin
       // then free the client under a thread that is still reading.
       Assert.IsTrue(LWatch.ElapsedMilliseconds < 3000,
         Format('Listen took %d ms to give up', [LWatch.ElapsedMilliseconds]));
+    finally
+      LClient.Free;
+    end;
+  finally
+    LServer.Free;
+  end;
+end;
+
+procedure TMCPClientTest.TestListenEndsWithoutAck(AStatus: Integer;
+  const AContentType, ABody: string);
+var
+  LServer: TFixedAnswerServer;
+  LClient: TMCPClient;
+  LFilter: TSubscriptionFilter;
+  LWatch: TStopwatch;
+  LBody: string;
+  LMessage: string;
+begin
+  // A successful answer that carries no frame at all: the stream is over
+  // before anything could acknowledge it, so Listen must not sit out its
+  // timeout (or, at 0, wait forever).
+  if ABody = 'EMPTY' then
+    LBody := ''
+  else
+    LBody := ABody;
+
+  LServer := TFixedAnswerServer.Create(AStatus, AContentType, LBody);
+  try
+    LClient := TMCPClient.Create(TMCPHTTPTransport.Create(LServer.URL) as IJRPCStreamingTransport);
+    try
+      LClient.ListenTimeout := 10000;
+      LClient.TransportFactory :=
+        function: IJRPCStreamingTransport
+        begin
+          Result := TMCPHTTPTransport.Create(LServer.URL, '', 0);
+        end;
+
+      LFilter := TSubscriptionFilter.Create;
+      try
+        LFilter.ResourcesListChanged := True;
+
+        LMessage := '';
+        LWatch := TStopwatch.StartNew;
+        try
+          LClient.Listen(LFilter, nil);
+          Assert.Fail('expected EJRPCClientError');
+        except
+          on E: EJRPCClientError do
+            LMessage := E.Message;
+        end;
+        LWatch.Stop;
+      finally
+        LFilter.Free;
+      end;
+
+      Assert.AreEqual(SMCPListenEndedBeforeAck, LMessage);
+      Assert.IsTrue(LWatch.ElapsedMilliseconds < 3000,
+        Format('Listen took %d ms to notice the stream had ended',
+          [LWatch.ElapsedMilliseconds]));
     finally
       LClient.Free;
     end;

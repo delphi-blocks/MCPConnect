@@ -68,6 +68,7 @@ resourcestring
   SMCPListenNoTransport = 'No transport factory for subscriptions/listen';
   SMCPListenFilterRequired = 'A subscription filter is required';
   SMCPListenAckTimeout = 'The server did not acknowledge the subscription in time';
+  SMCPListenEndedBeforeAck = 'The subscription stream ended before the server acknowledged it';
   SMCPListenInvalidFrame = 'The subscription stream carried an unreadable message';
   SMCPListenRefused = 'The subscription was refused: %s';
 
@@ -429,6 +430,11 @@ type
     ///   Milliseconds Listen waits for the server's acknowledgement; 0 waits
     ///   forever. Default 10000.
     /// </summary>
+    /// <remarks>
+    ///   A stream that ends before the acknowledgement - an empty body, a 202,
+    ///   a page that is not SSE - is not waited out: Listen raises as soon as
+    ///   the stream is over, whatever the timeout.
+    /// </remarks>
     property ListenTimeout: Cardinal read FListenTimeout write FListenTimeout;
 
     /// <summary>
@@ -1770,16 +1776,43 @@ begin
 end;
 
 function TMCPSubscription.WaitForAck(ATimeout: Cardinal): Boolean;
+const
+  // How often the wait looks at the stream: the end of a stream that carried
+  // no frame raises no event of its own.
+  POLL_MS = 50;
 var
-  LWait: TWaitResult;
+  LStart, LElapsed: UInt64;
+  LSlice: Cardinal;
 begin
-  if ATimeout = 0 then
-    LWait := FState.FWake.WaitFor($FFFFFFFF)
-  else
-    LWait := FState.FWake.WaitFor(ATimeout);
+  LStart := TThread.GetTickCount64;
 
-  if LWait <> wrSignaled then
-    Exit(False);
+  while True do
+  begin
+    LSlice := POLL_MS;
+    if ATimeout <> 0 then
+    begin
+      LElapsed := TThread.GetTickCount64 - LStart;
+      if LElapsed >= ATimeout then
+        Exit(False);
+      if ATimeout - LElapsed < LSlice then
+        LSlice := ATimeout - LElapsed;
+    end;
+
+    // A frame (the ack, a refusal), a transport error or Close
+    if FState.FWake.WaitFor(LSlice) = wrSignaled then
+      Break;
+
+    // An empty 2xx, a 202 or a body that is not SSE ends the stream without
+    // a single frame: nothing will ever wake the wait, so it is over now.
+    if Assigned(FStream) and FStream.Completed then
+    begin
+      // Frames are handled before the stream completes: an ack that came
+      // with the end has already set the event.
+      if FState.FWake.WaitFor(0) <> wrSignaled then
+        FState.Fail(SMCPListenEndedBeforeAck);
+      Break;
+    end;
+  end;
 
   if FState.FErrorMessage <> '' then
     raise EJRPCClientError.Create(FState.FErrorMessage);

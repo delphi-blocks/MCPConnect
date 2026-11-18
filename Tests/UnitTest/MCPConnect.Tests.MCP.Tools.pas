@@ -19,6 +19,9 @@ uses
   System.SysUtils, System.JSON, System.Rtti, System.Generics.Collections,
   DUnitX.TestFramework,
 
+  Neon.Core.Persistence,
+  Neon.Core.Persistence.JSON,
+
   MCPConnect.MCP.Tools,
   MCPConnect.MCP.Types,
   MCPConnect.MCP.Attributes;
@@ -71,6 +74,12 @@ type
     procedure TestCallToolResultCreate();
     [Test]
     procedure TestCallToolResultAddContent();
+    [Test]
+    procedure TestCallToolResultIsErrorOmittedWhenUnset();
+    [Test]
+    procedure TestCallToolResultIsErrorTrueIsSerialized();
+    [Test]
+    procedure TestCallToolResultIsErrorFalseIsSerialized();
   end;
 
 implementation
@@ -252,6 +261,62 @@ begin
     Assert.AreEqual(1, LResult.Content.Count, 'Content list should have one item');
     Assert.IsTrue(LResult.Content[0] is TTextContent, 'Content item should be TTextContent');
     Assert.AreEqual('Test content', (LResult.Content[0] as TTextContent).Text, 'Content text should match');
+  finally
+    LResult.Free;
+  end;
+end;
+
+procedure TMCPToolsTest.TestCallToolResultIsErrorOmittedWhenUnset;
+var
+  LResult: TCallToolResult;
+  LJson: string;
+begin
+  LResult := TCallToolResult.Create;
+  try
+    LResult.AddContent(TTextContent.CreateWithText('fine'));
+    LJson := TNeon.ObjectToJSONString(LResult, MCPNeonConfig);
+    Assert.IsFalse(LJson.Contains('isError'), 'An unset isError must not be sent: ' + LJson);
+  finally
+    LResult.Free;
+  end;
+end;
+
+procedure TMCPToolsTest.TestCallToolResultIsErrorTrueIsSerialized;
+var
+  LResult: TCallToolResult;
+  LJson: TJSONObject;
+begin
+  LResult := TCallToolResult.Create;
+  try
+    LResult.AddContent(TTextContent.CreateWithText('it failed'));
+    LResult.IsError := True;
+    LJson := TNeon.ObjectToJSON(LResult, MCPNeonConfig) as TJSONObject;
+    try
+      Assert.IsTrue(LJson.GetValue<Boolean>('isError'), 'isError must be true: ' + LJson.ToJSON);
+      Assert.AreEqual('it failed', LJson.GetValue<TJSONArray>('content').Items[0].GetValue<string>('text'));
+    finally
+      LJson.Free;
+    end;
+  finally
+    LResult.Free;
+  end;
+end;
+
+procedure TMCPToolsTest.TestCallToolResultIsErrorFalseIsSerialized;
+var
+  LResult: TCallToolResult;
+  LJson: TJSONObject;
+begin
+  LResult := TCallToolResult.Create;
+  try
+    LResult.AddContent(TTextContent.CreateWithText('ok'));
+    LResult.IsError := False;
+    LJson := TNeon.ObjectToJSON(LResult, MCPNeonConfig) as TJSONObject;
+    try
+      Assert.IsFalse(LJson.GetValue<Boolean>('isError'), 'An explicit false is sent as false: ' + LJson.ToJSON);
+    finally
+      LJson.Free;
+    end;
   finally
     LResult.Free;
   end;

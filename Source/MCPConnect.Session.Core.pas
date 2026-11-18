@@ -193,10 +193,18 @@ type
     FTimeoutMinutes: Integer;
     FReplayBufferSize: Integer;
     FServer: TJRPCServer;
+    FSweepIntervalSeconds: Integer;
+    FLastSweep: TDateTime;
 
     function GenerateSessionId: string;
     function IsExpired(ASession: TMCPSessionBase): Boolean;
     procedure RemoveExpiredSession(const ASessionId: string);
+
+    /// <summary>
+    ///   Runs RemoveExpiredSessions when the last sweep is older than
+    ///   SweepIntervalSeconds.
+    /// </summary>
+    procedure SweepIfDue;
   public
     constructor Create(AServer: TJRPCServer);
     destructor Destroy; override;
@@ -227,6 +235,26 @@ type
     function SessionExists(const ASessionId: string): Boolean;
 
     /// <summary>
+    ///   Frees every expired session, whether or not its id is ever asked for
+    ///   again, and returns how many it freed.
+    /// </summary>
+    /// <remarks>
+    ///   Expiry is otherwise lazy: a session is only found expired when a
+    ///   request names it. A client that simply goes away never does, and
+    ///   its session - with the thread that drains its inbound queue - would
+    ///   stay until the process ends. CreateSession calls this every
+    ///   SweepIntervalSeconds, so the sessions held are bounded by the ones
+    ///   created within the timeout. A session is freed outside the lock,
+    ///   since freeing it waits for its thread.
+    /// </remarks>
+    function RemoveExpiredSessions: Integer;
+
+    /// <summary>
+    ///   How many sessions are held, expired ones not yet removed included.
+    /// </summary>
+    function SessionCount: Integer;
+
+    /// <summary>
     ///   Class used to create new session instances
     /// </summary>
     property SessionClass: TMCPSessionDataClass read FSessionClass write FSessionClass;
@@ -240,6 +268,13 @@ type
     ///   Per-session SSE replay buffer size, applied to sessions as they are created (default: 100)
     /// </summary>
     property ReplayBufferSize: Integer read FReplayBufferSize write FReplayBufferSize;
+
+    /// <summary>
+    ///   How often CreateSession sweeps the expired sessions away, in seconds
+    ///   (default: 60). 0 sweeps on every new session; a negative value turns
+    ///   the sweep off, leaving only the lazy removal on access.
+    /// </summary>
+    property SweepIntervalSeconds: Integer read FSweepIntervalSeconds write FSweepIntervalSeconds;
 
   end;
 
@@ -307,6 +342,8 @@ begin
   FSessionClass := TMCPSessionData;
   FTimeoutMinutes := 30;
   FReplayBufferSize := 100;
+  FSweepIntervalSeconds := 60;
+  FLastSweep := 0;
 end;
 
 destructor TMCPSessionManager.Destroy;
@@ -324,6 +361,10 @@ function TMCPSessionManager.CreateSession: TMCPSessionBase;
 var
   LSessionId: string;
 begin
+  // Sessions only accumulate through here, so this is where the ones nobody
+  // will ask for again are cleared away
+  SweepIfDue;
+
   LSessionId := GenerateSessionId;
 
   FLock.Enter;
@@ -391,6 +432,68 @@ begin
     FSessions.Remove(ASessionId);
     LSession.Free;
   end;
+end;
+
+function TMCPSessionManager.RemoveExpiredSessions: Integer;
+var
+  LPair: TPair<string, TMCPSessionBase>;
+  LExpired: TList<TMCPSessionBase>;
+  LSession: TMCPSessionBase;
+begin
+  LExpired := TList<TMCPSessionBase>.Create;
+  try
+    FLock.Enter;
+    try
+      for LPair in FSessions do
+        if IsExpired(LPair.Value) then
+          LExpired.Add(LPair.Value);
+      for LSession in LExpired do
+        FSessions.Remove(LSession.SessionId);
+      FLastSweep := Now;
+    finally
+      FLock.Leave;
+    end;
+
+    // Out of the dictionary, so no request can find them any more; freed
+    // outside the lock because freeing a session waits for its queue thread
+    for LSession in LExpired do
+      LSession.Free;
+
+    Result := LExpired.Count;
+  finally
+    LExpired.Free;
+  end;
+end;
+
+function TMCPSessionManager.SessionCount: Integer;
+begin
+  FLock.Enter;
+  try
+    Result := FSessions.Count;
+  finally
+    FLock.Leave;
+  end;
+end;
+
+procedure TMCPSessionManager.SweepIfDue;
+var
+  LDue: Boolean;
+begin
+  if FSweepIntervalSeconds < 0 then
+    Exit;
+
+  FLock.Enter;
+  try
+    LDue := SecondsBetween(Now, FLastSweep) >= FSweepIntervalSeconds;
+    // Claimed under the lock, so concurrent callers do not all sweep
+    if LDue then
+      FLastSweep := Now;
+  finally
+    FLock.Leave;
+  end;
+
+  if LDue then
+    RemoveExpiredSessions;
 end;
 
 function TMCPSessionManager.SessionExists(const ASessionId: string): Boolean;

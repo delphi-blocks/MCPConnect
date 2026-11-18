@@ -117,6 +117,16 @@ type
     [Test]
     procedure TestTimeoutConfiguration();
 
+    // Sweeping sessions nobody asks for again
+    [Test]
+    procedure TestRemoveExpiredSessionsFreesOnlyExpired();
+    [Test]
+    procedure TestCreateSessionSweepsExpired();
+    [Test]
+    procedure TestSweepIntervalThrottles();
+    [Test]
+    procedure TestSweepDisabled();
+
     // Custom session class
     [Test]
     procedure TestCustomSessionClass();
@@ -469,6 +479,86 @@ begin
   end;
 
   Assert.IsFalse(FManager.SessionExists(LSessionId), 'Expired session should be removed after access attempt');
+end;
+
+procedure TMCPSessionManagerTest.TestRemoveExpiredSessionsFreesOnlyExpired;
+var
+  LLive, LOld1, LOld2: TMCPSessionBase;
+  LLiveId, LOld1Id, LOld2Id: string;
+begin
+  FManager.TimeoutMinutes := 1;
+  FManager.SweepIntervalSeconds := -1;  // only the explicit call sweeps
+
+  LLive := FManager.CreateSession;
+  LOld1 := FManager.CreateSession;
+  LOld2 := FManager.CreateSession;
+  LLiveId := LLive.SessionId;
+  LOld1Id := LOld1.SessionId;
+  LOld2Id := LOld2.SessionId;
+  LOld1.LastAccessedAt := IncMinute(Now, -2);
+  LOld2.LastAccessedAt := IncMinute(Now, -5);
+
+  Assert.AreEqual(2, FManager.RemoveExpiredSessions, 'Both expired sessions should be freed');
+  Assert.AreEqual(1, FManager.SessionCount);
+  Assert.IsTrue(FManager.SessionExists(LLiveId), 'The live session must stay');
+  Assert.IsFalse(FManager.SessionExists(LOld1Id));
+  Assert.IsFalse(FManager.SessionExists(LOld2Id));
+  Assert.AreEqual(0, FManager.RemoveExpiredSessions, 'Nothing left to free');
+end;
+
+procedure TMCPSessionManagerTest.TestCreateSessionSweepsExpired;
+var
+  LOld: TMCPSessionBase;
+  LOldId: string;
+begin
+  FManager.TimeoutMinutes := 1;
+  FManager.SweepIntervalSeconds := 0;  // sweep on every new session
+
+  LOld := FManager.CreateSession;
+  LOldId := LOld.SessionId;
+  LOld.LastAccessedAt := IncMinute(Now, -2);
+
+  // Nobody asks for LOld again: the next new session clears it away
+  FManager.CreateSession;
+
+  Assert.IsFalse(FManager.SessionExists(LOldId), 'An abandoned expired session should be swept');
+  Assert.AreEqual(1, FManager.SessionCount);
+end;
+
+procedure TMCPSessionManagerTest.TestSweepIntervalThrottles;
+var
+  LOld: TMCPSessionBase;
+  LOldId: string;
+begin
+  FManager.TimeoutMinutes := 1;
+  FManager.SweepIntervalSeconds := 3600;
+
+  // The first creation sweeps (nothing has been swept yet), the next ones
+  // wait for the interval
+  LOld := FManager.CreateSession;
+  LOldId := LOld.SessionId;
+  LOld.LastAccessedAt := IncMinute(Now, -2);
+  FManager.CreateSession;
+
+  Assert.IsTrue(FManager.SessionExists(LOldId), 'No sweep before the interval has passed');
+  Assert.AreEqual(1, FManager.RemoveExpiredSessions, 'An explicit sweep still frees it');
+end;
+
+procedure TMCPSessionManagerTest.TestSweepDisabled;
+var
+  LOld: TMCPSessionBase;
+  LOldId: string;
+begin
+  FManager.TimeoutMinutes := 1;
+  FManager.SweepIntervalSeconds := -1;
+
+  LOld := FManager.CreateSession;
+  LOldId := LOld.SessionId;
+  LOld.LastAccessedAt := IncMinute(Now, -2);
+  FManager.CreateSession;
+
+  Assert.IsTrue(FManager.SessionExists(LOldId), 'A negative interval leaves only the lazy removal');
+  Assert.AreEqual(2, FManager.SessionCount);
 end;
 
 procedure TMCPSessionManagerTest.TestTimeoutConfiguration;

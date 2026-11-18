@@ -1440,21 +1440,21 @@ end;
 
 function TMCPTransportRequest.GetCookie(const AName: string): string;
 begin
+  Result := '';
+
   var LCookies := GetHeader('Cookie');
   if LCookies.IsEmpty then
-    Exit('');
+    Exit;
 
-  var LCookieList := TStringList.Create;
-  try
-    LCookieList.NameValueSeparator := '=';
-    LCookieList.LineBreak := ';';
-    LCookieList.Text := LCookies;
-
-    Result := LCookieList.Values[AName];
-  finally
-    LCookieList.Free;
+  // The pairs are separated by "; " (RFC 6265), so every pair is trimmed before
+  // its name is compared: a browser that holds several cookies for the host
+  // sends the one asked for after a space, unless it happens to come first.
+  for var LPair in LCookies.Split([';']) do
+  begin
+    var LPos := LPair.IndexOf('=');
+    if (LPos > 0) and SameText(LPair.Substring(0, LPos).Trim, AName) then
+      Exit(LPair.Substring(LPos + 1).Trim);
   end;
-
 end;
 
 function TMCPTransportRequest.GetHeader(const AName: string): string;

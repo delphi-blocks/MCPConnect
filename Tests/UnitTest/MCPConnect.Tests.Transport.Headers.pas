@@ -116,6 +116,37 @@ type
     procedure TestSetHeader_DelegatesToHeaders();
   end;
 
+  [TestFixture]
+  TTransportRequestCookieTest = class(TObject)
+  private
+    FRequest: TMCPTransportRequest;
+    procedure SetCookieHeader(const AValue: string);
+  public
+    [Setup]
+    procedure Setup();
+    [TearDown]
+    procedure TearDown();
+
+    [Test]
+    procedure TestGetCookie_SingleCookie();
+    [Test]
+    procedure TestGetCookie_FirstOfSeveral();
+    [Test]
+    procedure TestGetCookie_NotFirstOfSeveral();
+    [Test]
+    procedure TestGetCookie_LastOfSeveral();
+    [Test]
+    procedure TestGetCookie_NoSpaceAfterSeparator();
+    [Test]
+    procedure TestGetCookie_ValueWithEqualsSign();
+    [Test]
+    procedure TestGetCookie_DoesNotMatchPartOfAnotherName();
+    [Test]
+    procedure TestGetCookie_MissingName_ReturnsEmpty();
+    [Test]
+    procedure TestGetCookie_NoCookieHeader_ReturnsEmpty();
+  end;
+
 implementation
 
 { TTransportHeadersTest }
@@ -410,6 +441,82 @@ procedure TTransportResponseHeadersTest.TestSetHeader_DelegatesToHeaders();
 begin
   FResponse.SetHeader('X-Custom', 'value');
   Assert.AreEqual('value', FResponse.Headers.Get('X-Custom'));
+end;
+
+{ TTransportRequestCookieTest }
+
+procedure TTransportRequestCookieTest.Setup;
+begin
+  FRequest := TMCPTransportRequest.Create;
+end;
+
+procedure TTransportRequestCookieTest.TearDown;
+begin
+  FRequest.Free;
+end;
+
+procedure TTransportRequestCookieTest.SetCookieHeader(const AValue: string);
+begin
+  FRequest.SetHeader('Cookie', AValue);
+end;
+
+procedure TTransportRequestCookieTest.TestGetCookie_SingleCookie;
+begin
+  SetCookieHeader('sid=abc');
+  Assert.AreEqual('abc', FRequest.GetCookie('sid'));
+end;
+
+procedure TTransportRequestCookieTest.TestGetCookie_FirstOfSeveral;
+begin
+  SetCookieHeader('sid=abc; theme=dark; lang=it');
+  Assert.AreEqual('abc', FRequest.GetCookie('sid'));
+end;
+
+procedure TTransportRequestCookieTest.TestGetCookie_NotFirstOfSeveral;
+begin
+  // What a browser sends when other cookies exist for the host (cookies are
+  // not scoped by port): the name follows "; ", with a space in front of it
+  SetCookieHeader('theme=dark; sid=abc; lang=it');
+  Assert.AreEqual('abc', FRequest.GetCookie('sid'));
+end;
+
+procedure TTransportRequestCookieTest.TestGetCookie_LastOfSeveral;
+begin
+  SetCookieHeader('theme=dark; lang=it; sid=abc');
+  Assert.AreEqual('abc', FRequest.GetCookie('sid'));
+end;
+
+procedure TTransportRequestCookieTest.TestGetCookie_NoSpaceAfterSeparator;
+begin
+  SetCookieHeader('theme=dark;sid=abc');
+  Assert.AreEqual('abc', FRequest.GetCookie('sid'));
+end;
+
+procedure TTransportRequestCookieTest.TestGetCookie_ValueWithEqualsSign;
+begin
+  // Base64 padding: only the first "=" separates the name from the value
+  SetCookieHeader('theme=dark; sid=YWJj==');
+  Assert.AreEqual('YWJj==', FRequest.GetCookie('sid'));
+end;
+
+procedure TTransportRequestCookieTest.TestGetCookie_DoesNotMatchPartOfAnotherName;
+begin
+  SetCookieHeader('xsid=1; sid2=2');
+  Assert.AreEqual('', FRequest.GetCookie('sid'));
+
+  SetCookieHeader('xsid=1; sid=2');
+  Assert.AreEqual('2', FRequest.GetCookie('sid'));
+end;
+
+procedure TTransportRequestCookieTest.TestGetCookie_MissingName_ReturnsEmpty;
+begin
+  SetCookieHeader('theme=dark; lang=it');
+  Assert.AreEqual('', FRequest.GetCookie('sid'));
+end;
+
+procedure TTransportRequestCookieTest.TestGetCookie_NoCookieHeader_ReturnsEmpty;
+begin
+  Assert.AreEqual('', FRequest.GetCookie('sid'));
 end;
 
 end.

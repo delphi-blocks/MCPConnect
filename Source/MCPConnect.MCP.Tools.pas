@@ -233,7 +233,7 @@ type
     ///   Whether the tool call ended in an error. If not set, this is assumed
     ///   to be false (the call was successful).
     /// </summary>
-    [NeonIgnore] IsError: Nullable<Boolean>;
+    [NeonInclude(IncludeIf.NotEmpty)] IsError: Nullable<Boolean>;
 
   public
     constructor Create; overload;

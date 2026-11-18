@@ -1,0 +1,34 @@
+@LayoutPage _layout.html
+<h1>Speakers</h1>
+
+<form class="filters" method="get" action="/speakers">
+  <label>Search
+    <input type="search" name="q" value="@Site.Query" placeholder="name, company, topic or title">
+  </label>
+  <button class="btn" type="submit">Search</button>
+</form>
+
+@if (Site.HasSpeakers) {
+  <div class="grid three">
+    @foreach (var speaker in Site.Speakers) {
+      <article class="card speaker">
+        <div class="avatar" aria-hidden="true">@speaker.Initials</div>
+        <h2>
+          <img class="flag" src="/assets/@speaker.FlagFile" alt="@speaker.LanguageName" title="Speaks @speaker.LanguageName" width="22" height="22">
+          @speaker.Name
+        </h2>
+        @if (speaker.HasCompany) {
+          <p class="meta">@speaker.Company</p>
+        }
+        <p class="chips"><span class="chip">@speaker.Topics</span></p>
+        <ul class="plain">
+          @foreach (var line in speaker.Sessions) {
+            <li>@line.Text</li>
+          }
+        </ul>
+      </article>
+    }
+  </div>
+} @else {
+  <p class="empty">No speaker matches.</p>
+}

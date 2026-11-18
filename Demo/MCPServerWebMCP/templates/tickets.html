@@ -1,0 +1,44 @@
+@LayoutPage _layout.html
+<h1>Tickets</h1>
+
+<div class="grid two">
+  @foreach (var ticket in Site.Tickets) {
+    <article class="card ticket">
+      <h2>@ticket.Name</h2>
+      <p class="price">€@ticket.Price</p>
+      <p>@ticket.Description</p>
+      <p class="seats">
+        @if (ticket.SoldOut) {
+          <span class="chip bad">Sold out</span>
+        } @else {
+          @if (ticket.LowStock) {
+            <span class="chip warn">Only @ticket.SeatsLeft left</span>
+          } @else {
+            <span class="chip">@ticket.SeatsLeft seats left</span>
+          }
+        }
+      </p>
+      @if (ticket.SoldOut) {
+        <p class="actions"><button class="btn" type="button" disabled>Sold out</button></p>
+      } @else {
+        <form class="buy" method="post" action="/cart/add">
+          <input type="hidden" name="ticket" value="@ticket.Id">
+          <input type="hidden" name="back" value="@Site.Back">
+          <label>Quantity
+            <select name="quantity">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+            </select>
+          </label>
+          <button class="btn primary" type="submit">Add to cart</button>
+        </form>
+      }
+    </article>
+  }
+</div>
+
+<p class="note">
+  Prices in euros. A discount code, if you have one, is entered at the checkout.
+</p>

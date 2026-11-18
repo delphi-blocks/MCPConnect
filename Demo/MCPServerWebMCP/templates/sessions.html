@@ -1,0 +1,75 @@
+@LayoutPage _layout.html
+<h1>Sessions</h1>
+
+<form class="filters" method="get" action="/sessions">
+  <label>Search
+    <input type="search" name="q" value="@Site.Query" placeholder="title, speaker or topic">
+  </label>
+  <label>Track
+    <select name="track">
+      @foreach (var option in Site.TrackOptions) {
+        <option value="@option.Value" @if (option.Selected) {selected}>@option.Text</option>
+      }
+    </select>
+  </label>
+  <label>Level
+    <select name="level">
+      @foreach (var option in Site.LevelOptions) {
+        <option value="@option.Value" @if (option.Selected) {selected}>@option.Text</option>
+      }
+    </select>
+  </label>
+  <label>Day
+    <select name="day">
+      @foreach (var option in Site.DayOptions) {
+        <option value="@option.Value" @if (option.Selected) {selected}>@option.Text</option>
+      }
+    </select>
+  </label>
+  <button class="btn" type="submit">Filter</button>
+</form>
+
+<p class="note">The flag next to a speaker shows the language of the session. Titles and descriptions are in English.</p>
+
+@if (Site.HasSessions) {
+  @foreach (var entry in Site.Sessions) {
+    @if (entry.NewDay) {
+      <h2 class="day">@entry.DayName</h2>
+    }
+    <article class="card session" data-kind="@entry.KindText">
+      <div class="when">
+        <strong>@entry.TimeText</strong>
+        <span>@entry.Room</span>
+      </div>
+      <div class="what">
+        <p class="chips">
+          <span class="chip kind">@entry.KindText</span>
+          <span class="chip">@entry.Track</span>
+          <span class="chip">@entry.Level</span>
+          <span class="chip id">#@entry.Id</span>
+        </p>
+        <h3>@entry.Title</h3>
+        <p class="meta">
+          <img class="flag" src="/assets/@entry.FlagFile" alt="@entry.LanguageName" title="Given in @entry.LanguageName" width="18" height="18">
+          @entry.SpeakerName
+        </p>
+        <p>@entry.Summary</p>
+        @if (entry.IsSeminar) {
+          <p class="note">Seminar: needs a Seminar day or Combo ticket.</p>
+        }
+      </div>
+      <form class="side" method="post"
+        @if (entry.InSchedule) {action="/schedule/remove"} @else {action="/schedule/add"}>
+        <input type="hidden" name="session_id" value="@entry.Id">
+        <input type="hidden" name="back" value="@Site.Back">
+        @if (entry.InSchedule) {
+          <button class="btn on" type="submit">In your schedule · remove</button>
+        } @else {
+          <button class="btn primary" type="submit">Add to my schedule</button>
+        }
+      </form>
+    </article>
+  }
+} @else {
+  <p class="empty">No session matches these filters.</p>
+}

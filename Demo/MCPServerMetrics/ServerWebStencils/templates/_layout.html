@@ -26,6 +26,9 @@
       <span class="badge ok"><span class="dot"></span>server rendered</span>
       <span class="badge">@Metrics.SampleCountText samples · @Metrics.HistorySpanText</span>
       <span class="badge">@Metrics.InstrumentsText instruments · @Metrics.MetersText meters</span>
+      @if (WebMCP.HasTools) {
+        <span class="badge" title="Tools offered to the browser's agent through WebMCP">WebMCP · @WebMCP.ToolCount tools</span>
+      }
       <a class="badge" href="/dashboard">Refresh now</a>
     </div>
   </div>
@@ -59,5 +62,10 @@
     }, seconds * 1000);
   })();
 </script>
+<!-- WebMCP: the tools tagged "webmcp" on the MCP server, offered to the
+     browser's agent. The tag carries them as data (HTML-encoded JSON in an
+     attribute); /webmcp.js registers them and calls them on /mcp. Written
+     with a backslash, unencoded, because the tag is encoded already. -->
+@\WebMCP.Tag
 </body>
 </html>

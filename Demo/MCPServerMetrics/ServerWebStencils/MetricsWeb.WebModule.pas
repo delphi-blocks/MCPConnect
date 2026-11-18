@@ -39,6 +39,7 @@ uses
   Web.Stencils,
 
   MCPConnect.MCP.Server,
+  MCPConnect.WebMCP,
 
   MetricsWeb.History,
   MetricsWeb.View;
@@ -61,6 +62,12 @@ const
   ASSETS_PATH = '/assets';
   /// <summary>The same document the JSON endpoint of the Indy demo serves.</summary>
   METRICS_PATH = '/metrics';
+
+  /// <summary>
+  ///   The WebMCP client script: registers the tools tagged "webmcp" with the
+  ///   browser's agent, and runs them as tools/call on MCP_PATH.
+  /// </summary>
+  WEBMCP_SCRIPT_PATH = '/webmcp.js';
 
   SERVICE_NAME = 'todo-mcp-server';
   SERVICE_VERSION = '1.0.0';
@@ -93,6 +100,13 @@ type
       Response: TWebResponse; var Handled: Boolean);
     procedure ActionMetrics(Sender: TObject; Request: TWebRequest;
       Response: TWebResponse; var Handled: Boolean);
+
+    /// <summary>
+    ///   Serves the WebMCP client script: the same text for every page.
+    /// </summary>
+    procedure ActionWebMCPScript(Sender: TObject; Request: TWebRequest;
+      Response: TWebResponse; var Handled: Boolean);
+
     procedure ActionNotFound(Sender: TObject; Request: TWebRequest;
       Response: TWebResponse; var Handled: Boolean);
   end;
@@ -111,6 +125,13 @@ var
 
   /// <summary>The template engine, shared by every processor.</summary>
   MetricsEngine: TWebStencilsEngine;
+
+  /// <summary>
+  ///   Offers the tools tagged "webmcp" to the agent built into the browser.
+  ///   Built with ServerMCP, shared by every request: each page asks it for a
+  ///   view of its own.
+  /// </summary>
+  WebMCP: TMCPWebMCP;
 
   /// <summary>Where the templates are. The form sets it before the server starts.</summary>
   TemplatesRoot: string;
@@ -263,6 +284,11 @@ begin
       .SetAllowedMethods(['GET', 'POST'])
     .BackToMCP
     .BackToApp;
+
+  // The browser's agent gets the tools tagged "webmcp" in Server.Tools.pas
+  // (add_task, list_tasks, complete_task). Their calls come back to /mcp from
+  // this server's own pages, so the default SameOrigin policy lets them in.
+  WebMCP := TMCPWebMCP.Create(ServerMCP, MCP_PATH, WEBMCP_SCRIPT_PATH);
 end;
 
 { TWebModule1 -------------------------------------------------------------- }
@@ -325,6 +351,12 @@ begin
   LAction.MethodType := mtGet;
   LAction.OnAction := ActionMetrics;
 
+  LAction := TWebActionItem(Actions.Add);
+  LAction.Name := 'WebMCPScript';
+  LAction.PathInfo := WEBMCP_SCRIPT_PATH;
+  LAction.MethodType := mtGet;
+  LAction.OnAction := ActionWebMCPScript;
+
   // Anything else gets a page that says where to look, rather than WebBroker's
   // own "action not found" text.
   LAction := TWebActionItem(Actions.Add);
@@ -369,6 +401,9 @@ begin
     // The processor owns the view model, and the module owns the processor, so
     // the whole tree dies when the request does.
     LProcessor.AddVar('Metrics', LViewModel, True);
+    // The tools this page offers the browser's agent, and the script tag that
+    // registers them (@\WebMCP.Tag in the layout). Ungrouped: every tagged tool.
+    LProcessor.AddVar('WebMCP', WebMCP.View, True);
     Result := LProcessor.Content;
   finally
     LProcessor.Free;
@@ -485,6 +520,15 @@ begin
   Handled := True;
 end;
 
+procedure TWebModule1.ActionWebMCPScript(Sender: TObject; Request: TWebRequest;
+  Response: TWebResponse; var Handled: Boolean);
+begin
+  Response.ContentType := WEBMCP_SCRIPT_CONTENT_TYPE;
+  Response.SetCustomHeader('Cache-Control', 'public, max-age=3600');
+  Response.Content := TMCPWebMCP.ClientScript;
+  Handled := True;
+end;
+
 procedure TWebModule1.ActionNotFound(Sender: TObject; Request: TWebRequest;
   Response: TWebResponse; var Handled: Boolean);
 begin
@@ -509,8 +553,11 @@ initialization
   MetricsHistory := TMetricsHistory.Create(300);
   MetricsEngine := TWebStencilsEngine.Create(nil);
   ServerMCP := nil;
+  WebMCP := nil;
 
 finalization
+  // Before the server it reads the tools of
+  WebMCP.Free;
   ServerMCP.Free;
   MetricsEngine.Free;
   MetricsHistory.Free;

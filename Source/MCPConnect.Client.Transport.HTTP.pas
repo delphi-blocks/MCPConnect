@@ -16,6 +16,8 @@ unit MCPConnect.Client.Transport.HTTP;
 
 interface
 
+{$SCOPEDENUMS ON}
+
 uses
   System.SysUtils, System.Classes, System.SyncObjs, System.JSON,
   System.Generics.Collections,

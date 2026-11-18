@@ -88,6 +88,7 @@ uses
   MCPConnect.Tests.Security.Token.JOSE in 'MCPConnect.Tests.Security.Token.JOSE.pas',
   MCPConnect.Tests.Transport.OAuth in 'MCPConnect.Tests.Transport.OAuth.pas',
   MCPConnect.Tests.Transport.Headers in 'MCPConnect.Tests.Transport.Headers.pas',
+  MCPConnect.Tests.WebMCP in 'MCPConnect.Tests.WebMCP.pas',
   MCPConnect.Tests.Transport.RequestHeaders in 'MCPConnect.Tests.Transport.RequestHeaders.pas',
   MCPConnect.Tests.Transport.RequestMeta in 'MCPConnect.Tests.Transport.RequestMeta.pas',
   MCPConnect.Tests.Transport.Status in 'MCPConnect.Tests.Transport.Status.pas',

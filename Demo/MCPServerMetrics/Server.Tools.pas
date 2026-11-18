@@ -84,16 +84,16 @@ type
     /// </summary>
     function ReadImportFile(const AFolder: string): TMCPResponse<string>;
   public
-    [McpTool('add_task', 'Add a new task to the todo list')]
+    [McpTool('add_task', 'Add a new task to the todo list', 'webmcp')]
     function AddTask(
       [McpParam('title', 'Title of the task')] const ATitle: string;
       [McpParam('description', 'Optional description of the task')] const ADescription: string = ''
     ): string;
 
-    [McpTool('list_tasks', 'List all tasks in the todo list')]
+    [McpTool('list_tasks', 'List all tasks in the todo list', 'webmcp')]
     function ListTasks(): string;
 
-    [McpTool('complete_task', 'Mark a task as completed')]
+    [McpTool('complete_task', 'Mark a task as completed', 'webmcp')]
     function CompleteTask(
       [McpParam('task_id', 'ID of the task to complete')] ATaskId: Integer
     ): string;

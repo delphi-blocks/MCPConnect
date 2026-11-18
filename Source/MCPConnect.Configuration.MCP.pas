@@ -15,6 +15,8 @@ unit MCPConnect.Configuration.MCP;
 
 interface
 
+{$SCOPEDENUMS ON}
+
 uses
   System.SysUtils,
   System.Generics.Defaults,

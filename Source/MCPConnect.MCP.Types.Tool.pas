@@ -1,8 +1,9 @@
-﻿unit MCPConnect.MCP.Types.Tool;
+unit MCPConnect.MCP.Types.Tool;
 
 interface
 
 {$I 'MCPConnect.inc' }
+{$SCOPEDENUMS ON}
 
 uses
   System.SysUtils,

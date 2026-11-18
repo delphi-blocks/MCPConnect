@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>@Site.EventName · @Site.City</title>
+<link rel="icon" type="image/png" href="/assets/delphiday-map-marker.png">
+<link rel="stylesheet" href="/site.css">
+</head>
+<body data-page="@Site.Page">
+<div id="live">
+  <header class="top">
+    <a class="brand" href="/" title="@Site.EventName · @Site.City">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="/assets/delphiday-long-white.png">
+        <img src="/assets/delphiday-long.png" alt="Delphi Day, Italian conference" width="300" height="67">
+      </picture>
+    </a>
+    <nav>
+      <a data-nav="speakers" href="/speakers">Speakers</a>
+      <a data-nav="sessions" href="/sessions">Sessions</a>
+      <a data-nav="schedule" href="/schedule">My schedule <span class="count">@Site.ScheduleCount</span></a>
+      <a data-nav="tickets" href="/tickets">Tickets</a>
+      <a data-nav="checkout" href="/checkout">Cart <span class="count">@Site.CartCount</span></a>
+    </nav>
+    @if (WebMCP.HasTools) {
+      <span class="badge" title="Tools this page offers to the browser's agent through WebMCP">WebMCP · @WebMCP.ToolCount tools</span>
+    }
+  </header>
+
+  <main>
+    @if (Site.HasMessage) {
+      <div class="flash" data-error="@Site.IsError" role="status">@Site.Message</div>
+    }
+    @RenderBody
+  </main>
+</div>
+
+<footer class="foot">
+  <p class="org">
+    <img src="/assets/wintech-digit.png" alt="" width="32" height="32">
+    <span>Organised by Wintech Italia</span>
+  </p>
+  <p>Sample site for MCPConnect. The program is partly invented, no payment is taken and
+  nothing leaves this server. Pages are rendered by WebStencils; the tools your browser's
+  agent can call come from the same Delphi code as the buttons.</p>
+</footer>
+
+<script>
+  // The page is complete without this. It keeps the page in step with what the
+  // browser's agent does: /webmcp.js dispatches "mcp:toolresult" after every
+  // tool call, and the page fetches itself again and swaps the fragment in -
+  // only then, with no polling. While you are typing in a field of the page the
+  // refresh waits until you leave it.
+  (function () {
+    var live = document.getElementById('live');
+    if (!live) { return; }
+    var busy = false, again = false;
+
+    function typing() {
+      var el = document.activeElement;
+      return el && live.contains(el) && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName);
+    }
+
+    function refresh() {
+      if (typing()) {
+        live.addEventListener('focusout', refresh, { once: true });
+        return;
+      }
+      if (busy) { again = true; return; }
+      busy = true;
+      fetch(location.pathname + location.search, { cache: 'no-store', credentials: 'same-origin' })
+        .then(function (response) { return response.ok ? response.text() : null; })
+        .then(function (html) {
+          if (!html) { return; }
+          var fresh = new DOMParser().parseFromString(html, 'text/html').getElementById('live');
+          if (fresh && fresh.innerHTML !== live.innerHTML) { live.innerHTML = fresh.innerHTML; }
+        })
+        .catch(function () { /* the next tool call tries again */ })
+        .then(function () {
+          busy = false;
+          if (again) { again = false; refresh(); }
+        });
+    }
+
+    document.addEventListener('mcp:toolresult', refresh);
+  })();
+</script>
+<!-- WebMCP: the tools of the MCP server that this page offers to the browser's
+     agent, carried as data in the attributes of the tag; /webmcp.js registers
+     them and calls them on /mcp. Written with a backslash, unencoded, because
+     the tag is encoded already. -->
+@\WebMCP.Tag
+</body>
+</html>

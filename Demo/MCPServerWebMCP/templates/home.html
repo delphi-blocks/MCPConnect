@@ -1,0 +1,53 @@
+@LayoutPage _layout.html
+<section class="hero">
+  <div class="hero-text">
+    <p class="eyebrow">
+      <img class="marker" src="/assets/delphiday-map-marker.png" alt="" width="20" height="26">
+      @Site.City · Tuesday 8 and Wednesday 9 June 2027
+    </p>
+    <h1>@Site.EventName</h1>
+    <p class="lead">
+      Two days for Delphi developers: a seminar day of hands-on workshops, then a conference day
+      with @Site.SpeakerCount speakers. Build your own schedule, then pick your tickets.
+    </p>
+    <p class="actions">
+      <a class="btn primary" href="/sessions">Browse the sessions</a>
+      <a class="btn" href="/tickets">See the tickets</a>
+    </p>
+  </div>
+  <picture class="hero-logo">
+    <source media="(prefers-color-scheme: dark)" srcset="/assets/delphiday-white.png">
+    <img src="/assets/delphiday.png" alt="Delphi Day, Italian conference" width="360" height="106">
+  </picture>
+</section>
+
+<section class="grid three">
+  <a class="card link" href="/speakers">
+    <h2>@Site.SpeakerCount speakers</h2>
+    <p>From the keynote on KAI to Delphi on Linux64: who is on stage and what they talk about.</p>
+  </a>
+  <a class="card link" href="/sessions">
+    <h2>@Site.SessionTotal sessions</h2>
+    <p>Four seminars on Tuesday, thirteen talks on Wednesday, filterable by track and level.</p>
+  </a>
+  <a class="card link" href="/tickets">
+    <h2>Four ticket types</h2>
+    <p>Seminar day, Conference day, Combo and Student. Seats are limited.</p>
+  </a>
+</section>
+
+<section class="card agent">
+  <h2>Ask your browser's agent</h2>
+  <p>
+    This site offers tools to the agent built into a browser that supports WebMCP, and the tools it
+    sees depend on the page you are on. Try, on any page:
+  </p>
+  <ul>
+    <li>“Build me a schedule with the AI talks on Wednesday, no overlaps.”</li>
+    <li>“I want to see the Claude Code seminar and the MCPConnect one: which ticket do I need?”</li>
+    <li>“Put two Combo tickets in my cart, with the EARLYBIRD code.”</li>
+  </ul>
+  <p class="note">
+    The agent can fill the cart and prepare the order. Only you can press <em>Confirm purchase</em>.
+  </p>
+</section>

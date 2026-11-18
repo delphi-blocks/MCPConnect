@@ -1,0 +1,86 @@
+@LayoutPage _layout.html
+<h1>Checkout</h1>
+
+@if (Site.HasCart) {
+  <section class="card">
+    <table class="cart">
+      <thead>
+        <tr><th>Ticket</th><th class="num">Quantity</th><th class="num">Price</th><th class="num">Total</th><th></th></tr>
+      </thead>
+      <tbody>
+        @foreach (var line in Site.Cart) {
+          <tr>
+            <td>@line.Name</td>
+            <td class="num">@line.Quantity</td>
+            <td class="num">€@line.UnitPrice</td>
+            <td class="num">€@line.LineTotal</td>
+            <td class="num">
+              <form method="post" action="/cart/remove">
+                <input type="hidden" name="ticket" value="@line.TicketId">
+                <input type="hidden" name="back" value="@Site.Back">
+                <button class="btn small" type="submit">Remove</button>
+              </form>
+            </td>
+          </tr>
+        }
+      </tbody>
+      <tfoot>
+        <tr><td colspan="3">Subtotal</td><td class="num">€@Site.Subtotal</td><td></td></tr>
+        @if (Site.HasDiscount) {
+          <tr><td colspan="3">Discount @Site.DiscountText</td><td class="num">−€@Site.Discount</td><td></td></tr>
+        }
+        <tr class="total"><td colspan="3">Total</td><td class="num">€@Site.Total</td><td></td></tr>
+      </tfoot>
+    </table>
+
+    <form class="inline" method="post" action="/cart/discount">
+      <input type="hidden" name="back" value="@Site.Back">
+      <label>Discount code
+        <input type="text" name="code" placeholder="e.g. EARLYBIRD" autocomplete="off">
+      </label>
+      <button class="btn" type="submit">Apply</button>
+    </form>
+  </section>
+
+  @if (Site.HasPending) {
+    <section class="card confirm">
+      <h2>Confirm your purchase</h2>
+      <p>
+        An order for <strong>@Site.PendingName</strong> (@Site.PendingEmail) is ready:
+        <strong>€@Site.Total</strong>. Nothing has been bought yet.
+      </p>
+      <form class="inline" method="post" action="/checkout/confirm">
+        <input type="hidden" name="back" value="@Site.Back">
+        <button class="btn primary" type="submit">Confirm purchase</button>
+      </form>
+      <form class="inline" method="post" action="/checkout/cancel">
+        <input type="hidden" name="back" value="@Site.Back">
+        <button class="btn" type="submit">Cancel the order</button>
+      </form>
+      <p class="note">No real payment is taken: this is a demo.</p>
+    </section>
+  } @else {
+    <section class="card">
+      <h2>Attendee</h2>
+      <form class="stack" method="post" action="/checkout/prepare">
+        <input type="hidden" name="back" value="@Site.Back">
+        <label>Full name <input type="text" name="name" required></label>
+        <label>E-mail <input type="email" name="email" required></label>
+        <button class="btn primary" type="submit">Review the order</button>
+      </form>
+    </section>
+  }
+} @else {
+  <p class="empty">The cart is empty. Choose your <a href="/tickets">tickets</a>.</p>
+}
+
+@if (Site.HasOrders) {
+  <section class="card">
+    <h2>Your orders</h2>
+    <ul class="plain">
+      @foreach (var order in Site.Orders) {
+        <li>@order.Text</li>
+      }
+    </ul>
+  </section>
+}

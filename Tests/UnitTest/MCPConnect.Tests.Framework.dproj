@@ -170,6 +170,7 @@
         <DCCReference Include="MCPConnect.Tests.Transport.OAuth.pas"/>
         <DCCReference Include="MCPConnect.Tests.Transport.AuthToken.pas"/>
         <DCCReference Include="MCPConnect.Tests.Transport.Headers.pas"/>
+        <DCCReference Include="MCPConnect.Tests.WebMCP.pas"/>
         <DCCReference Include="MCPConnect.Tests.MCP.ToolCall.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>

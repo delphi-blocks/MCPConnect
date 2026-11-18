@@ -88,7 +88,6 @@ type
     procedure ActionTickets(Sender: TObject; Request: TWebRequest; Response: TWebResponse; var Handled: Boolean);
     procedure ActionCheckout(Sender: TObject; Request: TWebRequest; Response: TWebResponse; var Handled: Boolean);
     procedure ActionCss(Sender: TObject; Request: TWebRequest; Response: TWebResponse; var Handled: Boolean);
-    procedure ActionWebMCPScript(Sender: TObject; Request: TWebRequest; Response: TWebResponse; var Handled: Boolean);
     /// <summary>
     ///   Serves one image from the assets folder, by file name and nothing else.
     /// </summary>
@@ -243,7 +242,8 @@ begin
   Add('Tickets', '/tickets', mtGet, ActionTickets);
   Add('Checkout', '/checkout', mtGet, ActionCheckout);
   Add('Css', CSS_PATH, mtGet, ActionCss);
-  Add('WebMCPScript', WEBMCP_SCRIPT_PATH, mtGet, ActionWebMCPScript);
+  // GET /webmcp.js, at the path the script tag points at
+  WebMCP.RegisterRoute(Self);
   Add('Assets', ASSETS_PATH + '/*', mtGet, ActionAsset);
 
   Add('ScheduleAdd', '/schedule/add', mtPost, ActionScheduleAdd);
@@ -444,15 +444,6 @@ begin
   Response.ContentType := 'text/css; charset=utf-8';
   Response.SetCustomHeader('Cache-Control', 'no-cache');
   Response.Content := TFile.ReadAllText(TPath.Combine(ResolveTemplatesRoot, 'site.css'), TEncoding.UTF8);
-  Handled := True;
-end;
-
-procedure TDelphiDayModule.ActionWebMCPScript(Sender: TObject; Request: TWebRequest;
-  Response: TWebResponse; var Handled: Boolean);
-begin
-  Response.ContentType := WEBMCP_SCRIPT_CONTENT_TYPE;
-  Response.SetCustomHeader('Cache-Control', 'public, max-age=3600');
-  Response.Content := TMCPWebMCP.ClientScript;
   Handled := True;
 end;
 

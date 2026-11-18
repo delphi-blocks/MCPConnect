@@ -75,6 +75,7 @@ uses
   System.JSON,
   System.Generics.Collections,
   System.Generics.Defaults,
+  Web.HTTPApp,
 
   MCPConnect.MCP.Tools,
   MCPConnect.JRPC.Server;
@@ -91,6 +92,12 @@ const
   ///   The media type the client script is served with.
   /// </summary>
   WEBMCP_SCRIPT_CONTENT_TYPE = 'text/javascript; charset=utf-8';
+
+  /// <summary>
+  ///   The Cache-Control the client script is served with. The script is the
+  ///   same text for every page, so a browser may keep it for an hour.
+  /// </summary>
+  WEBMCP_SCRIPT_CACHE_CONTROL = 'public, max-age=3600';
 
 type
   /// <summary>
@@ -181,6 +188,8 @@ type
     FNames: TDictionary<string, string>;
     FFilter: TMCPWebMCPFilter;
     FLock: TObject;
+    procedure ActionScript(Sender: TObject; Request: TWebRequest;
+      Response: TWebResponse; var Handled: Boolean);
     function ToolGroup(ATool: TMCPTool; out AGroup: string): Boolean;
     function BuildTools(const AGroup: string; const AFilter: TMCPWebMCPFilter;
       out ACount: Integer): string;
@@ -234,6 +243,22 @@ type
     ///   server, so it can be served with long cache lifetimes.
     /// </summary>
     class function ClientScript: string; static;
+
+    /// <summary>
+    ///   Fills a response with the client script, its media type and its cache
+    ///   header. For a host that wires its own route (an Indy server, say);
+    ///   Handled and the status are left to the caller.
+    /// </summary>
+    procedure ServeScript(AResponse: TWebResponse);
+
+    /// <summary>
+    ///   Adds GET ScriptUrl to a web module, answered by ServeScript. The path
+    ///   is the one the script tag points at, so the two cannot disagree.
+    /// </summary>
+    /// <remarks>
+    ///   The module must not outlive this object: the action calls back into it.
+    /// </remarks>
+    procedure RegisterRoute(AModule: TCustomWebDispatcher);
 
     property Endpoint: string read FEndpoint;
     property ScriptUrl: string read FScriptUrl;
@@ -635,6 +660,29 @@ begin
     Result.Free;
     raise;
   end;
+end;
+
+procedure TMCPWebMCP.ServeScript(AResponse: TWebResponse);
+begin
+  AResponse.ContentType := WEBMCP_SCRIPT_CONTENT_TYPE;
+  AResponse.SetCustomHeader('Cache-Control', WEBMCP_SCRIPT_CACHE_CONTROL);
+  AResponse.Content := ClientScript;
+end;
+
+procedure TMCPWebMCP.ActionScript(Sender: TObject; Request: TWebRequest;
+  Response: TWebResponse; var Handled: Boolean);
+begin
+  ServeScript(Response);
+  Handled := True;
+end;
+
+procedure TMCPWebMCP.RegisterRoute(AModule: TCustomWebDispatcher);
+begin
+  var LAction := AModule.Actions.Add;
+  LAction.Name := 'WebMCPScript';
+  LAction.PathInfo := FScriptUrl;
+  LAction.MethodType := mtGet;
+  LAction.OnAction := ActionScript;
 end;
 
 class function TMCPWebMCP.ClientScript: string;

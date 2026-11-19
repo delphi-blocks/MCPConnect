@@ -191,8 +191,13 @@ type
     procedure ActionScript(Sender: TObject; Request: TWebRequest;
       Response: TWebResponse; var Handled: Boolean);
     function ToolGroup(ATool: TMCPTool; out AGroup: string): Boolean;
-    function BuildTools(const AGroup: string; const AFilter: TMCPWebMCPFilter;
+    function GroupFilter(const AGroup: string;
+      const AFilter: TMCPWebMCPFilter): TMCPWebMCPFilter;
+    function NamesFilter(const ANames: array of string; const AGroup: string;
+      const AFilter: TMCPWebMCPFilter): TMCPWebMCPFilter;
+    function BuildTools(const AOffered: TMCPWebMCPFilter;
       out ACount: Integer): string;
+    function NewView(const AOffered: TMCPWebMCPFilter): TMCPWebMCPView;
   public
     /// <summary>
     ///   Offers the tools of AServer, called at AEndpoint (the PathInfo of the
@@ -228,14 +233,35 @@ type
     ///   with SetFilter.
     /// </summary>
     function ToolsJSON(const AGroup: string = '';
-      const AFilter: TMCPWebMCPFilter = nil): string;
+      const AFilter: TMCPWebMCPFilter = nil): string; overload;
+
+    /// <summary>
+    ///   The tools a page offers when it names them itself, as the JSON array
+    ///   the client script reads. See View(ANames, AGroup).
+    /// </summary>
+    function ToolsJSON(const ANames: array of string; const AGroup: string = '';
+      const AFilter: TMCPWebMCPFilter = nil): string; overload;
 
     /// <summary>
     ///   A view for one page. The caller owns it - or the template processor
     ///   does, when it is handed over with AddVar(..., True).
     /// </summary>
     function View(const AGroup: string = '';
-      const AFilter: TMCPWebMCPFilter = nil): TMCPWebMCPView;
+      const AFilter: TMCPWebMCPFilter = nil): TMCPWebMCPView; overload;
+
+    /// <summary>
+    ///   A view for a page that names the tools it offers, so that the tool
+    ///   declarations need not know the pages. The page chooses, the tool
+    ///   limits: a named tool must still be opted in (the "webmcp" tag or
+    ///   Expose) and pass the filter set with SetFilter, and a tool whose tag
+    ///   names a group ("webmcp=checkout") is offered only when AGroup is that
+    ///   group - so a sensitive tool can keep itself to the one page meant for
+    ///   it, whatever list another page carries. Names are matched exactly; one
+    ///   that is unknown, disabled or not allowed here is skipped. The caller
+    ///   owns the view, as with View(AGroup).
+    /// </summary>
+    function View(const ANames: array of string; const AGroup: string = '';
+      const AFilter: TMCPWebMCPFilter = nil): TMCPWebMCPView; overload;
 
     /// <summary>
     ///   The client script: registers the tools found on its own script tag and
@@ -278,139 +304,140 @@ uses
   MCPConnect.Configuration.MCP;
 
 const
-  // The client script, in a multiline literal (Delphi 12 and later). Kept to
-  // ASCII and to double-quoted JavaScript strings. Every assumption about the
+  // The client script, one JavaScript line per Pascal line, each ending in
+  // #10. Kept to ASCII and to double-quoted JavaScript strings, so no line
+  // needs a quote escaped. Written as concatenated literals rather than a
+  // multiline literal, which needs Delphi 12. Every assumption about the
   // WebMCP draft lives in it.
-  CLIENT_SCRIPT = '''
-    /* MCPConnect WebMCP bridge (2025 protocol) - registers the tools listed on
-       this script tag and runs each one as a tools/call on the MCP endpoint. */
-    (function () {
-      "use strict";
-      var script = document.currentScript;
-      var mc = document.modelContext || navigator.modelContext;
-      if (!script || !mc || typeof mc.registerTool !== "function") { return; }
-
-      var endpoint = script.getAttribute("data-mcp-endpoint") || "/mcp";
-      var version = script.getAttribute("data-mcp-version") || "2025-11-25";
-      var sessionHeader = script.getAttribute("data-mcp-session-header") || "Mcp-Session-Id";
-      var tools;
-      try { tools = JSON.parse(script.getAttribute("data-mcp-tools") || "[]"); }
-      catch (e) { console.warn("WebMCP: unreadable tool list", e); return; }
-
-      var nextId = 1;
-
-      // Tells the page what a tool did, so that it can show the change without
-      // polling. A listener that throws is reported by the browser, and does
-      // not reach the agent.
-      function announce(type, detail) {
-        try { document.dispatchEvent(new CustomEvent(type, { detail: detail })); }
-        catch (e) { /* no DOM events here: nothing to tell */ }
-      }
-      // Learned from an initialize, for a server that wants the id in a header.
-      // A session in a cookie needs none of this: the browser sends it.
-      var sessionId = null;
-      var handshake = null;
-
-      function send(body) {
-        var headers = {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-          "MCP-Protocol-Version": version
-        };
-        if (sessionId) { headers[sessionHeader] = sessionId; }
-        return fetch(endpoint, {
-          method: "POST", credentials: "same-origin", cache: "no-store",
-          headers: headers, body: JSON.stringify(body)
-        });
-      }
-
-      // The body of a reply: JSON, or the last data line of an event stream
-      function readMessage(response) {
-        var type = response.headers.get("Content-Type") || "";
-        return response.text().then(function (text) {
-          if (type.indexOf("text/event-stream") >= 0) {
-            var last = null;
-            text.split(/\r?\n/).forEach(function (line) {
-              if (line.indexOf("data:") === 0) { last = line.substring(5).trim(); }
-            });
-            text = last;
-          }
-          try { return JSON.parse(text); }
-          catch (e) { throw new Error("MCP endpoint answered HTTP " + response.status); }
-        });
-      }
-
-      // initialize, then the initialized notification: what a server that keeps
-      // sessions asks of a client before anything else
-      function initialize() {
-        if (handshake) { return handshake; }
-        sessionId = null;
-        handshake = send({
-          jsonrpc: "2.0", id: nextId++, method: "initialize",
-          params: {
-            protocolVersion: version, capabilities: {},
-            clientInfo: { name: "mcpconnect-webmcp", version: "0.1" }
-          }
-        }).then(function (response) {
-          var id = response.headers.get(sessionHeader);
-          if (id) { sessionId = id; }
-          return readMessage(response);
-        }).then(function (message) {
-          if (message.error) { throw new Error(message.error.message || "initialize failed"); }
-          return send({ jsonrpc: "2.0", method: "notifications/initialized" });
-        }).then(function () { handshake = null; }, function (e) { handshake = null; throw e; });
-        return handshake;
-      }
-
-      function call(tool, args) {
-        return send({
-          jsonrpc: "2.0", id: nextId++, method: "tools/call",
-          params: { name: tool.name, arguments: args }
-        });
-      }
-
-      function callTool(tool, args) {
-        args = args || {};
-        return call(tool, args).then(function (response) {
-          // 400 and 404 are how a server that keeps sessions says it has none
-          // for this client (never initialized, or expired): shake hands, once
-          if (response.status === 400 || response.status === 404) {
-            return initialize().then(function () { return call(tool, args); });
-          }
-          return response;
-        }).then(readMessage).then(function (message) {
-          if (message.error) { throw new Error(message.error.message || ("MCP error " + message.error.code)); }
-          return message.result || {};
-        });
-      }
-
-      tools.forEach(function (tool) {
-        var definition = {
-          name: tool.name,
-          description: tool.description || tool.title || tool.name,
-          inputSchema: tool.inputSchema || { type: "object", properties: {} },
-          execute: function (args) {
-            args = args || {};
-            return callTool(tool, args).then(function (result) {
-              announce("mcp:toolresult", {
-                name: tool.name, arguments: args, result: result, isError: result.isError === true
-              });
-              return result;
-            }, function (e) {
-              announce("mcp:toolerror", {
-                name: tool.name, arguments: args, message: (e && e.message) || String(e)
-              });
-              throw e;
-            });
-          }
-        };
-        if (tool.title) { definition.title = tool.title; }
-        if (tool.annotations) { definition.annotations = tool.annotations; }
-        try { mc.registerTool(definition); }
-        catch (e) { console.warn("WebMCP: cannot register " + tool.name, e); }
-      });
-    })();
-    ''';
+  CLIENT_SCRIPT =
+    '/* MCPConnect WebMCP bridge (2025 protocol) - registers the tools listed on'#10 +
+    '   this script tag and runs each one as a tools/call on the MCP endpoint. */'#10 +
+    '(function () {'#10 +
+    '  "use strict";'#10 +
+    '  var script = document.currentScript;'#10 +
+    '  var mc = document.modelContext || navigator.modelContext;'#10 +
+    '  if (!script || !mc || typeof mc.registerTool !== "function") { return; }'#10 +
+    #10 +
+    '  var endpoint = script.getAttribute("data-mcp-endpoint") || "/mcp";'#10 +
+    '  var version = script.getAttribute("data-mcp-version") || "2025-11-25";'#10 +
+    '  var sessionHeader = script.getAttribute("data-mcp-session-header") || "Mcp-Session-Id";'#10 +
+    '  var tools;'#10 +
+    '  try { tools = JSON.parse(script.getAttribute("data-mcp-tools") || "[]"); }'#10 +
+    '  catch (e) { console.warn("WebMCP: unreadable tool list", e); return; }'#10 +
+    #10 +
+    '  var nextId = 1;'#10 +
+    #10 +
+    '  // Tells the page what a tool did, so that it can show the change without'#10 +
+    '  // polling. A listener that throws is reported by the browser, and does'#10 +
+    '  // not reach the agent.'#10 +
+    '  function announce(type, detail) {'#10 +
+    '    try { document.dispatchEvent(new CustomEvent(type, { detail: detail })); }'#10 +
+    '    catch (e) { /* no DOM events here: nothing to tell */ }'#10 +
+    '  }'#10 +
+    '  // Learned from an initialize, for a server that wants the id in a header.'#10 +
+    '  // A session in a cookie needs none of this: the browser sends it.'#10 +
+    '  var sessionId = null;'#10 +
+    '  var handshake = null;'#10 +
+    #10 +
+    '  function send(body) {'#10 +
+    '    var headers = {'#10 +
+    '      "Content-Type": "application/json",'#10 +
+    '      "Accept": "application/json",'#10 +
+    '      "MCP-Protocol-Version": version'#10 +
+    '    };'#10 +
+    '    if (sessionId) { headers[sessionHeader] = sessionId; }'#10 +
+    '    return fetch(endpoint, {'#10 +
+    '      method: "POST", credentials: "same-origin", cache: "no-store",'#10 +
+    '      headers: headers, body: JSON.stringify(body)'#10 +
+    '    });'#10 +
+    '  }'#10 +
+    #10 +
+    '  // The body of a reply: JSON, or the last data line of an event stream'#10 +
+    '  function readMessage(response) {'#10 +
+    '    var type = response.headers.get("Content-Type") || "";'#10 +
+    '    return response.text().then(function (text) {'#10 +
+    '      if (type.indexOf("text/event-stream") >= 0) {'#10 +
+    '        var last = null;'#10 +
+    '        text.split(/\r?\n/).forEach(function (line) {'#10 +
+    '          if (line.indexOf("data:") === 0) { last = line.substring(5).trim(); }'#10 +
+    '        });'#10 +
+    '        text = last;'#10 +
+    '      }'#10 +
+    '      try { return JSON.parse(text); }'#10 +
+    '      catch (e) { throw new Error("MCP endpoint answered HTTP " + response.status); }'#10 +
+    '    });'#10 +
+    '  }'#10 +
+    #10 +
+    '  // initialize, then the initialized notification: what a server that keeps'#10 +
+    '  // sessions asks of a client before anything else'#10 +
+    '  function initialize() {'#10 +
+    '    if (handshake) { return handshake; }'#10 +
+    '    sessionId = null;'#10 +
+    '    handshake = send({'#10 +
+    '      jsonrpc: "2.0", id: nextId++, method: "initialize",'#10 +
+    '      params: {'#10 +
+    '        protocolVersion: version, capabilities: {},'#10 +
+    '        clientInfo: { name: "mcpconnect-webmcp", version: "0.1" }'#10 +
+    '      }'#10 +
+    '    }).then(function (response) {'#10 +
+    '      var id = response.headers.get(sessionHeader);'#10 +
+    '      if (id) { sessionId = id; }'#10 +
+    '      return readMessage(response);'#10 +
+    '    }).then(function (message) {'#10 +
+    '      if (message.error) { throw new Error(message.error.message || "initialize failed"); }'#10 +
+    '      return send({ jsonrpc: "2.0", method: "notifications/initialized" });'#10 +
+    '    }).then(function () { handshake = null; }, function (e) { handshake = null; throw e; });'#10 +
+    '    return handshake;'#10 +
+    '  }'#10 +
+    #10 +
+    '  function call(tool, args) {'#10 +
+    '    return send({'#10 +
+    '      jsonrpc: "2.0", id: nextId++, method: "tools/call",'#10 +
+    '      params: { name: tool.name, arguments: args }'#10 +
+    '    });'#10 +
+    '  }'#10 +
+    #10 +
+    '  function callTool(tool, args) {'#10 +
+    '    args = args || {};'#10 +
+    '    return call(tool, args).then(function (response) {'#10 +
+    '      // 400 and 404 are how a server that keeps sessions says it has none'#10 +
+    '      // for this client (never initialized, or expired): shake hands, once'#10 +
+    '      if (response.status === 400 || response.status === 404) {'#10 +
+    '        return initialize().then(function () { return call(tool, args); });'#10 +
+    '      }'#10 +
+    '      return response;'#10 +
+    '    }).then(readMessage).then(function (message) {'#10 +
+    '      if (message.error) { throw new Error(message.error.message || ("MCP error " + message.error.code)); }'#10 +
+    '      return message.result || {};'#10 +
+    '    });'#10 +
+    '  }'#10 +
+    #10 +
+    '  tools.forEach(function (tool) {'#10 +
+    '    var definition = {'#10 +
+    '      name: tool.name,'#10 +
+    '      description: tool.description || tool.title || tool.name,'#10 +
+    '      inputSchema: tool.inputSchema || { type: "object", properties: {} },'#10 +
+    '      execute: function (args) {'#10 +
+    '        args = args || {};'#10 +
+    '        return callTool(tool, args).then(function (result) {'#10 +
+    '          announce("mcp:toolresult", {'#10 +
+    '            name: tool.name, arguments: args, result: result, isError: result.isError === true'#10 +
+    '          });'#10 +
+    '          return result;'#10 +
+    '        }, function (e) {'#10 +
+    '          announce("mcp:toolerror", {'#10 +
+    '            name: tool.name, arguments: args, message: (e && e.message) || String(e)'#10 +
+    '          });'#10 +
+    '          throw e;'#10 +
+    '        });'#10 +
+    '      }'#10 +
+    '    };'#10 +
+    '    if (tool.title) { definition.title = tool.title; }'#10 +
+    '    if (tool.annotations) { definition.annotations = tool.annotations; }'#10 +
+    '    try { mc.registerTool(definition); }'#10 +
+    '    catch (e) { console.warn("WebMCP: cannot register " + tool.name, e); }'#10 +
+    '  });'#10 +
+    '})();'#10;
 
 type
   /// <summary>
@@ -567,6 +594,41 @@ begin
   Result := not Assigned(AFilter) or AFilter(ATool);
 end;
 
+function TMCPWebMCP.GroupFilter(const AGroup: string;
+  const AFilter: TMCPWebMCPFilter): TMCPWebMCPFilter;
+begin
+  Result :=
+    function (ATool: TMCPTool): Boolean
+    begin
+      Result := IsOffered(ATool, AGroup, AFilter);
+    end;
+end;
+
+function TMCPWebMCP.NamesFilter(const ANames: array of string; const AGroup: string;
+  const AFilter: TMCPWebMCPFilter): TMCPWebMCPFilter;
+var
+  LNames: TArray<string>;
+  LIndex: Integer;
+begin
+  // An open array cannot be captured: the closure keeps a copy
+  SetLength(LNames, Length(ANames));
+  for LIndex := 0 to High(ANames) do
+    LNames[LIndex] := ANames[LIndex].Trim;
+
+  Result :=
+    function (ATool: TMCPTool): Boolean
+    var
+      LName: string;
+    begin
+      // IsOffered: opted in, enabled, in this page's group if the tool names
+      // one, and through both filters. The list only selects among those.
+      Result := False;
+      for LName in LNames do
+        if LName = ATool.Name then
+          Exit(IsOffered(ATool, AGroup, AFilter));
+    end;
+end;
+
 function ToolToWeb(ATool: TMCPTool): TWebMCPTool;
 var
   LHints: TToolAnnotation;
@@ -583,7 +645,7 @@ begin
       Result.InputSchema := ATool.InputSchema.Clone as TJSONObject
     else
       Result.InputSchema := TJSONObject.ParseJSONValue(
-        '''{"type":"object","properties":{}}''') as TJSONObject;
+        '{"type":"object","properties":{}}') as TJSONObject;
 
     LHints := ATool.Annotations;
     if Assigned(LHints) and (LHints.ReadOnlyHint.HasValue or LHints.DestructiveHint.HasValue or
@@ -606,11 +668,19 @@ function TMCPWebMCP.ToolsJSON(const AGroup: string;
 var
   LCount: Integer;
 begin
-  Result := BuildTools(AGroup, AFilter, LCount);
+  Result := BuildTools(GroupFilter(AGroup, AFilter), LCount);
 end;
 
-function TMCPWebMCP.BuildTools(const AGroup: string;
-  const AFilter: TMCPWebMCPFilter; out ACount: Integer): string;
+function TMCPWebMCP.ToolsJSON(const ANames: array of string; const AGroup: string;
+  const AFilter: TMCPWebMCPFilter): string;
+var
+  LCount: Integer;
+begin
+  Result := BuildTools(NamesFilter(ANames, AGroup, AFilter), LCount);
+end;
+
+function TMCPWebMCP.BuildTools(const AOffered: TMCPWebMCPFilter;
+  out ACount: Integer): string;
 var
   LList: TListToolsResult;
   LTools: TObjectList<TWebMCPTool>;
@@ -623,7 +693,7 @@ begin
     LList := FServer.GetConfiguration<TMCPConfig>.Tools.ListEnabled(
       function (ATool: TMCPTool): Boolean
       begin
-        Result := IsOffered(ATool, AGroup, AFilter);
+        Result := AOffered(ATool);
       end);
     try
       // Sorted by name, as tools/list is, so the same page renders the same
@@ -650,9 +720,20 @@ end;
 function TMCPWebMCP.View(const AGroup: string;
   const AFilter: TMCPWebMCPFilter): TMCPWebMCPView;
 begin
+  Result := NewView(GroupFilter(AGroup, AFilter));
+end;
+
+function TMCPWebMCP.View(const ANames: array of string; const AGroup: string;
+  const AFilter: TMCPWebMCPFilter): TMCPWebMCPView;
+begin
+  Result := NewView(NamesFilter(ANames, AGroup, AFilter));
+end;
+
+function TMCPWebMCP.NewView(const AOffered: TMCPWebMCPFilter): TMCPWebMCPView;
+begin
   Result := TMCPWebMCPView.Create;
   try
-    Result.FTools := BuildTools(AGroup, AFilter, Result.FToolCount);
+    Result.FTools := BuildTools(AOffered, Result.FToolCount);
     Result.FEndpoint := FEndpoint;
     Result.FScriptUrl := FScriptUrl;
     Result.FProtocolVersion := MCP_LATEST_PROTOCOL_VERSION;
@@ -687,8 +768,9 @@ end;
 
 class function TMCPWebMCP.ClientScript: string;
 begin
-  // Line breaks normalized, so the text is the same whatever the source's
-  Result := CLIENT_SCRIPT.Replace(#13#10, #10) + #10;
+  // Every line of the constant ends in #10 already, whatever line breaks the
+  // source file has, so the text needs no normalizing.
+  Result := CLIENT_SCRIPT;
 end;
 
 end.

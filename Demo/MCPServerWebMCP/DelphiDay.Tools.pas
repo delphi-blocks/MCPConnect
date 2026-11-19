@@ -5,17 +5,22 @@ unit DelphiDay.Tools;
 
   Every tool is an ordinary [McpTool] on an ordinary class, so any MCP client
   can call them at /mcp as well. What makes them WebMCP tools is the "webmcp"
-  tag: with a value ("webmcp=sessions") a tool is offered only on the pages that
-  render that group, without one it is offered on every page.
+  tag: it allows a tool in the browser, and each page then names, among the
+  allowed tools, the ones it offers (TMCPWebMCP.View with a list of names, in
+  DelphiDay.WebModule). The tools need not know the pages - except where a tool
+  should not trust them: place_order is tagged "webmcp=checkout", so only the
+  checkout page can offer it, whatever list another page carries. It is the one
+  tool that starts a purchase, and the checkout page is where the visitor sees
+  the cart and confirms it.
 
-      group        page          tools
-      -----------  ------------  ------------------------------------------
-      speakers     /speakers     search_speakers
-      sessions     /sessions     search_sessions, get_session, add_to_schedule
-      schedule     /schedule     remove_from_schedule
-      tickets      /tickets      list_tickets, check_availability, add_to_cart
-      checkout     /checkout     remove_from_cart, apply_discount, place_order
-      (none)       every page    view_schedule, view_cart
+      page          tools
+      ------------  ------------------------------------------------------
+      /speakers     search_speakers
+      /sessions     search_sessions, get_session, add_to_schedule
+      /schedule     remove_from_schedule
+      /tickets      list_tickets, check_availability, add_to_cart
+      /checkout     remove_from_cart, apply_discount, place_order (its own group)
+      every page    view_schedule, view_cart
 
   Whose schedule and cart these are is decided by the session: the page creates
   it and puts its id in a cookie, the server reads the session id from that
@@ -70,7 +75,7 @@ type
   public
     // --- /speakers ---------------------------------------------------------
 
-    [McpTool('search_speakers', 'Search the speakers of Delphi Day 2027 by name, company or topic. Returns each speaker with their company, topics and sessions.', 'readonly,webmcp=speakers')]
+    [McpTool('search_speakers', 'Search the speakers of Delphi Day 2027 by name, company or topic. Returns each speaker with their company, topics and sessions.', 'readonly,webmcp')]
     function SearchSpeakers(
       [McpParam('query', 'Text to look for in the speaker name, company, topics or session titles. Empty for everyone.')] const AQuery: string = '';
       [McpParam('topic', 'Only speakers with a session in this track, e.g. AI, Tooling, Web & Data, Language & RTL, Mobile & Cross-platform')] const ATopic: string = ''
@@ -78,7 +83,7 @@ type
 
     // --- /sessions ---------------------------------------------------------
 
-    [McpTool('search_sessions', 'Search the sessions (seminars on Tuesday 8 June, talks on Wednesday 9 June) by text, track, level or day. Returns the session numbers to use with get_session and add_to_schedule.', 'readonly,webmcp=sessions')]
+    [McpTool('search_sessions', 'Search the sessions (seminars on Tuesday 8 June, talks on Wednesday 9 June) by text, track, level or day. Returns the session numbers to use with get_session and add_to_schedule.', 'readonly,webmcp')]
     function SearchSessions(
       [McpParam('query', 'Text to look for in the title, summary, track or speaker. Empty for any.')] const AQuery: string = '';
       [McpParam('track', 'Only this track, e.g. AI, Tooling, Web & Data, Language & RTL, Mobile & Cross-platform, Delphi')] const ATrack: string = '';
@@ -86,19 +91,19 @@ type
       [McpParam('day', '1 = Tuesday 8 June (seminars), 2 = Wednesday 9 June (conference), 0 = both')] ADay: Integer = 0
     ): TCallToolResult;
 
-    [McpTool('get_session', 'Get the full details of one session: title, speaker, time, room, level and abstract.', 'readonly,webmcp=sessions')]
+    [McpTool('get_session', 'Get the full details of one session: title, speaker, time, room, level and abstract.', 'readonly,webmcp')]
     function GetSession(
       [McpParam('session_id', 'The session number, from search_sessions')] ASessionId: Integer
     ): TCallToolResult;
 
-    [McpTool('add_to_schedule', 'Add a session to the visitor''s personal schedule. Refused, with the reason, if it overlaps a session already in the schedule.', 'idempotent,webmcp=sessions')]
+    [McpTool('add_to_schedule', 'Add a session to the visitor''s personal schedule. Refused, with the reason, if it overlaps a session already in the schedule.', 'idempotent,webmcp')]
     function AddToSchedule(
       [McpParam('session_id', 'The session number, from search_sessions')] ASessionId: Integer
     ): TCallToolResult;
 
     // --- /schedule ---------------------------------------------------------
 
-    [McpTool('remove_from_schedule', 'Remove a session from the visitor''s personal schedule.', 'idempotent,webmcp=schedule')]
+    [McpTool('remove_from_schedule', 'Remove a session from the visitor''s personal schedule.', 'idempotent,webmcp')]
     function RemoveFromSchedule(
       [McpParam('session_id', 'The session number to remove')] ASessionId: Integer
     ): TCallToolResult;
@@ -108,16 +113,16 @@ type
 
     // --- /tickets ----------------------------------------------------------
 
-    [McpTool('list_tickets', 'List the ticket types with their price in euros, what each one covers and how many seats are left.', 'readonly,webmcp=tickets')]
+    [McpTool('list_tickets', 'List the ticket types with their price in euros, what each one covers and how many seats are left.', 'readonly,webmcp')]
     function ListTickets: TCallToolResult;
 
-    [McpTool('check_availability', 'Check whether a number of tickets of one type can still be bought. Does not reserve anything.', 'readonly,webmcp=tickets')]
+    [McpTool('check_availability', 'Check whether a number of tickets of one type can still be bought. Does not reserve anything.', 'readonly,webmcp')]
     function CheckAvailability(
       [McpParam('ticket_type', 'The ticket type: seminar, conference, combo or student')] const ATicketType: string;
       [McpParam('quantity', 'How many tickets, 1 to 10')] AQuantity: Integer = 1
     ): TCallToolResult;
 
-    [McpTool('add_to_cart', 'Add tickets to the visitor''s cart. Nothing is bought until the visitor confirms the order on the Checkout page.', 'webmcp=tickets')]
+    [McpTool('add_to_cart', 'Add tickets to the visitor''s cart. Nothing is bought until the visitor confirms the order on the Checkout page.', 'webmcp')]
     function AddToCart(
       [McpParam('ticket_type', 'The ticket type: seminar, conference, combo or student')] const ATicketType: string;
       [McpParam('quantity', 'How many tickets to add, 1 to 10')] AQuantity: Integer = 1
@@ -128,12 +133,12 @@ type
     [McpTool('view_cart', 'Show the cart: the tickets, the discount, the total in euros, and whether an order is waiting for the visitor''s confirmation.', 'readonly,webmcp')]
     function ViewCart: TCallToolResult;
 
-    [McpTool('remove_from_cart', 'Remove one ticket type from the cart.', 'idempotent,webmcp=checkout')]
+    [McpTool('remove_from_cart', 'Remove one ticket type from the cart.', 'idempotent,webmcp')]
     function RemoveFromCart(
       [McpParam('ticket_type', 'The ticket type to remove: seminar, conference, combo or student')] const ATicketType: string
     ): TCallToolResult;
 
-    [McpTool('apply_discount', 'Apply a discount code to the cart.', 'idempotent,webmcp=checkout')]
+    [McpTool('apply_discount', 'Apply a discount code to the cart.', 'idempotent,webmcp')]
     function ApplyDiscount(
       [McpParam('code', 'The discount code')] const ACode: string
     ): TCallToolResult;

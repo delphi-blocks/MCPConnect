@@ -138,12 +138,12 @@ main { padding-top: 1.5rem; padding-bottom: 2rem; min-height: 60vh; }
   gap: 1.5rem 2rem;
   padding: 1.5rem 0 1rem;
 }
-.hero-text { flex: 1 1 24rem; }
-.hero-logo { flex: 0 1 22rem; }
+.hero-text { flex: 1 1 20rem; }
+.hero-logo { flex: 0 1 26rem; }
 .hero-logo img { width: 100%; height: auto; display: block; }
 .marker { height: 1.3rem; width: auto; vertical-align: -.25rem; margin-right: .3rem; }
 .hero h1 { font-size: 2.6rem; margin-bottom: .5rem; }
-.eyebrow { color: var(--accent); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; font-size: .8rem; }
+.eyebrow { color: var(--accent); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; font-size: 1.3rem; }
 .lead { font-size: 1.15rem; max-width: 40rem; color: var(--muted); }
 
 .grid { display: grid; gap: 1rem; margin: 1rem 0; }

@@ -2,7 +2,7 @@ program DelphiDay;
 
 {
   ==============================================================================
-   MCPConnect demo - the Delphi Day 2027 site, with WebMCP
+   MCPConnect demo - the Delphi Day 2027 site (fake), with WebMCP
   ==============================================================================
 
    A small conference site (speakers, sessions, a personal schedule, tickets and

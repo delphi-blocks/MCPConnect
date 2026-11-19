@@ -89,7 +89,7 @@ file when the real program is out. No payment is taken, and state is in memory.
 | File | Role |
 |---|---|
 | `DelphiDay.dpr` | Console host (Indy WebBroker bridge). Lists the MCP units so their registrations are linked |
-| `..\..\Source\MCPConnect.WebMCP.pas` | The WebMCP unit itself (not part of the runtime package: add it to the host project) |
+| `..\..\Source\MCPConnect.WebMCP.pas` | The WebMCP unit itself. It is not in the runtime package: the demo compiles it from `Source\` through its search path, and your own project needs the same |
 | `DelphiDay.WebModule.pas` | Routes, forms, session cookie, MCP endpoint, WebMCP wiring |
 | `DelphiDay.Service.pas` | Business rules and per-visitor state |
 | `DelphiDay.Tools.pas` | The `[McpTool]` class |

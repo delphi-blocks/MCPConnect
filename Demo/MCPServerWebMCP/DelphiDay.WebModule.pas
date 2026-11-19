@@ -62,7 +62,8 @@ type
     procedure WebModuleCreate(Sender: TObject);
   private
     function VisitorOf(Request: TWebRequest; Response: TWebResponse): string;
-    procedure Page(const ATemplate, APage, AGroup: string; Request: TWebRequest;
+    procedure Page(const ATemplate, APage: string;
+      const ATools: array of string; Request: TWebRequest;
       Response: TWebResponse);
     procedure Back(Request: TWebRequest; Response: TWebResponse; const AMessage: string;
       AIsError: Boolean);
@@ -252,7 +253,8 @@ begin
   end;
 end;
 
-procedure TDelphiDayModule.Page(const ATemplate, APage, AGroup: string; Request: TWebRequest;
+procedure TDelphiDayModule.Page(const ATemplate, APage: string;
+  const ATools: array of string; Request: TWebRequest;
   Response: TWebResponse);
 var
   LProcessor: TWebStencilsProcessor;
@@ -289,7 +291,10 @@ begin
     LProcessor.OnError := EngineError;
     // The processor owns what it is handed, and the module owns the processor
     LProcessor.AddVar('Site', LModel, True);
-    LProcessor.AddVar('WebMCP', WebMCP.View(AGroup), True);
+    // The page names the WebMCP tools it offers, among those the tools allow.
+    // Each page is its own group, so a tool tagged with a group ("webmcp=
+    // checkout") appears only on that page, even if another one names it.
+    LProcessor.AddVar('WebMCP', WebMCP.View(ATools, APage), True);
 
     Response.ContentType := 'text/html; charset=utf-8';
     Response.SetCustomHeader('Cache-Control', 'no-store');
@@ -347,42 +352,54 @@ end;
 procedure TDelphiDayModule.ActionHome(Sender: TObject; Request: TWebRequest;
   Response: TWebResponse; var Handled: Boolean);
 begin
-  Page('home.html', 'home', '', Request, Response);
+  Page('home.html', 'home',
+    ['view_schedule', 'view_cart'],
+    Request, Response);
   Handled := True;
 end;
 
 procedure TDelphiDayModule.ActionSpeakers(Sender: TObject; Request: TWebRequest;
   Response: TWebResponse; var Handled: Boolean);
 begin
-  Page('speakers.html', 'speakers', 'speakers', Request, Response);
+  Page('speakers.html', 'speakers',
+    ['search_speakers', 'view_schedule', 'view_cart'],
+    Request, Response);
   Handled := True;
 end;
 
 procedure TDelphiDayModule.ActionSessions(Sender: TObject; Request: TWebRequest;
   Response: TWebResponse; var Handled: Boolean);
 begin
-  Page('sessions.html', 'sessions', 'sessions', Request, Response);
+  Page('sessions.html', 'sessions',
+    ['search_sessions', 'get_session', 'add_to_schedule', 'view_schedule', 'view_cart'],
+    Request, Response);
   Handled := True;
 end;
 
 procedure TDelphiDayModule.ActionSchedule(Sender: TObject; Request: TWebRequest;
   Response: TWebResponse; var Handled: Boolean);
 begin
-  Page('schedule.html', 'schedule', 'schedule', Request, Response);
+  Page('schedule.html', 'schedule',
+    ['remove_from_schedule', 'view_schedule', 'view_cart'],
+    Request, Response);
   Handled := True;
 end;
 
 procedure TDelphiDayModule.ActionTickets(Sender: TObject; Request: TWebRequest;
   Response: TWebResponse; var Handled: Boolean);
 begin
-  Page('tickets.html', 'tickets', 'tickets', Request, Response);
+  Page('tickets.html', 'tickets',
+    ['list_tickets', 'check_availability', 'add_to_cart', 'view_schedule', 'view_cart'],
+    Request, Response);
   Handled := True;
 end;
 
 procedure TDelphiDayModule.ActionCheckout(Sender: TObject; Request: TWebRequest;
   Response: TWebResponse; var Handled: Boolean);
 begin
-  Page('checkout.html', 'checkout', 'checkout', Request, Response);
+  Page('checkout.html', 'checkout',
+    ['remove_from_cart', 'apply_discount', 'place_order', 'view_schedule', 'view_cart'],
+    Request, Response);
   Handled := True;
 end;
 

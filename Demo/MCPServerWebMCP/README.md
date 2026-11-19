@@ -22,16 +22,21 @@ Without it the site works as a normal site and the script does nothing.
 
 ## What it shows
 
-| Page | Tools offered (`webmcp=<group>`) |
+| Page | Tools offered |
 |---|---|
-| every page | `view_schedule`, `view_cart` (bare `webmcp` tag) |
+| every page | `view_schedule`, `view_cart` |
 | `/speakers` | `search_speakers` |
 | `/sessions` | `search_sessions`, `get_session`, `add_to_schedule` |
 | `/schedule` | `remove_from_schedule` |
 | `/tickets` | `list_tickets`, `check_availability`, `add_to_cart` |
-| `/checkout` | `remove_from_cart`, `apply_discount`, `place_order` |
+| `/checkout` | `remove_from_cart`, `apply_discount`, `place_order` (tagged `webmcp=checkout`) |
 
-* **Per-page groups.** `TMCPWebMCP.View('<group>')` per page; the layout writes `@\WebMCP.Tag`.
+* **Pages choose their tools.** A bare `webmcp` tag allows a tool in the browser; each page names the
+  ones it offers with `TMCPWebMCP.View(['search_sessions', ...], '<page>')`, so the tool declarations
+  need not know the pages. The layout writes `@\WebMCP.Tag`.
+* **A tool can still keep itself to one page.** `place_order` starts a purchase, so its tag names a
+  group (`webmcp=checkout`): only the page rendering that group can offer it, even if another page
+  lists it by mistake. The page chooses, the tool limits.
 * **One logic, two front ends.** The forms and the tools both call `DelphiDay.Service`, so the same
   rules apply: an overlap in the schedule is refused, seats are limited, discount codes are checked.
 * **Who is calling.** The WebMCP script calls `/mcp` from the page with same-origin credentials, so

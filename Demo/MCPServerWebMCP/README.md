@@ -1,5 +1,9 @@
 # Delphi Day 2027 - a WebMCP demo with WebStencils
 
+> This is the **2026-07-28-protocol (`feature/mcp-2026-07-28` branch)** version. It is stateless: the
+> visitor is identified by a plain cookie. The `main` branch has a version of the same demo where the
+> visitor is an MCP *session* carried in a cookie.
+
 A small conference site (speakers, sessions, a personal schedule, tickets, a cart) rendered
 server-side with WebStencils. Each page offers the browser's own agent the MCP tools that make
 sense *on that page*, through WebMCP (`MCPConnect.WebMCP`). The agent does what a visitor can do
@@ -7,7 +11,8 @@ with the mouse, by calling the same Delphi code.
 
 ## Run it
 
-Build `DelphiDay.dproj` (Delphi 12 or newer; developed on 13), then:
+Build `DelphiDay.dproj` (Delphi 12 or newer, because of WebStencils; developed
+on 13), then:
 
 ```
 DelphiDay.exe [-port 8080] [-templates <folder>]
@@ -45,8 +50,9 @@ Without it the site works as a normal site and the script does nothing.
   *Confirm purchase* on `/checkout`. The WebMCP script does not support MRTR input requests yet, so a
   confirmation the agent has to relay would not work in the browser anyway; a button on the page is
   the honest human-in-the-loop step.
-* **Rule violations are answers, not protocol errors.** The tools return them as `isError` results
-  with a message the agent can act on ("overlaps session 10 ...", "Combo: only 3 seats left").
+* **Rule violations are answers, not protocol errors.** The tools return the reason as the text of the
+  result ("overlaps session 10 ...", "Combo: only 3 seats left") with `isError: true`, as MCP prescribes for
+  tool execution errors, so the agent can read it and correct itself.
 * **Page follows the agent.** `/webmcp.js` dispatches `mcp:toolresult` on `document` after every tool
   call (and `mcp:toolerror` when a call fails). The layout listens for it and swaps in a fresh copy of the
   page, so the schedule and cart counters change as the agent works, with no polling. The page is
@@ -73,6 +79,7 @@ file when the real program is out. No payment is taken, and state is in memory.
 | File | Role |
 |---|---|
 | `DelphiDay.dpr` | Console host (Indy WebBroker bridge). Lists the MCP units so their registrations are linked |
+| `..\..\Source\MCPConnect.WebMCP.pas` | The WebMCP unit itself. It is not in the runtime package: the demo compiles it from `Source\` through its search path, and your own project needs the same |
 | `DelphiDay.WebModule.pas` | Routes, forms, cookie, MCP endpoint, WebMCP wiring |
 | `DelphiDay.Service.pas` | Business rules and per-visitor state |
 | `DelphiDay.Tools.pas` | The `[McpTool]` class |
